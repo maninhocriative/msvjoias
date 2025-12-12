@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Dialog,
@@ -29,6 +28,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useUserRole, AppRole } from '@/hooks/useUserRole';
 import { useNavigate } from 'react-router-dom';
 import { InviteUserDialog } from '@/components/users/InviteUserDialog';
+import { PendingUsersSection } from '@/components/users/PendingUsersSection';
 
 interface UserWithRole {
   id: string;
@@ -216,6 +216,9 @@ const UsersPage = () => {
         </div>
         <InviteUserDialog onSuccess={fetchUsers} />
       </div>
+
+      {/* Pending approvals section */}
+      <PendingUsersSection onApprovalChange={fetchUsers} />
 
       {/* Permissions legend */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">

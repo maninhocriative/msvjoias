@@ -5,7 +5,12 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 interface Profile {
   id: string;
   full_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
   avatar_url: string | null;
+  phone: string | null;
+  instagram: string | null;
+  approved: boolean;
   created_at: string;
 }
 
