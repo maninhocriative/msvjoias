@@ -24,6 +24,7 @@ export type Product = {
   image_url: string;
   active: boolean;
   created_at?: string;
+  updated_at?: string;
 };
 
 export type Conversation = {
@@ -32,7 +33,10 @@ export type Conversation = {
   contact_number: string;
   platform: string;
   last_message: string;
+  last_message_at?: string;
+  unread_count: number;
   created_at?: string;
+  updated_at?: string;
 };
 
 export type Message = {
@@ -42,5 +46,22 @@ export type Message = {
   message_type: string;
   media_url: string | null;
   is_from_me: boolean;
+  zapi_message_id?: string;
+  status?: string;
   created_at?: string;
+};
+
+export type Profile = {
+  id: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type UserRole = {
+  id: string;
+  user_id: string;
+  role: 'admin' | 'moderator' | 'user';
+  created_at: string;
 };

@@ -1,0 +1,8 @@
+[project]
+project_id = "04a3fa57-8c54-4627-8c61-a7e4e5bee221"
+
+[functions.zapi-webhook]
+verify_jwt = false
+
+[functions.zapi-send]
+verify_jwt = true
