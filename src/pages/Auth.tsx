@@ -7,7 +7,6 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import { isSupabaseConfigured } from '@/lib/supabase';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 
 const loginSchema = z.object({
@@ -109,21 +108,6 @@ const Auth = () => {
       setLoading(false);
     }
   };
-
-  if (!isSupabaseConfigured) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background px-4">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <CardTitle>Configuração Necessária</CardTitle>
-            <CardDescription>
-              Configure as variáveis de ambiente do Supabase para ativar a autenticação.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
