@@ -3,7 +3,7 @@ import { supabase, Conversation, Message } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, Paperclip, Search, MessageSquare, Image, FileText, Mic, Video, Check, CheckCheck, Instagram } from 'lucide-react';
+import { Send, Paperclip, Search, MessageSquare, Image, FileText, Mic, Video, Check, CheckCheck, Instagram, Bot, User, Square } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 
@@ -15,6 +15,8 @@ const Chat = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -100,6 +102,7 @@ const Chat = () => {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
+      console.log('Conversas carregadas:', data);
       setConversations(data || []);
     } catch (error) {
       console.error('Error fetching conversations:', error);
@@ -117,6 +120,7 @@ const Chat = () => {
         .order('created_at', { ascending: true });
 
       if (error) throw error;
+      console.log('Mensagens carregadas:', data);
       setMessages(data || []);
     } catch (error) {
       console.error('Error fetching messages:', error);
@@ -216,20 +220,87 @@ const Chat = () => {
     }
   };
 
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks: BlobPart[] = [];
+
+      recorder.ondataavailable = (e) => chunks.push(e.data);
+      recorder.onstop = async () => {
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        await uploadAudio(blob);
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      recorder.start();
+      setMediaRecorder(recorder);
+      setIsRecording(true);
+      toast({ title: 'Gravando...', description: 'Clique novamente para parar' });
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível acessar o microfone.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorder) {
+      mediaRecorder.stop();
+      setMediaRecorder(null);
+      setIsRecording(false);
+    }
+  };
+
+  const uploadAudio = async (blob: Blob) => {
+    if (!selectedConversation) return;
+
+    setSending(true);
+    try {
+      const fileName = `${Date.now()}.webm`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('chat-media')
+        .upload(fileName, blob);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('chat-media')
+        .getPublicUrl(fileName);
+
+      const { error } = await supabase.functions.invoke('automation-send', {
+        body: {
+          conversation_id: selectedConversation.id,
+          phone: selectedConversation.contact_number,
+          message: 'Áudio',
+          message_type: 'audio',
+          media_url: publicUrl,
+          platform: selectedConversation.platform || 'whatsapp',
+        },
+      });
+
+      if (error) throw error;
+      toast({ title: 'Sucesso', description: 'Áudio enviado!' });
+    } catch (error) {
+      console.error('Error uploading audio:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível enviar o áudio.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSending(false);
+    }
+  };
+
   const filteredConversations = conversations.filter((conv) =>
     conv.contact_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     conv.contact_number.includes(searchTerm)
   );
-
-  const getMessageIcon = (type: string) => {
-    switch (type) {
-      case 'image': return <Image className="w-4 h-4" />;
-      case 'audio': return <Mic className="w-4 h-4" />;
-      case 'video': return <Video className="w-4 h-4" />;
-      case 'document': return <FileText className="w-4 h-4" />;
-      default: return null;
-    }
-  };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -240,19 +311,39 @@ const Chat = () => {
     }
   };
 
+  const getPlatformBadge = (platform: string) => {
+    switch (platform) {
+      case 'instagram':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gradient-to-r from-purple-500 to-pink-500 text-white">
+            <Instagram className="w-3 h-3" />
+            Instagram
+          </span>
+        );
+      case 'whatsapp':
+      default:
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-500 text-white">
+            <MessageSquare className="w-3 h-3" />
+            WhatsApp
+          </span>
+        );
+    }
+  };
+
   const getPlatformIcon = (platform: string) => {
     switch (platform) {
       case 'instagram':
         return (
-          <div className="w-4 h-4 rounded-full bg-gradient-to-tr from-yellow-500 via-pink-500 to-purple-500 flex items-center justify-center">
-            <Instagram className="w-2.5 h-2.5 text-white" />
+          <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-yellow-500 via-pink-500 to-purple-500 flex items-center justify-center">
+            <Instagram className="w-3 h-3 text-white" />
           </div>
         );
       case 'whatsapp':
       default:
         return (
-          <div className="w-4 h-4 rounded-full bg-green-500 flex items-center justify-center">
-            <MessageSquare className="w-2.5 h-2.5 text-white" />
+          <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center">
+            <MessageSquare className="w-3 h-3 text-white" />
           </div>
         );
     }
@@ -306,16 +397,18 @@ const Chat = () => {
                   </div>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <p className="font-medium text-foreground truncate">{conv.contact_name}</p>
                     {(conv.unread_count ?? 0) > 0 && (
-                      <span className="ml-2 w-5 h-5 rounded-full bg-foreground text-background text-xs flex items-center justify-center">
+                      <span className="w-5 h-5 rounded-full bg-foreground text-background text-xs flex items-center justify-center shrink-0">
                         {conv.unread_count}
                       </span>
                     )}
                   </div>
-                  <p className="text-sm text-muted-foreground truncate">{conv.last_message}</p>
-                  <p className="text-xs text-muted-foreground">{conv.contact_number}</p>
+                  <div className="mt-1">
+                    {getPlatformBadge(conv.platform || 'whatsapp')}
+                  </div>
+                  <p className="text-sm text-muted-foreground truncate mt-1">{conv.last_message}</p>
                 </div>
               </button>
             ))
@@ -328,19 +421,22 @@ const Chat = () => {
         {selectedConversation ? (
           <>
             {/* Chat Header */}
-            <div className="h-16 px-6 border-b border-border flex items-center gap-3 bg-card">
-              <div className="relative">
-                <div className="w-10 h-10 rounded-full bg-foreground text-background flex items-center justify-center font-semibold">
-                  {selectedConversation.contact_name.charAt(0).toUpperCase()}
+            <div className="h-16 px-6 border-b border-border flex items-center justify-between bg-card">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <div className="w-10 h-10 rounded-full bg-foreground text-background flex items-center justify-center font-semibold">
+                    {selectedConversation.contact_name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="absolute -bottom-0.5 -right-0.5">
+                    {getPlatformIcon(selectedConversation.platform || 'whatsapp')}
+                  </div>
                 </div>
-                <div className="absolute -bottom-0.5 -right-0.5">
-                  {getPlatformIcon(selectedConversation.platform || 'whatsapp')}
+                <div>
+                  <p className="font-medium text-foreground">{selectedConversation.contact_name}</p>
+                  <p className="text-xs text-muted-foreground">{selectedConversation.contact_number}</p>
                 </div>
               </div>
-              <div>
-                <p className="font-medium text-foreground">{selectedConversation.contact_name}</p>
-                <p className="text-xs text-muted-foreground">{selectedConversation.contact_number}</p>
-              </div>
+              {getPlatformBadge(selectedConversation.platform || 'whatsapp')}
             </div>
 
             {/* Messages */}
@@ -354,56 +450,82 @@ const Chat = () => {
                       message.is_from_me ? 'justify-end' : 'justify-start'
                     )}
                   >
-                    <div
-                      className={cn(
-                        'max-w-[70%] rounded-2xl px-4 py-2.5',
-                        message.is_from_me
-                          ? 'bg-foreground text-background rounded-br-md'
-                          : 'bg-muted text-foreground rounded-bl-md'
-                      )}
-                    >
-                      {message.message_type === 'image' && message.media_url && (
-                        <img
-                          src={message.media_url}
-                          alt="Imagem"
-                          className="max-w-full rounded-lg mb-2"
-                        />
-                      )}
-                      {message.message_type === 'audio' && message.media_url && (
-                        <audio controls className="max-w-full mb-2">
-                          <source src={message.media_url} />
-                        </audio>
-                      )}
-                      {message.message_type === 'video' && message.media_url && (
-                        <video controls className="max-w-full rounded-lg mb-2">
-                          <source src={message.media_url} />
-                        </video>
-                      )}
-                      {message.message_type === 'document' && message.media_url && (
-                        <a
-                          href={message.media_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-2 text-sm underline mb-2"
-                        >
-                          <FileText className="w-4 h-4" />
-                          {message.content || 'Documento'}
-                        </a>
-                      )}
-                      {(message.message_type === 'text' || message.content) && (
-                        <p className="text-sm">{message.content}</p>
-                      )}
+                    <div className={cn(
+                      'flex gap-2 max-w-[75%]',
+                      message.is_from_me ? 'flex-row-reverse' : 'flex-row'
+                    )}>
+                      {/* Avatar/Icon */}
                       <div className={cn(
-                        "flex items-center gap-1 mt-1",
-                        message.is_from_me ? "justify-end" : "justify-start"
+                        'w-8 h-8 rounded-full flex items-center justify-center shrink-0',
+                        message.is_from_me ? 'bg-foreground text-background' : 'bg-muted'
                       )}>
-                        <span className={cn(
-                          "text-xs",
-                          message.is_from_me ? "text-background/70" : "text-muted-foreground"
+                        {message.is_from_me ? (
+                          <Bot className="w-4 h-4" />
+                        ) : (
+                          <User className="w-4 h-4" />
+                        )}
+                      </div>
+                      
+                      {/* Message bubble */}
+                      <div
+                        className={cn(
+                          'rounded-2xl px-4 py-2.5',
+                          message.is_from_me
+                            ? 'bg-foreground text-background rounded-br-md'
+                            : 'bg-muted text-foreground rounded-bl-md'
+                        )}
+                      >
+                        {/* Sender label */}
+                        <p className={cn(
+                          'text-xs font-medium mb-1',
+                          message.is_from_me ? 'text-background/70' : 'text-muted-foreground'
                         )}>
-                          {formatTime(message.created_at || '')}
-                        </span>
-                        {message.is_from_me && getStatusIcon(message.status || 'sent')}
+                          {message.is_from_me ? 'Bot / Atendente' : 'Cliente'}
+                        </p>
+                        
+                        {message.message_type === 'image' && message.media_url && (
+                          <img
+                            src={message.media_url}
+                            alt="Imagem"
+                            className="max-w-full rounded-lg mb-2"
+                          />
+                        )}
+                        {message.message_type === 'audio' && message.media_url && (
+                          <audio controls className="max-w-full mb-2">
+                            <source src={message.media_url} />
+                          </audio>
+                        )}
+                        {message.message_type === 'video' && message.media_url && (
+                          <video controls className="max-w-full rounded-lg mb-2">
+                            <source src={message.media_url} />
+                          </video>
+                        )}
+                        {message.message_type === 'document' && message.media_url && (
+                          <a
+                            href={message.media_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 text-sm underline mb-2"
+                          >
+                            <FileText className="w-4 h-4" />
+                            {message.content || 'Documento'}
+                          </a>
+                        )}
+                        {(message.message_type === 'text' || message.content) && message.message_type !== 'audio' && (
+                          <p className="text-sm">{message.content}</p>
+                        )}
+                        <div className={cn(
+                          "flex items-center gap-1 mt-1",
+                          message.is_from_me ? "justify-end" : "justify-start"
+                        )}>
+                          <span className={cn(
+                            "text-xs",
+                            message.is_from_me ? "text-background/70" : "text-muted-foreground"
+                          )}>
+                            {formatTime(message.created_at || '')}
+                          </span>
+                          {message.is_from_me && getStatusIcon(message.status || 'sent')}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -427,18 +549,27 @@ const Chat = () => {
                   variant="ghost"
                   size="icon"
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={sending}
+                  disabled={sending || isRecording}
                 >
                   <Paperclip className="w-5 h-5" />
+                </Button>
+                <Button
+                  type="button"
+                  variant={isRecording ? "destructive" : "ghost"}
+                  size="icon"
+                  onClick={isRecording ? stopRecording : startRecording}
+                  disabled={sending}
+                >
+                  {isRecording ? <Square className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
                 </Button>
                 <Input
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   placeholder="Digite sua mensagem..."
                   className="flex-1"
-                  disabled={sending}
+                  disabled={sending || isRecording}
                 />
-                <Button type="submit" size="icon" disabled={sending || !newMessage.trim()}>
+                <Button type="submit" size="icon" disabled={sending || !newMessage.trim() || isRecording}>
                   <Send className="w-5 h-5" />
                 </Button>
               </form>
@@ -452,23 +583,16 @@ const Chat = () => {
               <p className="text-muted-foreground mt-1">
                 Selecione uma conversa para começar
               </p>
+              <div className="flex justify-center gap-2 mt-4">
+                {getPlatformBadge('whatsapp')}
+                {getPlatformBadge('instagram')}
+              </div>
               <p className="text-xs text-muted-foreground mt-4 max-w-sm">
                 Configure sua automação para enviar para:<br/>
                 <code className="bg-muted px-2 py-1 rounded text-xs mt-2 inline-block">
                   https://ahbjwpkpxqqrpvpzmqwa.supabase.co/functions/v1/automation-webhook
                 </code>
               </p>
-              <div className="mt-4 p-3 bg-muted rounded-lg text-left text-xs max-w-sm">
-                <p className="font-medium mb-2">Formato do payload:</p>
-                <pre className="text-muted-foreground overflow-x-auto">{`{
-  "platform": "whatsapp",
-  "contact_number": "5511999999999",
-  "contact_name": "João",
-  "message": "Olá!",
-  "message_type": "text",
-  "media_url": null
-}`}</pre>
-              </div>
             </div>
           </div>
         )}
