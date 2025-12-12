@@ -14,6 +14,7 @@ import Users from "./pages/Users";
 import Reports from "./pages/Reports";
 import Auth from "./pages/Auth";
 import Register from "./pages/Register";
+import PendingApproval from "./pages/PendingApproval";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -28,6 +29,7 @@ const App = () => (
           <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/pending-approval" element={<PendingApproval />} />
             <Route element={<ProtectedRoute />}>
               <Route element={<MainLayout />}>
                 <Route path="/" element={<Dashboard />} />
