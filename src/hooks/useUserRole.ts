@@ -46,6 +46,7 @@ export const useUserRole = () => {
   const canManageStock = isAdmin || isGerente;
   const canManageOrders = isAdmin || isGerente || isVendedor;
   const canViewReports = isAdmin || isGerente;
+  const canAccessChat = isAdmin || isGerente || isVendedor;
 
   return {
     role,
@@ -58,6 +59,7 @@ export const useUserRole = () => {
     canManageStock,
     canManageOrders,
     canViewReports,
+    canAccessChat,
     refetch: fetchUserRole,
   };
 };
