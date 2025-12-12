@@ -10,6 +10,7 @@ import Dashboard from "./pages/Dashboard";
 import Products from "./pages/Products";
 import Chat from "./pages/Chat";
 import Settings from "./pages/Settings";
+import Users from "./pages/Users";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -30,6 +31,7 @@ const App = () => (
                 <Route path="/products" element={<Products />} />
                 <Route path="/chat" element={<Chat />} />
                 <Route path="/settings" element={<Settings />} />
+                <Route path="/users" element={<Users />} />
               </Route>
             </Route>
             <Route path="*" element={<NotFound />} />
