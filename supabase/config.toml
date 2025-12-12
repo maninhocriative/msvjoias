@@ -1,5 +1,5 @@
 [project]
-project_id = "04a3fa57-8c54-4627-8c61-a7e4e5bee221"
+project_id = "ahbjwpkpxqqrpvpzmqwa"
 
 [functions.zapi-webhook]
 verify_jwt = false
