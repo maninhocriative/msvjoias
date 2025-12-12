@@ -63,20 +63,34 @@ const Auth = () => {
       if (isLogin) {
         const { error } = await signIn(email, password);
         if (error) {
-          if (error.message.includes('Invalid login credentials')) {
+          const message = error.message || '';
+
+          if (message.includes('Invalid login credentials')) {
             toast({
               title: 'Erro de Login',
               description: 'Email ou senha incorretos.',
               variant: 'destructive',
             });
+          } else if (message.toLowerCase().includes('email not confirmed')) {
+            toast({
+              title: 'Email não confirmado',
+              description: 'Confirme seu email pelo link enviado antes de fazer login.',
+              variant: 'destructive',
+            });
           } else {
             toast({
               title: 'Erro',
-              description: error.message,
+              description: message,
               variant: 'destructive',
             });
           }
+          return;
         }
+
+        toast({
+          title: 'Login realizado',
+          description: 'Você será redirecionado para o sistema.',
+        });
       } else {
         const { error } = await signUp(email, password, fullName);
         if (error) {
