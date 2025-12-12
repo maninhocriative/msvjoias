@@ -7,37 +7,123 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
-  // 1. TRATAMENTO DE CORS
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
 
   try {
-    // 2. Cria o cliente do Supabase
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // 3. Lê o JSON
-    const { text, contact_name, platform } = await req.json()
+    const payload = await req.json()
+    console.log('Payload recebido:', JSON.stringify(payload))
 
-    console.log('Payload recebido:', JSON.stringify({ text, contact_name, platform }))
+    // Suporta múltiplos formatos de payload
+    let phone = ''
+    let messageContent = ''
+    let mediaUrl: string | null = null
+    let isFromMe = false
+    let contactName = ''
+    let platform = 'whatsapp'
+    let messageType = 'text'
 
-    // Validação simples
-    if (!text || !text.phone) {
-      throw new Error('Dados incompletos: phone é obrigatório')
+    // Formato 1: { text: { phone, message, photo, fromMe }, contact_name, platform }
+    if (payload.text && payload.text.phone) {
+      phone = payload.text.phone.replace(/\D/g, '')
+      messageContent = payload.text.message || ''
+      isFromMe = payload.text.fromMe === true
+      contactName = payload.contact_name || phone
+      platform = payload.platform || 'whatsapp'
+      
+      // Detectar imagem real (não foto de perfil)
+      // Foto de perfil geralmente vem em pps.whatsapp.net
+      // Imagem de catálogo/mídia vem em mmg.whatsapp.net ou outros domínios
+      const photo = payload.text.photo || ''
+      if (photo && !photo.includes('pps.whatsapp.net')) {
+        mediaUrl = photo
+        messageType = 'image'
+      }
+      
+      // Se tiver imageUrl ou mediaUrl específico, usar
+      if (payload.text.imageUrl) {
+        mediaUrl = payload.text.imageUrl
+        messageType = 'image'
+      }
+      if (payload.text.mediaUrl) {
+        mediaUrl = payload.text.mediaUrl
+        messageType = payload.text.type || 'image'
+      }
+      if (payload.text.audioUrl) {
+        mediaUrl = payload.text.audioUrl
+        messageType = 'audio'
+      }
+      if (payload.text.videoUrl) {
+        mediaUrl = payload.text.videoUrl
+        messageType = 'video'
+      }
+      if (payload.text.documentUrl) {
+        mediaUrl = payload.text.documentUrl
+        messageType = 'document'
+      }
+    }
+    
+    // Formato 2: Formato ZAPI direto
+    else if (payload.phone) {
+      phone = payload.phone.replace(/\D/g, '')
+      messageContent = payload.text?.message || payload.message || ''
+      isFromMe = payload.fromMe === true
+      contactName = payload.senderName || payload.pushName || phone
+      platform = payload.isInstagram ? 'instagram' : 'whatsapp'
+      
+      // Mídia ZAPI
+      if (payload.image) {
+        mediaUrl = payload.image.imageUrl || payload.image.url
+        messageType = 'image'
+        messageContent = payload.image.caption || messageContent || '[Imagem]'
+      }
+      if (payload.audio) {
+        mediaUrl = payload.audio.audioUrl || payload.audio.url
+        messageType = 'audio'
+      }
+      if (payload.video) {
+        mediaUrl = payload.video.videoUrl || payload.video.url
+        messageType = 'video'
+        messageContent = payload.video.caption || messageContent || '[Vídeo]'
+      }
+      if (payload.document) {
+        mediaUrl = payload.document.documentUrl || payload.document.url
+        messageType = 'document'
+        messageContent = payload.document.fileName || messageContent || '[Documento]'
+      }
+    }
+    
+    // Formato 3: Formato genérico
+    else if (payload.contact_number) {
+      phone = payload.contact_number.replace(/\D/g, '')
+      messageContent = payload.message || ''
+      isFromMe = payload.is_from_me === true
+      contactName = payload.contact_name || phone
+      platform = payload.platform || 'whatsapp'
+      mediaUrl = payload.media_url || null
+      messageType = payload.message_type || 'text'
     }
 
-    const phone = text.phone.replace(/\D/g, '') // Limpa o número
-    const messageContent = text.message || ''
-    const photoUrl = text.photo || null
-    const isFromMe = text.fromMe || false
+    if (!phone) {
+      throw new Error('Dados incompletos: phone/contact_number é obrigatório')
+    }
 
-    console.log('Dados extraídos:', { phone, messageContent, photoUrl, isFromMe })
+    console.log('Dados processados:', { 
+      phone, 
+      messageContent: messageContent.substring(0, 50), 
+      mediaUrl: mediaUrl ? 'SIM' : 'NÃO', 
+      isFromMe, 
+      platform,
+      messageType 
+    })
 
-    // 4. Lógica de Banco de Dados
-    // A. Verifica/Cria Conversa
+    // Buscar ou criar conversa
     let conversationId
     const { data: existingConv } = await supabase
       .from('conversations')
@@ -47,25 +133,23 @@ serve(async (req) => {
 
     if (existingConv) {
       conversationId = existingConv.id
-      // Atualiza última mensagem e incrementa unread se não for do bot
       await supabase
         .from('conversations')
         .update({ 
-          last_message: messageContent || (photoUrl ? '[Imagem]' : ''),
+          last_message: messageContent || `[${messageType}]`,
           unread_count: isFromMe ? 0 : (existingConv.unread_count || 0) + 1
         })
         .eq('id', conversationId)
       
-      console.log('Conversa existente atualizada:', conversationId)
+      console.log('Conversa atualizada:', conversationId)
     } else {
-      // Cria novo contato
       const { data: newConv, error: createError } = await supabase
         .from('conversations')
         .insert({
           contact_number: phone,
-          contact_name: contact_name || phone,
-          platform: platform || 'whatsapp',
-          last_message: messageContent || (photoUrl ? '[Imagem]' : ''),
+          contact_name: contactName,
+          platform: platform,
+          last_message: messageContent || `[${messageType}]`,
           unread_count: isFromMe ? 0 : 1
         })
         .select()
@@ -76,19 +160,19 @@ serve(async (req) => {
         throw createError
       }
       conversationId = newConv.id
-      console.log('Nova conversa criada:', conversationId)
+      console.log('Nova conversa:', conversationId)
     }
 
-    // B. Salva a Mensagem
+    // Salvar mensagem
     const { error: msgError } = await supabase
       .from('messages')
       .insert({
         conversation_id: conversationId,
         content: messageContent,
         is_from_me: isFromMe,
-        message_type: photoUrl ? 'image' : 'text',
-        media_url: photoUrl,
-        status: 'delivered'
+        message_type: messageType,
+        media_url: mediaUrl,
+        status: isFromMe ? 'sent' : 'delivered'
       })
 
     if (msgError) {
@@ -96,7 +180,7 @@ serve(async (req) => {
       throw msgError
     }
 
-    console.log('Mensagem salva com sucesso!')
+    console.log('Mensagem salva! isFromMe:', isFromMe, 'tipo:', messageType)
 
     return new Response(JSON.stringify({ success: true, conversation_id: conversationId }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
