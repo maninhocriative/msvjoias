@@ -20,14 +20,21 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Plus, Pencil, Trash2, Package } from 'lucide-react';
+import { Plus, Pencil, Trash2, Package, Layers } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import ProductVariantsDialog from '@/components/products/ProductVariantsDialog';
+
+interface ProductWithStock extends Product {
+  totalStock?: number;
+}
 
 const Products = () => {
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<ProductWithStock[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [variantsDialogOpen, setVariantsDialogOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -44,13 +51,34 @@ const Products = () => {
 
   const fetchProducts = async () => {
     try {
-      const { data, error } = await supabase
+      // Fetch products
+      const { data: productsData, error: productsError } = await supabase
         .from('products')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setProducts(data || []);
+      if (productsError) throw productsError;
+
+      // Fetch stock totals for each product
+      const { data: variantsData, error: variantsError } = await supabase
+        .from('product_variants')
+        .select('product_id, stock');
+
+      if (variantsError) throw variantsError;
+
+      // Calculate total stock per product
+      const stockByProduct: Record<string, number> = {};
+      variantsData?.forEach(v => {
+        stockByProduct[v.product_id] = (stockByProduct[v.product_id] || 0) + v.stock;
+      });
+
+      // Merge stock info with products
+      const productsWithStock = (productsData || []).map(p => ({
+        ...p,
+        totalStock: stockByProduct[p.id] ?? undefined
+      }));
+
+      setProducts(productsWithStock);
     } catch (error) {
       console.error('Error fetching products:', error);
       toast({
@@ -61,6 +89,11 @@ const Products = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const openVariantsDialog = (product: Product) => {
+    setSelectedProduct(product);
+    setVariantsDialogOpen(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -256,6 +289,7 @@ const Products = () => {
               <TableHead className="font-semibold">Produto</TableHead>
               <TableHead className="font-semibold">Categoria</TableHead>
               <TableHead className="font-semibold">Preço</TableHead>
+              <TableHead className="font-semibold">Estoque</TableHead>
               <TableHead className="font-semibold">Status</TableHead>
               <TableHead className="font-semibold text-right">Ações</TableHead>
             </TableRow>
@@ -263,13 +297,13 @@ const Products = () => {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
+                <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
                   Carregando produtos...
                 </TableCell>
               </TableRow>
             ) : products.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-12">
+                <TableCell colSpan={6} className="text-center py-12">
                   <Package className="w-12 h-12 mx-auto text-muted-foreground/50 mb-3" />
                   <p className="text-muted-foreground">Nenhum produto encontrado</p>
                 </TableCell>
@@ -297,7 +331,20 @@ const Products = () => {
                     </div>
                   </TableCell>
                   <TableCell className="text-muted-foreground">{product.category || '—'}</TableCell>
-                  <TableCell className="font-medium">R$ {product.price.toFixed(2)}</TableCell>
+                  <TableCell className="font-medium">R$ {product.price?.toFixed(2) || '0.00'}</TableCell>
+                  <TableCell>
+                    {product.totalStock !== undefined ? (
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                        product.totalStock > 0 
+                          ? 'bg-muted text-foreground' 
+                          : 'bg-destructive/10 text-destructive'
+                      }`}>
+                        {product.totalStock} un.
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">—</span>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                       product.active 
@@ -309,6 +356,14 @@ const Products = () => {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => openVariantsDialog(product)}
+                        title="Gerenciar tamanhos e estoque"
+                      >
+                        <Layers className="w-4 h-4" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -331,6 +386,21 @@ const Products = () => {
           </TableBody>
         </Table>
       </div>
+
+      {/* Variants Dialog */}
+      {selectedProduct && (
+        <ProductVariantsDialog
+          open={variantsDialogOpen}
+          onOpenChange={(open) => {
+            setVariantsDialogOpen(open);
+            if (!open) {
+              fetchProducts(); // Refresh to update stock counts
+            }
+          }}
+          productId={selectedProduct.id}
+          productName={selectedProduct.name}
+        />
+      )}
     </div>
   );
 };
