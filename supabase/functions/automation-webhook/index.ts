@@ -27,7 +27,8 @@ serve(async (req) => {
     //   "contact_name": "João",
     //   "message": "Olá!",
     //   "message_type": "text" | "image" | "audio" | "document" | "video",
-    //   "media_url": null | "https://..."
+    //   "media_url": null | "https://...",
+    //   "is_from_me": false | true  // true = mensagem do bot/automação, false = mensagem do cliente
     // }
 
     const {
@@ -36,7 +37,8 @@ serve(async (req) => {
       contact_name,
       message,
       message_type = 'text',
-      media_url = null
+      media_url = null,
+      is_from_me = false  // Default: mensagem recebida do cliente
     } = payload;
 
     if (!contact_number) {
@@ -61,12 +63,13 @@ serve(async (req) => {
 
     if (existingConversation) {
       // Update existing conversation
+      // Só incrementa unread_count se a mensagem for do cliente (não do bot)
       const { data: updatedConversation, error: updateError } = await supabase
         .from('conversations')
         .update({
           last_message: message || `[${message_type}]`,
           contact_name: contact_name || existingConversation.contact_name,
-          unread_count: (existingConversation.unread_count || 0) + 1
+          unread_count: is_from_me ? existingConversation.unread_count : (existingConversation.unread_count || 0) + 1
         })
         .eq('id', existingConversation.id)
         .select()
@@ -86,7 +89,7 @@ serve(async (req) => {
           contact_name: contact_name || cleanNumber,
           platform: platform,
           last_message: message || `[${message_type}]`,
-          unread_count: 1
+          unread_count: is_from_me ? 0 : 1  // Só marca como não lida se for do cliente
         })
         .select()
         .single();
@@ -106,8 +109,8 @@ serve(async (req) => {
         content: message,
         message_type: message_type,
         media_url: media_url,
-        is_from_me: false,
-        status: 'received'
+        is_from_me: is_from_me,
+        status: is_from_me ? 'sent' : 'received'
       })
       .select()
       .single();
