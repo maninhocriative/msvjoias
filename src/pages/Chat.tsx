@@ -487,7 +487,8 @@ const Chat = () => {
                           <img
                             src={message.media_url}
                             alt="Imagem"
-                            className="max-w-full rounded-lg mb-2"
+                            className="max-w-[200px] max-h-[200px] object-cover rounded-lg mb-2 cursor-pointer hover:opacity-90"
+                            onClick={() => window.open(message.media_url!, '_blank')}
                           />
                         )}
                         {message.message_type === 'audio' && message.media_url && (
