@@ -487,7 +487,7 @@ const Chat = () => {
                           <img
                             src={message.media_url}
                             alt="Imagem"
-                            className="max-w-[200px] max-h-[200px] object-cover rounded-lg mb-2 cursor-pointer hover:opacity-90"
+                            className="w-8 h-8 object-cover rounded cursor-pointer hover:opacity-90"
                             onClick={() => window.open(message.media_url!, '_blank')}
                           />
                         )}
