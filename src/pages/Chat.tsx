@@ -3,7 +3,7 @@ import { supabase, Conversation, Message } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, Paperclip, Search, MessageSquare } from 'lucide-react';
+import { Send, Paperclip, Search, MessageSquare, Image, FileText, Mic, Video, Check, CheckCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 
@@ -14,17 +14,39 @@ const Chat = () => {
   const [newMessage, setNewMessage] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   useEffect(() => {
     fetchConversations();
+
+    // Subscribe to new conversations
+    const convChannel = supabase
+      .channel('conversations-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'conversations',
+        },
+        () => {
+          fetchConversations();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(convChannel);
+    };
   }, []);
 
   useEffect(() => {
     if (selectedConversation) {
       fetchMessages(selectedConversation.id);
+      markAsRead(selectedConversation.id);
       
       const channel = supabase
         .channel('messages-realtime')
@@ -37,7 +59,25 @@ const Chat = () => {
             filter: `conversation_id=eq.${selectedConversation.id}`,
           },
           (payload) => {
+            console.log('New message received:', payload);
             setMessages((prev) => [...prev, payload.new as Message]);
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'messages',
+            filter: `conversation_id=eq.${selectedConversation.id}`,
+          },
+          (payload) => {
+            console.log('Message updated:', payload);
+            setMessages((prev) => 
+              prev.map((msg) => 
+                msg.id === payload.new.id ? { ...msg, ...payload.new } : msg
+              )
+            );
           }
         )
         .subscribe();
@@ -57,7 +97,7 @@ const Chat = () => {
       const { data, error } = await supabase
         .from('conversations')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('last_message_at', { ascending: false, nullsFirst: false });
 
       if (error) throw error;
       setConversations(data || []);
@@ -83,21 +123,32 @@ const Chat = () => {
     }
   };
 
+  const markAsRead = async (conversationId: string) => {
+    await supabase
+      .from('conversations')
+      .update({ unread_count: 0 })
+      .eq('id', conversationId);
+  };
+
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !selectedConversation) return;
+    if (!newMessage.trim() || !selectedConversation || sending) return;
+
+    setSending(true);
 
     try {
-      const { error } = await supabase.from('messages').insert([
-        {
+      const { data, error } = await supabase.functions.invoke('zapi-send', {
+        body: {
           conversation_id: selectedConversation.id,
-          content: newMessage,
+          phone: selectedConversation.contact_number,
+          message: newMessage,
           message_type: 'text',
-          is_from_me: true,
         },
-      ]);
+      });
 
       if (error) throw error;
+      
+      console.log('Message sent:', data);
       setNewMessage('');
     } catch (error) {
       console.error('Error sending message:', error);
@@ -106,12 +157,16 @@ const Chat = () => {
         description: 'Não foi possível enviar a mensagem.',
         variant: 'destructive',
       });
+    } finally {
+      setSending(false);
     }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !selectedConversation) return;
+
+    setSending(true);
 
     try {
       const fileExt = file.name.split('.').pop();
@@ -127,18 +182,25 @@ const Chat = () => {
         .from('chat-media')
         .getPublicUrl(fileName);
 
-      const { error } = await supabase.from('messages').insert([
-        {
+      let messageType = 'document';
+      if (file.type.startsWith('image/')) messageType = 'image';
+      else if (file.type.startsWith('audio/')) messageType = 'audio';
+      else if (file.type.startsWith('video/')) messageType = 'video';
+
+      const { data, error } = await supabase.functions.invoke('zapi-send', {
+        body: {
           conversation_id: selectedConversation.id,
-          content: file.name,
-          message_type: file.type.startsWith('image/') ? 'image' : 'file',
+          phone: selectedConversation.contact_number,
+          message: file.name,
+          message_type: messageType,
           media_url: publicUrl,
-          is_from_me: true,
         },
-      ]);
+      });
 
       if (error) throw error;
-      toast({ title: 'Sucesso', description: 'Arquivo enviado com sucesso!' });
+      
+      console.log('Media sent:', data);
+      toast({ title: 'Sucesso', description: 'Arquivo enviado!' });
     } catch (error) {
       console.error('Error uploading file:', error);
       toast({
@@ -146,15 +208,38 @@ const Chat = () => {
         description: 'Não foi possível enviar o arquivo.',
         variant: 'destructive',
       });
+    } finally {
+      setSending(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
   const filteredConversations = conversations.filter((conv) =>
-    conv.contact_name.toLowerCase().includes(searchTerm.toLowerCase())
+    conv.contact_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    conv.contact_number.includes(searchTerm)
   );
 
-  const getPlatformInitial = (platform: string) => {
-    return platform?.charAt(0).toUpperCase() || 'C';
+  const getMessageIcon = (type: string) => {
+    switch (type) {
+      case 'image': return <Image className="w-4 h-4" />;
+      case 'audio': return <Mic className="w-4 h-4" />;
+      case 'video': return <Video className="w-4 h-4" />;
+      case 'document': return <FileText className="w-4 h-4" />;
+      default: return null;
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'sent': return <Check className="w-3 h-3 text-muted-foreground" />;
+      case 'delivered': return <CheckCheck className="w-3 h-3 text-muted-foreground" />;
+      case 'read': return <CheckCheck className="w-3 h-3 text-blue-500" />;
+      default: return null;
+    }
+  };
+
+  const formatTime = (date: string) => {
+    return new Date(date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   };
 
   return (
@@ -180,6 +265,7 @@ const Chat = () => {
             <div className="p-8 text-center">
               <MessageSquare className="w-12 h-12 mx-auto text-muted-foreground/50 mb-3" />
               <p className="text-muted-foreground text-sm">Nenhuma conversa encontrada</p>
+              <p className="text-xs text-muted-foreground mt-1">As mensagens do ZAPI aparecerão aqui</p>
             </div>
           ) : (
             filteredConversations.map((conv) => (
@@ -197,11 +283,14 @@ const Chat = () => {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <p className="font-medium text-foreground truncate">{conv.contact_name}</p>
-                    <span className="text-xs text-muted-foreground px-1.5 py-0.5 rounded bg-muted">
-                      {getPlatformInitial(conv.platform)}
-                    </span>
+                    {conv.unread_count > 0 && (
+                      <span className="ml-2 w-5 h-5 rounded-full bg-foreground text-background text-xs flex items-center justify-center">
+                        {conv.unread_count}
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm text-muted-foreground truncate">{conv.last_message}</p>
+                  <p className="text-xs text-muted-foreground">{conv.contact_number}</p>
                 </div>
               </button>
             ))
@@ -250,7 +339,42 @@ const Chat = () => {
                           className="max-w-full rounded-lg mb-2"
                         />
                       )}
-                      <p className="text-sm">{message.content}</p>
+                      {message.message_type === 'audio' && message.media_url && (
+                        <audio controls className="max-w-full mb-2">
+                          <source src={message.media_url} />
+                        </audio>
+                      )}
+                      {message.message_type === 'video' && message.media_url && (
+                        <video controls className="max-w-full rounded-lg mb-2">
+                          <source src={message.media_url} />
+                        </video>
+                      )}
+                      {message.message_type === 'document' && message.media_url && (
+                        <a
+                          href={message.media_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 text-sm underline mb-2"
+                        >
+                          <FileText className="w-4 h-4" />
+                          {message.content || 'Documento'}
+                        </a>
+                      )}
+                      {(message.message_type === 'text' || message.content) && (
+                        <p className="text-sm">{message.content}</p>
+                      )}
+                      <div className={cn(
+                        "flex items-center gap-1 mt-1",
+                        message.is_from_me ? "justify-end" : "justify-start"
+                      )}>
+                        <span className={cn(
+                          "text-xs",
+                          message.is_from_me ? "text-background/70" : "text-muted-foreground"
+                        )}>
+                          {formatTime(message.created_at || '')}
+                        </span>
+                        {message.is_from_me && getStatusIcon(message.status || 'sent')}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -266,12 +390,14 @@ const Chat = () => {
                   type="file"
                   className="hidden"
                   onChange={handleFileUpload}
+                  accept="image/*,audio/*,video/*,.pdf,.doc,.docx"
                 />
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon"
                   onClick={() => fileInputRef.current?.click()}
+                  disabled={sending}
                 >
                   <Paperclip className="w-5 h-5" />
                 </Button>
@@ -280,8 +406,9 @@ const Chat = () => {
                   onChange={(e) => setNewMessage(e.target.value)}
                   placeholder="Digite sua mensagem..."
                   className="flex-1"
+                  disabled={sending}
                 />
-                <Button type="submit" size="icon">
+                <Button type="submit" size="icon" disabled={sending || !newMessage.trim()}>
                   <Send className="w-5 h-5" />
                 </Button>
               </form>
@@ -291,9 +418,15 @@ const Chat = () => {
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
               <MessageSquare className="w-16 h-16 mx-auto text-muted-foreground/30 mb-4" />
-              <h3 className="text-xl font-medium text-foreground">Selecione uma conversa</h3>
+              <h3 className="text-xl font-medium text-foreground">Chat ZAPI</h3>
               <p className="text-muted-foreground mt-1">
-                Escolha uma conversa para começar a enviar mensagens
+                Selecione uma conversa para começar
+              </p>
+              <p className="text-xs text-muted-foreground mt-4 max-w-sm">
+                Configure o webhook no painel ZAPI apontando para:<br/>
+                <code className="bg-muted px-2 py-1 rounded text-xs mt-2 inline-block">
+                  {`https://${window.location.hostname.includes('lovable') ? '04a3fa57-8c54-4627-8c61-a7e4e5bee221.functions.supabase.co' : 'SEU_PROJECT_ID.functions.supabase.co'}/functions/v1/zapi-webhook`}
+                </code>
               </p>
             </div>
           </div>
