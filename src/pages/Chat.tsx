@@ -3,7 +3,7 @@ import { supabase, Conversation, Message } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, Paperclip, Search, MessageSquare, Image, FileText, Mic, Video, Check, CheckCheck } from 'lucide-react';
+import { Send, Paperclip, Search, MessageSquare, Image, FileText, Mic, Video, Check, CheckCheck, Instagram } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 
@@ -238,6 +238,24 @@ const Chat = () => {
     }
   };
 
+  const getPlatformIcon = (platform: string) => {
+    switch (platform) {
+      case 'instagram':
+        return (
+          <div className="w-4 h-4 rounded-full bg-gradient-to-tr from-yellow-500 via-pink-500 to-purple-500 flex items-center justify-center">
+            <Instagram className="w-2.5 h-2.5 text-white" />
+          </div>
+        );
+      case 'whatsapp':
+      default:
+        return (
+          <div className="w-4 h-4 rounded-full bg-green-500 flex items-center justify-center">
+            <MessageSquare className="w-2.5 h-2.5 text-white" />
+          </div>
+        );
+    }
+  };
+
   const formatTime = (date: string) => {
     return new Date(date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   };
@@ -277,13 +295,18 @@ const Chat = () => {
                   selectedConversation?.id === conv.id && 'bg-muted'
                 )}
               >
-                <div className="w-12 h-12 rounded-full bg-foreground text-background flex items-center justify-center font-semibold">
-                  {conv.contact_name.charAt(0).toUpperCase()}
+                <div className="relative">
+                  <div className="w-12 h-12 rounded-full bg-foreground text-background flex items-center justify-center font-semibold">
+                    {conv.contact_name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="absolute -bottom-0.5 -right-0.5">
+                    {getPlatformIcon(conv.platform || 'whatsapp')}
+                  </div>
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <p className="font-medium text-foreground truncate">{conv.contact_name}</p>
-                    {conv.unread_count > 0 && (
+                    {(conv.unread_count ?? 0) > 0 && (
                       <span className="ml-2 w-5 h-5 rounded-full bg-foreground text-background text-xs flex items-center justify-center">
                         {conv.unread_count}
                       </span>
@@ -304,8 +327,13 @@ const Chat = () => {
           <>
             {/* Chat Header */}
             <div className="h-16 px-6 border-b border-border flex items-center gap-3 bg-card">
-              <div className="w-10 h-10 rounded-full bg-foreground text-background flex items-center justify-center font-semibold">
-                {selectedConversation.contact_name.charAt(0).toUpperCase()}
+              <div className="relative">
+                <div className="w-10 h-10 rounded-full bg-foreground text-background flex items-center justify-center font-semibold">
+                  {selectedConversation.contact_name.charAt(0).toUpperCase()}
+                </div>
+                <div className="absolute -bottom-0.5 -right-0.5">
+                  {getPlatformIcon(selectedConversation.platform || 'whatsapp')}
+                </div>
               </div>
               <div>
                 <p className="font-medium text-foreground">{selectedConversation.contact_name}</p>
@@ -418,16 +446,27 @@ const Chat = () => {
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
               <MessageSquare className="w-16 h-16 mx-auto text-muted-foreground/30 mb-4" />
-              <h3 className="text-xl font-medium text-foreground">Chat ZAPI</h3>
+              <h3 className="text-xl font-medium text-foreground">Chat Multicanal</h3>
               <p className="text-muted-foreground mt-1">
                 Selecione uma conversa para começar
               </p>
               <p className="text-xs text-muted-foreground mt-4 max-w-sm">
-                Configure o webhook no painel ZAPI apontando para:<br/>
+                Configure sua automação para enviar para:<br/>
                 <code className="bg-muted px-2 py-1 rounded text-xs mt-2 inline-block">
-                  {`https://${window.location.hostname.includes('lovable') ? '04a3fa57-8c54-4627-8c61-a7e4e5bee221.functions.supabase.co' : 'SEU_PROJECT_ID.functions.supabase.co'}/functions/v1/zapi-webhook`}
+                  https://ahbjwpkpxqqrpvpzmqwa.supabase.co/functions/v1/automation-webhook
                 </code>
               </p>
+              <div className="mt-4 p-3 bg-muted rounded-lg text-left text-xs max-w-sm">
+                <p className="font-medium mb-2">Formato do payload:</p>
+                <pre className="text-muted-foreground overflow-x-auto">{`{
+  "platform": "whatsapp",
+  "contact_number": "5511999999999",
+  "contact_name": "João",
+  "message": "Olá!",
+  "message_type": "text",
+  "media_url": null
+}`}</pre>
+              </div>
             </div>
           </div>
         )}

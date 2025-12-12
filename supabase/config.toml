@@ -6,3 +6,6 @@ verify_jwt = false
 
 [functions.zapi-send]
 verify_jwt = true
+
+[functions.automation-webhook]
+verify_jwt = false
