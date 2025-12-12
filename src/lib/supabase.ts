@@ -26,6 +26,8 @@ export type Product = {
   updated_at?: string;
 };
 
+export type LeadStatus = 'novo' | 'frio' | 'quente' | 'comprador' | 'sem_interesse';
+
 export type Conversation = {
   id: string;
   contact_name: string;
@@ -34,6 +36,7 @@ export type Conversation = {
   last_message: string;
   last_message_at?: string;
   unread_count: number;
+  lead_status?: LeadStatus;
   created_at?: string;
   updated_at?: string;
 };

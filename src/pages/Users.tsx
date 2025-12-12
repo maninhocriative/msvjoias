@@ -28,6 +28,7 @@ import { Pencil, Trash2, Users, Shield, UserCog, ShoppingBag } from 'lucide-reac
 import { useToast } from '@/hooks/use-toast';
 import { useUserRole, AppRole } from '@/hooks/useUserRole';
 import { useNavigate } from 'react-router-dom';
+import { InviteUserDialog } from '@/components/users/InviteUserDialog';
 
 interface UserWithRole {
   id: string;
@@ -213,6 +214,7 @@ const UsersPage = () => {
           <h1 className="text-3xl font-semibold text-foreground tracking-tight">Usuários</h1>
           <p className="text-muted-foreground mt-1">Gerencie permissões e acessos</p>
         </div>
+        <InviteUserDialog onSuccess={fetchUsers} />
       </div>
 
       {/* Permissions legend */}
