@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import { supabase, Conversation, Message } from '@/lib/supabase';
+import { supabase, Conversation, Message, LeadStatus } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Send, Paperclip, Search, MessageSquare, Image, FileText, Mic, Video, Check, CheckCheck, Instagram, Bot, User, Square } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { LeadStatusSelect, LeadStatusBadge } from '@/components/chat/LeadStatusSelect';
 
 const Chat = () => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -17,9 +18,41 @@ const Chat = () => {
   const [sending, setSending] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [updatingLeadStatus, setUpdatingLeadStatus] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+
+  const updateLeadStatus = async (conversationId: string, status: LeadStatus) => {
+    setUpdatingLeadStatus(true);
+    try {
+      const { error } = await supabase
+        .from('conversations')
+        .update({ lead_status: status })
+        .eq('id', conversationId);
+
+      if (error) throw error;
+
+      setConversations(prev => prev.map(c => 
+        c.id === conversationId ? { ...c, lead_status: status } : c
+      ));
+      
+      if (selectedConversation?.id === conversationId) {
+        setSelectedConversation(prev => prev ? { ...prev, lead_status: status } : null);
+      }
+
+      toast({ title: 'Status atualizado!' });
+    } catch (error) {
+      console.error('Error updating lead status:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível atualizar o status.',
+        variant: 'destructive',
+      });
+    } finally {
+      setUpdatingLeadStatus(false);
+    }
+  };
 
   useEffect(() => {
     fetchConversations();
@@ -419,8 +452,9 @@ const Chat = () => {
                       </span>
                     )}
                   </div>
-                  <div className="mt-1">
+                  <div className="flex items-center gap-2 mt-1">
                     {getPlatformBadge(conv.platform || 'whatsapp')}
+                    <LeadStatusBadge status={(conv.lead_status as LeadStatus) || 'novo'} />
                   </div>
                   <p className="text-sm text-muted-foreground truncate mt-1">{conv.last_message}</p>
                 </div>
@@ -435,7 +469,7 @@ const Chat = () => {
         {selectedConversation ? (
           <>
             {/* Chat Header */}
-            <div className="h-16 px-6 border-b border-border flex items-center justify-between bg-card">
+            <div className="h-20 px-6 border-b border-border flex items-center justify-between bg-card">
               <div className="flex items-center gap-3">
                 <div className="relative">
                   <div className="w-10 h-10 rounded-full bg-foreground text-background flex items-center justify-center font-semibold">
@@ -450,7 +484,14 @@ const Chat = () => {
                   <p className="text-xs text-muted-foreground">{selectedConversation.contact_number}</p>
                 </div>
               </div>
-              {getPlatformBadge(selectedConversation.platform || 'whatsapp')}
+              <div className="flex items-center gap-3">
+                <LeadStatusSelect
+                  value={(selectedConversation.lead_status as LeadStatus) || 'novo'}
+                  onChange={(status) => updateLeadStatus(selectedConversation.id, status)}
+                  disabled={updatingLeadStatus}
+                />
+                {getPlatformBadge(selectedConversation.platform || 'whatsapp')}
+              </div>
             </div>
 
             {/* Messages */}

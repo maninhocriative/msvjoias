@@ -21,6 +21,7 @@ export type Database = {
           created_at: string
           id: string
           last_message: string | null
+          lead_status: string | null
           platform: string | null
           unread_count: number | null
         }
@@ -30,6 +31,7 @@ export type Database = {
           created_at?: string
           id?: string
           last_message?: string | null
+          lead_status?: string | null
           platform?: string | null
           unread_count?: number | null
         }
@@ -39,6 +41,7 @@ export type Database = {
           created_at?: string
           id?: string
           last_message?: string | null
+          lead_status?: string | null
           platform?: string | null
           unread_count?: number | null
         }
