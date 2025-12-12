@@ -20,7 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Plus, Pencil, Trash2, Package, Layers } from 'lucide-react';
+import { Plus, Pencil, Trash2, Package, Layers, Video, Image } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import ProductVariantsDialog from '@/components/products/ProductVariantsDialog';
 
@@ -37,12 +37,15 @@ const Products = () => {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [formData, setFormData] = useState({
     name: '',
+    sku: '',
     description: '',
     price: '',
     category: '',
+    video_url: '',
     active: true,
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [additionalImages, setAdditionalImages] = useState<File[]>([]);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -101,7 +104,9 @@ const Products = () => {
     
     try {
       let imageUrl = editingProduct?.image_url || '';
+      let imagesArray: string[] = editingProduct?.images || [];
 
+      // Upload main image
       if (imageFile) {
         const fileExt = imageFile.name.split('.').pop();
         const fileName = `${Date.now()}.${fileExt}`;
@@ -119,13 +124,41 @@ const Products = () => {
         imageUrl = publicUrl;
       }
 
+      // Upload additional images
+      if (additionalImages.length > 0) {
+        const uploadedUrls: string[] = [];
+        for (const file of additionalImages) {
+          const fileExt = file.name.split('.').pop();
+          const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+          
+          const { error: uploadError } = await supabase.storage
+            .from('products')
+            .upload(fileName, file);
+
+          if (uploadError) {
+            console.error('Error uploading additional image:', uploadError);
+            continue;
+          }
+
+          const { data: { publicUrl } } = supabase.storage
+            .from('products')
+            .getPublicUrl(fileName);
+
+          uploadedUrls.push(publicUrl);
+        }
+        imagesArray = [...imagesArray, ...uploadedUrls];
+      }
+
       const productData = {
         name: formData.name,
+        sku: formData.sku || null,
         description: formData.description,
         price: parseFloat(formData.price),
         category: formData.category,
+        video_url: formData.video_url || null,
         active: formData.active,
         image_url: imageUrl,
+        images: imagesArray,
       };
 
       if (editingProduct) {
@@ -181,8 +214,9 @@ const Products = () => {
   };
 
   const resetForm = () => {
-    setFormData({ name: '', description: '', price: '', category: '', active: true });
+    setFormData({ name: '', sku: '', description: '', price: '', category: '', video_url: '', active: true });
     setImageFile(null);
+    setAdditionalImages([]);
     setEditingProduct(null);
   };
 
@@ -190,9 +224,11 @@ const Products = () => {
     setEditingProduct(product);
     setFormData({
       name: product.name,
+      sku: product.sku || '',
       description: product.description,
       price: product.price.toString(),
       category: product.category,
+      video_url: product.video_url || '',
       active: product.active,
     });
     setDialogOpen(true);
@@ -217,15 +253,26 @@ const Products = () => {
             <DialogHeader>
               <DialogTitle>{editingProduct ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Nome</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  required
-                />
+            <form onSubmit={handleSubmit} className="space-y-4 mt-4 max-h-[70vh] overflow-y-auto pr-2">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Nome *</Label>
+                  <Input
+                    id="name"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="sku">Código/SKU</Label>
+                  <Input
+                    id="sku"
+                    value={formData.sku}
+                    onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
+                    placeholder="Ex: CAM-001"
+                  />
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="description">Descrição</Label>
@@ -238,7 +285,7 @@ const Products = () => {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="price">Preço (R$)</Label>
+                  <Label htmlFor="price">Preço (R$) *</Label>
                   <Input
                     id="price"
                     type="number"
@@ -258,13 +305,49 @@ const Products = () => {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="image">Imagem</Label>
+                <Label htmlFor="video_url" className="flex items-center gap-2">
+                  <Video className="w-4 h-4" />
+                  URL do Vídeo
+                </Label>
+                <Input
+                  id="video_url"
+                  type="url"
+                  value={formData.video_url}
+                  onChange={(e) => setFormData({ ...formData, video_url: e.target.value })}
+                  placeholder="https://..."
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="image" className="flex items-center gap-2">
+                  <Image className="w-4 h-4" />
+                  Imagem Principal
+                </Label>
                 <Input
                   id="image"
                   type="file"
                   accept="image/*"
                   onChange={(e) => setImageFile(e.target.files?.[0] || null)}
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="additional_images">Imagens Adicionais</Label>
+                <Input
+                  id="additional_images"
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(e) => setAdditionalImages(Array.from(e.target.files || []))}
+                />
+                {additionalImages.length > 0 && (
+                  <p className="text-xs text-muted-foreground">{additionalImages.length} arquivo(s) selecionado(s)</p>
+                )}
+                {editingProduct?.images && editingProduct.images.length > 0 && (
+                  <div className="flex gap-2 flex-wrap mt-2">
+                    {editingProduct.images.map((img, i) => (
+                      <img key={i} src={img} alt={`Imagem ${i + 1}`} className="w-12 h-12 rounded object-cover border" />
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-3">
                 <Switch
@@ -287,9 +370,11 @@ const Products = () => {
           <TableHeader>
             <TableRow className="bg-muted/50 hover:bg-muted/50">
               <TableHead className="font-semibold">Produto</TableHead>
+              <TableHead className="font-semibold">SKU</TableHead>
               <TableHead className="font-semibold">Categoria</TableHead>
               <TableHead className="font-semibold">Preço</TableHead>
               <TableHead className="font-semibold">Estoque</TableHead>
+              <TableHead className="font-semibold">Mídia</TableHead>
               <TableHead className="font-semibold">Status</TableHead>
               <TableHead className="font-semibold text-right">Ações</TableHead>
             </TableRow>
@@ -297,13 +382,13 @@ const Products = () => {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
+                <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
                   Carregando produtos...
                 </TableCell>
               </TableRow>
             ) : products.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-12">
+                <TableCell colSpan={8} className="text-center py-12">
                   <Package className="w-12 h-12 mx-auto text-muted-foreground/50 mb-3" />
                   <p className="text-muted-foreground">Nenhum produto encontrado</p>
                 </TableCell>
@@ -330,6 +415,7 @@ const Products = () => {
                       </div>
                     </div>
                   </TableCell>
+                  <TableCell className="text-muted-foreground font-mono text-xs">{product.sku || '—'}</TableCell>
                   <TableCell className="text-muted-foreground">{product.category || '—'}</TableCell>
                   <TableCell className="font-medium">R$ {product.price?.toFixed(2) || '0.00'}</TableCell>
                   <TableCell>
@@ -344,6 +430,16 @@ const Products = () => {
                     ) : (
                       <span className="text-muted-foreground text-xs">—</span>
                     )}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1">
+                      {product.image_url && <Image className="w-4 h-4 text-muted-foreground" />}
+                      {(product.images?.length ?? 0) > 0 && (
+                        <span className="text-xs text-muted-foreground">+{product.images?.length}</span>
+                      )}
+                      {product.video_url && <Video className="w-4 h-4 text-muted-foreground" />}
+                      {!product.image_url && !product.video_url && <span className="text-muted-foreground text-xs">—</span>}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${

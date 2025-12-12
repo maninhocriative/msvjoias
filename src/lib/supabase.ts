@@ -17,10 +17,13 @@ export const isSupabaseConfigured = isConfigured;
 export type Product = {
   id: string;
   name: string;
+  sku?: string;
   description: string;
   price: number;
   category: string;
   image_url: string;
+  video_url?: string;
+  images?: string[];
   active: boolean;
   created_at?: string;
   updated_at?: string;
