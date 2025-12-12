@@ -50,8 +50,13 @@ const Chat = () => {
       fetchMessages(selectedConversation.id);
       markAsRead(selectedConversation.id);
       
+      // Create a unique channel name for this conversation
+      const channelName = `messages-${selectedConversation.id}`;
+      
+      console.log('Subscribing to channel:', channelName);
+      
       const channel = supabase
-        .channel('messages-realtime')
+        .channel(channelName)
         .on(
           'postgres_changes',
           {
@@ -62,7 +67,13 @@ const Chat = () => {
           },
           (payload) => {
             console.log('New message received:', payload);
-            setMessages((prev) => [...prev, payload.new as Message]);
+            setMessages((prev) => {
+              // Avoid duplicates
+              if (prev.some(m => m.id === payload.new.id)) {
+                return prev;
+              }
+              return [...prev, payload.new as Message];
+            });
           }
         )
         .on(
@@ -82,13 +93,16 @@ const Chat = () => {
             );
           }
         )
-        .subscribe();
+        .subscribe((status) => {
+          console.log('Channel subscription status:', status);
+        });
 
       return () => {
+        console.log('Unsubscribing from channel:', channelName);
         supabase.removeChannel(channel);
       };
     }
-  }, [selectedConversation]);
+  }, [selectedConversation?.id]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
