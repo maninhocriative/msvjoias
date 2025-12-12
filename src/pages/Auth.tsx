@@ -29,15 +29,29 @@ const Auth = () => {
   const [errors, setErrors] = useState<{ email?: string; password?: string; fullName?: string }>({});
   
   const backendConfigured = isSupabaseConfigured;
-  const { signIn, signUp, user } = useAuth();
+  const { signIn, signUp, user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
   useEffect(() => {
-    if (user) {
+    if (!authLoading && user) {
       navigate('/', { replace: true });
     }
-  }, [user, navigate]);
+  }, [user, authLoading, navigate]);
+
+  // Show loading while checking auth state
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="w-8 h-8 border-2 border-foreground border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // If user is already logged in, don't render the form (redirect will happen)
+  if (user) {
+    return null;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
