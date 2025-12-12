@@ -19,145 +19,123 @@ serve(async (req) => {
 
     const url = new URL(req.url);
     const category = url.searchParams.get('category');
+    const sku = url.searchParams.get('sku');
     const productId = url.searchParams.get('product_id');
     const onlyAvailable = url.searchParams.get('only_available') === 'true';
+    const search = url.searchParams.get('search');
 
-    console.log('Catalog API request:', { category, productId, onlyAvailable });
+    console.log('Catalog API request:', { category, sku, productId, onlyAvailable, search });
 
-    // If specific product requested
+    // Build query
+    let query = supabase
+      .from('products')
+      .select(`
+        id,
+        name,
+        sku,
+        description,
+        price,
+        category,
+        image_url,
+        video_url,
+        images,
+        active,
+        created_at,
+        product_variants (
+          id,
+          size,
+          stock
+        )
+      `)
+      .eq('active', true);
+
+    // Apply filters
+    if (category) {
+      query = query.ilike('category', `%${category}%`);
+    }
+
+    if (sku) {
+      query = query.eq('sku', sku);
+    }
+
     if (productId) {
-      const { data: product, error: productError } = await supabase
-        .from('products')
-        .select('*')
-        .eq('id', productId)
-        .eq('active', true)
-        .maybeSingle();
+      query = query.eq('id', productId);
+    }
 
-      if (productError) {
-        console.error('Error fetching product:', productError);
-        throw productError;
-      }
+    if (search) {
+      query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%,sku.ilike.%${search}%`);
+    }
 
-      if (!product) {
-        return new Response(
-          JSON.stringify({ error: 'Produto não encontrado' }),
-          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+    const { data: products, error } = await query.order('name', { ascending: true });
 
-      const { data: variants, error: variantsError } = await supabase
-        .from('product_variants')
-        .select('size, stock')
-        .eq('product_id', productId);
+    if (error) {
+      console.error('Error fetching products:', error);
+      throw error;
+    }
 
-      if (variantsError) {
-        console.error('Error fetching variants:', variantsError);
-        throw variantsError;
-      }
+    // Transform data for automation consumption
+    const catalog = (products || []).map((product: any) => {
+      const variants = product.product_variants || [];
+      const totalStock = variants.reduce((sum: number, v: { stock: number }) => sum + v.stock, 0);
+      const availableSizes = variants
+        .filter((v: { stock: number }) => v.stock > 0)
+        .map((v: { size: string; stock: number }) => ({
+          size: v.size,
+          stock: v.stock
+        }));
 
-      const totalStock = variants?.reduce((sum, v) => sum + v.stock, 0) || 0;
-      const availableSizes = variants?.filter(v => v.stock > 0).map(v => v.size) || [];
-
-      const response = {
+      return {
         id: product.id,
+        sku: product.sku || `PROD-${product.id.substring(0, 8).toUpperCase()}`,
         name: product.name,
         description: product.description,
         price: product.price,
+        price_formatted: product.price ? `R$ ${Number(product.price).toFixed(2).replace('.', ',')}` : null,
         category: product.category,
         image_url: product.image_url,
+        video_url: product.video_url,
+        images: product.images || [],
+        all_media: [
+          ...(product.image_url ? [{ type: 'image', url: product.image_url, is_main: true }] : []),
+          ...(product.images || []).map((imgUrl: string) => ({ type: 'image', url: imgUrl, is_main: false })),
+          ...(product.video_url ? [{ type: 'video', url: product.video_url }] : [])
+        ],
         total_stock: totalStock,
         available: totalStock > 0,
-        sizes: variants?.map(v => ({
+        sizes: availableSizes,
+        all_sizes: variants.map((v: { size: string; stock: number }) => ({
           size: v.size,
           stock: v.stock,
           available: v.stock > 0
-        })) || [],
-        available_sizes: availableSizes
+        }))
       };
+    }).filter((p: { available: boolean }) => !onlyAvailable || p.available);
 
-      console.log('Returning single product:', response.name);
-
+    // If searching by SKU or product_id, return single object
+    if ((sku || productId) && catalog.length === 1) {
       return new Response(
-        JSON.stringify(response),
+        JSON.stringify({ 
+          success: true, 
+          product: catalog[0]
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Fetch all products
-    let query = supabase
-      .from('products')
-      .select('*')
-      .eq('active', true)
-      .order('name');
-
-    if (category) {
-      query = query.eq('category', category);
-    }
-
-    const { data: products, error: productsError } = await query;
-
-    if (productsError) {
-      console.error('Error fetching products:', productsError);
-      throw productsError;
-    }
-
-    // Fetch all variants for these products
-    const productIds = products?.map(p => p.id) || [];
-    
-    const { data: allVariants, error: variantsError } = await supabase
-      .from('product_variants')
-      .select('product_id, size, stock')
-      .in('product_id', productIds);
-
-    if (variantsError) {
-      console.error('Error fetching variants:', variantsError);
-      throw variantsError;
-    }
-
-    // Map variants to products
-    const catalog = products?.map(product => {
-      const variants = allVariants?.filter(v => v.product_id === product.id) || [];
-      const totalStock = variants.reduce((sum, v) => sum + v.stock, 0);
-      const availableSizes = variants.filter(v => v.stock > 0).map(v => v.size);
-
-      return {
-        id: product.id,
-        name: product.name,
-        description: product.description,
-        price: product.price,
-        category: product.category,
-        image_url: product.image_url,
-        total_stock: totalStock,
-        available: totalStock > 0,
-        sizes: variants.map(v => ({
-          size: v.size,
-          stock: v.stock,
-          available: v.stock > 0
-        })),
-        available_sizes: availableSizes
-      };
-    }) || [];
-
-    // Filter only available if requested
-    const result = onlyAvailable 
-      ? catalog.filter(p => p.available) 
-      : catalog;
-
-    console.log(`Returning ${result.length} products`);
-
     return new Response(
-      JSON.stringify({
-        total: result.length,
-        products: result
+      JSON.stringify({ 
+        success: true, 
+        count: catalog.length,
+        products: catalog
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('Catalog API error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return new Response(
-      JSON.stringify({ error: errorMessage }),
+      JSON.stringify({ success: false, error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

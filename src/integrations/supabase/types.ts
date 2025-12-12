@@ -56,6 +56,7 @@ export type Database = {
           is_from_me: boolean | null
           media_url: string | null
           message_type: string | null
+          product_interest: string | null
           status: string | null
         }
         Insert: {
@@ -66,6 +67,7 @@ export type Database = {
           is_from_me?: boolean | null
           media_url?: string | null
           message_type?: string | null
+          product_interest?: string | null
           status?: string | null
         }
         Update: {
@@ -76,6 +78,7 @@ export type Database = {
           is_from_me?: boolean | null
           media_url?: string | null
           message_type?: string | null
+          product_interest?: string | null
           status?: string | null
         }
         Relationships: [
@@ -84,6 +87,13 @@ export type Database = {
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_product_interest_fkey"
+            columns: ["product_interest"]
+            isOneToOne: false
+            referencedRelation: "products"
             referencedColumns: ["id"]
           },
         ]
@@ -131,8 +141,11 @@ export type Database = {
           description: string | null
           id: string
           image_url: string | null
+          images: string[] | null
           name: string
           price: number | null
+          sku: string | null
+          video_url: string | null
         }
         Insert: {
           active?: boolean | null
@@ -141,8 +154,11 @@ export type Database = {
           description?: string | null
           id?: string
           image_url?: string | null
+          images?: string[] | null
           name: string
           price?: number | null
+          sku?: string | null
+          video_url?: string | null
         }
         Update: {
           active?: boolean | null
@@ -151,8 +167,11 @@ export type Database = {
           description?: string | null
           id?: string
           image_url?: string | null
+          images?: string[] | null
           name?: string
           price?: number | null
+          sku?: string | null
+          video_url?: string | null
         }
         Relationships: []
       }
