@@ -11,6 +11,7 @@ import Products from "./pages/Products";
 import Chat from "./pages/Chat";
 import Settings from "./pages/Settings";
 import Users from "./pages/Users";
+import Reports from "./pages/Reports";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -30,6 +31,7 @@ const App = () => (
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/products" element={<Products />} />
                 <Route path="/chat" element={<Chat />} />
+                <Route path="/reports" element={<Reports />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/users" element={<Users />} />
               </Route>
