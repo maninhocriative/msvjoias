@@ -9,3 +9,6 @@ verify_jwt = true
 
 [functions.automation-webhook]
 verify_jwt = false
+
+[functions.automation-send]
+verify_jwt = false

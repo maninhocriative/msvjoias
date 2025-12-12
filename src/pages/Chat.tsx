@@ -137,12 +137,13 @@ const Chat = () => {
     setSending(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('zapi-send', {
+      const { data, error } = await supabase.functions.invoke('automation-send', {
         body: {
           conversation_id: selectedConversation.id,
           phone: selectedConversation.contact_number,
           message: newMessage,
           message_type: 'text',
+          platform: selectedConversation.platform || 'whatsapp',
         },
       });
 
@@ -187,13 +188,14 @@ const Chat = () => {
       else if (file.type.startsWith('audio/')) messageType = 'audio';
       else if (file.type.startsWith('video/')) messageType = 'video';
 
-      const { data, error } = await supabase.functions.invoke('zapi-send', {
+      const { data, error } = await supabase.functions.invoke('automation-send', {
         body: {
           conversation_id: selectedConversation.id,
           phone: selectedConversation.contact_number,
           message: file.name,
           message_type: messageType,
           media_url: publicUrl,
+          platform: selectedConversation.platform || 'whatsapp',
         },
       });
 
