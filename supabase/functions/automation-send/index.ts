@@ -22,7 +22,7 @@ serve(async (req) => {
     console.log('Send message request:', JSON.stringify(payload, null, 2));
 
     const {
-      conversation_id,
+      conversation_id: rawConversationId,
       phone,
       message,
       message_type = 'text',
@@ -30,10 +30,69 @@ serve(async (req) => {
       platform = 'whatsapp'
     } = payload;
 
-    if (!conversation_id || !phone) {
+    if (!phone) {
       return new Response(
-        JSON.stringify({ error: 'conversation_id and phone are required' }),
+        JSON.stringify({ error: 'phone is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate and normalize conversation_id (must be a valid UUID)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    let conversationId: string | null = null;
+
+    if (typeof rawConversationId === 'string' && uuidRegex.test(rawConversationId)) {
+      conversationId = rawConversationId;
+    } else if (rawConversationId) {
+      console.warn('Invalid conversation_id received, will resolve by phone:', rawConversationId);
+    }
+
+    // If no valid conversation_id was provided, try to find or create one by phone + platform
+    if (!conversationId) {
+      console.log('Resolving conversation by phone:', phone, 'platform:', platform);
+
+      const { data: existingConversation, error: findError } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('contact_number', phone)
+        .eq('platform', platform)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (findError) {
+        console.error('Error finding conversation by phone:', findError);
+      }
+
+      if (existingConversation?.id) {
+        conversationId = existingConversation.id as string;
+      } else {
+        console.log('No existing conversation found, creating a new one');
+        const { data: newConversation, error: createError } = await supabase
+          .from('conversations')
+          .insert({
+            contact_number: phone,
+            platform,
+            contact_name: phone,
+            last_message: message || `[${message_type}]`,
+            unread_count: 0,
+          })
+          .select('id')
+          .single();
+
+        if (createError || !newConversation) {
+          console.error('Error creating conversation:', createError);
+          throw createError || new Error('Failed to create conversation');
+        }
+
+        conversationId = newConversation.id as string;
+      }
+    }
+
+    if (!conversationId) {
+      return new Response(
+        JSON.stringify({ error: 'Could not resolve a conversation for this phone number' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -41,7 +100,7 @@ serve(async (req) => {
     const { data: newMessage, error: messageError } = await supabase
       .from('messages')
       .insert({
-        conversation_id,
+        conversation_id: conversationId,
         content: message,
         message_type,
         media_url,
@@ -62,7 +121,7 @@ serve(async (req) => {
       .update({
         last_message: message || `[${message_type}]`
       })
-      .eq('id', conversation_id);
+      .eq('id', conversationId);
 
     // If automation webhook is configured, forward the message
     if (automationWebhook) {
