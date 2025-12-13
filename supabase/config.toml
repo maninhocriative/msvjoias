@@ -15,3 +15,9 @@ verify_jwt = false
 
 [functions.catalog-api]
 verify_jwt = false
+
+[functions.ai-catalog-search]
+verify_jwt = false
+
+[functions.daily-stock-check]
+verify_jwt = false
