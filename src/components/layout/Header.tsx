@@ -1,6 +1,6 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, MessageSquare, Package, Settings, LogOut, Users, BarChart3, Code } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, Package, Settings, LogOut, Users, BarChart3, Code, FileText, TestTube, ExternalLink, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ import {
 const Header = () => {
   const { user, profile, signOut } = useAuth();
   const { isAdmin, role } = useUserRole();
+  const location = useLocation();
 
   const displayName = profile?.full_name || user?.email?.split('@')[0] || 'Usuário';
   const initials = displayName.charAt(0).toUpperCase();
@@ -24,10 +25,12 @@ const Header = () => {
     { to: '/chat', label: 'Chat', icon: MessageSquare, show: true },
     { to: '/products', label: 'Produtos', icon: Package, show: true },
     { to: '/reports', label: 'Relatórios', icon: BarChart3, show: true },
-    { to: '/api-docs', label: 'API', icon: Code, show: true },
     { to: '/users', label: 'Usuários', icon: Users, show: isAdmin },
     { to: '/settings', label: 'Configurações', icon: Settings, show: true },
   ];
+
+  const apiRoutes = ['/api-docs', '/webhook-tester'];
+  const isApiActive = apiRoutes.includes(location.pathname);
 
   const roleLabels: Record<string, string> = {
     admin: 'Admin',
@@ -62,6 +65,50 @@ const Header = () => {
               <span className="hidden sm:inline">{item.label}</span>
             </NavLink>
           ))}
+
+          {/* API Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className={cn(
+                  'flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300',
+                  isApiActive
+                    ? 'bg-foreground text-background'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                )}
+              >
+                <Code className="w-4 h-4" />
+                <span className="hidden sm:inline">API</span>
+                <ChevronDown className="w-3 h-3" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="center" className="w-48 bg-popover z-50">
+              <DropdownMenuItem asChild>
+                <NavLink to="/api-docs" className="flex items-center gap-2 cursor-pointer">
+                  <FileText className="w-4 h-4" />
+                  Documentação
+                </NavLink>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <NavLink to="/webhook-tester" className="flex items-center gap-2 cursor-pointer">
+                  <TestTube className="w-4 h-4" />
+                  Testador de Webhook
+                </NavLink>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <a
+                  href="https://supabase.com/dashboard/project/ahbjwpkpxqqrpvpzmqwa/functions"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 cursor-pointer"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Logs (Supabase)
+                </a>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </nav>
 
         <DropdownMenu>
