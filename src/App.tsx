@@ -16,6 +16,7 @@ import Auth from "./pages/Auth";
 import Register from "./pages/Register";
 import PendingApproval from "./pages/PendingApproval";
 import WebhookTester from "./pages/WebhookTester";
+import ApiDocs from "./pages/ApiDocs";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -40,6 +41,7 @@ const App = () => (
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/users" element={<Users />} />
                 <Route path="/webhook-tester" element={<WebhookTester />} />
+                <Route path="/api-docs" element={<ApiDocs />} />
               </Route>
             </Route>
             <Route path="*" element={<NotFound />} />
