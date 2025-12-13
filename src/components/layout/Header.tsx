@@ -44,21 +44,21 @@ const Header = () => {
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 h-16 bg-background/80 backdrop-blur-xl border-b border-border">
-      <div className="container h-full mx-auto px-6 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <div className="h-full mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between max-w-[1920px]">
+        <div className="flex items-center gap-2 shrink-0">
           <span className="text-xl font-semibold tracking-[0.3em] text-foreground">
             ACIUM
           </span>
         </div>
         
-        <nav className="flex items-center gap-1">
+        <nav className="flex items-center gap-0.5 overflow-x-auto scrollbar-hide mx-4">
           {navItems.filter(item => item.show).map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300',
+                  'flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition-all duration-300 whitespace-nowrap shrink-0',
                   isActive
                     ? 'bg-foreground text-background'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted'
@@ -66,7 +66,7 @@ const Header = () => {
               }
             >
               <item.icon className="w-4 h-4" />
-              <span className="hidden sm:inline">{item.label}</span>
+              <span className="hidden lg:inline">{item.label}</span>
             </NavLink>
           ))}
 
@@ -75,14 +75,14 @@ const Header = () => {
             <DropdownMenuTrigger asChild>
               <button
                 className={cn(
-                  'flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300',
+                  'flex items-center gap-1 px-3 py-2 rounded-full text-sm font-medium transition-all duration-300 whitespace-nowrap shrink-0',
                   isApiActive
                     ? 'bg-foreground text-background'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                 )}
               >
                 <Code className="w-4 h-4" />
-                <span className="hidden sm:inline">API</span>
+                <span className="hidden lg:inline">API</span>
                 <ChevronDown className="w-3 h-3" />
               </button>
             </DropdownMenuTrigger>
@@ -119,14 +119,14 @@ const Header = () => {
             <DropdownMenuTrigger asChild>
               <button
                 className={cn(
-                  'flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300',
+                  'flex items-center gap-1 px-3 py-2 rounded-full text-sm font-medium transition-all duration-300 whitespace-nowrap shrink-0',
                   isSettingsActive
                     ? 'bg-foreground text-background'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                 )}
               >
                 <Settings className="w-4 h-4" />
-                <span className="hidden sm:inline">Config</span>
+                <span className="hidden lg:inline">Config</span>
                 <ChevronDown className="w-3 h-3" />
               </button>
             </DropdownMenuTrigger>
@@ -149,12 +149,12 @@ const Header = () => {
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="gap-2 rounded-full">
+            <Button variant="ghost" className="gap-2 rounded-full shrink-0 px-2">
               <div className="w-8 h-8 rounded-full bg-foreground text-background flex items-center justify-center text-sm font-semibold">
                 {initials}
               </div>
-              <div className="hidden sm:flex flex-col items-start">
-                <span className="text-sm font-medium leading-none">{displayName}</span>
+              <div className="hidden md:flex flex-col items-start">
+                <span className="text-sm font-medium leading-none truncate max-w-[100px]">{displayName}</span>
                 {role && (
                   <span className="text-[10px] text-muted-foreground leading-none mt-0.5">
                     {roleLabels[role]}
