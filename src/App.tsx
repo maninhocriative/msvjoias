@@ -20,6 +20,7 @@ import ApiDocs from "./pages/ApiDocs";
 import Customers from "./pages/Customers";
 import Offers from "./pages/Offers";
 import StoreSettings from "./pages/StoreSettings";
+import AI from "./pages/AI";
 import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
@@ -47,6 +48,7 @@ const App = () => (
                 <Route path="/customers" element={<Customers />} />
                 <Route path="/offers" element={<Offers />} />
                 <Route path="/store-settings" element={<StoreSettings />} />
+                <Route path="/ai" element={<AI />} />
               </Route>
             </Route>
             <Route path="*" element={<NotFound />} />
