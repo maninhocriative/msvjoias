@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Bot, Sparkles, Settings2, Play, Pause, Clock, MessageSquare, Zap, Brain, BarChart3 } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Bot, Sparkles, Settings2, Play, Pause, Clock, MessageSquare, Zap, Brain, BarChart3, Send, User, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
@@ -9,11 +9,28 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { supabase } from '@/lib/supabase';
+import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
+
+interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
 
 const AI = () => {
   const [botEnabled, setBotEnabled] = useState(true);
   const [autoReply, setAutoReply] = useState(true);
   const [catalogSearch, setCatalogSearch] = useState(true);
+  const [activeTab, setActiveTab] = useState('chat');
+  
+  // Chat state
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [inputMessage, setInputMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
 
   const stats = [
     { label: 'Mensagens Hoje', value: '124', icon: MessageSquare, change: '+12%' },
@@ -21,6 +38,51 @@ const AI = () => {
     { label: 'Tempo Médio', value: '2.3s', icon: Clock, change: '-15%' },
     { label: 'Taxa de Resolução', value: '78%', icon: BarChart3, change: '+5%' },
   ];
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const sendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputMessage.trim() || isLoading) return;
+
+    const userMessage = inputMessage.trim();
+    setInputMessage('');
+    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    setIsLoading(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('ai-chat', {
+        body: {
+          messages: [...messages, { role: 'user', content: userMessage }],
+          contact_name: 'Teste',
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.message) {
+        setMessages(prev => [...prev, { role: 'assistant', content: data.message }]);
+      } else {
+        throw new Error('Resposta inválida');
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível enviar a mensagem.',
+        variant: 'destructive',
+      });
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Desculpe, ocorreu um erro. Tente novamente.' }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const clearChat = () => {
+    setMessages([]);
+  };
 
   return (
     <div className="min-h-[calc(100vh-64px)] bg-background">
@@ -33,7 +95,7 @@ const AI = () => {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-foreground">Assistente IA</h1>
-              <p className="text-sm text-muted-foreground">Configure e monitore seu assistente virtual</p>
+              <p className="text-sm text-muted-foreground">Configure e teste seu assistente virtual</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -41,9 +103,9 @@ const AI = () => {
               {botEnabled ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
               {botEnabled ? 'Ativo' : 'Pausado'}
             </Badge>
-            <Button variant="outline" size="sm" className="gap-2">
+            <Button variant="outline" size="sm" className="gap-2" onClick={() => setActiveTab('settings')}>
               <Settings2 className="w-4 h-4" />
-              Configurações Avançadas
+              Configurações
             </Button>
           </div>
         </div>
@@ -68,84 +130,228 @@ const AI = () => {
           ))}
         </div>
 
-        {/* Main Content */}
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* Left Column - Controls */}
-          <div className="lg:col-span-1 space-y-6">
-            {/* Bot Status Card */}
-            <Card>
-              <CardHeader className="pb-4">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Bot className="w-5 h-5" />
-                  Status do Bot
-                </CardTitle>
-                <CardDescription>Controle o estado do assistente</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="bot-enabled" className="font-medium">Assistente Ativo</Label>
-                    <p className="text-xs text-muted-foreground">Habilitar respostas automáticas</p>
-                  </div>
-                  <Switch
-                    id="bot-enabled"
-                    checked={botEnabled}
-                    onCheckedChange={setBotEnabled}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="auto-reply" className="font-medium">Auto-resposta</Label>
-                    <p className="text-xs text-muted-foreground">Responder fora do horário</p>
-                  </div>
-                  <Switch
-                    id="auto-reply"
-                    checked={autoReply}
-                    onCheckedChange={setAutoReply}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="catalog-search" className="font-medium">Busca no Catálogo</Label>
-                    <p className="text-xs text-muted-foreground">Sugerir produtos automaticamente</p>
-                  </div>
-                  <Switch
-                    id="catalog-search"
-                    checked={catalogSearch}
-                    onCheckedChange={setCatalogSearch}
-                  />
-                </div>
-              </CardContent>
-            </Card>
+        {/* Main Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="w-full max-w-md grid grid-cols-3 mb-6">
+            <TabsTrigger value="chat" className="gap-2">
+              <MessageSquare className="w-4 h-4" />
+              Testar Chat
+            </TabsTrigger>
+            <TabsTrigger value="controls" className="gap-2">
+              <Zap className="w-4 h-4" />
+              Controles
+            </TabsTrigger>
+            <TabsTrigger value="settings" className="gap-2">
+              <Settings2 className="w-4 h-4" />
+              Configurações
+            </TabsTrigger>
+          </TabsList>
 
-            {/* Quick Actions */}
-            <Card>
-              <CardHeader className="pb-4">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Zap className="w-5 h-5" />
-                  Ações Rápidas
-                </CardTitle>
+          {/* Chat Tab */}
+          <TabsContent value="chat" className="mt-0">
+            <Card className="h-[600px] flex flex-col">
+              <CardHeader className="pb-3 border-b border-border shrink-0">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-foreground flex items-center justify-center">
+                      <Bot className="w-5 h-5 text-background" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base">Aline - Assistente Virtual</CardTitle>
+                      <CardDescription className="text-xs">Teste o assistente em tempo real</CardDescription>
+                    </div>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={clearChat}>
+                    Limpar
+                  </Button>
+                </div>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <Button variant="outline" className="w-full justify-start gap-2">
-                  <Play className="w-4 h-4" />
-                  Testar Assistente
-                </Button>
-                <Button variant="outline" className="w-full justify-start gap-2">
-                  <MessageSquare className="w-4 h-4" />
-                  Ver Conversas Recentes
-                </Button>
-                <Button variant="outline" className="w-full justify-start gap-2">
-                  <BarChart3 className="w-4 h-4" />
-                  Relatório de Performance
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
 
-          {/* Right Column - Configuration */}
-          <div className="lg:col-span-2">
-            <Card className="h-full">
+              <ScrollArea className="flex-1 p-4">
+                <div className="space-y-4">
+                  {messages.length === 0 && (
+                    <div className="text-center py-12">
+                      <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+                        <Bot className="w-8 h-8 text-muted-foreground" />
+                      </div>
+                      <p className="text-muted-foreground mb-2">Comece uma conversa!</p>
+                      <p className="text-sm text-muted-foreground">
+                        Experimente perguntar sobre produtos, preços ou disponibilidade.
+                      </p>
+                      <div className="flex flex-wrap justify-center gap-2 mt-4">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setInputMessage('Quais alianças vocês têm?')}
+                        >
+                          Quais alianças vocês têm?
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setInputMessage('Tem produtos em promoção?')}
+                        >
+                          Produtos em promoção?
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setInputMessage('Preciso de um anel de noivado')}
+                        >
+                          Anel de noivado
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {messages.map((message, index) => (
+                    <div
+                      key={index}
+                      className={cn(
+                        'flex gap-3',
+                        message.role === 'user' ? 'justify-end' : 'justify-start'
+                      )}
+                    >
+                      {message.role === 'assistant' && (
+                        <div className="w-8 h-8 rounded-full bg-foreground flex items-center justify-center shrink-0">
+                          <Bot className="w-4 h-4 text-background" />
+                        </div>
+                      )}
+                      <div
+                        className={cn(
+                          'max-w-[80%] rounded-2xl px-4 py-3',
+                          message.role === 'user'
+                            ? 'bg-foreground text-background rounded-br-md'
+                            : 'bg-muted text-foreground rounded-bl-md'
+                        )}
+                      >
+                        <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                      </div>
+                      {message.role === 'user' && (
+                        <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center shrink-0">
+                          <User className="w-4 h-4 text-muted-foreground" />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {isLoading && (
+                    <div className="flex gap-3">
+                      <div className="w-8 h-8 rounded-full bg-foreground flex items-center justify-center shrink-0">
+                        <Bot className="w-4 h-4 text-background" />
+                      </div>
+                      <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-3">
+                        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                      </div>
+                    </div>
+                  )}
+
+                  <div ref={messagesEndRef} />
+                </div>
+              </ScrollArea>
+
+              <div className="p-4 border-t border-border shrink-0">
+                <form onSubmit={sendMessage} className="flex gap-2">
+                  <Input
+                    value={inputMessage}
+                    onChange={(e) => setInputMessage(e.target.value)}
+                    placeholder="Digite sua mensagem..."
+                    className="flex-1 bg-muted/50 border-0 focus-visible:ring-1 rounded-full px-4"
+                    disabled={isLoading}
+                  />
+                  <Button
+                    type="submit"
+                    size="icon"
+                    className="rounded-full shrink-0"
+                    disabled={isLoading || !inputMessage.trim()}
+                  >
+                    <Send className="w-5 h-5" />
+                  </Button>
+                </form>
+              </div>
+            </Card>
+          </TabsContent>
+
+          {/* Controls Tab */}
+          <TabsContent value="controls" className="mt-0">
+            <div className="grid lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader className="pb-4">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Bot className="w-5 h-5" />
+                    Status do Bot
+                  </CardTitle>
+                  <CardDescription>Controle o estado do assistente</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="bot-enabled" className="font-medium">Assistente Ativo</Label>
+                      <p className="text-xs text-muted-foreground">Habilitar respostas automáticas</p>
+                    </div>
+                    <Switch
+                      id="bot-enabled"
+                      checked={botEnabled}
+                      onCheckedChange={setBotEnabled}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="auto-reply" className="font-medium">Auto-resposta</Label>
+                      <p className="text-xs text-muted-foreground">Responder fora do horário</p>
+                    </div>
+                    <Switch
+                      id="auto-reply"
+                      checked={autoReply}
+                      onCheckedChange={setAutoReply}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="catalog-search" className="font-medium">Busca no Catálogo</Label>
+                      <p className="text-xs text-muted-foreground">Sugerir produtos automaticamente</p>
+                    </div>
+                    <Switch
+                      id="catalog-search"
+                      checked={catalogSearch}
+                      onCheckedChange={setCatalogSearch}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-4">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Zap className="w-5 h-5" />
+                    Ações Rápidas
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <Button variant="outline" className="w-full justify-start gap-2" onClick={() => setActiveTab('chat')}>
+                    <Play className="w-4 h-4" />
+                    Testar Assistente
+                  </Button>
+                  <Button variant="outline" className="w-full justify-start gap-2" asChild>
+                    <a href="/chat">
+                      <MessageSquare className="w-4 h-4" />
+                      Ver Conversas Reais
+                    </a>
+                  </Button>
+                  <Button variant="outline" className="w-full justify-start gap-2" asChild>
+                    <a href="/reports">
+                      <BarChart3 className="w-4 h-4" />
+                      Relatório de Performance
+                    </a>
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* Settings Tab */}
+          <TabsContent value="settings" className="mt-0">
+            <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Sparkles className="w-5 h-5" />
@@ -233,7 +439,7 @@ const AI = () => {
                           <Switch defaultChecked />
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          Identifica quando o cliente demonstra interesse em comprar e oferece ajuda
+                          Identifica quando o cliente demonstra interesse em comprar
                         </p>
                       </div>
                       <div className="p-4 border border-border rounded-lg space-y-3">
@@ -242,7 +448,7 @@ const AI = () => {
                           <Switch defaultChecked />
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          Sugere produtos similares ou complementares durante a conversa
+                          Sugere produtos similares ou complementares
                         </p>
                       </div>
                       <div className="p-4 border border-border rounded-lg space-y-3">
@@ -251,7 +457,7 @@ const AI = () => {
                           <Switch defaultChecked />
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          Solicita nome e informações quando o cliente demonstra interesse
+                          Solicita nome e informações quando há interesse
                         </p>
                       </div>
                       <div className="p-4 border border-border rounded-lg space-y-3">
@@ -260,7 +466,7 @@ const AI = () => {
                           <Switch defaultChecked />
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          Transfere automaticamente quando não consegue resolver
+                          Transfere quando não consegue resolver
                         </p>
                       </div>
                     </div>
@@ -276,8 +482,8 @@ const AI = () => {
                 </div>
               </CardContent>
             </Card>
-          </div>
-        </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );
