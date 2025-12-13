@@ -224,31 +224,14 @@ const Auth = () => {
             </Button>
           </form>
 
-          <div className="mt-6 text-center space-y-2">
+          <div className="mt-6 text-center">
             <button
               type="button"
-              onClick={() => {
-                setIsLogin(!isLogin);
-                setErrors({});
-              }}
+              onClick={() => navigate('/register')}
               className="text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
-              {isLogin 
-                ? 'Não tem conta? Criar agora' 
-                : 'Já tem conta? Fazer login'}
+              Cadastro completo com foto →
             </button>
-            
-            {isLogin && (
-              <div className="pt-2 border-t border-border">
-                <button
-                  type="button"
-                  onClick={() => navigate('/register')}
-                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Cadastro completo com foto →
-                </button>
-              </div>
-            )}
           </div>
         </CardContent>
       </Card>
