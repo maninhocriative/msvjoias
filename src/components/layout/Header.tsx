@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, MessageSquare, Package, Settings, LogOut, Users, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, Package, Settings, LogOut, Users, BarChart3, Code } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,7 @@ const Header = () => {
     { to: '/chat', label: 'Chat', icon: MessageSquare, show: true },
     { to: '/products', label: 'Produtos', icon: Package, show: true },
     { to: '/reports', label: 'Relatórios', icon: BarChart3, show: true },
+    { to: '/api-docs', label: 'API', icon: Code, show: true },
     { to: '/users', label: 'Usuários', icon: Users, show: isAdmin },
     { to: '/settings', label: 'Configurações', icon: Settings, show: true },
   ];
