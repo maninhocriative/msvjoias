@@ -385,18 +385,18 @@ const Chat = () => {
   };
 
   return (
-    <div className="h-[calc(100vh-64px)] flex bg-background">
+    <div className="h-[calc(100vh-64px)] flex bg-background overflow-hidden">
       {/* Conversations Sidebar */}
-      <div className="w-80 lg:w-96 border-r border-border flex flex-col bg-card shrink-0">
+      <div className="w-80 lg:w-[360px] border-r border-border flex flex-col bg-card shrink-0">
         {/* Search Header */}
-        <div className="p-4 border-b border-border bg-card/50">
+        <div className="p-5 border-b border-border bg-card/50">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               placeholder="Buscar conversas..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 bg-muted/50 border-0 focus-visible:ring-1"
+              className="pl-10 bg-muted/50 border-0 focus-visible:ring-1 h-11"
             />
           </div>
         </div>
@@ -417,13 +417,13 @@ const Chat = () => {
               <p className="text-sm text-muted-foreground mt-1">As mensagens aparecerão aqui</p>
             </div>
           ) : (
-            <div className="divide-y divide-border/50">
+            <div className="divide-y divide-border/30">
               {filteredConversations.map((conv) => (
                 <button
                   key={conv.id}
                   onClick={() => setSelectedConversation(conv)}
                   className={cn(
-                    'w-full p-4 flex items-start gap-3 hover:bg-muted/50 transition-colors text-left',
+                    'w-full px-5 py-4 flex items-start gap-4 hover:bg-muted/50 transition-colors text-left',
                     selectedConversation?.id === conv.id && 'bg-muted'
                   )}
                 >
@@ -465,7 +465,7 @@ const Chat = () => {
         {selectedConversation ? (
           <>
             {/* Chat Header */}
-            <div className="h-[72px] px-6 border-b border-border flex items-center justify-between bg-card shrink-0">
+            <div className="h-[76px] px-8 border-b border-border flex items-center justify-between bg-card shrink-0">
               <div className="flex items-center gap-4 min-w-0">
                 <div className="relative shrink-0">
                   <div className="w-11 h-11 rounded-full bg-foreground text-background flex items-center justify-center text-lg font-semibold">
@@ -495,7 +495,7 @@ const Chat = () => {
 
             {/* Messages Area */}
             <ScrollArea className="flex-1 bg-muted/30">
-              <div className="p-6 space-y-4 max-w-4xl mx-auto">
+              <div className="p-8 space-y-5 max-w-4xl mx-auto">
                 {messages.map((message) => (
                   <div
                     key={message.id}
@@ -598,8 +598,8 @@ const Chat = () => {
             </ScrollArea>
 
             {/* Input Area */}
-            <div className="p-4 border-t border-border bg-card shrink-0">
-              <form onSubmit={sendMessage} className="flex items-center gap-2 max-w-4xl mx-auto">
+            <div className="p-5 border-t border-border bg-card shrink-0">
+              <form onSubmit={sendMessage} className="flex items-center gap-3 max-w-4xl mx-auto">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -631,7 +631,7 @@ const Chat = () => {
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   placeholder="Digite sua mensagem..."
-                  className="flex-1 bg-muted/50 border-0 focus-visible:ring-1 rounded-full px-4"
+                  className="flex-1 bg-muted/50 border-0 focus-visible:ring-1 rounded-full px-5 h-11"
                   disabled={sending || isRecording}
                 />
                 <Button 
