@@ -231,10 +231,10 @@ const Offers = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-8 max-w-[1920px] mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Ofertas Relâmpago</h1>
+          <h1 className="text-2xl sm:text-3xl font-semibold">Ofertas Relâmpago</h1>
           <p className="text-muted-foreground">Gerencie promoções e ofertas especiais</p>
         </div>
 
@@ -350,7 +350,7 @@ const Offers = () => {
           <p>Nenhuma oferta cadastrada</p>
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {offers.map((offer) => {
             const product = offer.products;
             const status = getOfferStatus(offer);

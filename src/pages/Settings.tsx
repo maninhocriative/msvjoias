@@ -29,9 +29,9 @@ const Settings = () => {
   };
 
   return (
-    <div className="container mx-auto px-6 py-8 max-w-4xl">
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-8 max-w-4xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-3xl font-semibold text-foreground tracking-tight">Configurações</h1>
+        <h1 className="text-2xl sm:text-3xl font-semibold text-foreground tracking-tight">Configurações</h1>
         <p className="text-muted-foreground mt-1">Gerencie as configurações do sistema</p>
       </div>
 

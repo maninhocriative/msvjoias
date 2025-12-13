@@ -190,14 +190,14 @@ const Reports = () => {
   };
 
   return (
-    <div className="container mx-auto px-6 py-8">
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-8 max-w-[1920px] mx-auto">
       <div className="mb-8">
-        <h1 className="text-3xl font-semibold text-foreground tracking-tight">Relatórios</h1>
+        <h1 className="text-2xl sm:text-3xl font-semibold text-foreground tracking-tight">Relatórios</h1>
         <p className="text-muted-foreground mt-1">Visualize métricas e análises do sistema</p>
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6 mb-8">
         <Card className="border-border">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
