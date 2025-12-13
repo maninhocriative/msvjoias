@@ -85,7 +85,7 @@ const AI = () => {
   };
 
   return (
-    <div className="min-h-[calc(100vh-64px)] bg-background">
+    <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-[1920px] px-4 sm:px-6 lg:px-8 py-6 lg:py-8 space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
