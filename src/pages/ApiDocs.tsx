@@ -5,7 +5,6 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Copy, Check, ExternalLink, Code, Send, Database, Image, Video } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import Header from '@/components/layout/Header';
 
 const BASE_URL = 'https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co';
 
@@ -38,8 +37,7 @@ const ApiDocs = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header />
-      <main className="pt-16 p-6 max-w-5xl mx-auto space-y-8">
+      <main className="p-6 max-w-5xl mx-auto space-y-8">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Documentação da API</h1>
           <p className="text-muted-foreground mt-2">

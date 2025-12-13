@@ -8,7 +8,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Send, CheckCircle, XCircle, Loader2, Copy } from 'lucide-react';
-import Header from '@/components/layout/Header';
 
 const WebhookTester = () => {
   const { toast } = useToast();
@@ -86,8 +85,7 @@ const WebhookTester = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header />
-      <main className="pt-16 p-6 max-w-4xl mx-auto space-y-6">
+      <main className="p-6 max-w-4xl mx-auto space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Testador de Webhook</h1>
           <p className="text-muted-foreground">Teste a função automation-send diretamente do app</p>
