@@ -167,7 +167,7 @@ const Dashboard = () => {
   ];
 
   return (
-    <div className="container mx-auto px-6 py-8">
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-8 max-w-[1920px] mx-auto">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-semibold text-foreground tracking-tight">Dashboard</h1>
@@ -185,16 +185,16 @@ const Dashboard = () => {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
         {statCards.map((stat) => (
           <Card key={stat.label} className="border-border bg-card hover:shadow-lg transition-shadow duration-300">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardHeader className="flex flex-row items-center justify-between p-4 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 {stat.label}
               </CardTitle>
               <stat.icon className="w-5 h-5 text-muted-foreground" />
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-4 pt-2">
               {loading ? (
                 <Skeleton className="h-8 w-20" />
               ) : (
@@ -205,12 +205,12 @@ const Dashboard = () => {
         ))}
       </div>
 
-      <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="mt-6 lg:mt-8 grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
         <Card className="border-border">
-          <CardHeader>
+          <CardHeader className="p-4 pb-2">
             <CardTitle className="text-lg font-semibold">Atividade Recente</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-4 pt-2">
             <div className="space-y-4">
               {loading ? (
                 Array.from({ length: 4 }).map((_, i) => (
@@ -236,10 +236,10 @@ const Dashboard = () => {
         </Card>
 
         <Card className="border-border">
-          <CardHeader>
+          <CardHeader className="p-4 pb-2">
             <CardTitle className="text-lg font-semibold">Produtos com Estoque</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-4 pt-2">
             <div className="space-y-4">
               {loading ? (
                 Array.from({ length: 4 }).map((_, i) => (
