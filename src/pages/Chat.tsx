@@ -3,7 +3,8 @@ import { supabase, Conversation, Message, LeadStatus } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, Paperclip, Search, MessageSquare, FileText, Mic, Check, CheckCheck, Instagram, Bot, User, Square, Phone } from 'lucide-react';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Send, Paperclip, Search, MessageSquare, FileText, Mic, Check, CheckCheck, Instagram, Bot, User, Square, Phone, Menu, ArrowLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { LeadStatusSelect, LeadStatusBadge } from '@/components/chat/LeadStatusSelect';
@@ -19,6 +20,7 @@ const Chat = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [updatingLeadStatus, setUpdatingLeadStatus] = useState(false);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -176,7 +178,7 @@ const Chat = () => {
     setSending(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('automation-send', {
+      const { error } = await supabase.functions.invoke('automation-send', {
         body: {
           conversation_id: selectedConversation.id,
           phone: selectedConversation.contact_number,
@@ -333,6 +335,11 @@ const Chat = () => {
     conv.contact_number.includes(searchTerm)
   );
 
+  const handleSelectConversation = (conv: Conversation) => {
+    setSelectedConversation(conv);
+    setMobileDrawerOpen(false);
+  };
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'sent': return <Check className="w-3 h-3 text-muted-foreground" />;
@@ -348,7 +355,7 @@ const Chat = () => {
         return (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-gradient-to-r from-purple-500 to-pink-500 text-white">
             <Instagram className="w-3 h-3" />
-            Instagram
+            <span className="hidden sm:inline">Instagram</span>
           </span>
         );
       case 'whatsapp':
@@ -356,7 +363,7 @@ const Chat = () => {
         return (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-green-500 text-white">
             <MessageSquare className="w-3 h-3" />
-            WhatsApp
+            <span className="hidden sm:inline">WhatsApp</span>
           </span>
         );
     }
@@ -384,80 +391,87 @@ const Chat = () => {
     return new Date(date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   };
 
+  // Conversation List Component (reusable)
+  const ConversationList = () => (
+    <>
+      {/* Search Header */}
+      <div className="p-4 border-b border-border bg-card/50">
+        <div className="relative">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar conversas..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10 bg-muted/50 border-0 focus-visible:ring-1 h-11"
+          />
+        </div>
+      </div>
+
+      {/* Conversations List */}
+      <ScrollArea className="flex-1">
+        {loading ? (
+          <div className="p-6 text-center text-muted-foreground">
+            <div className="w-8 h-8 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-sm">Carregando...</p>
+          </div>
+        ) : filteredConversations.length === 0 ? (
+          <div className="p-8 text-center">
+            <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+              <MessageSquare className="w-8 h-8 text-muted-foreground" />
+            </div>
+            <p className="font-medium text-foreground">Nenhuma conversa</p>
+            <p className="text-sm text-muted-foreground mt-1">As mensagens aparecerão aqui</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-border/30">
+            {filteredConversations.map((conv) => (
+              <button
+                key={conv.id}
+                onClick={() => handleSelectConversation(conv)}
+                className={cn(
+                  'w-full px-4 py-3 flex items-start gap-3 hover:bg-muted/50 transition-colors text-left',
+                  selectedConversation?.id === conv.id && 'bg-muted'
+                )}
+              >
+                {/* Avatar */}
+                <div className="relative shrink-0">
+                  <div className="w-11 h-11 rounded-full bg-foreground text-background flex items-center justify-center text-base font-semibold">
+                    {conv.contact_name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="absolute -bottom-0.5 -right-0.5">
+                    {getPlatformIcon(conv.platform || 'whatsapp')}
+                  </div>
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 min-w-0 space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-medium text-foreground truncate text-sm">{conv.contact_name}</p>
+                    {(conv.unread_count ?? 0) > 0 && (
+                      <span className="w-5 h-5 rounded-full bg-foreground text-background text-xs flex items-center justify-center shrink-0 font-medium">
+                        {conv.unread_count}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {getPlatformBadge(conv.platform || 'whatsapp')}
+                    <LeadStatusBadge status={(conv.lead_status as LeadStatus) || 'novo'} />
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate">{conv.last_message}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </ScrollArea>
+    </>
+  );
+
   return (
     <div className="h-[calc(100vh-64px)] flex bg-background overflow-hidden">
-      {/* Conversations Sidebar */}
-      <div className="w-80 lg:w-[360px] border-r border-border flex flex-col bg-card shrink-0">
-        {/* Search Header */}
-        <div className="p-5 border-b border-border bg-card/50">
-          <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar conversas..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 bg-muted/50 border-0 focus-visible:ring-1 h-11"
-            />
-          </div>
-        </div>
-
-        {/* Conversations List */}
-        <ScrollArea className="flex-1">
-          {loading ? (
-            <div className="p-6 text-center text-muted-foreground">
-              <div className="w-8 h-8 border-2 border-foreground/20 border-t-foreground rounded-full animate-spin mx-auto mb-3" />
-              <p className="text-sm">Carregando...</p>
-            </div>
-          ) : filteredConversations.length === 0 ? (
-            <div className="p-8 text-center">
-              <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
-                <MessageSquare className="w-8 h-8 text-muted-foreground" />
-              </div>
-              <p className="font-medium text-foreground">Nenhuma conversa</p>
-              <p className="text-sm text-muted-foreground mt-1">As mensagens aparecerão aqui</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-border/30">
-              {filteredConversations.map((conv) => (
-                <button
-                  key={conv.id}
-                  onClick={() => setSelectedConversation(conv)}
-                  className={cn(
-                    'w-full px-5 py-4 flex items-start gap-4 hover:bg-muted/50 transition-colors text-left',
-                    selectedConversation?.id === conv.id && 'bg-muted'
-                  )}
-                >
-                  {/* Avatar */}
-                  <div className="relative shrink-0">
-                    <div className="w-12 h-12 rounded-full bg-foreground text-background flex items-center justify-center text-lg font-semibold">
-                      {conv.contact_name.charAt(0).toUpperCase()}
-                    </div>
-                    <div className="absolute -bottom-0.5 -right-0.5">
-                      {getPlatformIcon(conv.platform || 'whatsapp')}
-                    </div>
-                  </div>
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0 space-y-1.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="font-medium text-foreground truncate">{conv.contact_name}</p>
-                      {(conv.unread_count ?? 0) > 0 && (
-                        <span className="w-5 h-5 rounded-full bg-foreground text-background text-xs flex items-center justify-center shrink-0 font-medium">
-                          {conv.unread_count}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      {getPlatformBadge(conv.platform || 'whatsapp')}
-                      <LeadStatusBadge status={(conv.lead_status as LeadStatus) || 'novo'} />
-                    </div>
-                    <p className="text-sm text-muted-foreground truncate">{conv.last_message}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </ScrollArea>
+      {/* Desktop Sidebar - Hidden on mobile */}
+      <div className="hidden md:flex w-80 lg:w-[360px] border-r border-border flex-col bg-card shrink-0">
+        <ConversationList />
       </div>
 
       {/* Chat Area */}
@@ -465,10 +479,20 @@ const Chat = () => {
         {selectedConversation ? (
           <>
             {/* Chat Header */}
-            <div className="h-[76px] px-8 border-b border-border flex items-center justify-between bg-card shrink-0">
-              <div className="flex items-center gap-4 min-w-0">
+            <div className="h-[72px] px-4 md:px-6 border-b border-border flex items-center justify-between bg-card shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                {/* Mobile Back Button */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="md:hidden shrink-0"
+                  onClick={() => setSelectedConversation(null)}
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </Button>
+                
                 <div className="relative shrink-0">
-                  <div className="w-11 h-11 rounded-full bg-foreground text-background flex items-center justify-center text-lg font-semibold">
+                  <div className="w-10 h-10 rounded-full bg-foreground text-background flex items-center justify-center text-base font-semibold">
                     {selectedConversation.contact_name.charAt(0).toUpperCase()}
                   </div>
                   <div className="absolute -bottom-0.5 -right-0.5">
@@ -476,26 +500,28 @@ const Chat = () => {
                   </div>
                 </div>
                 <div className="min-w-0">
-                  <p className="font-semibold text-foreground truncate">{selectedConversation.contact_name}</p>
+                  <p className="font-semibold text-foreground truncate text-sm">{selectedConversation.contact_name}</p>
                   <div className="flex items-center gap-1.5 text-muted-foreground">
                     <Phone className="w-3 h-3" />
                     <span className="text-xs">{selectedConversation.contact_number}</span>
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <LeadStatusSelect
-                  value={(selectedConversation.lead_status as LeadStatus) || 'novo'}
-                  onChange={(status) => updateLeadStatus(selectedConversation.id, status)}
-                  disabled={updatingLeadStatus}
-                />
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="hidden sm:block">
+                  <LeadStatusSelect
+                    value={(selectedConversation.lead_status as LeadStatus) || 'novo'}
+                    onChange={(status) => updateLeadStatus(selectedConversation.id, status)}
+                    disabled={updatingLeadStatus}
+                  />
+                </div>
                 {getPlatformBadge(selectedConversation.platform || 'whatsapp')}
               </div>
             </div>
 
             {/* Messages Area */}
             <ScrollArea className="flex-1 bg-muted/30">
-              <div className="p-8 space-y-5 max-w-4xl mx-auto">
+              <div className="p-4 md:p-6 space-y-4 max-w-4xl mx-auto">
                 {messages.map((message) => (
                   <div
                     key={message.id}
@@ -505,12 +531,12 @@ const Chat = () => {
                     )}
                   >
                     <div className={cn(
-                      'flex gap-3 max-w-[80%]',
+                      'flex gap-2 md:gap-3 max-w-[90%] md:max-w-[80%]',
                       message.is_from_me ? 'flex-row-reverse' : 'flex-row'
                     )}>
-                      {/* Avatar */}
+                      {/* Avatar - Hidden on mobile */}
                       <div className={cn(
-                        'w-8 h-8 rounded-full flex items-center justify-center shrink-0',
+                        'hidden md:flex w-8 h-8 rounded-full items-center justify-center shrink-0',
                         message.is_from_me ? 'bg-foreground text-background' : 'bg-muted border border-border'
                       )}>
                         {message.is_from_me ? (
@@ -523,7 +549,7 @@ const Chat = () => {
                       {/* Message Bubble */}
                       <div
                         className={cn(
-                          'rounded-2xl px-4 py-3 shadow-sm',
+                          'rounded-2xl px-3 py-2.5 md:px-4 md:py-3 shadow-sm',
                           message.is_from_me
                             ? 'bg-foreground text-background rounded-br-md'
                             : 'bg-card border border-border text-foreground rounded-bl-md'
@@ -531,7 +557,7 @@ const Chat = () => {
                       >
                         {/* Sender Label */}
                         <p className={cn(
-                          'text-[10px] font-medium mb-1.5 uppercase tracking-wide',
+                          'text-[10px] font-medium mb-1 uppercase tracking-wide',
                           message.is_from_me ? 'text-background/60' : 'text-muted-foreground'
                         )}>
                           {message.is_from_me ? 'Bot / Atendente' : 'Cliente'}
@@ -542,7 +568,7 @@ const Chat = () => {
                           <img
                             src={message.media_url}
                             alt="Imagem"
-                            className="w-48 h-48 object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity mb-2"
+                            className="w-40 h-40 md:w-48 md:h-48 object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity mb-2"
                             onClick={() => window.open(message.media_url!, '_blank')}
                           />
                         )}
@@ -578,7 +604,7 @@ const Chat = () => {
                         
                         {/* Time & Status */}
                         <div className={cn(
-                          "flex items-center gap-1.5 mt-2",
+                          "flex items-center gap-1.5 mt-1.5",
                           message.is_from_me ? "justify-end" : "justify-start"
                         )}>
                           <span className={cn(
@@ -598,8 +624,8 @@ const Chat = () => {
             </ScrollArea>
 
             {/* Input Area */}
-            <div className="p-5 border-t border-border bg-card shrink-0">
-              <form onSubmit={sendMessage} className="flex items-center gap-3 max-w-4xl mx-auto">
+            <div className="p-3 md:p-4 border-t border-border bg-card shrink-0">
+              <form onSubmit={sendMessage} className="flex items-center gap-2 max-w-4xl mx-auto">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -611,7 +637,7 @@ const Chat = () => {
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="shrink-0 rounded-full"
+                  className="shrink-0 rounded-full h-10 w-10"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={sending || isRecording}
                 >
@@ -621,7 +647,7 @@ const Chat = () => {
                   type="button"
                   variant={isRecording ? "destructive" : "ghost"}
                   size="icon"
-                  className="shrink-0 rounded-full"
+                  className="shrink-0 rounded-full h-10 w-10"
                   onClick={isRecording ? stopRecording : startRecording}
                   disabled={sending}
                 >
@@ -631,13 +657,13 @@ const Chat = () => {
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   placeholder="Digite sua mensagem..."
-                  className="flex-1 bg-muted/50 border-0 focus-visible:ring-1 rounded-full px-5 h-11"
+                  className="flex-1 bg-muted/50 border-0 focus-visible:ring-1 rounded-full px-4 h-10"
                   disabled={sending || isRecording}
                 />
                 <Button 
                   type="submit" 
                   size="icon" 
-                  className="shrink-0 rounded-full"
+                  className="shrink-0 rounded-full h-10 w-10"
                   disabled={sending || !newMessage.trim() || isRecording}
                 >
                   <Send className="w-5 h-5" />
@@ -646,28 +672,36 @@ const Chat = () => {
             </div>
           </>
         ) : (
-          /* Empty State */
-          <div className="flex-1 flex items-center justify-center bg-muted/30 p-8">
-            <div className="text-center max-w-md">
-              <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center mx-auto mb-6">
-                <MessageSquare className="w-10 h-10 text-muted-foreground" />
-              </div>
-              <h3 className="text-2xl font-semibold text-foreground mb-2">Chat Multicanal</h3>
-              <p className="text-muted-foreground mb-6">
-                Selecione uma conversa para começar a interagir com seus clientes
-              </p>
-              <div className="flex justify-center gap-3 mb-6">
-                {getPlatformBadge('whatsapp')}
-                {getPlatformBadge('instagram')}
-              </div>
-              <div className="p-4 bg-card rounded-xl border border-border">
-                <p className="text-xs text-muted-foreground mb-2">Configure sua automação para:</p>
-                <code className="text-xs bg-muted px-3 py-2 rounded-lg block break-all">
-                  https://ahbjwpkpxqqrpvpzmqwa.supabase.co/functions/v1/automation-webhook
-                </code>
+          /* Empty State - Mobile shows conversation list, Desktop shows empty state */
+          <>
+            {/* Mobile: Show conversation list directly */}
+            <div className="md:hidden flex-1 flex flex-col">
+              <ConversationList />
+            </div>
+
+            {/* Desktop: Show empty state */}
+            <div className="hidden md:flex flex-1 items-center justify-center bg-muted/30 p-8">
+              <div className="text-center max-w-md">
+                <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center mx-auto mb-6">
+                  <MessageSquare className="w-10 h-10 text-muted-foreground" />
+                </div>
+                <h3 className="text-2xl font-semibold text-foreground mb-2">Chat Multicanal</h3>
+                <p className="text-muted-foreground mb-6">
+                  Selecione uma conversa para começar a interagir com seus clientes
+                </p>
+                <div className="flex justify-center gap-3 mb-6">
+                  {getPlatformBadge('whatsapp')}
+                  {getPlatformBadge('instagram')}
+                </div>
+                <div className="p-4 bg-card rounded-xl border border-border">
+                  <p className="text-xs text-muted-foreground mb-2">Configure sua automação para:</p>
+                  <code className="text-xs bg-muted px-3 py-2 rounded-lg block break-all">
+                    https://ahbjwpkpxqqrpvpzmqwa.supabase.co/functions/v1/automation-webhook
+                  </code>
+                </div>
               </div>
             </div>
-          </div>
+          </>
         )}
       </div>
     </div>
