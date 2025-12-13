@@ -21,3 +21,6 @@ verify_jwt = false
 
 [functions.daily-stock-check]
 verify_jwt = false
+
+[functions.ai-chat]
+verify_jwt = false
