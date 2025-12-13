@@ -47,6 +47,77 @@ export type Database = {
         }
         Relationships: []
       }
+      customers: {
+        Row: {
+          cpf: string | null
+          created_at: string
+          id: string
+          name: string
+          total_orders: number
+          updated_at: string
+          wallet_balance: number
+          whatsapp: string
+        }
+        Insert: {
+          cpf?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          total_orders?: number
+          updated_at?: string
+          wallet_balance?: number
+          whatsapp: string
+        }
+        Update: {
+          cpf?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          total_orders?: number
+          updated_at?: string
+          wallet_balance?: number
+          whatsapp?: string
+        }
+        Relationships: []
+      }
+      loyalty_transactions: {
+        Row: {
+          amount: number
+          created_at: string
+          customer_id: string
+          description: string | null
+          id: string
+          order_reference: string | null
+          type: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          customer_id: string
+          description?: string | null
+          id?: string
+          order_reference?: string | null
+          type: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          customer_id?: string
+          description?: string | null
+          id?: string
+          order_reference?: string | null
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_transactions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           content: string | null
@@ -98,6 +169,50 @@ export type Database = {
           },
         ]
       }
+      offers: {
+        Row: {
+          active: boolean
+          created_at: string
+          end_date: string
+          gift_description: string | null
+          id: string
+          product_id: string
+          promotional_price: number
+          start_date: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          end_date: string
+          gift_description?: string | null
+          id?: string
+          product_id: string
+          promotional_price: number
+          start_date: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          end_date?: string
+          gift_description?: string | null
+          id?: string
+          product_id?: string
+          promotional_price?: number
+          start_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "offers_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_variants: {
         Row: {
           created_at: string
@@ -137,40 +252,49 @@ export type Database = {
         Row: {
           active: boolean | null
           category: string | null
+          color: string | null
           created_at: string
           description: string | null
           id: string
           image_url: string | null
           images: string[] | null
+          min_stock_alert: number | null
           name: string
           price: number | null
           sku: string | null
+          tags: string[] | null
           video_url: string | null
         }
         Insert: {
           active?: boolean | null
           category?: string | null
+          color?: string | null
           created_at?: string
           description?: string | null
           id?: string
           image_url?: string | null
           images?: string[] | null
+          min_stock_alert?: number | null
           name: string
           price?: number | null
           sku?: string | null
+          tags?: string[] | null
           video_url?: string | null
         }
         Update: {
           active?: boolean | null
           category?: string | null
+          color?: string | null
           created_at?: string
           description?: string | null
           id?: string
           image_url?: string | null
           images?: string[] | null
+          min_stock_alert?: number | null
           name?: string
           price?: number | null
           sku?: string | null
+          tags?: string[] | null
           video_url?: string | null
         }
         Relationships: []
@@ -220,6 +344,33 @@ export type Database = {
         }
         Relationships: []
       }
+      store_settings: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          key: string
+          updated_at: string
+          value: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          key: string
+          updated_at?: string
+          value: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          key?: string
+          updated_at?: string
+          value?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -246,6 +397,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      add_customer_cashback: {
+        Args: {
+          p_customer_id: string
+          p_order_reference: string
+          p_order_value: number
+        }
+        Returns: number
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
@@ -254,6 +413,14 @@ export type Database = {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
+        }
+        Returns: boolean
+      }
+      redeem_customer_cashback: {
+        Args: {
+          p_amount: number
+          p_customer_id: string
+          p_order_reference: string
         }
         Returns: boolean
       }

@@ -17,8 +17,10 @@ import Register from "./pages/Register";
 import PendingApproval from "./pages/PendingApproval";
 import WebhookTester from "./pages/WebhookTester";
 import ApiDocs from "./pages/ApiDocs";
+import Customers from "./pages/Customers";
+import Offers from "./pages/Offers";
+import StoreSettings from "./pages/StoreSettings";
 import NotFound from "./pages/NotFound";
-
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -42,6 +44,9 @@ const App = () => (
                 <Route path="/users" element={<Users />} />
                 <Route path="/webhook-tester" element={<WebhookTester />} />
                 <Route path="/api-docs" element={<ApiDocs />} />
+                <Route path="/customers" element={<Customers />} />
+                <Route path="/offers" element={<Offers />} />
+                <Route path="/store-settings" element={<StoreSettings />} />
               </Route>
             </Route>
             <Route path="*" element={<NotFound />} />

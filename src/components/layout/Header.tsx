@@ -1,6 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, MessageSquare, Package, Settings, LogOut, Users, BarChart3, Code, FileText, TestTube, ExternalLink, ChevronDown } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, Package, Settings, LogOut, Users, BarChart3, Code, FileText, TestTube, ExternalLink, ChevronDown, UsersRound, Gift, Cog } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { Button } from '@/components/ui/button';
@@ -24,13 +24,17 @@ const Header = () => {
     { to: '/', label: 'Dashboard', icon: LayoutDashboard, show: true },
     { to: '/chat', label: 'Chat', icon: MessageSquare, show: true },
     { to: '/products', label: 'Produtos', icon: Package, show: true },
+    { to: '/customers', label: 'Clientes', icon: UsersRound, show: true },
+    { to: '/offers', label: 'Ofertas', icon: Gift, show: true },
     { to: '/reports', label: 'Relatórios', icon: BarChart3, show: true },
     { to: '/users', label: 'Usuários', icon: Users, show: isAdmin },
-    { to: '/settings', label: 'Configurações', icon: Settings, show: true },
   ];
 
   const apiRoutes = ['/api-docs', '/webhook-tester'];
   const isApiActive = apiRoutes.includes(location.pathname);
+  
+  const settingsRoutes = ['/settings', '/store-settings'];
+  const isSettingsActive = settingsRoutes.includes(location.pathname);
 
   const roleLabels: Record<string, string> = {
     admin: 'Admin',
@@ -106,6 +110,38 @@ const Header = () => {
                   <ExternalLink className="w-4 h-4" />
                   Logs (Supabase)
                 </a>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Settings Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className={cn(
+                  'flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300',
+                  isSettingsActive
+                    ? 'bg-foreground text-background'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                )}
+              >
+                <Settings className="w-4 h-4" />
+                <span className="hidden sm:inline">Config</span>
+                <ChevronDown className="w-3 h-3" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="center" className="w-48 bg-popover z-50">
+              <DropdownMenuItem asChild>
+                <NavLink to="/settings" className="flex items-center gap-2 cursor-pointer">
+                  <Settings className="w-4 h-4" />
+                  Configurações
+                </NavLink>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <NavLink to="/store-settings" className="flex items-center gap-2 cursor-pointer">
+                  <Cog className="w-4 h-4" />
+                  Config. da Loja
+                </NavLink>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
