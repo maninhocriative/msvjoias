@@ -260,10 +260,10 @@ const Customers = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-8 max-w-[1920px] mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Clientes</h1>
+          <h1 className="text-2xl sm:text-3xl font-semibold">Clientes</h1>
           <p className="text-muted-foreground">Gerencie seus clientes e programa de fidelidade</p>
         </div>
 
@@ -340,7 +340,7 @@ const Customers = () => {
       </div>
 
       {/* Table */}
-      <div className="border rounded-lg">
+      <div className="border rounded-lg overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>

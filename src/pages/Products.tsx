@@ -235,10 +235,10 @@ const Products = () => {
   };
 
   return (
-    <div className="container mx-auto px-6 py-8">
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-8 max-w-[1920px] mx-auto">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-semibold text-foreground tracking-tight">Produtos</h1>
+          <h1 className="text-2xl sm:text-3xl font-semibold text-foreground tracking-tight">Produtos</h1>
           <p className="text-muted-foreground mt-1">Gerencie seu catálogo de produtos</p>
         </div>
 
@@ -365,7 +365,7 @@ const Products = () => {
         </Dialog>
       </div>
 
-      <div className="border border-border rounded-xl overflow-hidden bg-card">
+      <div className="border border-border rounded-xl overflow-x-auto bg-card">
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/50 hover:bg-muted/50">

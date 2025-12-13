@@ -197,7 +197,7 @@ const UsersPage = () => {
 
   if (roleLoading) {
     return (
-      <div className="container mx-auto px-6 py-8">
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-8 max-w-[1920px] mx-auto">
         <p className="text-muted-foreground">Carregando...</p>
       </div>
     );
@@ -208,10 +208,10 @@ const UsersPage = () => {
   }
 
   return (
-    <div className="container mx-auto px-6 py-8">
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-8 max-w-[1920px] mx-auto">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-semibold text-foreground tracking-tight">Usuários</h1>
+          <h1 className="text-2xl sm:text-3xl font-semibold text-foreground tracking-tight">Usuários</h1>
           <p className="text-muted-foreground mt-1">Gerencie permissões e acessos</p>
         </div>
         <InviteUserDialog onSuccess={fetchUsers} />
@@ -221,7 +221,7 @@ const UsersPage = () => {
       <PendingUsersSection onApprovalChange={fetchUsers} />
 
       {/* Permissions legend */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
         <div className="border border-border rounded-lg p-4 bg-card">
           <div className="flex items-center gap-2 mb-2">
             <Shield className="w-5 h-5" />
@@ -251,7 +251,7 @@ const UsersPage = () => {
         </div>
       </div>
 
-      <div className="border border-border rounded-xl overflow-hidden bg-card">
+      <div className="border border-border rounded-xl overflow-x-auto bg-card">
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/50 hover:bg-muted/50">

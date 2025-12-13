@@ -78,9 +78,9 @@ const StoreSettings = () => {
   }
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-8 max-w-2xl mx-auto space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Configurações da Loja</h1>
+        <h1 className="text-2xl sm:text-3xl font-semibold">Configurações da Loja</h1>
         <p className="text-muted-foreground">Gerencie as configurações gerais do sistema</p>
       </div>
 
