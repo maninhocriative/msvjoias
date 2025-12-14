@@ -7,7 +7,8 @@ import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import { Eye, EyeOff, Loader2, Sparkles } from 'lucide-react';
+import { Eye, EyeOff, Loader2 } from 'lucide-react';
+import aciumLogo from '@/assets/acium-logo.jpg';
 
 const loginSchema = z.object({
   email: z.string().trim().email({ message: 'Email inválido' }),
@@ -118,8 +119,8 @@ const Auth = () => {
         {/* Content */}
         <div className="relative z-10 flex flex-col justify-center items-center w-full px-12">
           <div className="text-center">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-background/10 backdrop-blur-sm mb-8">
-              <Sparkles className="w-10 h-10 text-background" />
+            <div className="inline-flex items-center justify-center w-24 h-24 rounded-2xl overflow-hidden mb-8">
+              <img src={aciumLogo} alt="ACIUM Logo" className="w-full h-full object-cover" />
             </div>
             <h1 className="text-5xl font-bold tracking-[0.4em] text-background mb-4">
               ACIUM
@@ -150,8 +151,8 @@ const Auth = () => {
         <div className="w-full max-w-md animate-fade-in">
           {/* Mobile Logo */}
           <div className="lg:hidden text-center mb-10">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-foreground mb-4">
-              <Sparkles className="w-8 h-8 text-background" />
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-xl overflow-hidden mb-4">
+              <img src={aciumLogo} alt="ACIUM Logo" className="w-full h-full object-cover" />
             </div>
             <h1 className="text-3xl font-bold tracking-[0.3em] text-foreground">
               ACIUM
