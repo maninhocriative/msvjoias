@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Package, MessageSquare, TrendingUp, Users, RefreshCw } from 'lucide-react';
+import { Package, MessageSquare, TrendingUp, Users, RefreshCw, Clock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
 
 interface DashboardStats {
   totalProducts: number;
@@ -25,6 +26,16 @@ interface PopularProduct {
   stock: number;
 }
 
+interface WaitingConversation {
+  id: string;
+  contact_name: string | null;
+  contact_number: string;
+  platform: string | null;
+  last_message: string | null;
+  last_message_time: Date;
+  waiting_since: Date;
+}
+
 const Dashboard = () => {
   const [stats, setStats] = useState<DashboardStats>({
     totalProducts: 0,
@@ -34,8 +45,10 @@ const Dashboard = () => {
   });
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
   const [popularProducts, setPopularProducts] = useState<PopularProduct[]>([]);
+  const [waitingConversations, setWaitingConversations] = useState<WaitingConversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [, setTick] = useState(0); // For real-time timer updates
 
   const fetchDashboardData = async () => {
     try {
@@ -87,6 +100,50 @@ const Dashboard = () => {
 
       setRecentActivity(activities);
 
+      // Fetch conversations waiting for response (last message is from customer)
+      const { data: conversations } = await supabase
+        .from('conversations')
+        .select(`
+          id,
+          contact_name,
+          contact_number,
+          platform,
+          last_message,
+          created_at
+        `)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      // For each conversation, check if last message is from customer
+      const waitingList: WaitingConversation[] = [];
+      
+      for (const conv of conversations || []) {
+        const { data: lastMsg } = await supabase
+          .from('messages')
+          .select('is_from_me, created_at')
+          .eq('conversation_id', conv.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        // If last message is from customer (not from us), they're waiting
+        if (lastMsg && !lastMsg.is_from_me) {
+          waitingList.push({
+            id: conv.id,
+            contact_name: conv.contact_name,
+            contact_number: conv.contact_number,
+            platform: conv.platform,
+            last_message: conv.last_message,
+            last_message_time: new Date(lastMsg.created_at),
+            waiting_since: new Date(lastMsg.created_at),
+          });
+        }
+      }
+
+      // Sort by waiting time (oldest first)
+      waitingList.sort((a, b) => a.waiting_since.getTime() - b.waiting_since.getTime());
+      setWaitingConversations(waitingList.slice(0, 5));
+
       // Fetch popular products (with most stock)
       const { data: products } = await supabase
         .from('products')
@@ -129,6 +186,27 @@ const Dashboard = () => {
     return `há ${diffDays}d`;
   };
 
+  const formatWaitingTime = (date: Date): string => {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffSecs = Math.floor(diffMs / 1000);
+    const diffMins = Math.floor(diffSecs / 60);
+    const diffHours = Math.floor(diffMins / 60);
+
+    if (diffMins < 1) return `${diffSecs}s`;
+    if (diffHours < 1) return `${diffMins}min`;
+    return `${diffHours}h ${diffMins % 60}min`;
+  };
+
+  const getWaitingBadgeVariant = (date: Date): 'default' | 'secondary' | 'destructive' => {
+    const now = new Date();
+    const diffMins = Math.floor((now.getTime() - date.getTime()) / 60000);
+    
+    if (diffMins < 5) return 'secondary';
+    if (diffMins < 15) return 'default';
+    return 'destructive';
+  };
+
   const handleRefresh = () => {
     setRefreshing(true);
     fetchDashboardData();
@@ -154,8 +232,14 @@ const Dashboard = () => {
       })
       .subscribe();
 
+    // Update waiting times every 10 seconds
+    const timerInterval = setInterval(() => {
+      setTick(t => t + 1);
+    }, 10000);
+
     return () => {
       supabase.removeChannel(channel);
+      clearInterval(timerInterval);
     };
   }, []);
 
@@ -204,6 +288,48 @@ const Dashboard = () => {
           </Card>
         ))}
       </div>
+
+      {/* Waiting Conversations Section */}
+      {waitingConversations.length > 0 && (
+        <div className="mt-6 lg:mt-8">
+          <Card className="border-border border-l-4 border-l-orange-500">
+            <CardHeader className="p-4 pb-2">
+              <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                <Clock className="w-5 h-5 text-orange-500" />
+                Clientes Aguardando Atendimento
+                <Badge variant="secondary" className="ml-2">{waitingConversations.length}</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 pt-2">
+              <div className="space-y-3">
+                {waitingConversations.map((conv) => (
+                  <div key={conv.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium text-foreground truncate">
+                          {conv.contact_name || conv.contact_number}
+                        </p>
+                        <Badge variant="outline" className="text-xs">
+                          {conv.platform || 'whatsapp'}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate mt-1">
+                        {conv.last_message || 'Sem mensagem'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 ml-4">
+                      <Clock className="w-4 h-4 text-muted-foreground" />
+                      <Badge variant={getWaitingBadgeVariant(conv.waiting_since)}>
+                        {formatWaitingTime(conv.waiting_since)}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <div className="mt-6 lg:mt-8 grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
         <Card className="border-border">
