@@ -3,6 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "./contexts/AuthContext";
 import MainLayout from "./components/layout/MainLayout";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
@@ -26,36 +27,38 @@ const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <AuthProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/pending-approval" element={<PendingApproval />} />
-            <Route element={<ProtectedRoute />}>
-              <Route element={<MainLayout />}>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/products" element={<Products />} />
-                <Route path="/chat" element={<Chat />} />
-                <Route path="/reports" element={<Reports />} />
-                <Route path="/settings" element={<Settings />} />
-                <Route path="/users" element={<Users />} />
-                <Route path="/webhook-tester" element={<WebhookTester />} />
-                <Route path="/api-docs" element={<ApiDocs />} />
-                <Route path="/customers" element={<Customers />} />
-                <Route path="/offers" element={<Offers />} />
-                <Route path="/store-settings" element={<StoreSettings />} />
-                <Route path="/ai" element={<AI />} />
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+      <TooltipProvider>
+        <AuthProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Routes>
+              <Route path="/auth" element={<Auth />} />
+              <Route path="/register" element={<Register />} />
+              <Route path="/pending-approval" element={<PendingApproval />} />
+              <Route element={<ProtectedRoute />}>
+                <Route element={<MainLayout />}>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/products" element={<Products />} />
+                  <Route path="/chat" element={<Chat />} />
+                  <Route path="/reports" element={<Reports />} />
+                  <Route path="/settings" element={<Settings />} />
+                  <Route path="/users" element={<Users />} />
+                  <Route path="/webhook-tester" element={<WebhookTester />} />
+                  <Route path="/api-docs" element={<ApiDocs />} />
+                  <Route path="/customers" element={<Customers />} />
+                  <Route path="/offers" element={<Offers />} />
+                  <Route path="/store-settings" element={<StoreSettings />} />
+                  <Route path="/ai" element={<AI />} />
+                </Route>
               </Route>
-            </Route>
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </AuthProvider>
-    </TooltipProvider>
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </AuthProvider>
+      </TooltipProvider>
+    </ThemeProvider>
   </QueryClientProvider>
 );
 
