@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTheme } from 'next-themes';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import { Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Loader2, Moon, Sun } from 'lucide-react';
 import aciumLogo from '@/assets/acium-logo.jpg';
 
 const loginSchema = z.object({
@@ -24,6 +25,7 @@ const Auth = () => {
   
   const backendConfigured = isSupabaseConfigured;
   const { signIn, user, loading: authLoading } = useAuth();
+  const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -105,7 +107,20 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex relative">
+      {/* Theme Toggle */}
+      <button
+        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+        className="absolute top-4 right-4 z-50 p-2 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors"
+        aria-label="Toggle theme"
+      >
+        {theme === 'dark' ? (
+          <Sun className="w-5 h-5 text-foreground" />
+        ) : (
+          <Moon className="w-5 h-5 text-foreground" />
+        )}
+      </button>
+
       {/* Left Panel - Branding */}
       <div className="hidden lg:flex lg:w-1/2 bg-foreground relative overflow-hidden">
         {/* Decorative elements */}
