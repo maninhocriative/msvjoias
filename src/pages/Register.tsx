@@ -16,7 +16,7 @@ const registerSchema = z.object({
   email: z.string().email('Email inválido'),
   password: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres'),
   phone: z.string().min(10, 'Telefone inválido').max(20),
-  instagram: z.string().max(50).optional(),
+  instagram: z.string().min(1, 'Instagram é obrigatório').max(50),
 });
 
 const Register = () => {
@@ -115,6 +115,17 @@ const Register = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
+
+    // Validate photo is required
+    if (!avatarFile) {
+      setErrors({ avatar: 'Foto é obrigatória' });
+      toast({
+        title: 'Foto obrigatória',
+        description: 'Por favor, tire uma foto para continuar.',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     try {
       registerSchema.parse({
@@ -227,6 +238,7 @@ const Register = () => {
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Avatar Section */}
             <div className="flex flex-col items-center gap-4 mb-6">
+              <Label className="text-sm font-medium">Foto *</Label>
               {showCamera ? (
                 <div className="relative">
                   <video
@@ -266,7 +278,7 @@ const Register = () => {
                       className="w-32 h-32 rounded-full object-cover border-4 border-border"
                     />
                   ) : (
-                    <div className="w-32 h-32 rounded-full bg-muted flex items-center justify-center border-4 border-border">
+                    <div className={`w-32 h-32 rounded-full bg-muted flex items-center justify-center border-4 ${errors.avatar ? 'border-red-500' : 'border-border'}`}>
                       <User className="w-16 h-16 text-muted-foreground" />
                     </div>
                   )}
@@ -280,6 +292,9 @@ const Register = () => {
                     <Camera className="w-4 h-4" />
                     {avatarUrl ? 'Tirar outra foto' : 'Tirar foto'}
                   </Button>
+                  {errors.avatar && (
+                    <p className="text-xs text-red-500">{errors.avatar}</p>
+                  )}
                 </div>
               )}
             </div>
@@ -370,7 +385,7 @@ const Register = () => {
 
             {/* Instagram */}
             <div className="space-y-2">
-              <Label htmlFor="instagram">Instagram (opcional)</Label>
+              <Label htmlFor="instagram">Instagram *</Label>
               <div className="relative">
                 <Instagram className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
@@ -378,9 +393,12 @@ const Register = () => {
                   value={instagram}
                   onChange={(e) => setInstagram(e.target.value)}
                   placeholder="@seuusuario"
-                  className="pl-10"
+                  className={`pl-10 ${errors.instagram ? 'border-red-500' : ''}`}
                 />
               </div>
+              {errors.instagram && (
+                <p className="text-xs text-red-500">{errors.instagram}</p>
+              )}
             </div>
 
             <Button type="submit" className="w-full" disabled={loading}>
