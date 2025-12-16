@@ -44,11 +44,17 @@ interface ImportCSVDialogProps {
   onImportComplete: () => void;
 }
 
+interface ProductWithStatus extends ParsedProduct {
+  status: 'new' | 'duplicate' | 'error';
+  existingId?: string;
+}
+
 const ImportCSVDialog = ({ onImportComplete }: ImportCSVDialogProps) => {
   const [open, setOpen] = useState(false);
-  const [csvData, setCsvData] = useState<ParsedProduct[]>([]);
+  const [csvData, setCsvData] = useState<ProductWithStatus[]>([]);
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
+  const [checking, setChecking] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -84,12 +90,14 @@ const ImportCSVDialog = ({ onImportComplete }: ImportCSVDialogProps) => {
     });
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setChecking(true);
+
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const text = event.target?.result as string;
       const csvProducts = parseCSV(text);
 
@@ -103,17 +111,56 @@ const ImportCSVDialog = ({ onImportComplete }: ImportCSVDialogProps) => {
         active: true,
       })).filter(p => p.name && p.price > 0);
 
-      setCsvData(parsed);
+      // Check for existing SKUs in database
+      const skusToCheck = parsed.filter(p => p.sku).map(p => p.sku);
+      let existingSkus: Record<string, string> = {};
+
+      if (skusToCheck.length > 0) {
+        const { data: existingProducts } = await supabase
+          .from('products')
+          .select('id, sku')
+          .in('sku', skusToCheck);
+
+        if (existingProducts) {
+          existingSkus = existingProducts.reduce((acc, p) => {
+            if (p.sku) acc[p.sku] = p.id;
+            return acc;
+          }, {} as Record<string, string>);
+        }
+      }
+
+      // Mark products with status
+      const productsWithStatus: ProductWithStatus[] = parsed.map(p => ({
+        ...p,
+        status: p.sku && existingSkus[p.sku] ? 'duplicate' : 'new',
+        existingId: p.sku ? existingSkus[p.sku] : undefined,
+      }));
+
+      setCsvData(productsWithStatus);
+      
+      const newCount = productsWithStatus.filter(p => p.status === 'new').length;
+      const duplicateCount = productsWithStatus.filter(p => p.status === 'duplicate').length;
+      
       toast({
         title: 'Arquivo carregado',
-        description: `${parsed.length} produtos encontrados no CSV.`,
+        description: `${parsed.length} produtos encontrados. ${newCount} novos, ${duplicateCount} já existentes.`,
       });
+      
+      setChecking(false);
     };
     reader.readAsText(file, 'UTF-8');
   };
 
   const handleImport = async () => {
-    if (csvData.length === 0) return;
+    const newProducts = csvData.filter(p => p.status === 'new');
+    if (newProducts.length === 0) {
+      toast({
+        title: 'Nenhum produto novo',
+        description: 'Todos os produtos já existem no sistema.',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     setImporting(true);
     setImportProgress(0);
@@ -122,8 +169,8 @@ const ImportCSVDialog = ({ onImportComplete }: ImportCSVDialogProps) => {
       let successCount = 0;
       let errorCount = 0;
 
-      for (let i = 0; i < csvData.length; i++) {
-        const product = csvData[i];
+      for (let i = 0; i < newProducts.length; i++) {
+        const product = newProducts[i];
         
         const { error } = await supabase
           .from('products')
@@ -144,7 +191,7 @@ const ImportCSVDialog = ({ onImportComplete }: ImportCSVDialogProps) => {
           successCount++;
         }
 
-        setImportProgress(Math.round(((i + 1) / csvData.length) * 100));
+        setImportProgress(Math.round(((i + 1) / newProducts.length) * 100));
       }
 
       toast({
@@ -173,6 +220,9 @@ const ImportCSVDialog = ({ onImportComplete }: ImportCSVDialogProps) => {
       }
     }
   };
+
+  const newProductsCount = csvData.filter(p => p.status === 'new').length;
+  const duplicateProductsCount = csvData.filter(p => p.status === 'duplicate').length;
 
   const resetDialog = () => {
     setCsvData([]);
@@ -223,20 +273,37 @@ const ImportCSVDialog = ({ onImportComplete }: ImportCSVDialogProps) => {
             </label>
           </div>
 
+          {/* Checking Duplicates */}
+          {checking && (
+            <div className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Verificando SKUs duplicados...
+            </div>
+          )}
+
           {/* Preview Table */}
-          {csvData.length > 0 && (
+          {csvData.length > 0 && !checking && (
             <>
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">
-                  <Check className="w-4 h-4 inline mr-1 text-green-500" />
-                  {csvData.length} produtos prontos para importar
-                </p>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-4 text-sm">
+                  <span className="text-muted-foreground">
+                    <Check className="w-4 h-4 inline mr-1 text-green-500" />
+                    {newProductsCount} novos
+                  </span>
+                  {duplicateProductsCount > 0 && (
+                    <span className="text-amber-500">
+                      <AlertCircle className="w-4 h-4 inline mr-1" />
+                      {duplicateProductsCount} já existentes (SKU duplicado)
+                    </span>
+                  )}
+                </div>
               </div>
 
               <ScrollArea className="h-[300px] border rounded-lg">
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/50">
+                      <TableHead>Status</TableHead>
                       <TableHead>Nome</TableHead>
                       <TableHead>SKU</TableHead>
                       <TableHead>Categoria</TableHead>
@@ -247,7 +314,18 @@ const ImportCSVDialog = ({ onImportComplete }: ImportCSVDialogProps) => {
                   </TableHeader>
                   <TableBody>
                     {csvData.map((product, index) => (
-                      <TableRow key={index}>
+                      <TableRow key={index} className={product.status === 'duplicate' ? 'opacity-50' : ''}>
+                        <TableCell>
+                          {product.status === 'new' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                              Novo
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                              Duplicado
+                            </span>
+                          )}
+                        </TableCell>
                         <TableCell className="font-medium">{product.name}</TableCell>
                         <TableCell className="font-mono text-xs">{product.sku || '—'}</TableCell>
                         <TableCell>{product.category || '—'}</TableCell>
@@ -294,7 +372,11 @@ const ImportCSVDialog = ({ onImportComplete }: ImportCSVDialogProps) => {
                 <Button variant="outline" onClick={resetDialog} disabled={importing}>
                   Limpar
                 </Button>
-                <Button onClick={handleImport} disabled={importing} className="gap-2">
+                <Button 
+                  onClick={handleImport} 
+                  disabled={importing || newProductsCount === 0} 
+                  className="gap-2"
+                >
                   {importing ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -303,7 +385,7 @@ const ImportCSVDialog = ({ onImportComplete }: ImportCSVDialogProps) => {
                   ) : (
                     <>
                       <Check className="w-4 h-4" />
-                      Importar {csvData.length} produtos
+                      Importar {newProductsCount} produto{newProductsCount !== 1 ? 's' : ''}
                     </>
                   )}
                 </Button>
