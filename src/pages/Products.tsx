@@ -23,6 +23,7 @@ import {
 import { Plus, Pencil, Trash2, Package, Layers, Video, Image } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import ProductVariantsDialog from '@/components/products/ProductVariantsDialog';
+import ImportCSVDialog from '@/components/products/ImportCSVDialog';
 
 interface ProductWithStock extends Product {
   totalStock?: number;
@@ -242,13 +243,16 @@ const Products = () => {
           <p className="text-muted-foreground mt-1">Gerencie seu catálogo de produtos</p>
         </div>
 
-        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
-          <DialogTrigger asChild>
-            <Button className="gap-2">
-              <Plus className="w-4 h-4" />
-              Novo Produto
-            </Button>
-          </DialogTrigger>
+        <div className="flex items-center gap-2">
+          <ImportCSVDialog onImportComplete={fetchProducts} />
+          
+          <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
+            <DialogTrigger asChild>
+              <Button className="gap-2">
+                <Plus className="w-4 h-4" />
+                Novo Produto
+              </Button>
+            </DialogTrigger>
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
               <DialogTitle>{editingProduct ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
@@ -363,6 +367,7 @@ const Products = () => {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <div className="border border-border rounded-xl overflow-x-auto bg-card">
