@@ -55,6 +55,9 @@ interface AutomationMetrics {
   search_count: number;
   last_sale_date: string | null;
   conversion_rate: number;
+  total_revenue?: number;
+  recent_sales_30d?: number;
+  orders_count?: number;
 }
 
 const ProductDetail = () => {
@@ -632,6 +635,17 @@ const ProductDetail = () => {
                     </div>
                     <span className="text-lg font-semibold">{metrics.search_count}</span>
                   </div>
+                  {metrics.total_revenue !== undefined && metrics.total_revenue > 0 && (
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-green-500/10 border border-green-500/20">
+                      <div className="flex items-center gap-2">
+                        <TrendingUp className="w-4 h-4 text-green-600 dark:text-green-400" />
+                        <span className="text-sm text-green-600 dark:text-green-400">Receita</span>
+                      </div>
+                      <span className="text-lg font-semibold text-green-600 dark:text-green-400">
+                        R$ {metrics.total_revenue.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
                   {metrics.conversion_rate > 0 && (
                     <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                       <div className="flex items-center gap-2">
@@ -640,6 +654,11 @@ const ProductDetail = () => {
                       </div>
                       <span className="text-lg font-semibold">{metrics.conversion_rate.toFixed(1)}%</span>
                     </div>
+                  )}
+                  {metrics.recent_sales_30d !== undefined && metrics.recent_sales_30d > 0 && (
+                    <p className="text-xs text-muted-foreground text-center">
+                      {metrics.recent_sales_30d} venda(s) nos últimos 30 dias
+                    </p>
                   )}
                   {metrics.last_sale_date && (
                     <p className="text-xs text-muted-foreground text-center">
