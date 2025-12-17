@@ -26,7 +26,26 @@ serve(async (req) => {
       );
     }
 
-    // Get product interest count from messages (how many times this product was searched/asked about)
+    console.log("Fetching metrics for product:", product_id);
+
+    // Get sales data from orders table
+    const { data: ordersData, error: ordersError } = await supabase
+      .from("orders")
+      .select("id, quantity, total_price, created_at")
+      .eq("product_id", product_id)
+      .eq("status", "completed")
+      .order("created_at", { ascending: false });
+
+    if (ordersError) {
+      console.error("Error fetching orders:", ordersError);
+    }
+
+    // Calculate sales metrics
+    const salesCount = ordersData?.reduce((acc, order) => acc + order.quantity, 0) || 0;
+    const totalRevenue = ordersData?.reduce((acc, order) => acc + Number(order.total_price), 0) || 0;
+    const lastSaleDate = ordersData?.[0]?.created_at || null;
+
+    // Get search/interest count from messages table (product_interest)
     const { data: messagesData, error: messagesError } = await supabase
       .from("messages")
       .select("id, created_at")
@@ -38,14 +57,28 @@ serve(async (req) => {
 
     const searchCount = messagesData?.length || 0;
 
-    // For now, sales data would need to come from an external system or orders table
-    // This is a placeholder that can be expanded when orders/sales tracking is implemented
+    // Calculate conversion rate (sales / searches * 100)
+    const conversionRate = searchCount > 0 ? ((salesCount / searchCount) * 100) : 0;
+
+    // Get recent sales trend (last 30 days)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    const recentSales = ordersData?.filter(
+      order => new Date(order.created_at) >= thirtyDaysAgo
+    ).length || 0;
+
     const metrics = {
-      sales_count: 0, // Would come from orders table if available
+      sales_count: salesCount,
       search_count: searchCount,
-      last_sale_date: null, // Would come from orders table
-      conversion_rate: 0, // Would be calculated from sales/searches
+      last_sale_date: lastSaleDate,
+      conversion_rate: Math.round(conversionRate * 10) / 10,
+      total_revenue: totalRevenue,
+      recent_sales_30d: recentSales,
+      orders_count: ordersData?.length || 0,
     };
+
+    console.log("Metrics calculated:", JSON.stringify(metrics));
 
     return new Response(
       JSON.stringify(metrics),
