@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase, Product } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,6 +31,7 @@ interface ProductWithStock extends Product {
 }
 
 const Products = () => {
+  const navigate = useNavigate();
   const [products, setProducts] = useState<ProductWithStock[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -400,7 +402,11 @@ const Products = () => {
               </TableRow>
             ) : (
               products.map((product) => (
-                <TableRow key={product.id} className="group">
+                <TableRow 
+                  key={product.id} 
+                  className="group cursor-pointer"
+                  onClick={() => navigate(`/products/${product.id}`)}
+                >
                   <TableCell>
                     <div className="flex items-center gap-3">
                       {product.image_url ? (
@@ -455,7 +461,7 @@ const Products = () => {
                       {product.active ? 'Ativo' : 'Inativo'}
                     </span>
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1">
                       <Button
                         variant="ghost"

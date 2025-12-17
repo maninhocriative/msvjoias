@@ -9,6 +9,7 @@ import MainLayout from "./components/layout/MainLayout";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import Dashboard from "./pages/Dashboard";
 import Products from "./pages/Products";
+import ProductDetail from "./pages/ProductDetail";
 import Chat from "./pages/Chat";
 import Settings from "./pages/Settings";
 import Users from "./pages/Users";
@@ -41,6 +42,7 @@ const App = () => (
                 <Route element={<MainLayout />}>
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/products" element={<Products />} />
+                  <Route path="/products/:id" element={<ProductDetail />} />
                   <Route path="/chat" element={<Chat />} />
                   <Route path="/reports" element={<Reports />} />
                   <Route path="/settings" element={<Settings />} />
