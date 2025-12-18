@@ -20,7 +20,7 @@ import {
   Area,
   AreaChart,
 } from 'recharts';
-import { Package, MessageSquare, TrendingUp, Calendar } from 'lucide-react';
+import { Package, MessageSquare, TrendingUp, Search, Eye } from 'lucide-react';
 
 interface ProductStock {
   name: string;
@@ -44,6 +44,14 @@ interface MessageActivity {
   sent: number;
 }
 
+interface ProductSearch {
+  id: string;
+  name: string;
+  sku: string | null;
+  searchCount: number;
+  category: string | null;
+}
+
 const COLORS = ['hsl(0, 0%, 0%)', 'hsl(0, 0%, 30%)', 'hsl(0, 0%, 50%)', 'hsl(0, 0%, 70%)'];
 
 const Reports = () => {
@@ -52,9 +60,11 @@ const Reports = () => {
   const [categoryStocks, setCategoryStocks] = useState<CategoryStock[]>([]);
   const [platformData, setPlatformData] = useState<PlatformData[]>([]);
   const [messageActivity, setMessageActivity] = useState<MessageActivity[]>([]);
+  const [productSearches, setProductSearches] = useState<ProductSearch[]>([]);
   const [totalStock, setTotalStock] = useState(0);
   const [totalMessages, setTotalMessages] = useState(0);
   const [totalConversations, setTotalConversations] = useState(0);
+  const [totalSearches, setTotalSearches] = useState(0);
 
   useEffect(() => {
     fetchReportData();
@@ -166,6 +176,46 @@ const Reports = () => {
         .map(([date, data]) => ({ date, ...data }));
 
       setMessageActivity(activityData);
+
+      // Fetch product searches (products with product_interest in messages)
+      const { data: searchMessages } = await supabase
+        .from('messages')
+        .select('product_interest')
+        .not('product_interest', 'is', null);
+
+      if (searchMessages && searchMessages.length > 0) {
+        // Count searches per product
+        const searchCountMap = new Map<string, number>();
+        searchMessages.forEach(m => {
+          if (m.product_interest) {
+            searchCountMap.set(m.product_interest, (searchCountMap.get(m.product_interest) || 0) + 1);
+          }
+        });
+
+        setTotalSearches(searchMessages.length);
+
+        // Fetch product details for searched products
+        const productIds = Array.from(searchCountMap.keys());
+        const { data: searchedProducts } = await supabase
+          .from('products')
+          .select('id, name, sku, category')
+          .in('id', productIds);
+
+        if (searchedProducts) {
+          const searchData: ProductSearch[] = searchedProducts
+            .map(p => ({
+              id: p.id,
+              name: p.name,
+              sku: p.sku,
+              category: p.category,
+              searchCount: searchCountMap.get(p.id) || 0,
+            }))
+            .sort((a, b) => b.searchCount - a.searchCount)
+            .slice(0, 10);
+
+          setProductSearches(searchData);
+        }
+      }
     } catch (error) {
       console.error('Error fetching report data:', error);
     } finally {
@@ -197,7 +247,7 @@ const Reports = () => {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mb-8">
         <Card className="border-border">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -245,6 +295,22 @@ const Reports = () => {
             )}
           </CardContent>
         </Card>
+
+        <Card className="border-border">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Procuras de Produtos
+            </CardTitle>
+            <Search className="w-5 h-5 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <Skeleton className="h-8 w-20" />
+            ) : (
+              <div className="text-2xl font-bold text-foreground">{totalSearches}</div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <Tabs defaultValue="stock" className="space-y-6">
@@ -256,6 +322,10 @@ const Reports = () => {
           <TabsTrigger value="chat" className="gap-2">
             <MessageSquare className="w-4 h-4" />
             Chat
+          </TabsTrigger>
+          <TabsTrigger value="procuras" className="gap-2">
+            <Eye className="w-4 h-4" />
+            Procuras
           </TabsTrigger>
         </TabsList>
 
@@ -493,6 +563,93 @@ const Reports = () => {
                       <div className="text-right">
                         <p className="font-bold text-foreground">{platform.value}</p>
                         <p className="text-xs text-muted-foreground">conversas</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="procuras" className="space-y-6">
+          {/* Most Searched Products Chart */}
+          <Card className="border-border">
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold">Produtos Mais Procurados</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <Skeleton className="h-[350px] w-full" />
+              ) : productSearches.length === 0 ? (
+                <div className="h-[350px] flex items-center justify-center text-muted-foreground">
+                  <div className="text-center">
+                    <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>Nenhuma procura registrada ainda</p>
+                    <p className="text-sm mt-2">As procuras serão registradas automaticamente quando clientes mencionarem produtos nas mensagens</p>
+                  </div>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={350}>
+                  <BarChart data={productSearches} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                    <YAxis 
+                      type="category" 
+                      dataKey="name" 
+                      stroke="hsl(var(--muted-foreground))" 
+                      fontSize={11}
+                      width={120}
+                      tickFormatter={(value) => value.length > 18 ? value.substring(0, 18) + '...' : value}
+                    />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar 
+                      dataKey="searchCount" 
+                      fill="hsl(var(--foreground))" 
+                      radius={[0, 4, 4, 0]}
+                      name="Procuras"
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Product Search Details Table */}
+          <Card className="border-border">
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold">Detalhes das Procuras</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Skeleton key={i} className="h-16 w-full" />
+                  ))}
+                </div>
+              ) : productSearches.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">Nenhuma procura registrada</p>
+              ) : (
+                <div className="space-y-3">
+                  {productSearches.map((product, index) => (
+                    <div 
+                      key={product.id} 
+                      className="flex items-center gap-4 p-4 rounded-lg bg-muted/50"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-foreground text-background flex items-center justify-center font-bold text-sm">
+                        {index + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-foreground truncate">{product.name}</p>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          {product.sku && <span>SKU: {product.sku}</span>}
+                          {product.sku && product.category && <span>•</span>}
+                          {product.category && <span>{product.category}</span>}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-foreground text-lg">{product.searchCount}</p>
+                        <p className="text-xs text-muted-foreground">procuras</p>
                       </div>
                     </div>
                   ))}
