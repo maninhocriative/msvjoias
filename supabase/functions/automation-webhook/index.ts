@@ -120,6 +120,50 @@ serve(async (req) => {
       throw new Error('Dados incompletos: phone/contact_number é obrigatório')
     }
 
+    // Detecção automática de produto mencionado na mensagem
+    if (!productInterest && messageContent && !isFromMe) {
+      const normalizedMessage = messageContent.toLowerCase().trim()
+      
+      // Buscar produtos para comparar com a mensagem
+      const { data: products } = await supabase
+        .from('products')
+        .select('id, name, sku')
+        .eq('active', true)
+      
+      if (products && products.length > 0) {
+        // Primeiro, tentar match exato por SKU (case insensitive)
+        const skuMatch = products.find(p => 
+          p.sku && normalizedMessage.includes(p.sku.toLowerCase())
+        )
+        
+        if (skuMatch) {
+          productInterest = skuMatch.id
+          console.log('Produto detectado por SKU:', skuMatch.sku, '->', skuMatch.id)
+        } else {
+          // Tentar match por nome do produto (palavras principais)
+          for (const product of products) {
+            if (!product.name) continue
+            
+            const productNameLower = product.name.toLowerCase()
+            // Verificar se a mensagem contém o nome do produto (ou parte significativa dele)
+            const productWords = productNameLower.split(/\s+/).filter((w: string) => w.length > 3)
+            
+            // Se todas as palavras principais (>3 chars) do produto estão na mensagem
+            const matchingWords = productWords.filter((word: string) => normalizedMessage.includes(word))
+            
+            // Match se encontrou pelo menos 2 palavras principais ou o nome completo
+            if (normalizedMessage.includes(productNameLower) || 
+                (productWords.length >= 2 && matchingWords.length >= 2) ||
+                (productWords.length === 1 && matchingWords.length === 1)) {
+              productInterest = product.id
+              console.log('Produto detectado por nome:', product.name, '->', product.id)
+              break
+            }
+          }
+        }
+      }
+    }
+
     console.log('Dados processados:', { 
       phone, 
       messageContent: messageContent.substring(0, 50), 
@@ -127,7 +171,8 @@ serve(async (req) => {
       isFromMe, 
       platform,
       messageType,
-      productInterest
+      productInterest,
+      autoDetected: productInterest ? 'SIM' : 'NÃO'
     })
 
     // Buscar ou criar conversa
