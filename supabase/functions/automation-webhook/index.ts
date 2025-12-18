@@ -26,16 +26,20 @@ serve(async (req) => {
     let mediaUrl: string | null = null
     let isFromMe = false
     let contactName = ''
+    let productInterest: string | null = null
     let platform = 'whatsapp'
     let messageType = 'text'
 
-    // Formato 1: { text: { phone, message, photo, fromMe }, contact_name, platform }
+    // Formato 1: { text: { phone, message, photo, fromMe, product_id }, contact_name, platform }
     if (payload.text && payload.text.phone) {
       phone = payload.text.phone.replace(/\D/g, '')
       messageContent = payload.text.message || ''
       isFromMe = payload.text.fromMe === true
       contactName = payload.contact_name || phone
       platform = payload.platform || 'whatsapp'
+      
+      // Product interest - quando o cliente pergunta sobre um produto específico
+      productInterest = payload.text.product_id || payload.product_id || null
       
       // Detectar imagem real (não foto de perfil)
       // Foto de perfil geralmente vem em pps.whatsapp.net
@@ -76,6 +80,7 @@ serve(async (req) => {
       isFromMe = payload.fromMe === true
       contactName = payload.senderName || payload.pushName || phone
       platform = payload.isInstagram ? 'instagram' : 'whatsapp'
+      productInterest = payload.product_id || null
       
       // Mídia ZAPI
       if (payload.image) {
@@ -108,6 +113,7 @@ serve(async (req) => {
       platform = payload.platform || 'whatsapp'
       mediaUrl = payload.media_url || null
       messageType = payload.message_type || 'text'
+      productInterest = payload.product_id || null
     }
 
     if (!phone) {
@@ -120,7 +126,8 @@ serve(async (req) => {
       mediaUrl: mediaUrl ? 'SIM' : 'NÃO', 
       isFromMe, 
       platform,
-      messageType 
+      messageType,
+      productInterest
     })
 
     // Buscar ou criar conversa
@@ -172,7 +179,8 @@ serve(async (req) => {
         is_from_me: isFromMe,
         message_type: messageType,
         media_url: mediaUrl,
-        status: isFromMe ? 'sent' : 'delivered'
+        status: isFromMe ? 'sent' : 'delivered',
+        product_interest: productInterest
       })
 
     if (msgError) {
