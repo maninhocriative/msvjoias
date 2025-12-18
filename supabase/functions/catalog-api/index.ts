@@ -23,8 +23,9 @@ serve(async (req) => {
     const productId = url.searchParams.get('product_id');
     const onlyAvailable = url.searchParams.get('only_available') === 'true';
     const search = url.searchParams.get('search');
+    const cor = url.searchParams.get('cor');
 
-    console.log('Catalog API request:', { category, sku, productId, onlyAvailable, search });
+    console.log('Catalog API request:', { category, sku, productId, onlyAvailable, search, cor });
 
     // Build query
     let query = supabase
@@ -64,6 +65,11 @@ serve(async (req) => {
 
     if (search) {
       query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%,sku.ilike.%${search}%`);
+    }
+
+    // Filtro de cor (busca parcial com ILIKE)
+    if (cor) {
+      query = query.ilike('color', `%${cor}%`);
     }
 
     const { data: products, error } = await query.order('name', { ascending: true });
@@ -109,7 +115,11 @@ serve(async (req) => {
           available: v.stock > 0
         }))
       };
-    }).filter((p: { available: boolean }) => !onlyAvailable || p.available);
+    })
+    // Sempre filtrar produtos sem estoque (stock > 0)
+    .filter((p: { available: boolean; total_stock: number }) => p.total_stock > 0)
+    // Filtro adicional por only_available (mantém compatibilidade)
+    .filter((p: { available: boolean }) => !onlyAvailable || p.available);
 
     // If searching by SKU or product_id, return single object
     if ((sku || productId) && catalog.length === 1) {
