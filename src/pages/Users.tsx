@@ -277,7 +277,11 @@ const UsersPage = () => {
               </TableRow>
             ) : (
               users.map((user) => (
-                <TableRow key={user.id} className="group">
+                <TableRow 
+                  key={user.id} 
+                  className="group cursor-pointer hover:bg-muted/50"
+                  onClick={() => navigate(`/users/${user.id}`)}
+                >
                   <TableCell>
                     <div>
                       <p className="font-medium text-foreground">{user.full_name || 'Sem nome'}</p>
@@ -302,7 +306,10 @@ const UsersPage = () => {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => handleEditRole(user)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEditRole(user);
+                        }}
                         title="Editar permissão"
                       >
                         <Pencil className="w-4 h-4" />
@@ -311,7 +318,10 @@ const UsersPage = () => {
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => handleRemoveRole(user)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveRole(user);
+                          }}
                           title="Remover permissão"
                         >
                           <Trash2 className="w-4 h-4" />
