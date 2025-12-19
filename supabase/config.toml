@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.product-metrics]
 verify_jwt = false
+
+[functions.send-approval-email]
+verify_jwt = true
