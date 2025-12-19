@@ -14,6 +14,63 @@ export type Database = {
   }
   public: {
     Tables: {
+      conversation_events: {
+        Row: {
+          direction: string
+          id: string
+          payload: Json | null
+          phone: string
+          ts: string | null
+          type: string
+        }
+        Insert: {
+          direction: string
+          id?: string
+          payload?: Json | null
+          phone: string
+          ts?: string | null
+          type: string
+        }
+        Update: {
+          direction?: string
+          id?: string
+          payload?: Json | null
+          phone?: string
+          ts?: string | null
+          type?: string
+        }
+        Relationships: []
+      }
+      conversation_state: {
+        Row: {
+          last_catalog: Json | null
+          last_intent: string | null
+          last_step: string | null
+          phone: string
+          selected_index: number | null
+          selected_sku: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          last_catalog?: Json | null
+          last_intent?: string | null
+          last_step?: string | null
+          phone: string
+          selected_index?: number | null
+          selected_sku?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          last_catalog?: Json | null
+          last_intent?: string | null
+          last_step?: string | null
+          phone?: string
+          selected_index?: number | null
+          selected_sku?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       conversations: {
         Row: {
           contact_name: string | null
