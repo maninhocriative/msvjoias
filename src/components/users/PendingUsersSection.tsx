@@ -71,9 +71,24 @@ export const PendingUsersSection = ({ onApprovalChange }: PendingUsersSectionPro
 
       if (error) throw error;
 
+      // Send approval email notification
+      try {
+        const { error: emailError } = await supabase.functions.invoke('send-approval-email', {
+          body: { userId, userName },
+        });
+        
+        if (emailError) {
+          console.error('Error sending approval email:', emailError);
+        } else {
+          console.log('Approval email sent successfully');
+        }
+      } catch (emailError) {
+        console.error('Error invoking email function:', emailError);
+      }
+
       toast({
         title: 'Usuário aprovado',
-        description: `${userName} agora tem acesso ao sistema.`,
+        description: `${userName} agora tem acesso ao sistema e foi notificado por email.`,
       });
 
       fetchPendingUsers();
