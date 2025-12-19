@@ -13,6 +13,7 @@ import ProductDetail from "./pages/ProductDetail";
 import Chat from "./pages/Chat";
 import Settings from "./pages/Settings";
 import Users from "./pages/Users";
+import UserDetail from "./pages/UserDetail";
 import Reports from "./pages/Reports";
 import Auth from "./pages/Auth";
 import Register from "./pages/Register";
@@ -47,6 +48,7 @@ const App = () => (
                   <Route path="/reports" element={<Reports />} />
                   <Route path="/settings" element={<Settings />} />
                   <Route path="/users" element={<Users />} />
+                  <Route path="/users/:id" element={<UserDetail />} />
                   <Route path="/webhook-tester" element={<WebhookTester />} />
                   <Route path="/api-docs" element={<ApiDocs />} />
                   <Route path="/customers" element={<Customers />} />

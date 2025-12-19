@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
@@ -34,6 +35,7 @@ export const PendingUsersSection = ({ onApprovalChange }: PendingUsersSectionPro
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchPendingUsers();
@@ -161,7 +163,11 @@ export const PendingUsersSection = ({ onApprovalChange }: PendingUsersSectionPro
           </TableHeader>
           <TableBody>
             {pendingUsers.map((pendingUser) => (
-              <TableRow key={pendingUser.id} className="group">
+              <TableRow 
+                key={pendingUser.id} 
+                className="group cursor-pointer hover:bg-muted/50"
+                onClick={() => navigate(`/users/${pendingUser.id}`)}
+              >
                 <TableCell>
                   <div className="flex items-center gap-3">
                     <Avatar className="w-10 h-10">
@@ -206,7 +212,10 @@ export const PendingUsersSection = ({ onApprovalChange }: PendingUsersSectionPro
                   <div className="flex items-center justify-end gap-2">
                     <Button
                       size="sm"
-                      onClick={() => handleApprove(pendingUser.id, getDisplayName(pendingUser))}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleApprove(pendingUser.id, getDisplayName(pendingUser));
+                      }}
                       className="gap-1"
                     >
                       <Check className="w-4 h-4" />
@@ -215,7 +224,10 @@ export const PendingUsersSection = ({ onApprovalChange }: PendingUsersSectionPro
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleReject(pendingUser.id, getDisplayName(pendingUser))}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleReject(pendingUser.id, getDisplayName(pendingUser));
+                      }}
                       className="gap-1"
                     >
                       <X className="w-4 h-4" />
