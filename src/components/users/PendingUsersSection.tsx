@@ -3,15 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Check, X, Clock, Instagram, Phone } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Check, X, Clock, Instagram, Phone, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -33,8 +26,9 @@ interface PendingUsersSectionProps {
 export const PendingUsersSection = ({ onApprovalChange }: PendingUsersSectionProps) => {
   const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [processingId, setProcessingId] = useState<string | null>(null);
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -59,6 +53,7 @@ export const PendingUsersSection = ({ onApprovalChange }: PendingUsersSectionPro
   };
 
   const handleApprove = async (userId: string, userName: string) => {
+    setProcessingId(userId);
     try {
       const { error } = await supabase
         .from('profiles')
@@ -73,22 +68,16 @@ export const PendingUsersSection = ({ onApprovalChange }: PendingUsersSectionPro
 
       // Send approval email notification
       try {
-        const { error: emailError } = await supabase.functions.invoke('send-approval-email', {
+        await supabase.functions.invoke('send-approval-email', {
           body: { userId, userName },
         });
-        
-        if (emailError) {
-          console.error('Error sending approval email:', emailError);
-        } else {
-          console.log('Approval email sent successfully');
-        }
       } catch (emailError) {
-        console.error('Error invoking email function:', emailError);
+        console.error('Error sending approval email:', emailError);
       }
 
       toast({
         title: 'Usuário aprovado',
-        description: `${userName} agora tem acesso ao sistema e foi notificado por email.`,
+        description: `${userName} agora tem acesso ao sistema.`,
       });
 
       fetchPendingUsers();
@@ -100,30 +89,40 @@ export const PendingUsersSection = ({ onApprovalChange }: PendingUsersSectionPro
         description: 'Não foi possível aprovar o usuário.',
         variant: 'destructive',
       });
+    } finally {
+      setProcessingId(null);
     }
   };
 
   const handleReject = async (userId: string, userName: string) => {
-    if (!confirm(`Tem certeza que deseja rejeitar o cadastro de ${userName}? O usuário será removido.`)) {
+    if (!confirm(`Tem certeza que deseja excluir o cadastro de ${userName}? Esta ação não pode ser desfeita.`)) {
       return;
     }
 
+    setProcessingId(userId);
     try {
-      // We can't delete from auth.users, so we just leave them unapproved
-      // In a real scenario, you might want to use an edge function to delete the user
+      const { error } = await supabase.functions.invoke('delete-user', {
+        body: { userId },
+      });
+
+      if (error) throw error;
+
       toast({
-        title: 'Cadastro rejeitado',
-        description: `${userName} permanecerá sem acesso.`,
+        title: 'Usuário excluído',
+        description: `${userName} foi removido do sistema.`,
       });
 
       fetchPendingUsers();
+      onApprovalChange?.();
     } catch (error) {
-      console.error('Error rejecting user:', error);
+      console.error('Error deleting user:', error);
       toast({
         title: 'Erro',
-        description: 'Não foi possível rejeitar o usuário.',
+        description: 'Não foi possível excluir o usuário.',
         variant: 'destructive',
       });
+    } finally {
+      setProcessingId(null);
     }
   };
 
@@ -147,9 +146,11 @@ export const PendingUsersSection = ({ onApprovalChange }: PendingUsersSectionPro
 
   if (loading) {
     return (
-      <div className="border border-border rounded-xl p-8 text-center text-muted-foreground">
-        Carregando...
-      </div>
+      <Card className="mb-6">
+        <CardContent className="flex items-center justify-center py-8">
+          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
     );
   }
 
@@ -158,103 +159,89 @@ export const PendingUsersSection = ({ onApprovalChange }: PendingUsersSectionPro
   }
 
   return (
-    <div className="mb-8">
-      <div className="flex items-center gap-2 mb-4">
-        <Clock className="w-5 h-5 text-muted-foreground" />
-        <h2 className="text-lg font-semibold text-foreground">
-          Cadastros Pendentes ({pendingUsers.length})
-        </h2>
-      </div>
-
-      <div className="border border-border rounded-xl overflow-hidden bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-muted/50 hover:bg-muted/50">
-              <TableHead className="font-semibold">Usuário</TableHead>
-              <TableHead className="font-semibold">Contato</TableHead>
-              <TableHead className="font-semibold">Data do cadastro</TableHead>
-              <TableHead className="font-semibold text-right">Ações</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {pendingUsers.map((pendingUser) => (
-              <TableRow 
-                key={pendingUser.id} 
-                className="group cursor-pointer hover:bg-muted/50"
-                onClick={() => navigate(`/users/${pendingUser.id}`)}
-              >
-                <TableCell>
-                  <div className="flex items-center gap-3">
-                    <Avatar className="w-10 h-10">
-                      <AvatarImage src={pendingUser.avatar_url || undefined} />
-                      <AvatarFallback className="bg-muted text-muted-foreground">
-                        {getInitials(pendingUser)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="font-medium text-foreground">
-                        {getDisplayName(pendingUser)}
-                      </p>
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-col gap-1">
-                    {pendingUser.phone && (
-                      <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
-                        <Phone className="w-3 h-3" />
-                        {pendingUser.phone}
-                      </span>
-                    )}
+    <Card className="mb-6 border-amber-200 dark:border-amber-900 bg-amber-50/50 dark:bg-amber-950/20">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Clock className="w-5 h-5 text-amber-600 dark:text-amber-500" />
+          <span>Cadastros Pendentes</span>
+          <span className="ml-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-500 text-white">
+            {pendingUsers.length}
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="grid gap-3">
+          {pendingUsers.map((pendingUser) => (
+            <div
+              key={pendingUser.id}
+              className="flex items-center justify-between p-4 bg-background rounded-lg border cursor-pointer hover:border-primary/50 transition-colors"
+              onClick={() => navigate(`/users/${pendingUser.id}`)}
+            >
+              <div className="flex items-center gap-4 flex-1 min-w-0">
+                <Avatar className="w-12 h-12 border-2 border-muted">
+                  <AvatarImage src={pendingUser.avatar_url || undefined} />
+                  <AvatarFallback className="bg-muted text-muted-foreground font-medium">
+                    {getInitials(pendingUser)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-foreground truncate">
+                    {getDisplayName(pendingUser)}
+                  </p>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">
                     {pendingUser.instagram && (
                       <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
-                        <Instagram className="w-3 h-3" />
+                        <Instagram className="w-3.5 h-3.5" />
                         @{pendingUser.instagram.replace('@', '')}
                       </span>
                     )}
+                    {pendingUser.phone && (
+                      <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
+                        <Phone className="w-3.5 h-3.5" />
+                        {pendingUser.phone}
+                      </span>
+                    )}
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(pendingUser.created_at).toLocaleDateString('pt-BR')}
+                    </span>
                   </div>
-                </TableCell>
-                <TableCell className="text-muted-foreground text-sm">
-                  {new Date(pendingUser.created_at).toLocaleDateString('pt-BR', {
-                    day: '2-digit',
-                    month: '2-digit',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    <Button
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleApprove(pendingUser.id, getDisplayName(pendingUser));
-                      }}
-                      className="gap-1"
-                    >
-                      <Check className="w-4 h-4" />
-                      Aprovar
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleReject(pendingUser.id, getDisplayName(pendingUser));
-                      }}
-                      className="gap-1"
-                    >
-                      <X className="w-4 h-4" />
-                      Rejeitar
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-    </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 ml-4">
+                <Button
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleApprove(pendingUser.id, getDisplayName(pendingUser));
+                  }}
+                  disabled={processingId === pendingUser.id}
+                  className="gap-1.5"
+                >
+                  {processingId === pendingUser.id ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Check className="w-4 h-4" />
+                  )}
+                  Aprovar
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleReject(pendingUser.id, getDisplayName(pendingUser));
+                  }}
+                  disabled={processingId === pendingUser.id}
+                  className="gap-1.5 hover:bg-destructive hover:text-destructive-foreground hover:border-destructive"
+                >
+                  <X className="w-4 h-4" />
+                  Excluir
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 };
