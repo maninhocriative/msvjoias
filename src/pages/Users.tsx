@@ -11,6 +11,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -59,6 +69,8 @@ const UsersPage = () => {
   const [editingUser, setEditingUser] = useState<UserWithRole | null>(null);
   const [selectedRole, setSelectedRole] = useState<string>('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<UserWithRole | null>(null);
   const { toast } = useToast();
   const { isAdmin, loading: roleLoading } = useUserRole();
   const navigate = useNavigate();
@@ -170,13 +182,19 @@ const UsersPage = () => {
     }
   };
 
-  const handleDeleteUser = async (user: UserWithRole) => {
-    if (!confirm(`Tem certeza que deseja excluir ${user.full_name || 'este usuário'}? Esta ação não pode ser desfeita.`)) return;
+  const openDeleteDialog = (user: UserWithRole) => {
+    setUserToDelete(user);
+    setDeleteDialogOpen(true);
+  };
 
-    setDeletingId(user.id);
+  const handleDeleteUser = async () => {
+    if (!userToDelete) return;
+
+    setDeleteDialogOpen(false);
+    setDeletingId(userToDelete.id);
     try {
       const { error } = await supabase.functions.invoke('delete-user', {
-        body: { userId: user.id },
+        body: { userId: userToDelete.id },
       });
 
       if (error) throw error;
@@ -191,6 +209,7 @@ const UsersPage = () => {
       });
     } finally {
       setDeletingId(null);
+      setUserToDelete(null);
     }
   };
 
@@ -338,7 +357,7 @@ const UsersPage = () => {
                       size="icon"
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleDeleteUser(user);
+                        openDeleteDialog(user);
                       }}
                       disabled={deletingId === user.id}
                       title="Excluir usuário"
@@ -398,6 +417,27 @@ const UsersPage = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir usuário</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir <span className="font-semibold">{userToDelete?.full_name || 'este usuário'}</span>? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteUser}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

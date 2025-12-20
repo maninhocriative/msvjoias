@@ -4,6 +4,16 @@ import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Check, X, Clock, Instagram, Phone, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -27,6 +37,8 @@ export const PendingUsersSection = ({ onApprovalChange }: PendingUsersSectionPro
   const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<{ id: string; name: string } | null>(null);
   const { toast } = useToast();
   const { user, session } = useAuth();
   const navigate = useNavigate();
@@ -94,22 +106,26 @@ export const PendingUsersSection = ({ onApprovalChange }: PendingUsersSectionPro
     }
   };
 
-  const handleReject = async (userId: string, userName: string) => {
-    if (!confirm(`Tem certeza que deseja excluir o cadastro de ${userName}? Esta ação não pode ser desfeita.`)) {
-      return;
-    }
+  const openDeleteDialog = (userId: string, userName: string) => {
+    setUserToDelete({ id: userId, name: userName });
+    setDeleteDialogOpen(true);
+  };
 
-    setProcessingId(userId);
+  const handleReject = async () => {
+    if (!userToDelete) return;
+
+    setDeleteDialogOpen(false);
+    setProcessingId(userToDelete.id);
     try {
       const { error } = await supabase.functions.invoke('delete-user', {
-        body: { userId },
+        body: { userId: userToDelete.id },
       });
 
       if (error) throw error;
 
       toast({
         title: 'Usuário excluído',
-        description: `${userName} foi removido do sistema.`,
+        description: `${userToDelete.name} foi removido do sistema.`,
       });
 
       fetchPendingUsers();
@@ -123,6 +139,7 @@ export const PendingUsersSection = ({ onApprovalChange }: PendingUsersSectionPro
       });
     } finally {
       setProcessingId(null);
+      setUserToDelete(null);
     }
   };
 
@@ -229,7 +246,7 @@ export const PendingUsersSection = ({ onApprovalChange }: PendingUsersSectionPro
                   variant="outline"
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleReject(pendingUser.id, getDisplayName(pendingUser));
+                    openDeleteDialog(pendingUser.id, getDisplayName(pendingUser));
                   }}
                   disabled={processingId === pendingUser.id}
                   className="gap-1.5 hover:bg-destructive hover:text-destructive-foreground hover:border-destructive"
@@ -242,6 +259,27 @@ export const PendingUsersSection = ({ onApprovalChange }: PendingUsersSectionPro
           ))}
         </div>
       </CardContent>
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir cadastro</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir o cadastro de <span className="font-semibold">{userToDelete?.name}</span>? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleReject}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 };
