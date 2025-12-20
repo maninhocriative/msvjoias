@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import {
   Dialog,
   DialogContent,
@@ -15,15 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Pencil, Trash2, Users, Shield, UserCog, ShoppingBag } from 'lucide-react';
+import { Pencil, Trash2, Users, Shield, UserCog, ShoppingBag, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useUserRole, AppRole } from '@/hooks/useUserRole';
 import { useNavigate } from 'react-router-dom';
@@ -34,6 +28,7 @@ interface UserWithRole {
   id: string;
   email: string;
   full_name: string | null;
+  avatar_url: string | null;
   role: AppRole;
   role_id: string | null;
   created_at: string;
@@ -51,12 +46,19 @@ const roleIcons: Record<string, React.ReactNode> = {
   vendedor: <ShoppingBag className="w-4 h-4" />,
 };
 
+const roleColors: Record<string, string> = {
+  admin: 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400',
+  gerente: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
+  vendedor: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
+};
+
 const UsersPage = () => {
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserWithRole | null>(null);
   const [selectedRole, setSelectedRole] = useState<string>('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const { toast } = useToast();
   const { isAdmin, loading: roleLoading } = useUserRole();
   const navigate = useNavigate();
@@ -80,27 +82,26 @@ const UsersPage = () => {
 
   const fetchUsers = async () => {
     try {
-      // Fetch profiles
       const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
-        .select('id, full_name, created_at');
+        .select('id, full_name, avatar_url, created_at')
+        .eq('approved', true);
 
       if (profilesError) throw profilesError;
 
-      // Fetch roles
       const { data: roles, error: rolesError } = await supabase
         .from('user_roles')
         .select('id, user_id, role');
 
       if (rolesError) throw rolesError;
 
-      // Get user emails from auth (via profiles id which is user_id)
       const usersWithRoles: UserWithRole[] = (profiles || []).map(profile => {
         const userRole = roles?.find(r => r.user_id === profile.id);
         return {
           id: profile.id,
-          email: '', // We'll need to get this from somewhere else or store in profiles
+          email: '',
           full_name: profile.full_name,
+          avatar_url: profile.avatar_url,
           role: userRole?.role as AppRole || null,
           role_id: userRole?.id || null,
           created_at: profile.created_at,
@@ -131,7 +132,6 @@ const UsersPage = () => {
 
     try {
       if (editingUser.role_id && !selectedRole) {
-        // Remove role
         const { error } = await supabase
           .from('user_roles')
           .delete()
@@ -140,7 +140,6 @@ const UsersPage = () => {
         if (error) throw error;
         toast({ title: 'Sucesso', description: 'Permissão removida!' });
       } else if (editingUser.role_id && selectedRole) {
-        // Update role
         const { error } = await supabase
           .from('user_roles')
           .update({ role: selectedRole })
@@ -149,7 +148,6 @@ const UsersPage = () => {
         if (error) throw error;
         toast({ title: 'Sucesso', description: 'Permissão atualizada!' });
       } else if (!editingUser.role_id && selectedRole) {
-        // Create role
         const { error } = await supabase
           .from('user_roles')
           .insert([{ user_id: editingUser.id, role: selectedRole }]);
@@ -172,33 +170,44 @@ const UsersPage = () => {
     }
   };
 
-  const handleRemoveRole = async (user: UserWithRole) => {
-    if (!user.role_id) return;
-    if (!confirm(`Tem certeza que deseja remover a permissão de ${user.full_name || 'este usuário'}?`)) return;
+  const handleDeleteUser = async (user: UserWithRole) => {
+    if (!confirm(`Tem certeza que deseja excluir ${user.full_name || 'este usuário'}? Esta ação não pode ser desfeita.`)) return;
 
+    setDeletingId(user.id);
     try {
-      const { error } = await supabase
-        .from('user_roles')
-        .delete()
-        .eq('id', user.role_id);
+      const { error } = await supabase.functions.invoke('delete-user', {
+        body: { userId: user.id },
+      });
 
       if (error) throw error;
-      toast({ title: 'Sucesso', description: 'Permissão removida!' });
+      toast({ title: 'Sucesso', description: 'Usuário excluído!' });
       fetchUsers();
     } catch (error) {
-      console.error('Error removing role:', error);
+      console.error('Error deleting user:', error);
       toast({
         title: 'Erro',
-        description: 'Não foi possível remover a permissão.',
+        description: 'Não foi possível excluir o usuário.',
         variant: 'destructive',
       });
+    } finally {
+      setDeletingId(null);
     }
+  };
+
+  const getInitials = (name: string | null) => {
+    if (!name) return '??';
+    return name
+      .split(' ')
+      .map(n => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
   };
 
   if (roleLoading) {
     return (
-      <div className="w-full px-4 sm:px-6 lg:px-8 py-8 max-w-[1920px] mx-auto">
-        <p className="text-muted-foreground">Carregando...</p>
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-8 max-w-[1920px] mx-auto flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -208,10 +217,10 @@ const UsersPage = () => {
   }
 
   return (
-    <div className="w-full px-4 sm:px-6 lg:px-8 py-8 max-w-[1920px] mx-auto">
-      <div className="flex items-center justify-between mb-8">
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-8 max-w-[1400px] mx-auto">
+      <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-semibold text-foreground tracking-tight">Usuários</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Usuários</h1>
           <p className="text-muted-foreground mt-1">Gerencie permissões e acessos</p>
         </div>
         <InviteUserDialog onSuccess={fetchUsers} />
@@ -221,120 +230,133 @@ const UsersPage = () => {
       <PendingUsersSection onApprovalChange={fetchUsers} />
 
       {/* Permissions legend */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-        <div className="border border-border rounded-lg p-4 bg-card">
-          <div className="flex items-center gap-2 mb-2">
-            <Shield className="w-5 h-5" />
-            <span className="font-semibold">Administrador</span>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Acesso total: usuários, produtos, estoque, pedidos e relatórios
-          </p>
-        </div>
-        <div className="border border-border rounded-lg p-4 bg-card">
-          <div className="flex items-center gap-2 mb-2">
-            <UserCog className="w-5 h-5" />
-            <span className="font-semibold">Gerente</span>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Produtos, estoque, pedidos e relatórios
-          </p>
-        </div>
-        <div className="border border-border rounded-lg p-4 bg-card">
-          <div className="flex items-center gap-2 mb-2">
-            <ShoppingBag className="w-5 h-5" />
-            <span className="font-semibold">Vendedor</span>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Visualizar produtos e gerenciar pedidos
-          </p>
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+        <Card className="border-rose-200 dark:border-rose-900/50">
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="p-2 rounded-lg bg-rose-100 dark:bg-rose-900/30">
+              <Shield className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+            </div>
+            <div>
+              <p className="font-semibold text-foreground">Administrador</p>
+              <p className="text-xs text-muted-foreground">Acesso total ao sistema</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-blue-200 dark:border-blue-900/50">
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
+              <UserCog className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div>
+              <p className="font-semibold text-foreground">Gerente</p>
+              <p className="text-xs text-muted-foreground">Produtos, estoque e relatórios</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-emerald-200 dark:border-emerald-900/50">
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
+              <ShoppingBag className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div>
+              <p className="font-semibold text-foreground">Vendedor</p>
+              <p className="text-xs text-muted-foreground">Visualizar e gerenciar pedidos</p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      <div className="border border-border rounded-xl overflow-x-auto bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-muted/50 hover:bg-muted/50">
-              <TableHead className="font-semibold">Usuário</TableHead>
-              <TableHead className="font-semibold">Permissão</TableHead>
-              <TableHead className="font-semibold">Cadastro</TableHead>
-              <TableHead className="font-semibold text-right">Ações</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={4} className="text-center py-12 text-muted-foreground">
-                  Carregando usuários...
-                </TableCell>
-              </TableRow>
-            ) : users.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={4} className="text-center py-12">
-                  <Users className="w-12 h-12 mx-auto text-muted-foreground/50 mb-3" />
-                  <p className="text-muted-foreground">Nenhum usuário encontrado</p>
-                </TableCell>
-              </TableRow>
-            ) : (
-              users.map((user) => (
-                <TableRow 
-                  key={user.id} 
-                  className="group cursor-pointer hover:bg-muted/50"
+      {/* Users list */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2">
+            <Users className="w-5 h-5" />
+            Usuários Ativos
+            <span className="ml-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-muted text-muted-foreground">
+              {users.length}
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : users.length === 0 ? (
+            <div className="text-center py-12">
+              <Users className="w-12 h-12 mx-auto text-muted-foreground/50 mb-3" />
+              <p className="text-muted-foreground">Nenhum usuário encontrado</p>
+            </div>
+          ) : (
+            <div className="grid gap-2">
+              {users.map((user) => (
+                <div
+                  key={user.id}
+                  className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50 cursor-pointer transition-colors group"
                   onClick={() => navigate(`/users/${user.id}`)}
                 >
-                  <TableCell>
-                    <div>
-                      <p className="font-medium text-foreground">{user.full_name || 'Sem nome'}</p>
-                      <p className="text-xs text-muted-foreground">ID: {user.id.slice(0, 8)}...</p>
+                  <div className="flex items-center gap-4 flex-1 min-w-0">
+                    <Avatar className="w-10 h-10 border">
+                      <AvatarImage src={user.avatar_url || undefined} />
+                      <AvatarFallback className="bg-muted text-muted-foreground text-sm font-medium">
+                        {getInitials(user.full_name)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-foreground truncate">
+                        {user.full_name || 'Sem nome'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Desde {new Date(user.created_at).toLocaleDateString('pt-BR')}
+                      </p>
                     </div>
-                  </TableCell>
-                  <TableCell>
-                    {user.role ? (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-foreground text-background">
-                        {roleIcons[user.role]}
-                        {roleLabels[user.role]}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground text-sm">Sem permissão</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">
-                    {new Date(user.created_at).toLocaleDateString('pt-BR')}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleEditRole(user);
-                        }}
-                        title="Editar permissão"
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </Button>
-                      {user.role && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRemoveRole(user);
-                          }}
-                          title="Remover permissão"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                    <div>
+                      {user.role ? (
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${roleColors[user.role]}`}>
+                          {roleIcons[user.role]}
+                          {roleLabels[user.role]}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">Sem permissão</span>
                       )}
                     </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+                  </div>
+                  <div className="flex items-center gap-1 ml-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEditRole(user);
+                      }}
+                      title="Editar permissão"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteUser(user);
+                      }}
+                      disabled={deletingId === user.id}
+                      title="Excluir usuário"
+                      className="hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      {deletingId === user.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Edit role dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -343,12 +365,22 @@ const UsersPage = () => {
             <DialogTitle>Editar Permissão</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 mt-4">
-            <div>
-              <p className="text-sm text-muted-foreground">Usuário</p>
-              <p className="font-medium">{editingUser?.full_name || 'Sem nome'}</p>
+            <div className="flex items-center gap-3">
+              <Avatar className="w-12 h-12">
+                <AvatarImage src={editingUser?.avatar_url || undefined} />
+                <AvatarFallback className="bg-muted">
+                  {getInitials(editingUser?.full_name || null)}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <p className="font-medium">{editingUser?.full_name || 'Sem nome'}</p>
+                <p className="text-sm text-muted-foreground">
+                  {editingUser?.role ? roleLabels[editingUser.role] : 'Sem permissão'}
+                </p>
+              </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="role">Permissão</Label>
+              <Label htmlFor="role">Nova Permissão</Label>
               <Select value={selectedRole} onValueChange={setSelectedRole}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione uma permissão" />
