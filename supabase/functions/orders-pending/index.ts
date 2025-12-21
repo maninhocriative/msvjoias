@@ -6,11 +6,28 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Número de WhatsApp para receber notificações de novos pedidos
-const NOTIFICATION_PHONE = "5592984145531";
+// Função para buscar número de notificação das configurações
+async function getNotificationPhone(supabase: any): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .from("store_settings")
+      .select("value")
+      .eq("key", "notification_whatsapp")
+      .maybeSingle();
+    
+    if (error || !data) {
+      console.log("Número de notificação não configurado");
+      return null;
+    }
+    return (data as { value: string }).value;
+  } catch (error) {
+    console.error("Erro ao buscar número de notificação:", error);
+    return null;
+  }
+}
 
 // Função para enviar notificação via ZAPI
-async function sendNotification(message: string) {
+async function sendNotification(message: string, notificationPhone: string) {
   try {
     const ZAPI_INSTANCE_ID = Deno.env.get("ZAPI_INSTANCE_ID");
     const ZAPI_TOKEN = Deno.env.get("ZAPI_TOKEN");
@@ -34,13 +51,13 @@ async function sendNotification(message: string) {
       method: "POST",
       headers,
       body: JSON.stringify({
-        phone: NOTIFICATION_PHONE,
+        phone: notificationPhone,
         message,
       }),
     });
 
     const result = await response.json();
-    console.log("Notificação enviada:", result);
+    console.log("Notificação enviada para", notificationPhone, ":", result);
   } catch (error) {
     console.error("Erro ao enviar notificação:", error);
   }
@@ -160,11 +177,14 @@ serve(async (req) => {
 
       // Enviar notificação apenas para novos pedidos
       if (isNewOrder && result.data) {
-        const formattedPhone = phone.replace(/(\d{2})(\d{2})(\d{5})(\d{4})/, "+$1 ($2) $3-$4");
-        const notificationMessage = `🔔 *NOVO PEDIDO PENDENTE*\n\n📱 Cliente: ${formattedPhone}\n📦 Produto: ${selected_name || selected_sku || "Não informado"}\n${selected_size_1 ? `📏 Tamanho: ${selected_size_1}${selected_size_2 ? ` / ${selected_size_2}` : ""}\n` : ""}${price_total ? `💰 Valor: R$ ${Number(price_total).toFixed(2).replace(".", ",")}\n` : ""}\n📝 Resumo:\n${summary_text}\n\n🔗 Acesse o CRM para atender!`;
-        
-        // Enviar notificação em background para não atrasar a resposta
-        sendNotification(notificationMessage);
+        const notificationPhone = await getNotificationPhone(supabase);
+        if (notificationPhone) {
+          const formattedPhone = phone.replace(/(\d{2})(\d{2})(\d{5})(\d{4})/, "+$1 ($2) $3-$4");
+          const notificationMessage = `🔔 *NOVO PEDIDO PENDENTE*\n\n📱 Cliente: ${formattedPhone}\n📦 Produto: ${selected_name || selected_sku || "Não informado"}\n${selected_size_1 ? `📏 Tamanho: ${selected_size_1}${selected_size_2 ? ` / ${selected_size_2}` : ""}\n` : ""}${price_total ? `💰 Valor: R$ ${Number(price_total).toFixed(2).replace(".", ",")}\n` : ""}\n📝 Resumo:\n${summary_text}\n\n🔗 Acesse o CRM para atender!`;
+          
+          // Enviar notificação em background para não atrasar a resposta
+          sendNotification(notificationMessage, notificationPhone);
+        }
       }
 
       return new Response(
