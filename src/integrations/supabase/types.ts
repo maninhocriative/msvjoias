@@ -14,6 +14,98 @@ export type Database = {
   }
   public: {
     Tables: {
+      catalog_items_sent: {
+        Row: {
+          created_at: string
+          id: string
+          image_url: string | null
+          media_type: string
+          media_url: string
+          name: string
+          position: number
+          price: number | null
+          price_formatted: string | null
+          session_id: string
+          sizes: Json | null
+          sku: string
+          stock_total: number | null
+          video_url: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          media_type: string
+          media_url: string
+          name: string
+          position: number
+          price?: number | null
+          price_formatted?: string | null
+          session_id: string
+          sizes?: Json | null
+          sku: string
+          stock_total?: number | null
+          video_url?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          media_type?: string
+          media_url?: string
+          name?: string
+          position?: number
+          price?: number | null
+          price_formatted?: string | null
+          session_id?: string
+          sizes?: Json | null
+          sku?: string
+          stock_total?: number | null
+          video_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catalog_items_sent_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "catalog_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      catalog_sessions: {
+        Row: {
+          budget_max: number | null
+          created_at: string
+          id: string
+          intent: string | null
+          line: string
+          phone: string
+          preferred_color: string | null
+          session_status: string
+        }
+        Insert: {
+          budget_max?: number | null
+          created_at?: string
+          id?: string
+          intent?: string | null
+          line: string
+          phone: string
+          preferred_color?: string | null
+          session_status?: string
+        }
+        Update: {
+          budget_max?: number | null
+          created_at?: string
+          id?: string
+          intent?: string | null
+          line?: string
+          phone?: string
+          preferred_color?: string | null
+          session_status?: string
+        }
+        Relationships: []
+      }
       conversation_events: {
         Row: {
           direction: string
@@ -272,44 +364,80 @@ export type Database = {
       }
       orders: {
         Row: {
+          assigned_to: string | null
           created_at: string
           customer_name: string | null
           customer_phone: string
+          delivery_address: string | null
+          delivery_method: string | null
           external_reference: string | null
           id: string
+          notes: string | null
+          payment_method: string | null
           product_id: string | null
           quantity: number
+          selected_name: string | null
+          selected_size_1: string | null
+          selected_size_2: string | null
+          selected_sku: string | null
+          session_id: string | null
           source: string | null
           status: string
+          summary_text: string | null
           total_price: number
+          unit_or_pair: string | null
           unit_price: number
           updated_at: string
         }
         Insert: {
+          assigned_to?: string | null
           created_at?: string
           customer_name?: string | null
           customer_phone: string
+          delivery_address?: string | null
+          delivery_method?: string | null
           external_reference?: string | null
           id?: string
+          notes?: string | null
+          payment_method?: string | null
           product_id?: string | null
           quantity?: number
+          selected_name?: string | null
+          selected_size_1?: string | null
+          selected_size_2?: string | null
+          selected_sku?: string | null
+          session_id?: string | null
           source?: string | null
           status?: string
+          summary_text?: string | null
           total_price: number
+          unit_or_pair?: string | null
           unit_price: number
           updated_at?: string
         }
         Update: {
+          assigned_to?: string | null
           created_at?: string
           customer_name?: string | null
           customer_phone?: string
+          delivery_address?: string | null
+          delivery_method?: string | null
           external_reference?: string | null
           id?: string
+          notes?: string | null
+          payment_method?: string | null
           product_id?: string | null
           quantity?: number
+          selected_name?: string | null
+          selected_size_1?: string | null
+          selected_size_2?: string | null
+          selected_sku?: string | null
+          session_id?: string | null
           source?: string | null
           status?: string
+          summary_text?: string | null
           total_price?: number
+          unit_or_pair?: string | null
           unit_price?: number
           updated_at?: string
         }
@@ -319,6 +447,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "catalog_sessions"
             referencedColumns: ["id"]
           },
         ]
