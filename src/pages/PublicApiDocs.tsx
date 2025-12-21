@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Copy, Check, Database, Send, ShoppingCart, Layers, MessageSquare, Package } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Copy, Check, Database, Send, ShoppingCart, Layers, MessageSquare, Package, ExternalLink, Zap, BookOpen } from 'lucide-react';
 
 const BASE_URL = 'https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co';
 
@@ -15,156 +17,198 @@ const PublicApiDocs = () => {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const CodeBlock = ({ code, id }: { code: string; id: string }) => (
+  const CodeBlock = ({ code, id, language = 'json' }: { code: string; id: string; language?: string }) => (
     <div className="relative group">
-      <pre className="bg-zinc-900 text-zinc-100 p-4 rounded-lg text-xs overflow-x-auto">
-        <code>{code}</code>
+      <pre className="bg-slate-900 text-slate-100 p-4 rounded-xl text-xs overflow-x-auto border border-slate-700/50 shadow-lg">
+        <code className={`language-${language}`}>{code}</code>
       </pre>
       <Button
         variant="ghost"
         size="icon"
-        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-zinc-400 hover:text-white"
+        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-white hover:bg-slate-700"
         onClick={() => copyToClipboard(code, id)}
       >
-        {copiedId === id ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+        {copiedId === id ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
       </Button>
     </div>
   );
 
+  const ParamTable = ({ params }: { params: { name: string; type: string; required?: boolean; desc: string }[] }) => (
+    <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+            <th className="text-left p-3 font-semibold text-slate-700 dark:text-slate-300">Campo</th>
+            <th className="text-left p-3 font-semibold text-slate-700 dark:text-slate-300">Tipo</th>
+            <th className="text-left p-3 font-semibold text-slate-700 dark:text-slate-300">Obrigatório</th>
+            <th className="text-left p-3 font-semibold text-slate-700 dark:text-slate-300">Descrição</th>
+          </tr>
+        </thead>
+        <tbody className="text-slate-600 dark:text-slate-400">
+          {params.map((param, i) => (
+            <tr key={param.name} className={i % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50 dark:bg-slate-800/50'}>
+              <td className="p-3"><code className="bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded text-xs font-mono">{param.name}</code></td>
+              <td className="p-3"><Badge variant="outline" className="text-xs">{param.type}</Badge></td>
+              <td className="p-3">{param.required ? <span className="text-green-600 dark:text-green-400">✓ Sim</span> : <span className="text-slate-400">Não</span>}</td>
+              <td className="p-3">{param.desc}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const EndpointCard = ({ method, path, description, children }: { method: string; path: string; description: string; children: React.ReactNode }) => (
+    <Card className="border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-shadow">
+      <CardHeader className="pb-4">
+        <div className="flex items-center gap-3 flex-wrap">
+          <Badge className={method === 'GET' ? 'bg-emerald-500 hover:bg-emerald-600' : method === 'POST' ? 'bg-blue-500 hover:bg-blue-600' : 'bg-purple-500 hover:bg-purple-600'}>
+            {method}
+          </Badge>
+          <code className="text-base font-mono font-semibold text-slate-800 dark:text-slate-200">{path}</code>
+        </div>
+        <CardDescription className="mt-2 text-slate-600 dark:text-slate-400">
+          {description}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {children}
+      </CardContent>
+    </Card>
+  );
+
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <div className="max-w-5xl mx-auto p-6 space-y-8">
-        {/* Header */}
-        <div className="border-b border-zinc-800 pb-6">
-          <h1 className="text-4xl font-bold text-white mb-2">📚 API Documentation</h1>
-          <p className="text-zinc-400 text-lg">
-            Documentação completa das APIs do CRM Acium para integração com automações (FiqOn, n8n, Make, Zapier)
-          </p>
-          <div className="mt-4 p-4 bg-zinc-900 rounded-lg border border-zinc-800">
-            <p className="text-sm text-zinc-300">
-              <strong>Base URL:</strong> <code className="bg-zinc-800 px-2 py-1 rounded">{BASE_URL}</code>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+      {/* Header */}
+      <header className="border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm sticky top-0 z-50">
+        <div className="max-w-6xl mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl flex items-center justify-center shadow-lg shadow-amber-500/20">
+                <BookOpen className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-slate-900 dark:text-white">Acium CRM API</h1>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Documentação v1.0</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Button variant="outline" size="sm" className="gap-2" asChild>
+                <a href="/api-docs.txt" target="_blank">
+                  <ExternalLink className="w-4 h-4" />
+                  <span className="hidden sm:inline">Texto Puro</span>
+                </a>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-6xl mx-auto px-6 py-8">
+        {/* Hero Section */}
+        <div className="mb-10">
+          <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 rounded-2xl p-8 text-white shadow-xl shadow-amber-500/20">
+            <h2 className="text-3xl font-bold mb-3">API Documentation</h2>
+            <p className="text-amber-100 mb-6 max-w-2xl">
+              Integre seu catálogo com automações externas (FiqOn, n8n, Make, Zapier). 
+              Todas as APIs estão prontas para uso imediato.
             </p>
+            <div className="flex flex-wrap gap-3">
+              <div className="bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2 flex items-center gap-2">
+                <Zap className="w-4 h-4" />
+                <span className="text-sm font-medium">Base URL:</span>
+                <code className="text-xs bg-white/20 px-2 py-1 rounded">{BASE_URL}</code>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Table of Contents */}
-        <Card className="bg-zinc-900 border-zinc-800">
-          <CardHeader>
-            <CardTitle className="text-white">📋 Índice de APIs</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <h4 className="font-semibold text-zinc-300 flex items-center gap-2"><Database className="w-4 h-4" /> Catálogo de Produtos</h4>
-              <ul className="text-sm text-zinc-400 space-y-1 ml-6">
-                <li>• GET /catalog-api - Buscar produtos</li>
-              </ul>
-            </div>
-            <div className="space-y-2">
-              <h4 className="font-semibold text-zinc-300 flex items-center gap-2"><Layers className="w-4 h-4" /> Sessões de Catálogo</h4>
-              <ul className="text-sm text-zinc-400 space-y-1 ml-6">
-                <li>• POST /catalog-session - Criar sessão</li>
-                <li>• POST /catalog-item - Registrar item enviado</li>
-                <li>• GET /catalog-latest - Buscar sessão ativa</li>
-              </ul>
-            </div>
-            <div className="space-y-2">
-              <h4 className="font-semibold text-zinc-300 flex items-center gap-2"><ShoppingCart className="w-4 h-4" /> Pedidos</h4>
-              <ul className="text-sm text-zinc-400 space-y-1 ml-6">
-                <li>• POST /orders-pending - Criar/atualizar pedido</li>
-                <li>• GET /orders-pending - Listar pedidos</li>
-                <li>• GET /order-detail - Detalhe do pedido</li>
-              </ul>
-            </div>
-            <div className="space-y-2">
-              <h4 className="font-semibold text-zinc-300 flex items-center gap-2"><Send className="w-4 h-4" /> Mensagens</h4>
-              <ul className="text-sm text-zinc-400 space-y-1 ml-6">
-                <li>• POST /automation-send - Enviar mensagem</li>
-                <li>• POST /automation-webhook - Receber mensagem</li>
-              </ul>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* ==================== CATALOG API ==================== */}
-        <div id="catalog-api">
-          <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
-            <Database className="w-6 h-6" /> 1. Catálogo de Produtos
-          </h2>
-
-          <Card className="bg-zinc-900 border-zinc-800">
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <Badge className="bg-green-600">GET</Badge>
-                <CardTitle className="text-lg font-mono text-white">/catalog-api</CardTitle>
+        {/* Quick Links */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+          {[
+            { icon: Database, label: 'Catálogo', color: 'from-emerald-500 to-teal-600', tab: 'catalog' },
+            { icon: Layers, label: 'Sessões', color: 'from-blue-500 to-indigo-600', tab: 'sessions' },
+            { icon: ShoppingCart, label: 'Pedidos', color: 'from-purple-500 to-pink-600', tab: 'orders' },
+            { icon: MessageSquare, label: 'Mensagens', color: 'from-orange-500 to-red-600', tab: 'messages' },
+          ].map((item) => (
+            <a
+              key={item.tab}
+              href={`#${item.tab}`}
+              className="group bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700 hover:shadow-lg transition-all hover:-translate-y-1"
+            >
+              <div className={`w-10 h-10 bg-gradient-to-br ${item.color} rounded-lg flex items-center justify-center mb-3 shadow-lg group-hover:scale-110 transition-transform`}>
+                <item.icon className="w-5 h-5 text-white" />
               </div>
-              <CardDescription className="text-zinc-400">
-                Retorna produtos do catálogo com fotos, vídeos, preços e estoque
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
+              <h3 className="font-semibold text-slate-800 dark:text-slate-200">{item.label}</h3>
+            </a>
+          ))}
+        </div>
+
+        {/* API Documentation Tabs */}
+        <Tabs defaultValue="catalog" className="space-y-8">
+          <TabsList className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-1 rounded-xl flex-wrap h-auto gap-1">
+            <TabsTrigger value="catalog" className="gap-2 data-[state=active]:bg-emerald-500 data-[state=active]:text-white rounded-lg">
+              <Database className="w-4 h-4" />
+              Catálogo
+            </TabsTrigger>
+            <TabsTrigger value="sessions" className="gap-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white rounded-lg">
+              <Layers className="w-4 h-4" />
+              Sessões
+            </TabsTrigger>
+            <TabsTrigger value="orders" className="gap-2 data-[state=active]:bg-purple-500 data-[state=active]:text-white rounded-lg">
+              <ShoppingCart className="w-4 h-4" />
+              Pedidos
+            </TabsTrigger>
+            <TabsTrigger value="messages" className="gap-2 data-[state=active]:bg-orange-500 data-[state=active]:text-white rounded-lg">
+              <MessageSquare className="w-4 h-4" />
+              Mensagens
+            </TabsTrigger>
+            <TabsTrigger value="workflow" className="gap-2 data-[state=active]:bg-pink-500 data-[state=active]:text-white rounded-lg">
+              <Package className="w-4 h-4" />
+              Fluxo
+            </TabsTrigger>
+          </TabsList>
+
+          {/* CATALOG TAB */}
+          <TabsContent value="catalog" id="catalog" className="space-y-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center shadow-lg">
+                <Database className="w-6 h-6 text-white" />
+              </div>
               <div>
-                <h4 className="font-semibold mb-2 text-white">URL Completa</h4>
+                <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Catálogo de Produtos</h2>
+                <p className="text-slate-600 dark:text-slate-400">Busque produtos com fotos, vídeos, preços e estoque</p>
+              </div>
+            </div>
+
+            <EndpointCard method="GET" path="/catalog-api" description="Retorna produtos do catálogo filtrados por diversos parâmetros">
+              <div>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">URL Completa</h4>
                 <CodeBlock code={`${BASE_URL}/catalog-api`} id="catalog-url" />
               </div>
 
               <div>
-                <h4 className="font-semibold mb-3 text-white">Parâmetros (Query String)</h4>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-zinc-700">
-                        <th className="text-left p-2 text-zinc-300">Parâmetro</th>
-                        <th className="text-left p-2 text-zinc-300">Tipo</th>
-                        <th className="text-left p-2 text-zinc-300">Descrição</th>
-                        <th className="text-left p-2 text-zinc-300">Exemplo</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-zinc-400">
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>sku</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">Busca produto pelo SKU exato</td>
-                        <td className="p-2"><code>?sku=CAM-001</code></td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>product_id</code></td>
-                        <td className="p-2">uuid</td>
-                        <td className="p-2">Busca produto pelo ID</td>
-                        <td className="p-2"><code>?product_id=abc-123</code></td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>category</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">Filtra por categoria (busca parcial)</td>
-                        <td className="p-2"><code>?category=Camisetas</code></td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>search</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">Busca em nome, descrição e SKU</td>
-                        <td className="p-2"><code>?search=branco</code></td>
-                      </tr>
-                      <tr>
-                        <td className="p-2"><code>only_available</code></td>
-                        <td className="p-2">boolean</td>
-                        <td className="p-2">Retorna apenas produtos com estoque</td>
-                        <td className="p-2"><code>?only_available=true</code></td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">Parâmetros (Query String)</h4>
+                <ParamTable params={[
+                  { name: 'sku', type: 'string', desc: 'Busca produto pelo SKU exato' },
+                  { name: 'product_id', type: 'uuid', desc: 'Busca produto pelo ID' },
+                  { name: 'category', type: 'string', desc: 'Filtra por categoria (busca parcial)' },
+                  { name: 'search', type: 'string', desc: 'Busca em nome, descrição e SKU' },
+                  { name: 'only_available', type: 'boolean', desc: 'Retorna apenas produtos com estoque' },
+                ]} />
               </div>
 
               <div>
-                <h4 className="font-semibold mb-2 text-white">Exemplo de Requisição (cURL)</h4>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">Exemplo cURL</h4>
                 <CodeBlock
                   id="catalog-curl"
+                  language="bash"
                   code={`curl -X GET "${BASE_URL}/catalog-api?category=Aliancas&only_available=true"`}
                 />
               </div>
 
               <div>
-                <h4 className="font-semibold mb-2 text-white">Resposta de Sucesso (Lista)</h4>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">Resposta de Sucesso</h4>
                 <CodeBlock
                   id="catalog-response"
                   code={`{
@@ -175,836 +219,248 @@ const PublicApiDocs = () => {
       "id": "uuid-do-produto",
       "sku": "E0612040",
       "name": "Abaulada Diamantada Dourada 3mm",
-      "description": "Aliança em ouro 18k",
       "price": 419.00,
       "price_formatted": "R$ 419,00",
       "category": "Aliancas",
       "image_url": "https://...",
       "video_url": "https://...",
-      "images": ["https://foto1.jpg", "https://foto2.jpg"],
-      "all_media": [
-        { "type": "image", "url": "https://...", "is_main": true },
-        { "type": "video", "url": "https://..." }
-      ],
       "total_stock": 25,
       "available": true,
       "sizes": [
         { "size": "36", "stock": 10 },
         { "size": "38", "stock": 15 }
-      ],
-      "all_sizes": [
-        { "size": "36", "stock": 10, "available": true },
-        { "size": "38", "stock": 15, "available": true },
-        { "size": "40", "stock": 0, "available": false }
       ]
     }
   ]
 }`}
                 />
               </div>
-            </CardContent>
-          </Card>
-        </div>
+            </EndpointCard>
+          </TabsContent>
 
-        {/* ==================== CATALOG SESSIONS ==================== */}
-        <div id="catalog-sessions">
-          <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
-            <Layers className="w-6 h-6" /> 2. Sessões de Catálogo
-          </h2>
-          <p className="text-zinc-400 mb-4">
-            Rastreia quais produtos foram enviados ao cliente via WhatsApp. Permite interpretar referências como "o segundo", "o do vídeo".
-          </p>
-
-          {/* POST /catalog-session */}
-          <Card className="bg-zinc-900 border-zinc-800 mb-4">
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <Badge className="bg-blue-600">POST</Badge>
-                <CardTitle className="text-lg font-mono text-white">/catalog-session</CardTitle>
+          {/* SESSIONS TAB */}
+          <TabsContent value="sessions" id="sessions" className="space-y-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+                <Layers className="w-6 h-6 text-white" />
               </div>
-              <CardDescription className="text-zinc-400">
-                Cria uma nova sessão de catálogo ao iniciar envio de produtos
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
               <div>
-                <h4 className="font-semibold mb-2 text-white">URL</h4>
+                <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Sessões de Catálogo</h2>
+                <p className="text-slate-600 dark:text-slate-400">Rastreie produtos enviados ao cliente para referências como "o segundo"</p>
+              </div>
+            </div>
+
+            <EndpointCard method="POST" path="/catalog-session" description="Cria uma nova sessão ao iniciar envio de produtos">
+              <div>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">URL</h4>
                 <CodeBlock code={`${BASE_URL}/catalog-session`} id="session-url" />
               </div>
 
               <div>
-                <h4 className="font-semibold mb-3 text-white">Corpo da Requisição (JSON)</h4>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-zinc-700">
-                        <th className="text-left p-2 text-zinc-300">Campo</th>
-                        <th className="text-left p-2 text-zinc-300">Tipo</th>
-                        <th className="text-left p-2 text-zinc-300">Obrigatório</th>
-                        <th className="text-left p-2 text-zinc-300">Descrição</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-zinc-400">
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>phone</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">✅ Sim</td>
-                        <td className="p-2">Telefone E.164 sem + (ex: 5592999999999)</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>line</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">✅ Sim</td>
-                        <td className="p-2">Linha do catálogo (ex: tungstenio, oui)</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>intent</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">❌ Não</td>
-                        <td className="p-2">Intenção do cliente (ex: aliancas, anel)</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>preferred_color</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">❌ Não</td>
-                        <td className="p-2">Cor preferida (ex: dourada, prata)</td>
-                      </tr>
-                      <tr>
-                        <td className="p-2"><code>budget_max</code></td>
-                        <td className="p-2">number</td>
-                        <td className="p-2">❌ Não</td>
-                        <td className="p-2">Orçamento máximo do cliente</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">Corpo da Requisição</h4>
+                <ParamTable params={[
+                  { name: 'phone', type: 'string', required: true, desc: 'Telefone E.164 sem + (ex: 5592999999999)' },
+                  { name: 'line', type: 'string', required: true, desc: 'Linha do catálogo (ex: tungstenio, oui)' },
+                  { name: 'intent', type: 'string', desc: 'Intenção do cliente (ex: aliancas)' },
+                  { name: 'preferred_color', type: 'string', desc: 'Cor preferida (ex: dourada)' },
+                  { name: 'budget_max', type: 'number', desc: 'Orçamento máximo' },
+                ]} />
               </div>
 
               <div>
-                <h4 className="font-semibold mb-2 text-white">Exemplo de Requisição</h4>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">Exemplo</h4>
                 <CodeBlock
                   id="session-request"
-                  code={`curl -X POST "${BASE_URL}/catalog-session" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "phone": "5592999999999",
-    "line": "tungstenio",
-    "intent": "aliancas",
-    "preferred_color": "dourada",
-    "budget_max": 500
-  }'`}
-                />
-              </div>
-
-              <div>
-                <h4 className="font-semibold mb-2 text-white">Resposta de Sucesso</h4>
-                <CodeBlock
-                  id="session-response"
                   code={`{
-  "success": true,
-  "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  "phone": "5592999999999",
+  "line": "tungstenio",
+  "intent": "aliancas",
+  "preferred_color": "dourada",
+  "budget_max": 500
 }`}
                 />
               </div>
-            </CardContent>
-          </Card>
 
-          {/* POST /catalog-item */}
-          <Card className="bg-zinc-900 border-zinc-800 mb-4">
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <Badge className="bg-blue-600">POST</Badge>
-                <CardTitle className="text-lg font-mono text-white">/catalog-item</CardTitle>
-              </div>
-              <CardDescription className="text-zinc-400">
-                Registra um item enviado dentro da sessão (chamar para cada produto enviado)
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
               <div>
-                <h4 className="font-semibold mb-2 text-white">URL</h4>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">Resposta</h4>
+                <CodeBlock id="session-response" code={`{ "success": true, "session_id": "uuid-da-sessao" }`} />
+              </div>
+            </EndpointCard>
+
+            <EndpointCard method="POST" path="/catalog-item" description="Registra cada item enviado dentro da sessão">
+              <div>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">URL</h4>
                 <CodeBlock code={`${BASE_URL}/catalog-item`} id="item-url" />
               </div>
 
               <div>
-                <h4 className="font-semibold mb-3 text-white">Corpo da Requisição (JSON)</h4>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-zinc-700">
-                        <th className="text-left p-2 text-zinc-300">Campo</th>
-                        <th className="text-left p-2 text-zinc-300">Tipo</th>
-                        <th className="text-left p-2 text-zinc-300">Obrigatório</th>
-                        <th className="text-left p-2 text-zinc-300">Descrição</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-zinc-400">
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>session_id</code></td>
-                        <td className="p-2">uuid</td>
-                        <td className="p-2">✅ Sim</td>
-                        <td className="p-2">ID retornado pelo /catalog-session</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>position</code></td>
-                        <td className="p-2">number</td>
-                        <td className="p-2">✅ Sim</td>
-                        <td className="p-2">Posição do item (1, 2, 3...)</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>sku</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">✅ Sim</td>
-                        <td className="p-2">Código SKU do produto</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>name</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">✅ Sim</td>
-                        <td className="p-2">Nome do produto</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>media_type</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">✅ Sim</td>
-                        <td className="p-2">"image" ou "video"</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>media_url</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">✅ Sim</td>
-                        <td className="p-2">URL da mídia enviada ao cliente</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>price</code></td>
-                        <td className="p-2">number</td>
-                        <td className="p-2">❌ Não</td>
-                        <td className="p-2">Preço do produto</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>price_formatted</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">❌ Não</td>
-                        <td className="p-2">Preço formatado (R$ 419,00)</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>sizes</code></td>
-                        <td className="p-2">array</td>
-                        <td className="p-2">❌ Não</td>
-                        <td className="p-2">Array de tamanhos ["36", "38"]</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>image_url</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">❌ Não</td>
-                        <td className="p-2">URL da imagem principal</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>video_url</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">❌ Não</td>
-                        <td className="p-2">URL do vídeo</td>
-                      </tr>
-                      <tr>
-                        <td className="p-2"><code>stock_total</code></td>
-                        <td className="p-2">number</td>
-                        <td className="p-2">❌ Não</td>
-                        <td className="p-2">Estoque total disponível</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">Corpo da Requisição</h4>
+                <ParamTable params={[
+                  { name: 'session_id', type: 'uuid', required: true, desc: 'ID retornado pelo /catalog-session' },
+                  { name: 'position', type: 'number', required: true, desc: 'Posição do item (1, 2, 3...)' },
+                  { name: 'sku', type: 'string', required: true, desc: 'Código SKU do produto' },
+                  { name: 'name', type: 'string', required: true, desc: 'Nome do produto' },
+                  { name: 'media_type', type: 'string', required: true, desc: '"image" ou "video"' },
+                  { name: 'media_url', type: 'string', required: true, desc: 'URL da mídia enviada' },
+                  { name: 'price', type: 'number', desc: 'Preço do produto' },
+                  { name: 'sizes', type: 'array', desc: 'Array de tamanhos ["36", "38"]' },
+                ]} />
               </div>
 
               <div>
-                <h4 className="font-semibold mb-2 text-white">Exemplo de Requisição</h4>
-                <CodeBlock
-                  id="item-request"
-                  code={`curl -X POST "${BASE_URL}/catalog-item" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-    "position": 1,
-    "sku": "E0612040",
-    "name": "Abaulada Diamantada Dourada 3mm",
-    "price": 419,
-    "price_formatted": "R$ 419,00",
-    "sizes": ["36", "38"],
-    "image_url": "https://exemplo.com/foto.jpg",
-    "media_type": "image",
-    "media_url": "https://exemplo.com/foto.jpg",
-    "stock_total": 15
-  }'`}
-                />
-              </div>
-
-              <div>
-                <h4 className="font-semibold mb-2 text-white">Resposta de Sucesso</h4>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">Resposta</h4>
                 <CodeBlock id="item-response" code={`{ "success": true }`} />
               </div>
-            </CardContent>
-          </Card>
+            </EndpointCard>
 
-          {/* GET /catalog-latest */}
-          <Card className="bg-zinc-900 border-zinc-800">
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <Badge className="bg-green-600">GET</Badge>
-                <CardTitle className="text-lg font-mono text-white">/catalog-latest</CardTitle>
-              </div>
-              <CardDescription className="text-zinc-400">
-                Retorna a sessão ativa mais recente e seus itens (para interpretar "o segundo", "o do vídeo")
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
+            <EndpointCard method="GET" path="/catalog-latest" description="Retorna sessão ativa e itens para interpretar referências">
               <div>
-                <h4 className="font-semibold mb-2 text-white">URL</h4>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">URL</h4>
                 <CodeBlock code={`${BASE_URL}/catalog-latest?phone=5592999999999&line=tungstenio`} id="latest-url" />
               </div>
 
               <div>
-                <h4 className="font-semibold mb-3 text-white">Parâmetros (Query String)</h4>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-zinc-700">
-                        <th className="text-left p-2 text-zinc-300">Parâmetro</th>
-                        <th className="text-left p-2 text-zinc-300">Tipo</th>
-                        <th className="text-left p-2 text-zinc-300">Obrigatório</th>
-                        <th className="text-left p-2 text-zinc-300">Descrição</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-zinc-400">
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>phone</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">✅ Sim</td>
-                        <td className="p-2">Telefone E.164 sem +</td>
-                      </tr>
-                      <tr>
-                        <td className="p-2"><code>line</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">✅ Sim</td>
-                        <td className="p-2">Linha do catálogo</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">Parâmetros</h4>
+                <ParamTable params={[
+                  { name: 'phone', type: 'string', required: true, desc: 'Telefone E.164 sem +' },
+                  { name: 'line', type: 'string', required: true, desc: 'Linha do catálogo' },
+                ]} />
               </div>
 
               <div>
-                <h4 className="font-semibold mb-2 text-white">Exemplo de Requisição</h4>
-                <CodeBlock
-                  id="latest-curl"
-                  code={`curl -X GET "${BASE_URL}/catalog-latest?phone=5592999999999&line=tungstenio"`}
-                />
-              </div>
-
-              <div>
-                <h4 className="font-semibold mb-2 text-white">Resposta de Sucesso</h4>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">Resposta</h4>
                 <CodeBlock
                   id="latest-response"
                   code={`{
   "success": true,
-  "session": {
-    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-    "phone": "5592999999999",
-    "line": "tungstenio",
-    "intent": "aliancas",
-    "preferred_color": "dourada",
-    "budget_max": 500,
-    "created_at": "2024-01-15T10:30:00Z"
-  },
+  "session": { "id": "...", "phone": "...", "line": "...", "intent": "..." },
   "items": [
-    {
-      "position": 1,
-      "sku": "E0612040",
-      "name": "Abaulada Diamantada Dourada 3mm",
-      "media_type": "image",
-      "media_url": "https://exemplo.com/foto1.jpg",
-      "sizes": ["36", "38"],
-      "price": 419,
-      "price_formatted": "R$ 419,00"
-    },
-    {
-      "position": 2,
-      "sku": "E0612041",
-      "name": "Reta Polida Prata 4mm",
-      "media_type": "video",
-      "media_url": "https://exemplo.com/video.mp4",
-      "sizes": ["36", "40"],
-      "price": 350,
-      "price_formatted": "R$ 350,00"
-    }
+    { "position": 1, "sku": "E0612040", "name": "...", "media_type": "image" },
+    { "position": 2, "sku": "E0612041", "name": "...", "media_type": "video" }
   ]
 }`}
                 />
               </div>
-            </CardContent>
-          </Card>
-        </div>
+            </EndpointCard>
+          </TabsContent>
 
-        {/* ==================== ORDERS API ==================== */}
-        <div id="orders-api">
-          <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
-            <ShoppingCart className="w-6 h-6" /> 3. Pedidos Pendentes
-          </h2>
-          <p className="text-zinc-400 mb-4">
-            Gerencia pedidos que estão quase fechando. Quando o cliente escolhe produto, tamanho e forma de pagamento, cria-se um pedido pendente para o atendente humano finalizar.
-          </p>
-
-          {/* POST /orders-pending */}
-          <Card className="bg-zinc-900 border-zinc-800 mb-4">
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <Badge className="bg-blue-600">POST</Badge>
-                <CardTitle className="text-lg font-mono text-white">/orders-pending</CardTitle>
+          {/* ORDERS TAB */}
+          <TabsContent value="orders" id="orders" className="space-y-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl flex items-center justify-center shadow-lg">
+                <ShoppingCart className="w-6 h-6 text-white" />
               </div>
-              <CardDescription className="text-zinc-400">
-                Cria ou atualiza um pedido pendente (UPSERT: se existir pedido nas últimas 6h, atualiza)
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
               <div>
-                <h4 className="font-semibold mb-2 text-white">URL</h4>
-                <CodeBlock code={`${BASE_URL}/orders-pending`} id="orders-post-url" />
+                <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Pedidos Pendentes</h2>
+                <p className="text-slate-600 dark:text-slate-400">Gerencie pedidos prontos para fechamento pelo atendente</p>
+              </div>
+            </div>
+
+            <EndpointCard method="POST" path="/orders-pending" description="Cria ou atualiza pedido pendente (UPSERT: atualiza se existir nas últimas 6h)">
+              <div>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">URL</h4>
+                <CodeBlock code={`${BASE_URL}/orders-pending`} id="orders-url" />
               </div>
 
               <div>
-                <h4 className="font-semibold mb-3 text-white">Corpo da Requisição (JSON)</h4>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-zinc-700">
-                        <th className="text-left p-2 text-zinc-300">Campo</th>
-                        <th className="text-left p-2 text-zinc-300">Tipo</th>
-                        <th className="text-left p-2 text-zinc-300">Obrigatório</th>
-                        <th className="text-left p-2 text-zinc-300">Descrição</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-zinc-400">
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>phone</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">✅ Sim</td>
-                        <td className="p-2">Telefone E.164 sem +</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>summary_text</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">✅ Sim</td>
-                        <td className="p-2">Resumo do pedido para atendente</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>session_id</code></td>
-                        <td className="p-2">uuid</td>
-                        <td className="p-2">❌ Não</td>
-                        <td className="p-2">ID da sessão de catálogo</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>selected_sku</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">❌ Não</td>
-                        <td className="p-2">SKU do produto escolhido</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>selected_name</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">❌ Não</td>
-                        <td className="p-2">Nome do produto escolhido</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>selected_size_1</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">❌ Não</td>
-                        <td className="p-2">Tamanho 1 (ex: "18")</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>selected_size_2</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">❌ Não</td>
-                        <td className="p-2">Tamanho 2 para par (ex: "20")</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>unit_or_pair</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">❌ Não</td>
-                        <td className="p-2">"unidade" ou "par"</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>quantity</code></td>
-                        <td className="p-2">number</td>
-                        <td className="p-2">❌ Não</td>
-                        <td className="p-2">Quantidade (default: 1)</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>unit_price</code></td>
-                        <td className="p-2">number</td>
-                        <td className="p-2">❌ Não</td>
-                        <td className="p-2">Preço unitário</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>total_price</code></td>
-                        <td className="p-2">number</td>
-                        <td className="p-2">❌ Não</td>
-                        <td className="p-2">Preço total</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>payment_method</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">❌ Não</td>
-                        <td className="p-2">Método de pagamento (pix, cartão)</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>delivery_method</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">❌ Não</td>
-                        <td className="p-2">Método de entrega (retirada, envio)</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>delivery_address</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">❌ Não</td>
-                        <td className="p-2">Endereço de entrega</td>
-                      </tr>
-                      <tr>
-                        <td className="p-2"><code>notes</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">❌ Não</td>
-                        <td className="p-2">Observações</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">Corpo da Requisição</h4>
+                <ParamTable params={[
+                  { name: 'phone', type: 'string', required: true, desc: 'Telefone E.164 sem +' },
+                  { name: 'summary_text', type: 'string', required: true, desc: 'Resumo do pedido para atendente' },
+                  { name: 'session_id', type: 'uuid', desc: 'ID da sessão de catálogo' },
+                  { name: 'selected_sku', type: 'string', desc: 'SKU do produto escolhido' },
+                  { name: 'selected_name', type: 'string', desc: 'Nome do produto' },
+                  { name: 'selected_size_1', type: 'string', desc: 'Tamanho 1' },
+                  { name: 'selected_size_2', type: 'string', desc: 'Tamanho 2 (par)' },
+                  { name: 'unit_or_pair', type: 'string', desc: '"unidade" ou "par"' },
+                  { name: 'unit_price', type: 'number', desc: 'Preço unitário' },
+                  { name: 'total_price', type: 'number', desc: 'Preço total' },
+                  { name: 'payment_method', type: 'string', desc: 'pix, cartão' },
+                  { name: 'delivery_method', type: 'string', desc: 'retirada, envio' },
+                ]} />
               </div>
 
               <div>
-                <h4 className="font-semibold mb-2 text-white">Exemplo de Requisição</h4>
-                <CodeBlock
-                  id="orders-post-request"
-                  code={`curl -X POST "${BASE_URL}/orders-pending" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "phone": "5592999999999",
-    "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-    "selected_sku": "E0612040",
-    "selected_name": "Abaulada Diamantada Dourada 3mm",
-    "selected_size_1": "36",
-    "unit_or_pair": "unidade",
-    "unit_price": 419,
-    "total_price": 419,
-    "payment_method": "pix",
-    "delivery_method": "retirada",
-    "summary_text": "Pedido pendente: SKU E0612040 (Abaulada Diamantada), tam 36, unidade, Pix, retirada. Próximo: confirmar estoque e enviar link."
-  }'`}
-                />
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">Resposta</h4>
+                <CodeBlock id="orders-response" code={`{ "success": true, "order_id": "uuid", "status": "pending" }`} />
+              </div>
+            </EndpointCard>
+
+            <EndpointCard method="GET" path="/orders-pending" description="Lista pedidos por status">
+              <div>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">URL</h4>
+                <CodeBlock code={`${BASE_URL}/orders-pending?status=pending`} id="orders-list-url" />
               </div>
 
               <div>
-                <h4 className="font-semibold mb-2 text-white">Resposta de Sucesso</h4>
-                <CodeBlock
-                  id="orders-post-response"
-                  code={`{
-  "success": true,
-  "order_id": "xyz-789-order-id",
-  "status": "pending"
-}`}
-                />
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">Parâmetros</h4>
+                <ParamTable params={[
+                  { name: 'status', type: 'string', desc: 'pending, in_progress, done, canceled' },
+                  { name: 'phone', type: 'string', desc: 'Filtrar por telefone' },
+                ]} />
               </div>
+            </EndpointCard>
 
-              <div className="p-4 bg-zinc-800 rounded-lg border border-zinc-700">
-                <h4 className="font-semibold text-amber-400 mb-2">⚠️ Regra de UPSERT</h4>
-                <p className="text-sm text-zinc-300">
-                  Se existir um pedido com <code>status='pending'</code> para o mesmo telefone criado nas últimas 6 horas, ele será <strong>atualizado</strong>. Caso contrário, um novo pedido será criado.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* GET /orders-pending */}
-          <Card className="bg-zinc-900 border-zinc-800 mb-4">
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <Badge className="bg-green-600">GET</Badge>
-                <CardTitle className="text-lg font-mono text-white">/orders-pending</CardTitle>
-              </div>
-              <CardDescription className="text-zinc-400">
-                Lista pedidos por status (para página de pendentes no CRM)
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
+            <EndpointCard method="GET" path="/order-detail" description="Detalhes completos do pedido com itens do catálogo">
               <div>
-                <h4 className="font-semibold mb-2 text-white">URL</h4>
-                <CodeBlock code={`${BASE_URL}/orders-pending?status=pending`} id="orders-get-url" />
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">URL</h4>
+                <CodeBlock code={`${BASE_URL}/order-detail?id=uuid-do-pedido`} id="order-detail-url" />
               </div>
+            </EndpointCard>
+          </TabsContent>
 
+          {/* MESSAGES TAB */}
+          <TabsContent value="messages" id="messages" className="space-y-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl flex items-center justify-center shadow-lg">
+                <MessageSquare className="w-6 h-6 text-white" />
+              </div>
               <div>
-                <h4 className="font-semibold mb-3 text-white">Parâmetros (Query String)</h4>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-zinc-700">
-                        <th className="text-left p-2 text-zinc-300">Parâmetro</th>
-                        <th className="text-left p-2 text-zinc-300">Tipo</th>
-                        <th className="text-left p-2 text-zinc-300">Descrição</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-zinc-400">
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>status</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">Filtrar: pending, in_progress, done, canceled</td>
-                      </tr>
-                      <tr>
-                        <td className="p-2"><code>phone</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">Filtrar por telefone</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+                <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Mensagens</h2>
+                <p className="text-slate-600 dark:text-slate-400">Envie e receba mensagens via WhatsApp/Instagram</p>
               </div>
+            </div>
 
+            <EndpointCard method="POST" path="/automation-send" description="Envia mensagens para clientes via Z-API">
               <div>
-                <h4 className="font-semibold mb-2 text-white">Resposta de Sucesso</h4>
-                <CodeBlock
-                  id="orders-get-response"
-                  code={`{
-  "success": true,
-  "orders": [
-    {
-      "id": "xyz-789-order-id",
-      "customer_phone": "5592999999999",
-      "status": "pending",
-      "selected_sku": "E0612040",
-      "selected_name": "Abaulada Diamantada",
-      "summary_text": "Pedido pendente: SKU E0612040...",
-      "created_at": "2024-01-15T10:30:00Z",
-      "assigned_to": null
-    }
-  ]
-}`}
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* GET /order-detail */}
-          <Card className="bg-zinc-900 border-zinc-800">
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <Badge className="bg-green-600">GET</Badge>
-                <CardTitle className="text-lg font-mono text-white">/order-detail</CardTitle>
-              </div>
-              <CardDescription className="text-zinc-400">
-                Retorna detalhes completos de um pedido, incluindo itens do catálogo enviados
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div>
-                <h4 className="font-semibold mb-2 text-white">URL</h4>
-                <CodeBlock code={`${BASE_URL}/order-detail?id=xyz-789-order-id`} id="order-detail-url" />
-              </div>
-
-              <div>
-                <h4 className="font-semibold mb-2 text-white">Resposta de Sucesso</h4>
-                <CodeBlock
-                  id="order-detail-response"
-                  code={`{
-  "success": true,
-  "order": {
-    "id": "xyz-789-order-id",
-    "customer_phone": "5592999999999",
-    "status": "pending",
-    "selected_sku": "E0612040",
-    "selected_name": "Abaulada Diamantada Dourada",
-    "selected_size_1": "36",
-    "selected_size_2": null,
-    "unit_or_pair": "unidade",
-    "quantity": 1,
-    "unit_price": 419,
-    "total_price": 419,
-    "payment_method": "pix",
-    "delivery_method": "retirada",
-    "delivery_address": null,
-    "notes": null,
-    "summary_text": "Pedido pendente: SKU E0612040...",
-    "assigned_to": null,
-    "created_at": "2024-01-15T10:30:00Z",
-    "updated_at": "2024-01-15T10:35:00Z"
-  },
-  "session": {
-    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-    "line": "tungstenio",
-    "intent": "aliancas",
-    "preferred_color": "dourada",
-    "budget_max": 500
-  },
-  "catalog_items": [
-    {
-      "position": 1,
-      "sku": "E0612040",
-      "name": "Abaulada Diamantada Dourada 3mm",
-      "media_type": "image",
-      "media_url": "https://exemplo.com/foto1.jpg",
-      "price_formatted": "R$ 419,00"
-    },
-    {
-      "position": 2,
-      "sku": "E0612041",
-      "name": "Reta Polida Prata 4mm",
-      "media_type": "video",
-      "media_url": "https://exemplo.com/video.mp4",
-      "price_formatted": "R$ 350,00"
-    }
-  ]
-}`}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* ==================== MESSAGING API ==================== */}
-        <div id="messaging-api">
-          <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
-            <MessageSquare className="w-6 h-6" /> 4. Mensagens (WhatsApp/Instagram)
-          </h2>
-
-          {/* POST /automation-send */}
-          <Card className="bg-zinc-900 border-zinc-800 mb-4">
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <Badge className="bg-blue-600">POST</Badge>
-                <CardTitle className="text-lg font-mono text-white">/automation-send</CardTitle>
-              </div>
-              <CardDescription className="text-zinc-400">
-                Envia mensagens para clientes (salva no CRM e encaminha para Z-API)
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div>
-                <h4 className="font-semibold mb-2 text-white">URL</h4>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">URL</h4>
                 <CodeBlock code={`${BASE_URL}/automation-send`} id="send-url" />
               </div>
 
               <div>
-                <h4 className="font-semibold mb-3 text-white">Corpo da Requisição (JSON)</h4>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-zinc-700">
-                        <th className="text-left p-2 text-zinc-300">Campo</th>
-                        <th className="text-left p-2 text-zinc-300">Tipo</th>
-                        <th className="text-left p-2 text-zinc-300">Obrigatório</th>
-                        <th className="text-left p-2 text-zinc-300">Descrição</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-zinc-400">
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>phone</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">✅ Sim</td>
-                        <td className="p-2">Número com código do país (5511999999999)</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>message</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">❌ Não</td>
-                        <td className="p-2">Conteúdo da mensagem</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>platform</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">❌ Não</td>
-                        <td className="p-2">"whatsapp" ou "instagram"</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>message_type</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">❌ Não</td>
-                        <td className="p-2">"text", "image", "audio", "video", "document"</td>
-                      </tr>
-                      <tr className="border-b border-zinc-800">
-                        <td className="p-2"><code>media_url</code></td>
-                        <td className="p-2">string</td>
-                        <td className="p-2">❌ Não</td>
-                        <td className="p-2">URL da mídia (para imagem, áudio, vídeo)</td>
-                      </tr>
-                      <tr>
-                        <td className="p-2"><code>conversation_id</code></td>
-                        <td className="p-2">uuid</td>
-                        <td className="p-2">❌ Não</td>
-                        <td className="p-2">ID da conversa (resolve automaticamente pelo phone)</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">Corpo da Requisição</h4>
+                <ParamTable params={[
+                  { name: 'phone', type: 'string', required: true, desc: 'Número com código do país' },
+                  { name: 'message', type: 'string', desc: 'Conteúdo da mensagem' },
+                  { name: 'platform', type: 'string', desc: '"whatsapp" ou "instagram"' },
+                  { name: 'message_type', type: 'string', desc: '"text", "image", "video", "audio"' },
+                  { name: 'media_url', type: 'string', desc: 'URL da mídia' },
+                ]} />
               </div>
 
               <div>
-                <h4 className="font-semibold mb-2 text-white">Exemplo: Enviar Texto</h4>
-                <CodeBlock
-                  id="send-text"
-                  code={`curl -X POST "${BASE_URL}/automation-send" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "phone": "5511999999999",
-    "message": "Olá! Segue o catálogo solicitado 🛍️",
-    "platform": "whatsapp"
-  }'`}
-                />
-              </div>
-
-              <div>
-                <h4 className="font-semibold mb-2 text-white">Exemplo: Enviar Imagem com Legenda</h4>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">Exemplo - Imagem</h4>
                 <CodeBlock
                   id="send-image"
-                  code={`curl -X POST "${BASE_URL}/automation-send" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "phone": "5511999999999",
-    "message": "Aliança Abaulada Diamantada - R$ 419,00",
-    "message_type": "image",
-    "media_url": "https://exemplo.com/produto.jpg",
-    "platform": "whatsapp"
-  }'`}
-                />
-              </div>
-
-              <div>
-                <h4 className="font-semibold mb-2 text-white">Resposta de Sucesso</h4>
-                <CodeBlock
-                  id="send-response"
                   code={`{
-  "success": true,
-  "message_id": "uuid-da-mensagem",
-  "forwarded": true
+  "phone": "5511999999999",
+  "message": "Aliança Abaulada - R$ 419,00",
+  "message_type": "image",
+  "media_url": "https://exemplo.com/foto.jpg",
+  "platform": "whatsapp"
 }`}
                 />
               </div>
-            </CardContent>
-          </Card>
+            </EndpointCard>
 
-          {/* POST /automation-webhook */}
-          <Card className="bg-zinc-900 border-zinc-800">
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <Badge className="bg-purple-600">POST</Badge>
-                <CardTitle className="text-lg font-mono text-white">/automation-webhook</CardTitle>
-              </div>
-              <CardDescription className="text-zinc-400">
-                Recebe mensagens de clientes (configure na sua automação Z-API/FiqOn)
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
+            <EndpointCard method="POST" path="/automation-webhook" description="Recebe mensagens de clientes (configure no Z-API)">
               <div>
-                <h4 className="font-semibold mb-2 text-white">URL (configure no Z-API/FiqOn)</h4>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">URL (Configure na Automação)</h4>
                 <CodeBlock code={`${BASE_URL}/automation-webhook`} id="webhook-url" />
               </div>
 
               <div>
-                <h4 className="font-semibold mb-2 text-white">Payload Esperado</h4>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">Payload Esperado</h4>
                 <CodeBlock
                   id="webhook-payload"
                   code={`{
@@ -1013,99 +469,62 @@ const PublicApiDocs = () => {
   "contact_name": "João Silva",
   "message": "Quero ver aliança dourada até R$ 500",
   "message_type": "text",
-  "media_url": null,
   "fromMe": false
 }`}
                 />
               </div>
-            </CardContent>
-          </Card>
-        </div>
+            </EndpointCard>
+          </TabsContent>
 
-        {/* ==================== WORKFLOW EXAMPLE ==================== */}
-        <div id="workflow">
-          <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
-            <Package className="w-6 h-6" /> 5. Fluxo Completo de Automação
-          </h2>
-
-          <Card className="bg-zinc-900 border-zinc-800">
-            <CardHeader>
-              <CardTitle className="text-white">Exemplo de Fluxo FiqOn/n8n</CardTitle>
-              <CardDescription className="text-zinc-400">
-                Como usar as APIs em sequência para atendimento automatizado
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-4">
-                <div className="p-4 bg-zinc-800 rounded-lg border-l-4 border-blue-500">
-                  <h4 className="font-semibold text-blue-400 mb-2">1️⃣ Cliente envia mensagem</h4>
-                  <p className="text-sm text-zinc-300">
-                    <code>/automation-webhook</code> recebe: "Quero ver aliança dourada até R$ 500"
-                  </p>
-                </div>
-
-                <div className="p-4 bg-zinc-800 rounded-lg border-l-4 border-green-500">
-                  <h4 className="font-semibold text-green-400 mb-2">2️⃣ Buscar produtos</h4>
-                  <p className="text-sm text-zinc-300">
-                    <code>GET /catalog-api?category=Aliancas&only_available=true</code>
-                  </p>
-                  <p className="text-xs text-zinc-500 mt-1">Filtra por cor dourada e preço ≤ 500 na automação</p>
-                </div>
-
-                <div className="p-4 bg-zinc-800 rounded-lg border-l-4 border-yellow-500">
-                  <h4 className="font-semibold text-yellow-400 mb-2">3️⃣ Criar sessão de catálogo</h4>
-                  <p className="text-sm text-zinc-300">
-                    <code>POST /catalog-session</code> com phone, line, intent, preferred_color, budget_max
-                  </p>
-                  <p className="text-xs text-zinc-500 mt-1">Salva session_id para usar nos próximos passos</p>
-                </div>
-
-                <div className="p-4 bg-zinc-800 rounded-lg border-l-4 border-orange-500">
-                  <h4 className="font-semibold text-orange-400 mb-2">4️⃣ Enviar produtos (For Each)</h4>
-                  <p className="text-sm text-zinc-300">
-                    Para cada produto (máx 5):
-                  </p>
-                  <ul className="text-xs text-zinc-400 mt-2 space-y-1 ml-4">
-                    <li>• <code>POST /automation-send</code> com imagem/vídeo + legenda</li>
-                    <li>• <code>POST /catalog-item</code> com session_id e position (1, 2, 3...)</li>
-                  </ul>
-                </div>
-
-                <div className="p-4 bg-zinc-800 rounded-lg border-l-4 border-purple-500">
-                  <h4 className="font-semibold text-purple-400 mb-2">5️⃣ Cliente responde "quero o segundo"</h4>
-                  <p className="text-sm text-zinc-300">
-                    <code>GET /catalog-latest?phone=...&line=...</code>
-                  </p>
-                  <p className="text-xs text-zinc-500 mt-1">Retorna items[1] (position=2) para identificar o produto</p>
-                </div>
-
-                <div className="p-4 bg-zinc-800 rounded-lg border-l-4 border-pink-500">
-                  <h4 className="font-semibold text-pink-400 mb-2">6️⃣ Cliente quase fechando</h4>
-                  <p className="text-sm text-zinc-300">
-                    Quando tiver: SKU + tamanho + (pagamento OU entrega)
-                  </p>
-                  <p className="text-sm text-zinc-300 mt-2">
-                    <code>POST /orders-pending</code> com resumo completo
-                  </p>
-                </div>
-
-                <div className="p-4 bg-zinc-800 rounded-lg border-l-4 border-emerald-500">
-                  <h4 className="font-semibold text-emerald-400 mb-2">7️⃣ Atendente humano finaliza</h4>
-                  <p className="text-sm text-zinc-300">
-                    CRM mostra pedido em /pedidos/pendentes → confirma estoque → envia link de pagamento
-                  </p>
-                </div>
+          {/* WORKFLOW TAB */}
+          <TabsContent value="workflow" id="workflow" className="space-y-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 bg-gradient-to-br from-pink-500 to-rose-600 rounded-xl flex items-center justify-center shadow-lg">
+                <Package className="w-6 h-6 text-white" />
               </div>
-            </CardContent>
-          </Card>
-        </div>
+              <div>
+                <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Fluxo Completo</h2>
+                <p className="text-slate-600 dark:text-slate-400">Exemplo de integração ponta a ponta</p>
+              </div>
+            </div>
 
-        {/* Footer */}
-        <div className="border-t border-zinc-800 pt-6 text-center text-zinc-500 text-sm">
-          <p>Acium CRM API Documentation v1.0</p>
-          <p className="mt-1">Base URL: <code className="bg-zinc-800 px-2 py-1 rounded">{BASE_URL}</code></p>
+            <Card className="border-slate-200 dark:border-slate-700">
+              <CardContent className="p-6">
+                <div className="space-y-4">
+                  {[
+                    { step: '1', color: 'bg-blue-500', title: 'Cliente envia mensagem', desc: '/automation-webhook recebe a mensagem' },
+                    { step: '2', color: 'bg-emerald-500', title: 'Buscar produtos', desc: 'GET /catalog-api com filtros' },
+                    { step: '3', color: 'bg-yellow-500', title: 'Criar sessão', desc: 'POST /catalog-session' },
+                    { step: '4', color: 'bg-orange-500', title: 'Enviar produtos', desc: 'For Each: /automation-send + /catalog-item' },
+                    { step: '5', color: 'bg-purple-500', title: 'Cliente escolhe', desc: 'GET /catalog-latest para identificar item' },
+                    { step: '6', color: 'bg-pink-500', title: 'Criar pedido', desc: 'POST /orders-pending com resumo' },
+                    { step: '7', color: 'bg-green-500', title: 'Atendente finaliza', desc: 'CRM mostra em /pedidos/pendentes' },
+                  ].map((item) => (
+                    <div key={item.step} className="flex items-start gap-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
+                      <div className={`w-8 h-8 ${item.color} rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0`}>
+                        {item.step}
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-slate-800 dark:text-slate-200">{item.title}</h4>
+                        <p className="text-sm text-slate-600 dark:text-slate-400">{item.desc}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </main>
+
+      {/* Footer */}
+      <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 mt-16">
+        <div className="max-w-6xl mx-auto px-6 py-8 text-center">
+          <p className="text-slate-500 dark:text-slate-400 text-sm">
+            Acium CRM API Documentation v1.0 • Base URL: <code className="bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">{BASE_URL}</code>
+          </p>
         </div>
-      </div>
+      </footer>
     </div>
   );
 };
