@@ -1,0 +1,532 @@
+# ========================================
+# ACIUM CRM - API DOCUMENTATION
+# ========================================
+# Base URL: https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co
+# ========================================
+
+Este documento contém a documentação completa das APIs do CRM Acium.
+Use estas APIs para integrar automações (FiqOn, n8n, Make, Zapier).
+
+========================================
+ÍNDICE
+========================================
+1. Catálogo de Produtos (GET /catalog-api)
+2. Sessões de Catálogo
+   - POST /catalog-session (criar sessão)
+   - POST /catalog-item (registrar item enviado)
+   - GET /catalog-latest (buscar sessão ativa)
+3. Pedidos Pendentes
+   - POST /orders-pending (criar/atualizar pedido)
+   - GET /orders-pending (listar pedidos)
+   - GET /order-detail (detalhe do pedido)
+4. Mensagens
+   - POST /automation-send (enviar mensagem)
+   - POST /automation-webhook (receber mensagem)
+5. Fluxo Completo de Automação
+
+========================================
+1. CATÁLOGO DE PRODUTOS
+========================================
+
+## GET /catalog-api
+
+Retorna produtos do catálogo com fotos, vídeos, preços e estoque.
+
+URL: https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co/catalog-api
+
+### Parâmetros (Query String):
+
+| Parâmetro      | Tipo    | Descrição                              | Exemplo                    |
+|----------------|---------|----------------------------------------|----------------------------|
+| sku            | string  | Busca produto pelo SKU exato           | ?sku=CAM-001               |
+| product_id     | uuid    | Busca produto pelo ID                  | ?product_id=abc-123        |
+| category       | string  | Filtra por categoria (busca parcial)   | ?category=Aliancas         |
+| search         | string  | Busca em nome, descrição e SKU         | ?search=dourada            |
+| only_available | boolean | Retorna apenas produtos com estoque    | ?only_available=true       |
+
+### Exemplo cURL:
+
+curl -X GET "https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co/catalog-api?category=Aliancas&only_available=true"
+
+### Resposta de Sucesso (JSON):
+
+{
+  "success": true,
+  "count": 2,
+  "products": [
+    {
+      "id": "uuid-do-produto",
+      "sku": "E0612040",
+      "name": "Abaulada Diamantada Dourada 3mm",
+      "description": "Aliança em ouro 18k",
+      "price": 419.00,
+      "price_formatted": "R$ 419,00",
+      "category": "Aliancas",
+      "image_url": "https://...",
+      "video_url": "https://...",
+      "images": ["https://foto1.jpg", "https://foto2.jpg"],
+      "all_media": [
+        { "type": "image", "url": "https://...", "is_main": true },
+        { "type": "video", "url": "https://..." }
+      ],
+      "total_stock": 25,
+      "available": true,
+      "sizes": [
+        { "size": "36", "stock": 10 },
+        { "size": "38", "stock": 15 }
+      ],
+      "all_sizes": [
+        { "size": "36", "stock": 10, "available": true },
+        { "size": "38", "stock": 15, "available": true },
+        { "size": "40", "stock": 0, "available": false }
+      ]
+    }
+  ]
+}
+
+========================================
+2. SESSÕES DE CATÁLOGO
+========================================
+
+Rastreia quais produtos foram enviados ao cliente via WhatsApp.
+Permite interpretar referências como "o segundo", "o do vídeo".
+
+----------------------------------------
+## POST /catalog-session
+----------------------------------------
+
+Cria uma nova sessão de catálogo ao iniciar envio de produtos.
+
+URL: https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co/catalog-session
+
+### Corpo da Requisição (JSON):
+
+| Campo           | Tipo   | Obrigatório | Descrição                                    |
+|-----------------|--------|-------------|----------------------------------------------|
+| phone           | string | SIM         | Telefone E.164 sem + (ex: 5592999999999)     |
+| line            | string | SIM         | Linha do catálogo (ex: tungstenio, oui)      |
+| intent          | string | NÃO         | Intenção do cliente (ex: aliancas, anel)     |
+| preferred_color | string | NÃO         | Cor preferida (ex: dourada, prata)           |
+| budget_max      | number | NÃO         | Orçamento máximo do cliente                  |
+
+### Exemplo cURL:
+
+curl -X POST "https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co/catalog-session" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "phone": "5592999999999",
+    "line": "tungstenio",
+    "intent": "aliancas",
+    "preferred_color": "dourada",
+    "budget_max": 500
+  }'
+
+### Resposta de Sucesso:
+
+{
+  "success": true,
+  "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+}
+
+----------------------------------------
+## POST /catalog-item
+----------------------------------------
+
+Registra um item enviado dentro da sessão (chamar para cada produto enviado).
+
+URL: https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co/catalog-item
+
+### Corpo da Requisição (JSON):
+
+| Campo           | Tipo   | Obrigatório | Descrição                                    |
+|-----------------|--------|-------------|----------------------------------------------|
+| session_id      | uuid   | SIM         | ID retornado pelo /catalog-session           |
+| position        | number | SIM         | Posição do item (1, 2, 3...)                 |
+| sku             | string | SIM         | Código SKU do produto                        |
+| name            | string | SIM         | Nome do produto                              |
+| media_type      | string | SIM         | "image" ou "video"                           |
+| media_url       | string | SIM         | URL da mídia enviada ao cliente              |
+| price           | number | NÃO         | Preço do produto                             |
+| price_formatted | string | NÃO         | Preço formatado (R$ 419,00)                  |
+| sizes           | array  | NÃO         | Array de tamanhos ["36", "38"]               |
+| image_url       | string | NÃO         | URL da imagem principal                      |
+| video_url       | string | NÃO         | URL do vídeo                                 |
+| stock_total     | number | NÃO         | Estoque total disponível                     |
+
+### Exemplo cURL:
+
+curl -X POST "https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co/catalog-item" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "position": 1,
+    "sku": "E0612040",
+    "name": "Abaulada Diamantada Dourada 3mm",
+    "price": 419,
+    "price_formatted": "R$ 419,00",
+    "sizes": ["36", "38"],
+    "image_url": "https://exemplo.com/foto.jpg",
+    "media_type": "image",
+    "media_url": "https://exemplo.com/foto.jpg",
+    "stock_total": 15
+  }'
+
+### Resposta de Sucesso:
+
+{ "success": true }
+
+----------------------------------------
+## GET /catalog-latest
+----------------------------------------
+
+Retorna a sessão ativa mais recente e seus itens.
+Use para interpretar "o segundo", "o do vídeo", etc.
+
+URL: https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co/catalog-latest
+
+### Parâmetros (Query String):
+
+| Parâmetro | Tipo   | Obrigatório | Descrição                |
+|-----------|--------|-------------|--------------------------|
+| phone     | string | SIM         | Telefone E.164 sem +     |
+| line      | string | SIM         | Linha do catálogo        |
+
+### Exemplo cURL:
+
+curl -X GET "https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co/catalog-latest?phone=5592999999999&line=tungstenio"
+
+### Resposta de Sucesso:
+
+{
+  "success": true,
+  "session": {
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "phone": "5592999999999",
+    "line": "tungstenio",
+    "intent": "aliancas",
+    "preferred_color": "dourada",
+    "budget_max": 500,
+    "created_at": "2024-01-15T10:30:00Z"
+  },
+  "items": [
+    {
+      "position": 1,
+      "sku": "E0612040",
+      "name": "Abaulada Diamantada Dourada 3mm",
+      "media_type": "image",
+      "media_url": "https://exemplo.com/foto1.jpg",
+      "sizes": ["36", "38"],
+      "price": 419,
+      "price_formatted": "R$ 419,00"
+    },
+    {
+      "position": 2,
+      "sku": "E0612041",
+      "name": "Reta Polida Prata 4mm",
+      "media_type": "video",
+      "media_url": "https://exemplo.com/video.mp4",
+      "sizes": ["36", "40"],
+      "price": 350,
+      "price_formatted": "R$ 350,00"
+    }
+  ]
+}
+
+========================================
+3. PEDIDOS PENDENTES
+========================================
+
+Gerencia pedidos que estão quase fechando.
+Quando o cliente escolhe produto, tamanho e forma de pagamento,
+cria-se um pedido pendente para o atendente humano finalizar.
+
+----------------------------------------
+## POST /orders-pending
+----------------------------------------
+
+Cria ou atualiza um pedido pendente.
+REGRA UPSERT: Se existir pedido nas últimas 6h para o mesmo telefone, atualiza.
+
+URL: https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co/orders-pending
+
+### Corpo da Requisição (JSON):
+
+| Campo            | Tipo   | Obrigatório | Descrição                                   |
+|------------------|--------|-------------|---------------------------------------------|
+| phone            | string | SIM         | Telefone E.164 sem +                        |
+| summary_text     | string | SIM         | Resumo do pedido para atendente             |
+| session_id       | uuid   | NÃO         | ID da sessão de catálogo                    |
+| selected_sku     | string | NÃO         | SKU do produto escolhido                    |
+| selected_name    | string | NÃO         | Nome do produto escolhido                   |
+| selected_size_1  | string | NÃO         | Tamanho 1 (ex: "18")                        |
+| selected_size_2  | string | NÃO         | Tamanho 2 para par (ex: "20")               |
+| unit_or_pair     | string | NÃO         | "unidade" ou "par"                          |
+| quantity         | number | NÃO         | Quantidade (default: 1)                     |
+| unit_price       | number | NÃO         | Preço unitário                              |
+| total_price      | number | NÃO         | Preço total                                 |
+| payment_method   | string | NÃO         | Método de pagamento (pix, cartão)           |
+| delivery_method  | string | NÃO         | Método de entrega (retirada, envio)         |
+| delivery_address | string | NÃO         | Endereço de entrega                         |
+| notes            | string | NÃO         | Observações                                 |
+
+### Exemplo cURL:
+
+curl -X POST "https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co/orders-pending" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "phone": "5592999999999",
+    "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "selected_sku": "E0612040",
+    "selected_name": "Abaulada Diamantada Dourada 3mm",
+    "selected_size_1": "36",
+    "unit_or_pair": "unidade",
+    "unit_price": 419,
+    "total_price": 419,
+    "payment_method": "pix",
+    "delivery_method": "retirada",
+    "summary_text": "Pedido pendente: SKU E0612040 (Abaulada Diamantada), tam 36, unidade, Pix, retirada. Próximo: confirmar estoque e enviar link."
+  }'
+
+### Resposta de Sucesso:
+
+{
+  "success": true,
+  "order_id": "xyz-789-order-id",
+  "status": "pending"
+}
+
+----------------------------------------
+## GET /orders-pending
+----------------------------------------
+
+Lista pedidos por status.
+
+URL: https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co/orders-pending
+
+### Parâmetros (Query String):
+
+| Parâmetro | Tipo   | Descrição                                          |
+|-----------|--------|----------------------------------------------------|
+| status    | string | Filtrar: pending, in_progress, done, canceled      |
+| phone     | string | Filtrar por telefone                               |
+
+### Exemplo cURL:
+
+curl -X GET "https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co/orders-pending?status=pending"
+
+### Resposta de Sucesso:
+
+{
+  "success": true,
+  "orders": [
+    {
+      "id": "xyz-789-order-id",
+      "customer_phone": "5592999999999",
+      "status": "pending",
+      "selected_sku": "E0612040",
+      "selected_name": "Abaulada Diamantada",
+      "summary_text": "Pedido pendente: SKU E0612040...",
+      "created_at": "2024-01-15T10:30:00Z",
+      "assigned_to": null
+    }
+  ]
+}
+
+----------------------------------------
+## GET /order-detail
+----------------------------------------
+
+Retorna detalhes completos de um pedido, incluindo itens do catálogo.
+
+URL: https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co/order-detail
+
+### Parâmetros (Query String):
+
+| Parâmetro | Tipo | Descrição        |
+|-----------|------|------------------|
+| id        | uuid | ID do pedido     |
+
+### Exemplo cURL:
+
+curl -X GET "https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co/order-detail?id=xyz-789-order-id"
+
+### Resposta de Sucesso:
+
+{
+  "success": true,
+  "order": {
+    "id": "xyz-789-order-id",
+    "customer_phone": "5592999999999",
+    "status": "pending",
+    "selected_sku": "E0612040",
+    "selected_name": "Abaulada Diamantada Dourada",
+    "selected_size_1": "36",
+    "selected_size_2": null,
+    "unit_or_pair": "unidade",
+    "quantity": 1,
+    "unit_price": 419,
+    "total_price": 419,
+    "payment_method": "pix",
+    "delivery_method": "retirada",
+    "delivery_address": null,
+    "notes": null,
+    "summary_text": "Pedido pendente: SKU E0612040...",
+    "assigned_to": null,
+    "created_at": "2024-01-15T10:30:00Z",
+    "updated_at": "2024-01-15T10:35:00Z"
+  },
+  "session": {
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "line": "tungstenio",
+    "intent": "aliancas",
+    "preferred_color": "dourada",
+    "budget_max": 500
+  },
+  "catalog_items": [
+    {
+      "position": 1,
+      "sku": "E0612040",
+      "name": "Abaulada Diamantada Dourada 3mm",
+      "media_type": "image",
+      "media_url": "https://exemplo.com/foto1.jpg",
+      "price_formatted": "R$ 419,00"
+    },
+    {
+      "position": 2,
+      "sku": "E0612041",
+      "name": "Reta Polida Prata 4mm",
+      "media_type": "video",
+      "media_url": "https://exemplo.com/video.mp4",
+      "price_formatted": "R$ 350,00"
+    }
+  ]
+}
+
+========================================
+4. MENSAGENS (WhatsApp/Instagram)
+========================================
+
+----------------------------------------
+## POST /automation-send
+----------------------------------------
+
+Envia mensagens para clientes (salva no CRM e encaminha para Z-API).
+
+URL: https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co/automation-send
+
+### Corpo da Requisição (JSON):
+
+| Campo           | Tipo   | Obrigatório | Descrição                                       |
+|-----------------|--------|-------------|-------------------------------------------------|
+| phone           | string | SIM         | Número com código do país (5511999999999)       |
+| message         | string | NÃO         | Conteúdo da mensagem                            |
+| platform        | string | NÃO         | "whatsapp" ou "instagram"                       |
+| message_type    | string | NÃO         | "text", "image", "audio", "video", "document"   |
+| media_url       | string | NÃO         | URL da mídia (para imagem, áudio, vídeo)        |
+| conversation_id | uuid   | NÃO         | ID da conversa (resolve automaticamente)        |
+
+### Exemplo cURL - Enviar Texto:
+
+curl -X POST "https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co/automation-send" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "phone": "5511999999999",
+    "message": "Olá! Segue o catálogo solicitado 🛍️",
+    "platform": "whatsapp"
+  }'
+
+### Exemplo cURL - Enviar Imagem com Legenda:
+
+curl -X POST "https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co/automation-send" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "phone": "5511999999999",
+    "message": "Aliança Abaulada Diamantada - R$ 419,00",
+    "message_type": "image",
+    "media_url": "https://exemplo.com/produto.jpg",
+    "platform": "whatsapp"
+  }'
+
+### Resposta de Sucesso:
+
+{
+  "success": true,
+  "message_id": "uuid-da-mensagem",
+  "forwarded": true
+}
+
+----------------------------------------
+## POST /automation-webhook
+----------------------------------------
+
+Recebe mensagens de clientes (configure na sua automação Z-API/FiqOn).
+
+URL: https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co/automation-webhook
+
+### Payload Esperado:
+
+{
+  "platform": "whatsapp",
+  "contact_number": "5511999999999",
+  "contact_name": "João Silva",
+  "message": "Quero ver aliança dourada até R$ 500",
+  "message_type": "text",
+  "media_url": null,
+  "fromMe": false
+}
+
+========================================
+5. FLUXO COMPLETO DE AUTOMAÇÃO
+========================================
+
+Exemplo de como usar as APIs em sequência no FiqOn/n8n:
+
+1️⃣ CLIENTE ENVIA MENSAGEM
+   - /automation-webhook recebe: "Quero ver aliança dourada até R$ 500"
+
+2️⃣ BUSCAR PRODUTOS
+   - GET /catalog-api?category=Aliancas&only_available=true
+   - Filtra por cor dourada e preço ≤ 500 na automação
+
+3️⃣ CRIAR SESSÃO DE CATÁLOGO
+   - POST /catalog-session com phone, line, intent, preferred_color, budget_max
+   - Salva session_id para usar nos próximos passos
+
+4️⃣ ENVIAR PRODUTOS (For Each - máx 5 itens)
+   Para cada produto:
+   - POST /automation-send com imagem/vídeo + legenda
+   - POST /catalog-item com session_id e position (1, 2, 3...)
+
+5️⃣ CLIENTE RESPONDE "quero o segundo"
+   - GET /catalog-latest?phone=...&line=...
+   - Retorna items[1] (position=2) para identificar o produto
+
+6️⃣ CLIENTE QUASE FECHANDO
+   Quando tiver: SKU + tamanho + (pagamento OU entrega)
+   - POST /orders-pending com resumo completo
+
+7️⃣ ATENDENTE HUMANO FINALIZA
+   - CRM mostra pedido em /pedidos/pendentes
+   - Confirma estoque → envia link de pagamento
+
+========================================
+RESUMO DE ENDPOINTS
+========================================
+
+BASE URL: https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co
+
+| Método | Endpoint          | Descrição                           |
+|--------|-------------------|-------------------------------------|
+| GET    | /catalog-api      | Buscar produtos do catálogo         |
+| POST   | /catalog-session  | Criar sessão de catálogo            |
+| POST   | /catalog-item     | Registrar item enviado              |
+| GET    | /catalog-latest   | Buscar sessão ativa + itens         |
+| POST   | /orders-pending   | Criar/atualizar pedido pendente     |
+| GET    | /orders-pending   | Listar pedidos por status           |
+| GET    | /order-detail     | Detalhe completo do pedido          |
+| POST   | /automation-send  | Enviar mensagem (WhatsApp/IG)       |
+| POST   | /automation-webhook | Receber mensagem do cliente       |
+
+========================================
+FIM DA DOCUMENTAÇÃO
+========================================
