@@ -201,8 +201,14 @@ const PendingOrders = () => {
     }
   };
 
+  const SUPPORT_WHATSAPP = "5592984145531";
+
   const openWhatsApp = (phone: string) => {
     window.open(`https://wa.me/${phone}`, "_blank");
+  };
+
+  const openSupportWhatsApp = () => {
+    window.open(`https://wa.me/${SUPPORT_WHATSAPP}`, "_blank");
   };
 
   const copySummary = (text: string) => {
@@ -295,46 +301,99 @@ const PendingOrders = () => {
                 onClick={() => fetchOrderDetails(order)}
               >
                 <CardContent className="p-4">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     {/* Left side */}
                     <div className="flex items-start gap-4 flex-1">
-                      <div className={`p-2 rounded-lg ${config.color}`}>
+                      <div className={`p-2.5 rounded-lg ${config.color}`}>
                         <StatusIcon className="h-5 w-5" />
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-medium">
-                            {formatPhone(order.customer_phone)}
+                      <div className="flex-1 min-w-0 space-y-2">
+                        {/* Header */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-foreground">
+                            {order.customer_name || formatPhone(order.customer_phone)}
                           </span>
                           <Badge variant="outline" className={config.color}>
                             {config.label}
                           </Badge>
                         </div>
-                        {order.selected_sku && (
-                          <p className="text-sm text-muted-foreground mb-1">
-                            <span className="font-medium">SKU:</span> {order.selected_sku}
-                            {order.selected_name && ` - ${order.selected_name}`}
-                          </p>
+
+                        {/* Phone */}
+                        {order.customer_name && (
+                          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                            <Phone className="h-3.5 w-3.5" />
+                            <span>{formatPhone(order.customer_phone)}</span>
+                          </div>
                         )}
+
+                        {/* Product Info */}
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                          {order.selected_sku ? (
+                            <div className="flex items-center gap-1.5">
+                              <Package className="h-3.5 w-3.5 text-muted-foreground" />
+                              <span className="font-medium">{order.selected_sku}</span>
+                              {order.selected_name && (
+                                <span className="text-muted-foreground">- {order.selected_name}</span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground italic">Produto não selecionado</span>
+                          )}
+                        </div>
+
+                        {/* Size & Quantity & Price */}
+                        <div className="flex flex-wrap gap-3 text-sm">
+                          {order.selected_size_1 && (
+                            <Badge variant="secondary" className="font-normal">
+                              Tam: {order.selected_size_1}
+                              {order.selected_size_2 && ` / ${order.selected_size_2}`}
+                            </Badge>
+                          )}
+                          {order.quantity > 1 && (
+                            <Badge variant="secondary" className="font-normal">
+                              Qtd: {order.quantity}
+                            </Badge>
+                          )}
+                          {order.total_price && (
+                            <Badge variant="outline" className="font-medium text-emerald-600 border-emerald-200 bg-emerald-50">
+                              R$ {order.total_price.toFixed(2).replace(".", ",")}
+                            </Badge>
+                          )}
+                        </div>
+
+                        {/* Summary */}
                         {order.summary_text && (
-                          <p className="text-sm text-muted-foreground line-clamp-2">
+                          <p className="text-sm text-muted-foreground line-clamp-2 bg-muted/50 rounded px-2 py-1">
                             {order.summary_text}
                           </p>
                         )}
-                        <p className="text-xs text-muted-foreground mt-2">
-                          {format(new Date(order.created_at), "dd/MM/yyyy 'às' HH:mm", {
-                            locale: ptBR,
-                          })}
+
+                        {/* Meta info */}
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground pt-1">
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {format(new Date(order.created_at), "dd/MM/yyyy 'às' HH:mm", {
+                              locale: ptBR,
+                            })}
+                          </span>
                           {order.assigned_to && (
-                            <span className="ml-2">• Atribuído a: {order.assigned_to}</span>
+                            <span className="flex items-center gap-1">
+                              <User className="h-3 w-3" />
+                              {order.assigned_to}
+                            </span>
                           )}
-                        </p>
+                          {order.payment_method && (
+                            <Badge variant="outline" className="text-xs font-normal">
+                              {order.payment_method}
+                            </Badge>
+                          )}
+                        </div>
                       </div>
                     </div>
 
                     {/* Right side - Actions */}
                     <div
-                      className="flex items-center gap-2"
+                      className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <Button
@@ -343,18 +402,19 @@ const PendingOrders = () => {
                         onClick={() => openWhatsApp(order.customer_phone)}
                       >
                         <MessageSquare className="h-4 w-4 mr-1" />
-                        WhatsApp
+                        Cliente
                       </Button>
                       {order.status === "pending_human" && (
                         <Button
                           size="sm"
-                          onClick={() =>
+                          onClick={() => {
                             updateStatusMutation.mutate({
                               orderId: order.id,
                               status: "in_progress",
                               assignedTo: "Atendente",
-                            })
-                          }
+                            });
+                            openSupportWhatsApp();
+                          }}
                           disabled={updateStatusMutation.isPending}
                         >
                           Iniciar Atendimento
