@@ -4,17 +4,29 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Copy, Check, Database, Send, ShoppingCart, Layers, MessageSquare, Package, ExternalLink, Zap, BookOpen } from 'lucide-react';
+import { Copy, Check, Database, Send, ShoppingCart, Layers, MessageSquare, Package, ExternalLink, Zap, BookOpen, Bot } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 const BASE_URL = 'https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co';
 
 const PublicApiDocs = () => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  const API_DOCS_URL = `${window.location.origin}/api-docs.txt`;
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const copyApiDocsUrl = () => {
+    navigator.clipboard.writeText(API_DOCS_URL);
+    toast({
+      title: "Link copiado!",
+      description: "Cole este link no ChatGPT, Claude ou qualquer IA para ela analisar nossa documentação.",
+    });
   };
 
   const CodeBlock = ({ code, id, language = 'json' }: { code: string; id: string; language?: string }) => (
@@ -92,11 +104,21 @@ const PublicApiDocs = () => {
                 <p className="text-xs text-slate-500 dark:text-slate-400">Documentação v1.0</p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="default" 
+                size="sm" 
+                className="gap-2 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white shadow-lg"
+                onClick={copyApiDocsUrl}
+              >
+                <Bot className="w-4 h-4" />
+                <span className="hidden sm:inline">Copiar Link para IA</span>
+                <span className="sm:hidden">Link IA</span>
+              </Button>
               <Button variant="outline" size="sm" className="gap-2" asChild>
                 <a href="/api-docs.txt" target="_blank">
                   <ExternalLink className="w-4 h-4" />
-                  <span className="hidden sm:inline">Texto Puro</span>
+                  <span className="hidden sm:inline">Ver Texto</span>
                 </a>
               </Button>
             </div>
