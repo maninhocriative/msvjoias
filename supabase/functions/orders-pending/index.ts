@@ -6,6 +6,46 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Número de WhatsApp para receber notificações de novos pedidos
+const NOTIFICATION_PHONE = "5592984145531";
+
+// Função para enviar notificação via ZAPI
+async function sendNotification(message: string) {
+  try {
+    const ZAPI_INSTANCE_ID = Deno.env.get("ZAPI_INSTANCE_ID");
+    const ZAPI_TOKEN = Deno.env.get("ZAPI_TOKEN");
+    const ZAPI_CLIENT_TOKEN = Deno.env.get("ZAPI_CLIENT_TOKEN");
+
+    if (!ZAPI_INSTANCE_ID || !ZAPI_TOKEN) {
+      console.log("ZAPI credentials not configured, skipping notification");
+      return;
+    }
+
+    const zapiEndpoint = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-text`;
+    
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (ZAPI_CLIENT_TOKEN) {
+      headers["client-token"] = ZAPI_CLIENT_TOKEN;
+    }
+
+    const response = await fetch(zapiEndpoint, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        phone: NOTIFICATION_PHONE,
+        message,
+      }),
+    });
+
+    const result = await response.json();
+    console.log("Notificação enviada:", result);
+  } catch (error) {
+    console.error("Erro ao enviar notificação:", error);
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -84,6 +124,8 @@ serve(async (req) => {
       };
 
       let result;
+      let isNewOrder = false;
+
       if (existingOrder) {
         // Atualizar pedido existente
         const { data, error } = await supabase
@@ -104,6 +146,7 @@ serve(async (req) => {
           .single();
         
         result = { data, error };
+        isNewOrder = true;
         console.log("Novo pedido criado:", data?.id);
       }
 
@@ -113,6 +156,15 @@ serve(async (req) => {
           JSON.stringify({ error: result.error.message }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
+      }
+
+      // Enviar notificação apenas para novos pedidos
+      if (isNewOrder && result.data) {
+        const formattedPhone = phone.replace(/(\d{2})(\d{2})(\d{5})(\d{4})/, "+$1 ($2) $3-$4");
+        const notificationMessage = `🔔 *NOVO PEDIDO PENDENTE*\n\n📱 Cliente: ${formattedPhone}\n📦 Produto: ${selected_name || selected_sku || "Não informado"}\n${selected_size_1 ? `📏 Tamanho: ${selected_size_1}${selected_size_2 ? ` / ${selected_size_2}` : ""}\n` : ""}${price_total ? `💰 Valor: R$ ${Number(price_total).toFixed(2).replace(".", ",")}\n` : ""}\n📝 Resumo:\n${summary_text}\n\n🔗 Acesse o CRM para atender!`;
+        
+        // Enviar notificação em background para não atrasar a resposta
+        sendNotification(notificationMessage);
       }
 
       return new Response(
