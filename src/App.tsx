@@ -24,6 +24,7 @@ import Customers from "./pages/Customers";
 import Offers from "./pages/Offers";
 import StoreSettings from "./pages/StoreSettings";
 import AI from "./pages/AI";
+import PendingOrders from "./pages/PendingOrders";
 import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
@@ -55,6 +56,7 @@ const App = () => (
                   <Route path="/offers" element={<Offers />} />
                   <Route path="/store-settings" element={<StoreSettings />} />
                   <Route path="/ai" element={<AI />} />
+                  <Route path="/pedidos/pendentes" element={<PendingOrders />} />
                 </Route>
               </Route>
               <Route path="*" element={<NotFound />} />
