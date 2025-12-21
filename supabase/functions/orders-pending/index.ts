@@ -82,6 +82,7 @@ serve(async (req) => {
       const body = await req.json();
       const {
         phone,
+        customer_name,
         session_id,
         selected_sku,
         selected_name,
@@ -180,7 +181,10 @@ serve(async (req) => {
         const notificationPhone = await getNotificationPhone(supabase);
         if (notificationPhone) {
           const formattedPhone = phone.replace(/(\d{2})(\d{2})(\d{5})(\d{4})/, "+$1 ($2) $3-$4");
-          const notificationMessage = `🔔 *NOVO PEDIDO PENDENTE*\n\n📱 Cliente: ${formattedPhone}\n📦 Produto: ${selected_name || selected_sku || "Não informado"}\n${selected_size_1 ? `📏 Tamanho: ${selected_size_1}${selected_size_2 ? ` / ${selected_size_2}` : ""}\n` : ""}${price_total ? `💰 Valor: R$ ${Number(price_total).toFixed(2).replace(".", ",")}\n` : ""}\n📝 Resumo:\n${summary_text}\n\n🔗 Acesse o CRM para atender!`;
+          const clientInfo = customer_name 
+            ? `👤 Nome: ${customer_name}\n📱 Telefone: ${formattedPhone}` 
+            : `📱 Cliente: ${formattedPhone}`;
+          const notificationMessage = `🔔 *NOVO PEDIDO PENDENTE*\n\n${clientInfo}\n📦 Produto: ${selected_name || selected_sku || "Não informado"}\n${selected_size_1 ? `📏 Tamanho: ${selected_size_1}${selected_size_2 ? ` / ${selected_size_2}` : ""}\n` : ""}${price_total ? `💰 Valor: R$ ${Number(price_total).toFixed(2).replace(".", ",")}\n` : ""}\n📝 Resumo:\n${summary_text}\n\n🔗 Acesse o CRM para atender!`;
           
           // Enviar notificação em background para não atrasar a resposta
           sendNotification(notificationMessage, notificationPhone);
