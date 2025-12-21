@@ -18,7 +18,8 @@ import {
   Bot,
   ChevronLeft,
   ChevronRight,
-  ExternalLink
+  ExternalLink,
+  ClipboardList
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -46,6 +47,7 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
     { to: '/products', label: 'Produtos', icon: Package },
     { to: '/customers', label: 'Clientes', icon: UsersRound },
     { to: '/offers', label: 'Ofertas', icon: Gift },
+    { to: '/pedidos/pendentes', label: 'Pedidos', icon: ClipboardList },
     { to: '/reports', label: 'Relatórios', icon: BarChart3 },
     { to: '/ai', label: 'IA', icon: Bot },
   ];

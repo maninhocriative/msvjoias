@@ -35,3 +35,18 @@ verify_jwt = true
 
 [functions.delete-user]
 verify_jwt = true
+
+[functions.catalog-session]
+verify_jwt = false
+
+[functions.catalog-item]
+verify_jwt = false
+
+[functions.catalog-latest]
+verify_jwt = false
+
+[functions.orders-pending]
+verify_jwt = false
+
+[functions.order-detail]
+verify_jwt = false
