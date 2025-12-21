@@ -20,6 +20,7 @@ import Register from "./pages/Register";
 import PendingApproval from "./pages/PendingApproval";
 import WebhookTester from "./pages/WebhookTester";
 import ApiDocs from "./pages/ApiDocs";
+import PublicApiDocs from "./pages/PublicApiDocs";
 import Customers from "./pages/Customers";
 import Offers from "./pages/Offers";
 import StoreSettings from "./pages/StoreSettings";
@@ -40,6 +41,7 @@ const App = () => (
               <Route path="/auth" element={<Auth />} />
               <Route path="/register" element={<Register />} />
               <Route path="/pending-approval" element={<PendingApproval />} />
+              <Route path="/docs" element={<PublicApiDocs />} />
               <Route element={<ProtectedRoute />}>
                 <Route element={<MainLayout />}>
                   <Route path="/" element={<Dashboard />} />
