@@ -89,7 +89,9 @@ const ApiDocs = () => {
                     {[
                       { name: 'sku', type: 'string', desc: 'Busca produto pelo código/SKU exato', example: '?sku=CAM-001' },
                       { name: 'product_id', type: 'uuid', desc: 'Busca produto pelo ID', example: '?product_id=abc-123...' },
-                      { name: 'category', type: 'string', desc: 'Filtra por categoria (busca parcial)', example: '?category=Camisetas' },
+                      { name: 'category', type: 'string', desc: 'Filtra por categoria (busca EXATA por padrão)', example: '?category=Camisetas' },
+                      { name: 'exact_category', type: 'boolean', desc: 'Se false, busca parcial na categoria', example: '?exact_category=false' },
+                      { name: 'cor', type: 'string', desc: 'Filtra por cor (busca parcial)', example: '?cor=branco' },
                       { name: 'search', type: 'string', desc: 'Busca em nome, descrição e SKU', example: '?search=branco' },
                       { name: 'only_available', type: 'boolean', desc: 'Retorna apenas produtos com estoque', example: '?only_available=true' },
                     ].map((param) => (

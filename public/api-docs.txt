@@ -52,13 +52,20 @@ Use para montar respostas ao cliente sobre produtos disponíveis.
 
 PARÂMETROS (Query String):
 
-| Parâmetro      | Tipo    | Obrigatório | Descrição                              | Exemplo                    |
-|----------------|---------|-------------|----------------------------------------|----------------------------|
-| sku            | string  | NÃO         | Busca produto pelo SKU exato           | ?sku=E0612040              |
-| product_id     | uuid    | NÃO         | Busca produto pelo ID                  | ?product_id=abc-123        |
-| category       | string  | NÃO         | Filtra por categoria (busca parcial)   | ?category=Aliancas         |
-| search         | string  | NÃO         | Busca em nome, descrição e SKU         | ?search=dourada            |
-| only_available | boolean | NÃO         | Retorna apenas produtos com estoque    | ?only_available=true       |
+| Parâmetro      | Tipo    | Obrigatório | Descrição                                      | Exemplo                    |
+|----------------|---------|-------------|------------------------------------------------|----------------------------|
+| sku            | string  | NÃO         | Busca produto pelo SKU exato                   | ?sku=E0612040              |
+| product_id     | uuid    | NÃO         | Busca produto pelo ID                          | ?product_id=abc-123        |
+| category       | string  | NÃO         | Filtra por categoria (busca EXATA por padrão)  | ?category=Aliancas         |
+| exact_category | boolean | NÃO         | Se false, busca parcial na categoria           | ?exact_category=false      |
+| search         | string  | NÃO         | Busca em nome, descrição e SKU                 | ?search=dourada            |
+| cor            | string  | NÃO         | Filtra por cor (busca parcial)                 | ?cor=dourada               |
+| only_available | boolean | NÃO         | Retorna apenas produtos com estoque            | ?only_available=true       |
+
+IMPORTANTE - FILTRO DE CATEGORIA:
+- Por padrão, a busca por categoria é EXATA (case-insensitive)
+- ?category=Chinelo → retorna APENAS produtos da categoria "Chinelo"
+- Para busca parcial, use: ?category=Chinelo&exact_category=false
 
 CATEGORIAS DISPONÍVEIS:
 - Aliancas (alianças de casamento/noivado)
