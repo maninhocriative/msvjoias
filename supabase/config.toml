@@ -50,3 +50,6 @@ verify_jwt = false
 
 [functions.order-detail]
 verify_jwt = false
+
+[functions.zapi-status]
+verify_jwt = false
