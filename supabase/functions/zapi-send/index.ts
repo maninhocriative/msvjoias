@@ -76,12 +76,12 @@ serve(async (req) => {
         };
     }
 
-    // Add client token header if available
+    // Add Client-Token header if available
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
     if (ZAPI_CLIENT_TOKEN) {
-      headers['client-token'] = ZAPI_CLIENT_TOKEN;
+      headers['Client-Token'] = ZAPI_CLIENT_TOKEN;
     }
 
     // Send message via ZAPI
