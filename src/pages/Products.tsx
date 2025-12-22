@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -14,6 +15,13 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -21,7 +29,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Plus, Pencil, Trash2, Package, Layers, Video, Image } from 'lucide-react';
+import { Plus, Pencil, Trash2, Package, Layers, Video, Image, FolderEdit } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import ProductVariantsDialog from '@/components/products/ProductVariantsDialog';
 import ImportCSVDialog from '@/components/products/ImportCSVDialog';
@@ -38,6 +46,10 @@ const Products = () => {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [variantsDialogOpen, setVariantsDialogOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkCategoryDialogOpen, setBulkCategoryDialogOpen] = useState(false);
+  const [bulkCategory, setBulkCategory] = useState('');
+  const [categories, setCategories] = useState<string[]>([]);
   const [formData, setFormData] = useState({
     name: '',
     sku: '',
@@ -85,6 +97,14 @@ const Products = () => {
       }));
 
       setProducts(productsWithStock);
+
+      // Extract unique categories
+      const uniqueCategories = [...new Set(
+        productsData
+          ?.map(p => p.category)
+          .filter((c): c is string => !!c)
+      )];
+      setCategories(uniqueCategories);
     } catch (error) {
       console.error('Error fetching products:', error);
       toast({
@@ -237,6 +257,52 @@ const Products = () => {
     setDialogOpen(true);
   };
 
+  const toggleSelectProduct = (productId: string) => {
+    setSelectedIds(prev => 
+      prev.includes(productId) 
+        ? prev.filter(id => id !== productId)
+        : [...prev, productId]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === products.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(products.map(p => p.id));
+    }
+  };
+
+  const handleBulkCategoryUpdate = async () => {
+    if (!bulkCategory || selectedIds.length === 0) return;
+
+    try {
+      const { error } = await supabase
+        .from('products')
+        .update({ category: bulkCategory })
+        .in('id', selectedIds);
+
+      if (error) throw error;
+
+      toast({ 
+        title: 'Sucesso', 
+        description: `Categoria atualizada para ${selectedIds.length} produto(s).` 
+      });
+      
+      setBulkCategoryDialogOpen(false);
+      setBulkCategory('');
+      setSelectedIds([]);
+      fetchProducts();
+    } catch (error) {
+      console.error('Error updating categories:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível atualizar as categorias.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-8 max-w-[1920px] mx-auto">
       <div className="flex items-center justify-between mb-8">
@@ -246,6 +312,53 @@ const Products = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          {selectedIds.length > 0 && (
+            <Dialog open={bulkCategoryDialogOpen} onOpenChange={setBulkCategoryDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                  <FolderEdit className="w-4 h-4" />
+                  Editar Categoria ({selectedIds.length})
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[400px]">
+                <DialogHeader>
+                  <DialogTitle>Alterar Categoria em Massa</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 mt-4">
+                  <p className="text-sm text-muted-foreground">
+                    Alterar a categoria de {selectedIds.length} produto(s) selecionado(s).
+                  </p>
+                  <div className="space-y-2">
+                    <Label>Nova Categoria</Label>
+                    <Select value={bulkCategory} onValueChange={setBulkCategory}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione ou digite" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.map(cat => (
+                          <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      placeholder="Ou digite uma nova categoria"
+                      value={bulkCategory}
+                      onChange={(e) => setBulkCategory(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <Button variant="outline" onClick={() => setBulkCategoryDialogOpen(false)}>
+                      Cancelar
+                    </Button>
+                    <Button onClick={handleBulkCategoryUpdate} disabled={!bulkCategory}>
+                      Aplicar
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
+          
           <ImportCSVDialog onImportComplete={fetchProducts} />
           
           <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
@@ -376,6 +489,12 @@ const Products = () => {
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/50 hover:bg-muted/50">
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={selectedIds.length === products.length && products.length > 0}
+                  onCheckedChange={toggleSelectAll}
+                />
+              </TableHead>
               <TableHead className="font-semibold">Produto</TableHead>
               <TableHead className="font-semibold">SKU</TableHead>
               <TableHead className="font-semibold">Categoria</TableHead>
@@ -389,13 +508,13 @@ const Products = () => {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
                   Carregando produtos...
                 </TableCell>
               </TableRow>
             ) : products.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-12">
+                <TableCell colSpan={9} className="text-center py-12">
                   <Package className="w-12 h-12 mx-auto text-muted-foreground/50 mb-3" />
                   <p className="text-muted-foreground">Nenhum produto encontrado</p>
                 </TableCell>
@@ -404,9 +523,15 @@ const Products = () => {
               products.map((product) => (
                 <TableRow 
                   key={product.id} 
-                  className="group cursor-pointer"
+                  className={`group cursor-pointer ${selectedIds.includes(product.id) ? 'bg-muted/30' : ''}`}
                   onClick={() => navigate(`/products/${product.id}`)}
                 >
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      checked={selectedIds.includes(product.id)}
+                      onCheckedChange={() => toggleSelectProduct(product.id)}
+                    />
+                  </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-3">
                       {product.image_url ? (
