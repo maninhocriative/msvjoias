@@ -24,8 +24,9 @@ serve(async (req) => {
     const onlyAvailable = url.searchParams.get('only_available') === 'true';
     const search = url.searchParams.get('search');
     const cor = url.searchParams.get('cor');
+    const exactCategory = url.searchParams.get('exact_category') !== 'false'; // Default: busca exata
 
-    console.log('Catalog API request:', { category, sku, productId, onlyAvailable, search, cor });
+    console.log('Catalog API request:', { category, sku, productId, onlyAvailable, search, cor, exactCategory });
 
     // Build query
     let query = supabase
@@ -52,7 +53,13 @@ serve(async (req) => {
 
     // Apply filters
     if (category) {
-      query = query.ilike('category', `%${category}%`);
+      if (exactCategory) {
+        // Busca exata (case-insensitive)
+        query = query.ilike('category', category);
+      } else {
+        // Busca parcial
+        query = query.ilike('category', `%${category}%`);
+      }
     }
 
     if (sku) {
