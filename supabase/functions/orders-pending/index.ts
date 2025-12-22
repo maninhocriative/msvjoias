@@ -31,6 +31,7 @@ async function sendNotification(message: string, notificationPhone: string) {
   try {
     const ZAPI_INSTANCE_ID = Deno.env.get("ZAPI_INSTANCE_ID");
     const ZAPI_TOKEN = Deno.env.get("ZAPI_TOKEN");
+    const ZAPI_CLIENT_TOKEN = Deno.env.get("ZAPI_CLIENT_TOKEN");
 
     if (!ZAPI_INSTANCE_ID || !ZAPI_TOKEN) {
       console.log("ZAPI credentials not configured, skipping notification");
@@ -41,11 +42,18 @@ async function sendNotification(message: string, notificationPhone: string) {
     
     console.log("Enviando notificação para:", notificationPhone);
     
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    
+    // Adicionar Client-Token se disponível
+    if (ZAPI_CLIENT_TOKEN) {
+      headers["Client-Token"] = ZAPI_CLIENT_TOKEN;
+    }
+
     const response = await fetch(zapiEndpoint, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify({
         phone: notificationPhone,
         message,
