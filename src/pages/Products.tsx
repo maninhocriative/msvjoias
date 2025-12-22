@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -21,15 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Plus, Pencil, Trash2, Package, Layers, Video, Image, FolderEdit } from 'lucide-react';
+import { Plus, Pencil, Trash2, Package, Layers, Video, Image, FolderEdit, Search, Grid3X3, List, Filter } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import ProductVariantsDialog from '@/components/products/ProductVariantsDialog';
 import ImportCSVDialog from '@/components/products/ImportCSVDialog';
@@ -50,6 +43,9 @@ const Products = () => {
   const [bulkCategoryDialogOpen, setBulkCategoryDialogOpen] = useState(false);
   const [bulkCategory, setBulkCategory] = useState('');
   const [categories, setCategories] = useState<string[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [formData, setFormData] = useState({
     name: '',
     sku: '',
@@ -69,7 +65,6 @@ const Products = () => {
 
   const fetchProducts = async () => {
     try {
-      // Fetch products
       const { data: productsData, error: productsError } = await supabase
         .from('products')
         .select('*')
@@ -77,20 +72,17 @@ const Products = () => {
 
       if (productsError) throw productsError;
 
-      // Fetch stock totals for each product
       const { data: variantsData, error: variantsError } = await supabase
         .from('product_variants')
         .select('product_id, stock');
 
       if (variantsError) throw variantsError;
 
-      // Calculate total stock per product
       const stockByProduct: Record<string, number> = {};
       variantsData?.forEach(v => {
         stockByProduct[v.product_id] = (stockByProduct[v.product_id] || 0) + v.stock;
       });
 
-      // Merge stock info with products
       const productsWithStock = (productsData || []).map(p => ({
         ...p,
         totalStock: stockByProduct[p.id] ?? undefined
@@ -98,7 +90,6 @@ const Products = () => {
 
       setProducts(productsWithStock);
 
-      // Extract unique categories
       const uniqueCategories = [...new Set(
         productsData
           ?.map(p => p.category)
@@ -117,6 +108,13 @@ const Products = () => {
     }
   };
 
+  const filteredProducts = products.filter(product => {
+    const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (product.sku?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
+    const matchesCategory = filterCategory === 'all' || product.category === filterCategory;
+    return matchesSearch && matchesCategory;
+  });
+
   const openVariantsDialog = (product: Product) => {
     setSelectedProduct(product);
     setVariantsDialogOpen(true);
@@ -129,7 +127,6 @@ const Products = () => {
       let imageUrl = editingProduct?.image_url || '';
       let imagesArray: string[] = editingProduct?.images || [];
 
-      // Upload main image
       if (imageFile) {
         const fileExt = imageFile.name.split('.').pop();
         const fileName = `${Date.now()}.${fileExt}`;
@@ -147,7 +144,6 @@ const Products = () => {
         imageUrl = publicUrl;
       }
 
-      // Upload additional images
       if (additionalImages.length > 0) {
         const uploadedUrls: string[] = [];
         for (const file of additionalImages) {
@@ -214,7 +210,8 @@ const Products = () => {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     if (!confirm('Tem certeza que deseja excluir este produto?')) return;
 
     try {
@@ -243,7 +240,8 @@ const Products = () => {
     setEditingProduct(null);
   };
 
-  const openEditDialog = (product: Product) => {
+  const openEditDialog = (product: Product, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     setEditingProduct(product);
     setFormData({
       name: product.name,
@@ -257,7 +255,8 @@ const Products = () => {
     setDialogOpen(true);
   };
 
-  const toggleSelectProduct = (productId: string) => {
+  const toggleSelectProduct = (productId: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     setSelectedIds(prev => 
       prev.includes(productId) 
         ? prev.filter(id => id !== productId)
@@ -266,10 +265,10 @@ const Products = () => {
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.length === products.length) {
+    if (selectedIds.length === filteredProducts.length) {
       setSelectedIds([]);
     } else {
-      setSelectedIds(products.map(p => p.id));
+      setSelectedIds(filteredProducts.map(p => p.id));
     }
   };
 
@@ -305,13 +304,16 @@ const Products = () => {
 
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-8 max-w-[1920px] mx-auto">
-      <div className="flex items-center justify-between mb-8">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-semibold text-foreground tracking-tight">Produtos</h1>
-          <p className="text-muted-foreground mt-1">Gerencie seu catálogo de produtos</p>
+          <h1 className="text-3xl font-bold text-foreground tracking-tight">Produtos</h1>
+          <p className="text-muted-foreground mt-1">
+            {products.length} produtos no catálogo
+          </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {selectedIds.length > 0 && (
             <Dialog open={bulkCategoryDialogOpen} onOpenChange={setBulkCategoryDialogOpen}>
               <DialogTrigger asChild>
@@ -368,258 +370,410 @@ const Products = () => {
                 Novo Produto
               </Button>
             </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
-            <DialogHeader>
-              <DialogTitle>{editingProduct ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4 mt-4 max-h-[70vh] overflow-y-auto pr-2">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Nome *</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="sku">Código/SKU</Label>
-                  <Input
-                    id="sku"
-                    value={formData.sku}
-                    onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-                    placeholder="Ex: CAM-001"
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="description">Descrição</Label>
-                <Textarea
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  rows={3}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="price">Preço (R$) *</Label>
-                  <Input
-                    id="price"
-                    type="number"
-                    step="0.01"
-                    value={formData.price}
-                    onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="category">Categoria</Label>
-                  <Input
-                    id="category"
-                    value={formData.category}
-                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="video_url" className="flex items-center gap-2">
-                  <Video className="w-4 h-4" />
-                  URL do Vídeo
-                </Label>
-                <Input
-                  id="video_url"
-                  type="url"
-                  value={formData.video_url}
-                  onChange={(e) => setFormData({ ...formData, video_url: e.target.value })}
-                  placeholder="https://..."
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="image" className="flex items-center gap-2">
-                  <Image className="w-4 h-4" />
-                  Imagem Principal
-                </Label>
-                <Input
-                  id="image"
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => setImageFile(e.target.files?.[0] || null)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="additional_images">Imagens Adicionais</Label>
-                <Input
-                  id="additional_images"
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={(e) => setAdditionalImages(Array.from(e.target.files || []))}
-                />
-                {additionalImages.length > 0 && (
-                  <p className="text-xs text-muted-foreground">{additionalImages.length} arquivo(s) selecionado(s)</p>
-                )}
-                {editingProduct?.images && editingProduct.images.length > 0 && (
-                  <div className="flex gap-2 flex-wrap mt-2">
-                    {editingProduct.images.map((img, i) => (
-                      <img key={i} src={img} alt={`Imagem ${i + 1}`} className="w-12 h-12 rounded object-cover border" />
-                    ))}
+            <DialogContent className="sm:max-w-[500px]">
+              <DialogHeader>
+                <DialogTitle>{editingProduct ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleSubmit} className="space-y-4 mt-4 max-h-[70vh] overflow-y-auto pr-2">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Nome *</Label>
+                    <Input
+                      id="name"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      required
+                    />
                   </div>
-                )}
-              </div>
-              <div className="flex items-center gap-3">
-                <Switch
-                  id="active"
-                  checked={formData.active}
-                  onCheckedChange={(checked) => setFormData({ ...formData, active: checked })}
-                />
-                <Label htmlFor="active">Produto ativo</Label>
-              </div>
-              <Button type="submit" className="w-full">
-                {editingProduct ? 'Atualizar' : 'Criar'} Produto
-              </Button>
-            </form>
-          </DialogContent>
-        </Dialog>
+                  <div className="space-y-2">
+                    <Label htmlFor="sku">Código/SKU</Label>
+                    <Input
+                      id="sku"
+                      value={formData.sku}
+                      onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
+                      placeholder="Ex: CAM-001"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="description">Descrição</Label>
+                  <Textarea
+                    id="description"
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    rows={3}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="price">Preço (R$) *</Label>
+                    <Input
+                      id="price"
+                      type="number"
+                      step="0.01"
+                      value={formData.price}
+                      onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="category">Categoria</Label>
+                    <Input
+                      id="category"
+                      value={formData.category}
+                      onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="video_url" className="flex items-center gap-2">
+                    <Video className="w-4 h-4" />
+                    URL do Vídeo
+                  </Label>
+                  <Input
+                    id="video_url"
+                    type="url"
+                    value={formData.video_url}
+                    onChange={(e) => setFormData({ ...formData, video_url: e.target.value })}
+                    placeholder="https://..."
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="image" className="flex items-center gap-2">
+                    <Image className="w-4 h-4" />
+                    Imagem Principal
+                  </Label>
+                  <Input
+                    id="image"
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="additional_images">Imagens Adicionais</Label>
+                  <Input
+                    id="additional_images"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(e) => setAdditionalImages(Array.from(e.target.files || []))}
+                  />
+                  {additionalImages.length > 0 && (
+                    <p className="text-xs text-muted-foreground">{additionalImages.length} arquivo(s) selecionado(s)</p>
+                  )}
+                  {editingProduct?.images && editingProduct.images.length > 0 && (
+                    <div className="flex gap-2 flex-wrap mt-2">
+                      {editingProduct.images.map((img, i) => (
+                        <img key={i} src={img} alt={`Imagem ${i + 1}`} className="w-12 h-12 rounded object-cover border" />
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  <Switch
+                    id="active"
+                    checked={formData.active}
+                    onCheckedChange={(checked) => setFormData({ ...formData, active: checked })}
+                  />
+                  <Label htmlFor="active">Produto ativo</Label>
+                </div>
+                <Button type="submit" className="w-full">
+                  {editingProduct ? 'Atualizar' : 'Criar'} Produto
+                </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
-      <div className="border border-border rounded-xl overflow-x-auto bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-muted/50 hover:bg-muted/50">
-              <TableHead className="w-10">
-                <Checkbox
-                  checked={selectedIds.length === products.length && products.length > 0}
-                  onCheckedChange={toggleSelectAll}
-                />
-              </TableHead>
-              <TableHead className="font-semibold">Produto</TableHead>
-              <TableHead className="font-semibold">SKU</TableHead>
-              <TableHead className="font-semibold">Categoria</TableHead>
-              <TableHead className="font-semibold">Preço</TableHead>
-              <TableHead className="font-semibold">Estoque</TableHead>
-              <TableHead className="font-semibold">Mídia</TableHead>
-              <TableHead className="font-semibold">Status</TableHead>
-              <TableHead className="font-semibold text-right">Ações</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
-                  Carregando produtos...
-                </TableCell>
-              </TableRow>
-            ) : products.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={9} className="text-center py-12">
-                  <Package className="w-12 h-12 mx-auto text-muted-foreground/50 mb-3" />
-                  <p className="text-muted-foreground">Nenhum produto encontrado</p>
-                </TableCell>
-              </TableRow>
-            ) : (
-              products.map((product) => (
-                <TableRow 
-                  key={product.id} 
-                  className={`group cursor-pointer ${selectedIds.includes(product.id) ? 'bg-muted/30' : ''}`}
-                  onClick={() => navigate(`/products/${product.id}`)}
-                >
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <Checkbox
-                      checked={selectedIds.includes(product.id)}
-                      onCheckedChange={() => toggleSelectProduct(product.id)}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      {product.image_url ? (
-                        <img
-                          src={product.image_url}
-                          alt={product.name}
-                          className="w-10 h-10 rounded-lg object-cover bg-muted"
-                        />
-                      ) : (
-                        <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
-                          <Package className="w-5 h-5 text-muted-foreground" />
-                        </div>
-                      )}
-                      <div>
-                        <p className="font-medium text-foreground">{product.name}</p>
-                        <p className="text-xs text-muted-foreground line-clamp-1">{product.description}</p>
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground font-mono text-xs">{product.sku || '—'}</TableCell>
-                  <TableCell className="text-muted-foreground">{product.category || '—'}</TableCell>
-                  <TableCell className="font-medium">R$ {product.price?.toFixed(2) || '0.00'}</TableCell>
-                  <TableCell>
-                    {product.totalStock !== undefined ? (
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                        product.totalStock > 0 
-                          ? 'bg-muted text-foreground' 
-                          : 'bg-destructive/10 text-destructive'
-                      }`}>
-                        {product.totalStock} un.
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground text-xs">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      {product.image_url && <Image className="w-4 h-4 text-muted-foreground" />}
-                      {(product.images?.length ?? 0) > 0 && (
-                        <span className="text-xs text-muted-foreground">+{product.images?.length}</span>
-                      )}
-                      {product.video_url && <Video className="w-4 h-4 text-muted-foreground" />}
-                      {!product.image_url && !product.video_url && <span className="text-muted-foreground text-xs">—</span>}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      product.active 
-                        ? 'bg-foreground text-background' 
-                        : 'bg-muted text-muted-foreground'
-                    }`}>
-                      {product.active ? 'Ativo' : 'Inativo'}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => openVariantsDialog(product)}
-                        title="Gerenciar tamanhos e estoque"
-                      >
-                        <Layers className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => openEditDialog(product)}
-                        title="Editar produto"
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(product.id)}
-                        title="Excluir produto"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+      {/* Filters & Search */}
+      <div className="flex flex-col sm:flex-row gap-4 mb-6">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por nome ou SKU..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <Select value={filterCategory} onValueChange={setFilterCategory}>
+            <SelectTrigger className="w-[180px]">
+              <Filter className="w-4 h-4 mr-2" />
+              <SelectValue placeholder="Categoria" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as categorias</SelectItem>
+              {categories.map(cat => (
+                <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <div className="flex border rounded-lg overflow-hidden">
+            <Button
+              variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+              size="icon"
+              onClick={() => setViewMode('grid')}
+              className="rounded-none"
+            >
+              <Grid3X3 className="w-4 h-4" />
+            </Button>
+            <Button
+              variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+              size="icon"
+              onClick={() => setViewMode('list')}
+              className="rounded-none"
+            >
+              <List className="w-4 h-4" />
+            </Button>
+          </div>
+
+          {filteredProducts.length > 0 && (
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={toggleSelectAll}
+            >
+              {selectedIds.length === filteredProducts.length ? 'Desmarcar' : 'Selecionar'} todos
+            </Button>
+          )}
+        </div>
       </div>
+
+      {/* Products Grid/List */}
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <div className="text-center">
+            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-muted-foreground">Carregando produtos...</p>
+          </div>
+        </div>
+      ) : filteredProducts.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <Package className="w-16 h-16 text-muted-foreground/30 mb-4" />
+          <h3 className="text-lg font-medium text-foreground mb-1">Nenhum produto encontrado</h3>
+          <p className="text-muted-foreground text-sm">
+            {searchTerm || filterCategory !== 'all' 
+              ? 'Tente ajustar os filtros de busca'
+              : 'Comece adicionando seu primeiro produto'}
+          </p>
+        </div>
+      ) : viewMode === 'grid' ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
+          {filteredProducts.map((product) => (
+            <div
+              key={product.id}
+              onClick={() => navigate(`/products/${product.id}`)}
+              className={`group relative bg-card border rounded-2xl overflow-hidden cursor-pointer transition-all duration-200 hover:shadow-lg hover:border-foreground/20 ${
+                selectedIds.includes(product.id) ? 'ring-2 ring-primary' : ''
+              }`}
+            >
+              {/* Selection checkbox */}
+              <div 
+                className="absolute top-3 left-3 z-10"
+                onClick={(e) => toggleSelectProduct(product.id, e)}
+              >
+                <Checkbox
+                  checked={selectedIds.includes(product.id)}
+                  className="bg-background/80 backdrop-blur-sm"
+                />
+              </div>
+
+              {/* Status badge */}
+              <div className="absolute top-3 right-3 z-10">
+                <Badge 
+                  variant={product.active ? "default" : "secondary"}
+                  className="text-xs"
+                >
+                  {product.active ? 'Ativo' : 'Inativo'}
+                </Badge>
+              </div>
+
+              {/* Product Image */}
+              <div className="aspect-square bg-muted relative overflow-hidden">
+                {product.image_url ? (
+                  <img
+                    src={product.image_url}
+                    alt={product.name}
+                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <Package className="w-16 h-16 text-muted-foreground/30" />
+                  </div>
+                )}
+
+                {/* Media indicators */}
+                <div className="absolute bottom-3 left-3 flex items-center gap-1">
+                  {(product.images?.length ?? 0) > 0 && (
+                    <Badge variant="secondary" className="text-xs gap-1 bg-background/80 backdrop-blur-sm">
+                      <Image className="w-3 h-3" />
+                      +{product.images?.length}
+                    </Badge>
+                  )}
+                  {product.video_url && (
+                    <Badge variant="secondary" className="text-xs bg-background/80 backdrop-blur-sm">
+                      <Video className="w-3 h-3" />
+                    </Badge>
+                  )}
+                </div>
+
+                {/* Quick actions on hover */}
+                <div className="absolute inset-0 bg-foreground/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                  <Button
+                    size="icon"
+                    variant="secondary"
+                    onClick={(e) => { e.stopPropagation(); openVariantsDialog(product); }}
+                    title="Gerenciar estoque"
+                  >
+                    <Layers className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="secondary"
+                    onClick={(e) => openEditDialog(product, e)}
+                    title="Editar"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="secondary"
+                    onClick={(e) => handleDelete(product.id, e)}
+                    title="Excluir"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Product Info */}
+              <div className="p-4">
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <h3 className="font-semibold text-foreground line-clamp-2 leading-snug">
+                    {product.name}
+                  </h3>
+                </div>
+                
+                {product.sku && (
+                  <p className="text-xs text-muted-foreground font-mono mb-2">
+                    {product.sku}
+                  </p>
+                )}
+
+                <div className="flex items-center justify-between mt-3">
+                  <span className="text-lg font-bold text-foreground">
+                    R$ {product.price?.toFixed(2) || '0.00'}
+                  </span>
+                  
+                  {product.totalStock !== undefined && (
+                    <Badge 
+                      variant={product.totalStock > 0 ? "secondary" : "destructive"}
+                      className="text-xs"
+                    >
+                      {product.totalStock} un.
+                    </Badge>
+                  )}
+                </div>
+
+                {product.category && (
+                  <Badge variant="outline" className="mt-3 text-xs">
+                    {product.category}
+                  </Badge>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        /* List View */
+        <div className="space-y-2">
+          {filteredProducts.map((product) => (
+            <div
+              key={product.id}
+              onClick={() => navigate(`/products/${product.id}`)}
+              className={`flex items-center gap-4 p-4 bg-card border rounded-xl cursor-pointer transition-all hover:shadow-md hover:border-foreground/20 ${
+                selectedIds.includes(product.id) ? 'ring-2 ring-primary' : ''
+              }`}
+            >
+              <div onClick={(e) => toggleSelectProduct(product.id, e)}>
+                <Checkbox checked={selectedIds.includes(product.id)} />
+              </div>
+
+              <div className="w-20 h-20 rounded-lg bg-muted overflow-hidden flex-shrink-0">
+                {product.image_url ? (
+                  <img
+                    src={product.image_url}
+                    alt={product.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <Package className="w-8 h-8 text-muted-foreground/30" />
+                  </div>
+                )}
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold text-foreground truncate">{product.name}</h3>
+                <p className="text-sm text-muted-foreground truncate">{product.description}</p>
+                <div className="flex items-center gap-2 mt-1">
+                  {product.sku && (
+                    <span className="text-xs font-mono text-muted-foreground">{product.sku}</span>
+                  )}
+                  {product.category && (
+                    <Badge variant="outline" className="text-xs">{product.category}</Badge>
+                  )}
+                </div>
+              </div>
+
+              <div className="text-right">
+                <p className="font-bold text-foreground">R$ {product.price?.toFixed(2) || '0.00'}</p>
+                {product.totalStock !== undefined && (
+                  <Badge 
+                    variant={product.totalStock > 0 ? "secondary" : "destructive"}
+                    className="text-xs mt-1"
+                  >
+                    {product.totalStock} un.
+                  </Badge>
+                )}
+              </div>
+
+              <Badge variant={product.active ? "default" : "secondary"}>
+                {product.active ? 'Ativo' : 'Inativo'}
+              </Badge>
+
+              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => openVariantsDialog(product)}
+                >
+                  <Layers className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={(e) => openEditDialog(product, e)}
+                >
+                  <Pencil className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={(e) => handleDelete(product.id, e)}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Variants Dialog */}
       {selectedProduct && (
@@ -628,7 +782,7 @@ const Products = () => {
           onOpenChange={(open) => {
             setVariantsDialogOpen(open);
             if (!open) {
-              fetchProducts(); // Refresh to update stock counts
+              fetchProducts();
             }
           }}
           productId={selectedProduct.id}
