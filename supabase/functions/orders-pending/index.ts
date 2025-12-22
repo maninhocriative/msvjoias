@@ -31,7 +31,6 @@ async function sendNotification(message: string, notificationPhone: string) {
   try {
     const ZAPI_INSTANCE_ID = Deno.env.get("ZAPI_INSTANCE_ID");
     const ZAPI_TOKEN = Deno.env.get("ZAPI_TOKEN");
-    const ZAPI_CLIENT_TOKEN = Deno.env.get("ZAPI_CLIENT_TOKEN");
 
     if (!ZAPI_INSTANCE_ID || !ZAPI_TOKEN) {
       console.log("ZAPI credentials not configured, skipping notification");
@@ -40,16 +39,13 @@ async function sendNotification(message: string, notificationPhone: string) {
 
     const zapiEndpoint = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-text`;
     
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    if (ZAPI_CLIENT_TOKEN) {
-      headers["client-token"] = ZAPI_CLIENT_TOKEN;
-    }
-
+    console.log("Enviando notificação para:", notificationPhone);
+    
     const response = await fetch(zapiEndpoint, {
       method: "POST",
-      headers,
+      headers: {
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
         phone: notificationPhone,
         message,
@@ -57,7 +53,7 @@ async function sendNotification(message: string, notificationPhone: string) {
     });
 
     const result = await response.json();
-    console.log("Notificação enviada para", notificationPhone, ":", result);
+    console.log("Resposta ZAPI:", JSON.stringify(result));
   } catch (error) {
     console.error("Erro ao enviar notificação:", error);
   }
