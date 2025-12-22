@@ -22,22 +22,23 @@ PLATAFORMAS DE AUTOMAÇÃO COMPATÍVEIS:
 ÍNDICE DETALHADO
 ========================================
 1. Catálogo de Produtos (GET /catalog-api)
-2. Sessões de Catálogo
+2. Categorias Disponíveis (GET /catalog-categories)
+3. Sessões de Catálogo
    - POST /catalog-session (criar sessão)
    - POST /catalog-item (registrar item enviado)
    - GET /catalog-latest (buscar sessão ativa)
-3. Pedidos Pendentes
+4. Pedidos Pendentes
    - POST /orders-pending (criar/atualizar pedido)
    - GET /orders-pending (listar pedidos)
    - GET /order-detail (detalhe do pedido)
-4. Mensagens
+5. Mensagens
    - POST /automation-send (enviar mensagem)
    - POST /automation-webhook (receber mensagem)
-5. Busca Inteligente com IA (GET /ai-catalog-search)
-6. Fluxo Completo de Automação com IA
-7. Interpretação de Referências do Cliente
-8. Exemplos de Prompts para IA
-9. Tratamento de Erros
+6. Busca Inteligente com IA (GET /ai-catalog-search)
+7. Fluxo Completo de Automação com IA
+8. Interpretação de Referências do Cliente
+9. Exemplos de Prompts para IA
+10. Tratamento de Erros
 
 ========================================
 1. CATÁLOGO DE PRODUTOS
@@ -157,7 +158,68 @@ RESPOSTA DE ERRO:
 }
 
 ========================================
-2. SESSÕES DE CATÁLOGO
+2. CATEGORIAS DISPONÍVEIS
+========================================
+
+Endpoint: GET /catalog-categories
+URL Completa: https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co/catalog-categories
+
+DESCRIÇÃO:
+Lista todas as categorias disponíveis no banco de dados com contagem de produtos.
+Útil para automações que precisam saber as categorias exatas para filtrar.
+
+PARÂMETROS: Nenhum
+
+EXEMPLO:
+
+curl -X GET "https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co/catalog-categories"
+
+RESPOSTA:
+
+{
+  "success": true,
+  "count": 3,
+  "categories": [
+    {
+      "name": "aliancas",
+      "name_lowercase": "aliancas",
+      "total_products": 15,
+      "products_with_stock": 12
+    },
+    {
+      "name": "Personalização",
+      "name_lowercase": "personalização",
+      "total_products": 5,
+      "products_with_stock": 5
+    },
+    {
+      "name": "Pingente",
+      "name_lowercase": "pingente",
+      "total_products": 9,
+      "products_with_stock": 8
+    }
+  ],
+  "aliases": {
+    "aliancas": "aliancas",
+    "alianca": "aliancas",
+    "personalizacao": "Personalização",
+    "pingente": "Pingente",
+    "pingentes": "Pingente"
+  },
+  "usage": {
+    "description": "Use o campo 'name' exato para filtrar no endpoint /catalog-api",
+    "example": "?category=Pingente",
+    "tip": "A busca por categoria é case-insensitive, então 'pingente' também funciona"
+  }
+}
+
+USO NA AUTOMAÇÃO:
+- Chame este endpoint uma vez para descobrir as categorias disponíveis
+- Use o campo "name" exato no parâmetro category do /catalog-api
+- O campo "aliases" ajuda a mapear variações comuns para o nome correto
+
+========================================
+3. SESSÕES DE CATÁLOGO
 ========================================
 
 CONCEITO:

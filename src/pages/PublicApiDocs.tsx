@@ -258,6 +258,59 @@ const PublicApiDocs = () => {
                 />
               </div>
             </EndpointCard>
+
+            {/* Catalog Categories */}
+            <EndpointCard method="GET" path="/catalog-categories" description="Lista todas as categorias disponíveis com contagem de produtos">
+              <div>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">URL Completa</h4>
+                <CodeBlock code={`${BASE_URL}/catalog-categories`} id="categories-url" />
+              </div>
+
+              <div>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">Exemplo cURL</h4>
+                <CodeBlock
+                  id="categories-curl"
+                  language="bash"
+                  code={`curl -X GET "${BASE_URL}/catalog-categories"`}
+                />
+              </div>
+
+              <div>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">Resposta de Sucesso</h4>
+                <CodeBlock
+                  id="categories-response"
+                  code={`{
+  "success": true,
+  "count": 3,
+  "categories": [
+    {
+      "name": "Pingente",
+      "name_lowercase": "pingente",
+      "total_products": 9,
+      "products_with_stock": 8
+    }
+  ],
+  "aliases": {
+    "pingente": "Pingente",
+    "pingentes": "Pingente"
+  },
+  "usage": {
+    "description": "Use o campo 'name' para filtrar no /catalog-api",
+    "example": "?category=Pingente"
+  }
+}`}
+                />
+              </div>
+
+              <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 border border-blue-200 dark:border-blue-800">
+                <h4 className="font-semibold mb-2 text-blue-800 dark:text-blue-200">💡 Uso na Automação</h4>
+                <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
+                  <li>• Chame este endpoint para descobrir as categorias disponíveis</li>
+                  <li>• Use o campo <strong>name</strong> no parâmetro category do /catalog-api</li>
+                  <li>• O campo <strong>aliases</strong> mapeia variações para o nome correto</li>
+                </ul>
+              </div>
+            </EndpointCard>
           </TabsContent>
 
           {/* SESSIONS TAB */}

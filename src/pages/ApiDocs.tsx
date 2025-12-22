@@ -192,6 +192,72 @@ const ApiDocs = () => {
                 </Card>
               </CardContent>
             </Card>
+
+            {/* Catalog Categories API */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/30">GET</Badge>
+                  <CardTitle className="text-lg font-mono">/catalog-categories</CardTitle>
+                </div>
+                <CardDescription>
+                  Lista todas as categorias disponíveis no banco de dados com contagem de produtos
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div>
+                  <h4 className="font-semibold mb-2">URL Base</h4>
+                  <CodeBlock code={`${BASE_URL}/catalog-categories`} id="categories-url" />
+                </div>
+
+                <div>
+                  <h4 className="font-semibold mb-2">Exemplo de Requisição</h4>
+                  <CodeBlock
+                    id="categories-request"
+                    language="bash"
+                    code={`curl "${BASE_URL}/catalog-categories"`}
+                  />
+                </div>
+
+                <div>
+                  <h4 className="font-semibold mb-2">Resposta</h4>
+                  <CodeBlock
+                    id="categories-response"
+                    code={`{
+  "success": true,
+  "count": 3,
+  "categories": [
+    {
+      "name": "Pingente",
+      "name_lowercase": "pingente",
+      "total_products": 9,
+      "products_with_stock": 8
+    }
+  ],
+  "aliases": {
+    "pingente": "Pingente",
+    "pingentes": "Pingente"
+  },
+  "usage": {
+    "description": "Use o campo 'name' exato para filtrar no /catalog-api",
+    "example": "?category=Pingente"
+  }
+}`}
+                  />
+                </div>
+
+                <Card className="bg-muted/30 border-dashed">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Uso na Automação</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-sm space-y-2">
+                    <p>• Chame este endpoint para descobrir as categorias disponíveis</p>
+                    <p>• Use o campo <strong>name</strong> no parâmetro category do /catalog-api</p>
+                    <p>• O campo <strong>aliases</strong> mapeia variações para o nome correto</p>
+                  </CardContent>
+                </Card>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Catalog Sessions API */}
