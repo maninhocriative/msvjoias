@@ -76,6 +76,8 @@ export type Database = {
       catalog_sessions: {
         Row: {
           budget_max: number | null
+          categoria: string | null
+          cor_preferida: string | null
           created_at: string
           id: string
           intent: string | null
@@ -83,9 +85,14 @@ export type Database = {
           phone: string
           preferred_color: string | null
           session_status: string
+          source: string | null
+          thread_id: string | null
+          tipo_alianca: string | null
         }
         Insert: {
           budget_max?: number | null
+          categoria?: string | null
+          cor_preferida?: string | null
           created_at?: string
           id?: string
           intent?: string | null
@@ -93,9 +100,14 @@ export type Database = {
           phone: string
           preferred_color?: string | null
           session_status?: string
+          source?: string | null
+          thread_id?: string | null
+          tipo_alianca?: string | null
         }
         Update: {
           budget_max?: number | null
+          categoria?: string | null
+          cor_preferida?: string | null
           created_at?: string
           id?: string
           intent?: string | null
@@ -103,6 +115,9 @@ export type Database = {
           phone?: string
           preferred_color?: string | null
           session_status?: string
+          source?: string | null
+          thread_id?: string | null
+          tipo_alianca?: string | null
         }
         Relationships: []
       }
@@ -112,6 +127,7 @@ export type Database = {
           id: string
           payload: Json | null
           phone: string
+          thread_id: string | null
           ts: string | null
           type: string
         }
@@ -120,6 +136,7 @@ export type Database = {
           id?: string
           payload?: Json | null
           phone: string
+          thread_id?: string | null
           ts?: string | null
           type: string
         }
@@ -128,6 +145,7 @@ export type Database = {
           id?: string
           payload?: Json | null
           phone?: string
+          thread_id?: string | null
           ts?: string | null
           type?: string
         }
@@ -135,30 +153,72 @@ export type Database = {
       }
       conversation_state: {
         Row: {
+          categoria: string | null
+          cor_preferida: string | null
+          created_at: string | null
+          crm_entrega: string | null
+          crm_finalizar: boolean | null
+          crm_pagamento: string | null
           last_catalog: Json | null
+          last_catalog_session_id: string | null
           last_intent: string | null
+          last_message_id: string | null
           last_step: string | null
+          last_user_text: string | null
           phone: string
           selected_index: number | null
+          selected_name: string | null
+          selected_price: number | null
           selected_sku: string | null
+          stage: string | null
+          thread_id: string | null
+          tipo_alianca: string | null
           updated_at: string | null
         }
         Insert: {
+          categoria?: string | null
+          cor_preferida?: string | null
+          created_at?: string | null
+          crm_entrega?: string | null
+          crm_finalizar?: boolean | null
+          crm_pagamento?: string | null
           last_catalog?: Json | null
+          last_catalog_session_id?: string | null
           last_intent?: string | null
+          last_message_id?: string | null
           last_step?: string | null
+          last_user_text?: string | null
           phone: string
           selected_index?: number | null
+          selected_name?: string | null
+          selected_price?: number | null
           selected_sku?: string | null
+          stage?: string | null
+          thread_id?: string | null
+          tipo_alianca?: string | null
           updated_at?: string | null
         }
         Update: {
+          categoria?: string | null
+          cor_preferida?: string | null
+          created_at?: string | null
+          crm_entrega?: string | null
+          crm_finalizar?: boolean | null
+          crm_pagamento?: string | null
           last_catalog?: Json | null
+          last_catalog_session_id?: string | null
           last_intent?: string | null
+          last_message_id?: string | null
           last_step?: string | null
+          last_user_text?: string | null
           phone?: string
           selected_index?: number | null
+          selected_name?: string | null
+          selected_price?: number | null
           selected_sku?: string | null
+          stage?: string | null
+          thread_id?: string | null
+          tipo_alianca?: string | null
           updated_at?: string | null
         }
         Relationships: []
@@ -666,6 +726,18 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      add_catalog_item: {
+        Args: {
+          p_image_url?: string
+          p_name?: string
+          p_price?: number
+          p_session_id: string
+          p_sizes?: Json
+          p_sku: string
+          p_video_url?: string
+        }
+        Returns: string
+      }
       add_customer_cashback: {
         Args: {
           p_customer_id: string
@@ -673,6 +745,21 @@ export type Database = {
           p_order_value: number
         }
         Returns: number
+      }
+      cleanup_bot_data: { Args: never; Returns: undefined }
+      create_catalog_session: {
+        Args: {
+          p_categoria?: string
+          p_cor_preferida?: string
+          p_phone: string
+          p_thread_id?: string
+          p_tipo_alianca?: string
+        }
+        Returns: string
+      }
+      get_recent_catalog_context: {
+        Args: { p_limit?: number; p_phone: string }
+        Returns: string
       }
       get_user_role: {
         Args: { _user_id: string }
@@ -692,6 +779,54 @@ export type Database = {
           p_order_reference: string
         }
         Returns: boolean
+      }
+      upsert_conversation_state: {
+        Args: {
+          p_categoria?: string
+          p_cor_preferida?: string
+          p_crm_entrega?: string
+          p_crm_finalizar?: boolean
+          p_crm_pagamento?: string
+          p_last_catalog_session_id?: string
+          p_last_message_id?: string
+          p_last_user_text?: string
+          p_phone: string
+          p_selected_name?: string
+          p_selected_price?: number
+          p_selected_sku?: string
+          p_stage?: string
+          p_thread_id?: string
+          p_tipo_alianca?: string
+        }
+        Returns: {
+          categoria: string | null
+          cor_preferida: string | null
+          created_at: string | null
+          crm_entrega: string | null
+          crm_finalizar: boolean | null
+          crm_pagamento: string | null
+          last_catalog: Json | null
+          last_catalog_session_id: string | null
+          last_intent: string | null
+          last_message_id: string | null
+          last_step: string | null
+          last_user_text: string | null
+          phone: string
+          selected_index: number | null
+          selected_name: string | null
+          selected_price: number | null
+          selected_sku: string | null
+          stage: string | null
+          thread_id: string | null
+          tipo_alianca: string | null
+          updated_at: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "conversation_state"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
     }
     Enums: {
