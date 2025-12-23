@@ -458,6 +458,30 @@ export type Database = {
           },
         ]
       }
+      processed_messages: {
+        Row: {
+          created_at: string
+          id: number
+          message_id: string
+          phone: string | null
+          thread_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          message_id: string
+          phone?: string | null
+          thread_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          message_id?: string
+          phone?: string | null
+          thread_id?: string | null
+        }
+        Relationships: []
+      }
       product_variants: {
         Row: {
           created_at: string
