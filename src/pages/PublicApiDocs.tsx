@@ -1,15 +1,17 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Copy, Check, Database, Send, ShoppingCart, Layers, MessageSquare, Package, ExternalLink, Zap, BookOpen, Bot } from 'lucide-react';
+import { Copy, Check, Database, Send, ShoppingCart, Layers, MessageSquare, Package, ExternalLink, Zap, BookOpen, Bot, FileText } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const BASE_URL = 'https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co';
 
 const PublicApiDocs = () => {
+  const navigate = useNavigate();
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const { toast } = useToast();
 
@@ -120,6 +122,15 @@ const PublicApiDocs = () => {
                   <ExternalLink className="w-4 h-4" />
                   <span className="hidden sm:inline">Ver Texto</span>
                 </a>
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="gap-2"
+                onClick={() => navigate('/nomenclatura')}
+              >
+                <FileText className="w-4 h-4" />
+                <span className="hidden sm:inline">Nomenclatura IA</span>
               </Button>
             </div>
           </div>
