@@ -69,6 +69,65 @@ const tools = [
   }
 ];
 
+// Função para formatar legenda do produto para WhatsApp
+function formatProductCaption(
+  product: any, 
+  options: { includePrice: boolean; includeSizes: boolean; includeStock: boolean }
+): string {
+  const lines: string[] = [];
+  
+  // Nome em negrito
+  lines.push(`*${product.name}*`);
+  
+  // Descrição
+  if (product.description) {
+    lines.push(`${product.description}`);
+  }
+  
+  // Preço
+  if (options.includePrice && (product.current_price || product.price)) {
+    const price = product.current_price || product.price;
+    const priceFormatted = `R$ ${price.toFixed(2).replace('.', ',')}`;
+    
+    if (product.on_sale && product.original_price) {
+      const originalFormatted = `R$ ${product.original_price.toFixed(2).replace('.', ',')}`;
+      lines.push(`💰 ~${originalFormatted}~ *${priceFormatted}*`);
+      if (product.discount_percent) {
+        lines.push(`🏷️ ${product.discount_percent}% OFF`);
+      }
+    } else {
+      lines.push(`💰 *${priceFormatted}*`);
+    }
+  }
+  
+  // Tamanhos
+  if (options.includeSizes && product.available_sizes?.length > 0) {
+    lines.push(`📏 Tamanhos: ${product.available_sizes.join(', ')}`);
+  }
+  
+  // Cor
+  if (product.color) {
+    lines.push(`🎨 Cor: ${product.color}`);
+  }
+  
+  // Estoque
+  if (options.includeStock) {
+    const stock = product.total_stock || 0;
+    if (stock > 0) {
+      lines.push(`✅ Em estoque`);
+    } else {
+      lines.push(`⚠️ Sob consulta`);
+    }
+  }
+  
+  // Código
+  if (product.sku) {
+    lines.push(`📦 Cód: ${product.sku}`);
+  }
+  
+  return lines.join('\n');
+}
+
 async function searchCatalog(params: Record<string, any>, supabaseUrl: string, supabaseKey: string): Promise<any> {
   const searchParams = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -302,6 +361,16 @@ serve(async (req) => {
 
     console.log("AI Chat request:", { phone, newMessage, messagesCount: messages.length, contactName });
 
+    // Buscar configuração da IA do banco de dados
+    const { data: aiConfig } = await supabase
+      .from('ai_agent_config')
+      .select('*')
+      .eq('is_active', true)
+      .limit(1)
+      .maybeSingle();
+
+    console.log("AI Config loaded:", aiConfig?.name, "Model:", aiConfig?.model);
+
     // Se recebeu phone + message, buscar histórico e montar mensagens
     if (phone && newMessage) {
       // Buscar histórico de mensagens do conversation_events
@@ -359,7 +428,10 @@ serve(async (req) => {
       if (currentState.selected_sku) contextInfo += `\n- Produto selecionado: ${currentState.selected_sku}`;
     }
 
-    const fullSystemPrompt = ALINE_SYSTEM_PROMPT + contextInfo;
+    // Usar prompt do banco se disponível, senão usar o padrão
+    const systemPrompt = aiConfig?.system_prompt || ALINE_SYSTEM_PROMPT;
+    const model = aiConfig?.model || "gpt-4o-mini";
+    const fullSystemPrompt = systemPrompt + contextInfo;
 
     // First API call to get the assistant's response
     const initialResponse = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -369,7 +441,7 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: model,
         messages: [
           { role: "system", content: fullSystemPrompt },
           ...messages
@@ -410,22 +482,54 @@ serve(async (req) => {
           
           // Guardar os produtos para retornar no response
           if (result.success && result.products) {
-            catalogProducts = result.products.map((p: any) => ({
-              sku: p.sku,
-              name: p.name,
-              price: p.current_price || p.price,
-              price_formatted: `R$ ${(p.current_price || p.price || 0).toFixed(2).replace('.', ',')}`,
-              image_url: p.image_url,
-              video_url: p.video_url,
-              media_url: p.video_url || p.image_url,
-              media_type: p.video_url ? 'video' : 'image',
-              description: p.description,
-              sizes: p.available_sizes || [],
-              stock_total: p.total_stock || 0,
-              has_promotion: p.on_sale || false,
-              original_price: p.original_price,
-              discount_percent: p.discount_percent
-            }));
+            // Buscar configurações de exibição
+            const sendVideoPriority = aiConfig?.send_video_priority ?? true;
+            const includeSizes = aiConfig?.include_sizes ?? true;
+            const includeStock = aiConfig?.include_stock ?? true;
+            const includePrice = aiConfig?.include_price ?? true;
+            
+            catalogProducts = result.products.map((p: any, index: number) => {
+              // Determinar mídia: priorizar vídeo se configurado
+              const hasVideo = !!p.video_url;
+              const useVideo = sendVideoPriority && hasVideo;
+              
+              return {
+                // Identificação
+                index: index + 1,
+                sku: p.sku,
+                product_id: p.id,
+                
+                // Informações básicas
+                name: p.name,
+                description: p.description || '',
+                color: p.color || '',
+                category: p.category || '',
+                
+                // Preço (condicional)
+                price: includePrice ? (p.current_price || p.price) : null,
+                price_formatted: includePrice ? `R$ ${(p.current_price || p.price || 0).toFixed(2).replace('.', ',')}` : null,
+                original_price: includePrice ? p.original_price : null,
+                discount_percent: p.discount_percent,
+                has_promotion: p.on_sale || false,
+                
+                // Mídia - campos separados para FiqOn usar no Z-API
+                image_url: p.image_url,
+                video_url: p.video_url,
+                has_video: hasVideo,
+                // Mídia principal baseada na configuração
+                media_url: useVideo ? p.video_url : p.image_url,
+                media_type: useVideo ? 'video' : 'image',
+                
+                // Estoque e tamanhos (condicional)
+                sizes: includeSizes ? (p.available_sizes || []) : [],
+                sizes_formatted: includeSizes ? (p.available_sizes || []).join(', ') : '',
+                stock_total: includeStock ? (p.total_stock || 0) : null,
+                in_stock: (p.total_stock || 0) > 0,
+                
+                // Legenda formatada para WhatsApp
+                caption: formatProductCaption(p, { includePrice, includeSizes, includeStock }),
+              };
+            });
             console.log(`Catalog products extracted: ${catalogProducts.length} items`);
           }
         } else {
@@ -465,7 +569,7 @@ serve(async (req) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "gpt-4o-mini",
+          model: model,
           messages: secondCallMessages,
           max_tokens: 1500,
         }),

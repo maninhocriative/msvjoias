@@ -20,7 +20,8 @@ import {
   ChevronRight,
   ExternalLink,
   ClipboardList,
-  Globe
+  Globe,
+  Sparkles
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -51,6 +52,7 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
     { to: '/pedidos/pendentes', label: 'Pedidos', icon: ClipboardList },
     { to: '/reports', label: 'Relatórios', icon: BarChart3 },
     { to: '/ai', label: 'IA', icon: Bot },
+    { to: '/ai/config', label: 'Config. IA', icon: Sparkles },
   ];
 
   const adminNavItems = [
