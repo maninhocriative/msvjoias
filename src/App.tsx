@@ -43,6 +43,7 @@ const App = () => (
               <Route path="/register" element={<Register />} />
               <Route path="/pending-approval" element={<PendingApproval />} />
               <Route path="/docs" element={<PublicApiDocs />} />
+              <Route path="/nomenclatura" element={<DatabaseNomenclature />} />
               <Route element={<ProtectedRoute />}>
                 <Route element={<MainLayout />}>
                   <Route path="/" element={<Dashboard />} />
