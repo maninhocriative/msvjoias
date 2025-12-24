@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 
 interface AIAgentConfig {
   id: string;
@@ -50,9 +51,15 @@ const AIConfig = () => {
   const [templates, setTemplates] = useState<PromptTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [activeTab, setActiveTab] = useState('prompt');
   const [newRule, setNewRule] = useState('');
   const [newPhrase, setNewPhrase] = useState('');
+  const [playgroundInfo, setPlaygroundInfo] = useState<{
+    name: string;
+    model: string;
+    instructions_length: number;
+  } | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -175,7 +182,7 @@ const AIConfig = () => {
     });
   };
 
-  const syncWithPlayground = async () => {
+  const syncWithPlayground = async (action: 'push' | 'pull' | 'get') => {
     if (!config?.assistant_id) {
       toast({
         title: 'Assistant ID necessário',
@@ -185,10 +192,59 @@ const AIConfig = () => {
       return;
     }
 
-    toast({
-      title: 'Sincronização',
-      description: 'A sincronização com o Playground será implementada em breve.',
-    });
+    setIsSyncing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('sync-assistant', {
+        body: {
+          action,
+          assistant_id: config.assistant_id,
+          config_id: config.id,
+        },
+      });
+
+      if (error) throw error;
+
+      if (!data.success) {
+        throw new Error(data.error || 'Erro desconhecido');
+      }
+
+      if (action === 'get') {
+        setPlaygroundInfo(data.assistant);
+        toast({
+          title: 'Informações carregadas',
+          description: `Assistant: ${data.assistant.name}`,
+        });
+      } else if (action === 'push') {
+        toast({
+          title: 'Sincronizado!',
+          description: 'Prompt enviado para o Playground com sucesso.',
+        });
+        setPlaygroundInfo(data.assistant);
+      } else if (action === 'pull') {
+        toast({
+          title: 'Importado!',
+          description: 'Prompt importado do Playground. Recarregando...',
+        });
+        // Recarregar config do banco
+        await fetchConfig();
+        setPlaygroundInfo(data.assistant);
+      }
+    } catch (error) {
+      console.error('Sync error:', error);
+      toast({
+        title: 'Erro na sincronização',
+        description: error instanceof Error ? error.message : 'Erro desconhecido',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const fetchPlaygroundInfo = async () => {
+    if (config?.assistant_id) {
+      await syncWithPlayground('get');
+    }
   };
 
   if (isLoading) {
@@ -541,11 +597,36 @@ const AIConfig = () => {
                 <Separator />
 
                 <div className="flex flex-col sm:flex-row gap-3">
-                  <Button onClick={syncWithPlayground} className="gap-2 flex-1" variant="outline">
-                    <RefreshCw className="w-4 h-4" />
-                    Sincronizar Prompt com Playground
+                  <Button 
+                    onClick={() => syncWithPlayground('push')} 
+                    className="gap-2 flex-1" 
+                    variant="outline"
+                    disabled={isSyncing}
+                  >
+                    <RefreshCw className={cn("w-4 h-4", isSyncing && "animate-spin")} />
+                    Enviar para Playground
+                  </Button>
+                  <Button 
+                    onClick={() => syncWithPlayground('pull')} 
+                    className="gap-2 flex-1" 
+                    variant="outline"
+                    disabled={isSyncing}
+                  >
+                    <RefreshCw className={cn("w-4 h-4", isSyncing && "animate-spin")} />
+                    Importar do Playground
                   </Button>
                 </div>
+
+                {playgroundInfo && (
+                  <div className="p-4 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg">
+                    <h4 className="font-medium text-green-800 dark:text-green-200 mb-2">Informações do Playground</h4>
+                    <div className="text-sm text-green-700 dark:text-green-300 space-y-1">
+                      <p><strong>Nome:</strong> {playgroundInfo.name}</p>
+                      <p><strong>Modelo:</strong> {playgroundInfo.model}</p>
+                      <p><strong>Prompt:</strong> {playgroundInfo.instructions_length} caracteres</p>
+                    </div>
+                  </div>
+                )}
 
                 <div className="p-4 bg-muted rounded-lg">
                   <h4 className="font-medium mb-2">Como funciona:</h4>

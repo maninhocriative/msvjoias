@@ -62,3 +62,6 @@ verify_jwt = false
 
 [functions.update-customer-state]
 verify_jwt = false
+
+[functions.sync-assistant]
+verify_jwt = true
