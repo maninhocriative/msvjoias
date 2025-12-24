@@ -14,6 +14,111 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_agent_config: {
+        Row: {
+          active_template: string | null
+          assistant_id: string | null
+          available_functions: string[] | null
+          closing_phrases: string[] | null
+          created_at: string
+          greeting: string | null
+          id: string
+          include_price: boolean | null
+          include_sizes: boolean | null
+          include_stock: boolean | null
+          is_active: boolean | null
+          max_products_per_message: number | null
+          model: string | null
+          name: string
+          personality: string | null
+          product_presentation_template: string | null
+          rules: string[] | null
+          send_video_priority: boolean | null
+          system_prompt: string | null
+          updated_at: string
+        }
+        Insert: {
+          active_template?: string | null
+          assistant_id?: string | null
+          available_functions?: string[] | null
+          closing_phrases?: string[] | null
+          created_at?: string
+          greeting?: string | null
+          id?: string
+          include_price?: boolean | null
+          include_sizes?: boolean | null
+          include_stock?: boolean | null
+          is_active?: boolean | null
+          max_products_per_message?: number | null
+          model?: string | null
+          name?: string
+          personality?: string | null
+          product_presentation_template?: string | null
+          rules?: string[] | null
+          send_video_priority?: boolean | null
+          system_prompt?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active_template?: string | null
+          assistant_id?: string | null
+          available_functions?: string[] | null
+          closing_phrases?: string[] | null
+          created_at?: string
+          greeting?: string | null
+          id?: string
+          include_price?: boolean | null
+          include_sizes?: boolean | null
+          include_stock?: boolean | null
+          is_active?: boolean | null
+          max_products_per_message?: number | null
+          model?: string | null
+          name?: string
+          personality?: string | null
+          product_presentation_template?: string | null
+          rules?: string[] | null
+          send_video_priority?: boolean | null
+          system_prompt?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ai_prompt_templates: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_default: boolean | null
+          name: string
+          personality: string | null
+          rules: string[] | null
+          slug: string
+          system_prompt: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_default?: boolean | null
+          name: string
+          personality?: string | null
+          rules?: string[] | null
+          slug: string
+          system_prompt: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_default?: boolean | null
+          name?: string
+          personality?: string | null
+          rules?: string[] | null
+          slug?: string
+          system_prompt?: string
+        }
+        Relationships: []
+      }
       catalog_items_sent: {
         Row: {
           created_at: string
