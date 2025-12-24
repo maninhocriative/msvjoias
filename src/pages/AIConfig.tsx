@@ -67,6 +67,15 @@ const AIConfig = () => {
     fetchTemplates();
   }, []);
 
+  // Buscar informações do Assistant quando o ID mudar
+  useEffect(() => {
+    if (config?.assistant_id && config.assistant_id.startsWith('asst_')) {
+      fetchPlaygroundInfoDirect(config.assistant_id);
+    } else {
+      setPlaygroundInfo(null);
+    }
+  }, [config?.assistant_id]);
+
   const fetchConfig = async () => {
     try {
       const { data, error } = await supabase
@@ -241,9 +250,43 @@ const AIConfig = () => {
     }
   };
 
+  const fetchPlaygroundInfoDirect = async (assistantId: string) => {
+    if (!assistantId || !assistantId.startsWith('asst_')) return;
+    
+    setIsSyncing(true);
+    try {
+      // Primeiro, salvar o assistant_id no banco se houver config
+      if (config) {
+        await supabase
+          .from('ai_agent_config')
+          .update({ assistant_id: assistantId })
+          .eq('id', config.id);
+      }
+
+      const { data, error } = await supabase.functions.invoke('sync-assistant', {
+        body: {
+          action: 'get',
+          assistant_id: assistantId,
+          config_id: config?.id,
+        },
+      });
+
+      if (error) throw error;
+
+      if (data.success && data.assistant) {
+        setPlaygroundInfo(data.assistant);
+      }
+    } catch (error) {
+      console.error('Error fetching playground info:', error);
+      setPlaygroundInfo(null);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const fetchPlaygroundInfo = async () => {
     if (config?.assistant_id) {
-      await syncWithPlayground('get');
+      await fetchPlaygroundInfoDirect(config.assistant_id);
     }
   };
 
