@@ -21,6 +21,7 @@ import PendingApproval from "./pages/PendingApproval";
 import WebhookTester from "./pages/WebhookTester";
 import ApiDocs from "./pages/ApiDocs";
 import PublicApiDocs from "./pages/PublicApiDocs";
+import DatabaseNomenclature from "./pages/DatabaseNomenclature";
 import Customers from "./pages/Customers";
 import Offers from "./pages/Offers";
 import StoreSettings from "./pages/StoreSettings";
@@ -54,6 +55,7 @@ const App = () => (
                   <Route path="/users/:id" element={<UserDetail />} />
                   <Route path="/webhook-tester" element={<WebhookTester />} />
                   <Route path="/api-docs" element={<ApiDocs />} />
+                  <Route path="/db-nomenclature" element={<DatabaseNomenclature />} />
                   <Route path="/customers" element={<Customers />} />
                   <Route path="/offers" element={<Offers />} />
                   <Route path="/store-settings" element={<StoreSettings />} />
