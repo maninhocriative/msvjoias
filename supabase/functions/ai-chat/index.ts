@@ -13,33 +13,33 @@ const tools = [
     type: "function",
     function: {
       name: "search_catalog",
-      description: "Search products in the catalog by name, category, color, price range, or tags",
+      description: "Buscar produtos no catálogo por nome, categoria, cor ou faixa de preço. Use sempre que o cliente quiser ver produtos.",
       parameters: {
         type: "object",
         properties: {
           search: {
             type: "string",
-            description: "Search term for product name or description"
+            description: "Termo de busca para nome ou descrição do produto"
           },
           category: {
             type: "string",
-            description: "Product category to filter"
+            description: "Categoria do produto: aliancas, pingente, aneis"
           },
           color: {
             type: "string",
-            description: "Product color to filter"
+            description: "Cor do produto: dourada, aco, preta, azul, rose"
           },
           min_price: {
             type: "number",
-            description: "Minimum price filter"
+            description: "Preço mínimo"
           },
           max_price: {
             type: "number",
-            description: "Maximum price filter"
+            description: "Preço máximo"
           },
           only_available: {
             type: "boolean",
-            description: "Only show products with stock available"
+            description: "Mostrar apenas produtos com estoque"
           }
         },
         required: []
@@ -50,17 +50,17 @@ const tools = [
     type: "function",
     function: {
       name: "get_product_details",
-      description: "Get detailed information about a specific product by ID or SKU",
+      description: "Obter detalhes de um produto específico por ID ou SKU",
       parameters: {
         type: "object",
         properties: {
           product_id: {
             type: "string",
-            description: "Product UUID"
+            description: "UUID do produto"
           },
           sku: {
             type: "string",
-            description: "Product SKU code"
+            description: "Código SKU do produto"
           }
         },
         required: []
@@ -90,26 +90,8 @@ async function searchCatalog(params: Record<string, any>, supabaseUrl: string, s
   return await response.json();
 }
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
-
-  try {
-    const openAIApiKey = Deno.env.get("OPENAI_API_KEY");
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-    if (!openAIApiKey) {
-      throw new Error("OPENAI_API_KEY is not configured");
-    }
-
-    const { messages, conversation_id, contact_name } = await req.json();
-
-    console.log("AI Chat request:", { conversation_id, contact_name, messagesCount: messages?.length });
-
-    // Build system prompt - PROMPT OFICIAL ALINE ACIUM MANAUS
-    const systemPrompt = `# PROMPT OFICIAL — ALINE | ACIUM MANAUS
+// System prompt da Aline
+const ALINE_SYSTEM_PROMPT = `# PROMPT OFICIAL — ALINE | ACIUM MANAUS
 (Versão Guiada por Etapas, Estável, Anti-Loop e Amigável)
 
 ---
@@ -218,21 +200,18 @@ Responda com o número (1 ou 2) ou com a opção."
 
 ## 7. REGRA DE DISPARO DE CATÁLOGO (SYSTEM_ACTION OBRIGATÓRIO)
 
-Somente APÓS o cliente informar Categoria, Finalidade (se aliança) e Cor.
+Somente APÓS o cliente informar Categoria, Finalidade (se aliança) e Cor, você deve buscar produtos usando a ferramenta search_catalog.
 
-Texto obrigatório:
+Texto obrigatório antes de buscar:
 
 "Aguarde um momento.  
 Vou buscar no nosso catálogo alguns modelos que atendem sua necessidade."
 
-**IMPORTANTE:** Após essa mensagem, você DEVE incluir a tag de ação no formato:
+Depois de buscar, apresente os produtos encontrados de forma elegante.
 
-[SYSTEM_ACTION action:"show_catalog_alianca_aco"]
+**IMPORTANTE:** Após apresentar o catálogo, inclua a tag de ação:
 
-Valores possíveis para action:
-- Se Namoro/Compromisso: show_catalog_alianca_aco
-- Se Casamento: show_catalog_alianca_tungstenio
-- Se Pingentes: show_catalog_pingentes
+[SYSTEM_ACTION action:"show_catalog"]
 
 ---
 
@@ -280,27 +259,95 @@ Quando o cliente responder tudo e confirmar, finalize com:
 
 [SYSTEM_ACTION action:"register_lead_crm"]
 
-#node: finalizado
+#node: finalizado`;
 
----
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
 
-## 12. EXEMPLO DE RESPOSTA COMPLETA
+  try {
+    const openAIApiKey = Deno.env.get("OPENAI_API_KEY");
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-Olá.  
-Sou a Aline, consultora da ACIUM Manaus.  
-Vou te ajudar a encontrar a joia ideal.
+    if (!openAIApiKey) {
+      throw new Error("OPENAI_API_KEY is not configured");
+    }
 
-Você está procurando:  
-1️⃣ Alianças  
-2️⃣ Pingentes  
+    const body = await req.json();
+    
+    // Suporta dois formatos:
+    // 1. { messages: [...], contact_name } - formato original
+    // 2. { phone, message, contact_name } - formato FiqOn (busca histórico automaticamente)
+    
+    let messages = body.messages || [];
+    const phone = body.phone?.replace(/\D/g, '') || null;
+    const newMessage = body.message || body.text || null;
+    const contactName = body.contact_name || body.senderName || null;
+    const saveHistory = body.save_history !== false; // Default: true
 
-Responda com o número (1 ou 2) ou com a opção.
+    console.log("AI Chat request:", { phone, newMessage, messagesCount: messages.length, contactName });
 
-#node: abertura
+    // Se recebeu phone + message, buscar histórico e montar mensagens
+    if (phone && newMessage) {
+      // Buscar histórico de mensagens do conversation_events
+      const { data: history } = await supabase
+        .from('conversation_events')
+        .select('*')
+        .eq('phone', phone)
+        .in('type', ['text', 'message'])
+        .order('ts', { ascending: true })
+        .limit(20); // Últimas 20 mensagens para contexto
 
----
+      if (history && history.length > 0) {
+        messages = history.map(event => ({
+          role: event.direction === 'in' ? 'user' : 'assistant',
+          content: (event.payload as any)?.text || (event.payload as any)?.message || ''
+        })).filter(m => m.content);
+      }
 
-${contact_name ? `O nome do cliente é: ${contact_name}` : ""}`;
+      // Adicionar a nova mensagem do usuário
+      messages.push({ role: 'user', content: newMessage });
+
+      // Salvar a mensagem do usuário no histórico
+      if (saveHistory) {
+        await supabase.from('conversation_events').insert({
+          phone,
+          type: 'text',
+          direction: 'in',
+          payload: { text: newMessage, senderName: contactName }
+        });
+      }
+    }
+
+    // Buscar estado atual da conversa
+    let currentState = null;
+    if (phone) {
+      const { data: state } = await supabase
+        .from('conversation_state')
+        .select('*')
+        .eq('phone', phone)
+        .single();
+      currentState = state;
+    }
+
+    // Montar contexto adicional
+    let contextInfo = "";
+    if (contactName) {
+      contextInfo += `\nO nome do cliente é: ${contactName}`;
+    }
+    if (currentState) {
+      contextInfo += `\n\nESTADO ATUAL DA CONVERSA:`;
+      if (currentState.stage) contextInfo += `\n- Etapa: ${currentState.stage}`;
+      if (currentState.categoria) contextInfo += `\n- Categoria escolhida: ${currentState.categoria}`;
+      if (currentState.tipo_alianca) contextInfo += `\n- Tipo de aliança: ${currentState.tipo_alianca}`;
+      if (currentState.cor_preferida) contextInfo += `\n- Cor preferida: ${currentState.cor_preferida}`;
+      if (currentState.selected_sku) contextInfo += `\n- Produto selecionado: ${currentState.selected_sku}`;
+    }
+
+    const fullSystemPrompt = ALINE_SYSTEM_PROMPT + contextInfo;
 
     // First API call to get the assistant's response
     const initialResponse = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -312,7 +359,7 @@ ${contact_name ? `O nome do cliente é: ${contact_name}` : ""}`;
       body: JSON.stringify({
         model: "gpt-4o-mini",
         messages: [
-          { role: "system", content: systemPrompt },
+          { role: "system", content: fullSystemPrompt },
           ...messages
         ],
         tools,
@@ -368,7 +415,7 @@ ${contact_name ? `O nome do cliente é: ${contact_name}` : ""}`;
         body: JSON.stringify({
           model: "gpt-4o-mini",
           messages: [
-            { role: "system", content: systemPrompt },
+            { role: "system", content: fullSystemPrompt },
             ...messages,
             assistantMessage,
             ...toolResults,
@@ -391,11 +438,71 @@ ${contact_name ? `O nome do cliente é: ${contact_name}` : ""}`;
 
     console.log("Final response:", responseText.slice(0, 200));
 
+    // Extrair dados técnicos da resposta
+    const nodeMatch = responseText.match(/#node:\s*(\w+)/i);
+    const nodeValue = nodeMatch ? nodeMatch[1] : "abertura";
+
+    const actionMatch = responseText.match(/\[SYSTEM_ACTION\s+action:"([^"]+)"\]/i);
+    const actionValue = actionMatch ? actionMatch[1] : null;
+
+    // Limpar mensagem de tags técnicas
+    const cleanMessage = responseText
+      .replace(/#node:\s*\w+/gi, "")
+      .replace(/\[SYSTEM_ACTION[^\]]*\]/gi, "")
+      .trim();
+
+    // Extrair categoria e cor da resposta
+    const lowerResponse = responseText.toLowerCase();
+    let categoria = currentState?.categoria || "";
+    if (lowerResponse.includes("pingente")) categoria = "pingente";
+    else if (lowerResponse.includes("aliança") || lowerResponse.includes("alianca")) categoria = "aliancas";
+
+    let cor = currentState?.cor_preferida || "";
+    if (lowerResponse.includes("dourada")) cor = "dourada";
+    else if (lowerResponse.includes("prata") || lowerResponse.includes("aço")) cor = "aco";
+    else if (lowerResponse.includes("preta")) cor = "preta";
+    else if (lowerResponse.includes("azul")) cor = "azul";
+
+    // Salvar resposta da Aline no histórico
+    if (phone && saveHistory) {
+      await supabase.from('conversation_events').insert({
+        phone,
+        type: 'text',
+        direction: 'out',
+        payload: { text: cleanMessage, node: nodeValue, action: actionValue }
+      });
+
+      // Atualizar estado da conversa
+      await supabase.rpc('upsert_conversation_state', {
+        p_phone: phone,
+        p_stage: nodeValue,
+        p_categoria: categoria || null,
+        p_cor_preferida: cor || null,
+      });
+    }
+
+    // Resposta estruturada para o FiqOn
     return new Response(
       JSON.stringify({
         success: true,
+        // Campos originais
         message: responseText,
         usage: responseData.usage,
+        // Campos estruturados para FiqOn
+        response: cleanMessage,
+        mensagem_whatsapp: cleanMessage,
+        node_tecnico: nodeValue,
+        acao_nome: actionValue,
+        categoria_crm: categoria,
+        cor_crm: cor,
+        tem_acao: actionValue !== null,
+        // Estado atual
+        state: {
+          phone,
+          stage: nodeValue,
+          categoria,
+          cor,
+        }
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
@@ -408,6 +515,10 @@ ${contact_name ? `O nome do cliente é: ${contact_name}` : ""}`;
         success: false,
         error: errorMessage,
         message: "Desculpe, ocorreu um erro ao processar sua mensagem. Por favor, tente novamente.",
+        mensagem_whatsapp: "Desculpe, ocorreu um erro. Por favor, tente novamente.",
+        node_tecnico: "erro",
+        acao_nome: null,
+        tem_acao: false,
       }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
