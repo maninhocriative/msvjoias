@@ -70,12 +70,23 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const url = new URL(req.url);
-    const category = url.searchParams.get('category');
-    const sku = url.searchParams.get('sku');
-    const productId = url.searchParams.get('product_id');
+    
+    // Helper to clean nil values from FiqOn/external integrations
+    const cleanParam = (value: string | null): string | null => {
+      if (!value) return null;
+      // FiqOn sends "<nil>" or "null" as string when value is empty
+      if (value === '<nil>' || value === 'null' || value === 'undefined' || value.trim() === '') {
+        return null;
+      }
+      return value;
+    };
+    
+    const category = cleanParam(url.searchParams.get('category'));
+    const sku = cleanParam(url.searchParams.get('sku'));
+    const productId = cleanParam(url.searchParams.get('product_id'));
     const onlyAvailable = url.searchParams.get('only_available') === 'true';
-    const search = url.searchParams.get('search');
-    const cor = url.searchParams.get('cor');
+    const search = cleanParam(url.searchParams.get('search'));
+    const cor = cleanParam(url.searchParams.get('cor'));
     const exactCategory = url.searchParams.get('exact_category') !== 'false'; // Default: busca exata
 
     // Normalize filters
