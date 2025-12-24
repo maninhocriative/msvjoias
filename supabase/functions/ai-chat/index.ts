@@ -608,17 +608,70 @@ serve(async (req) => {
       .replace(/\[SYSTEM_ACTION[^\]]*\]/gi, "")
       .trim();
 
-    // Extrair categoria e cor da resposta
+    // ===== DETECÇÃO DE INTENÇÃO (para filtros FiqOn) =====
+    const lowerMessage = (newMessage || messages[messages.length - 1]?.content || "").toLowerCase();
     const lowerResponse = responseText.toLowerCase();
+    
+    // Detectar intenção do cliente
+    let intencao = "conversa";
+    if (lowerMessage.match(/comprar|quero|gostei|esse|essa|escolho|levo/)) intencao = "comprar";
+    else if (lowerMessage.match(/preço|valor|quanto|custa|promoção|desconto/)) intencao = "preco";
+    else if (lowerMessage.match(/tamanho|medida|numero|cabe/)) intencao = "tamanho";
+    else if (lowerMessage.match(/troca|devolução|problema|reclamação|defeito/)) intencao = "reclamacao";
+    else if (lowerMessage.match(/entrega|prazo|frete|envio/)) intencao = "entrega";
+    else if (lowerMessage.match(/pix|cartão|pagamento|parcela/)) intencao = "pagamento";
+    else if (lowerMessage.match(/olá|oi|bom dia|boa tarde|boa noite|opa/)) intencao = "saudacao";
+    else if (catalogProducts.length > 0) intencao = "catalogo";
+
+    // Extrair categoria e cor da conversa
     let categoria = currentState?.categoria || "";
-    if (lowerResponse.includes("pingente")) categoria = "pingente";
-    else if (lowerResponse.includes("aliança") || lowerResponse.includes("alianca")) categoria = "aliancas";
+    if (lowerResponse.includes("pingente") || lowerMessage.includes("pingente")) categoria = "pingente";
+    else if (lowerResponse.includes("aliança") || lowerResponse.includes("alianca") || 
+             lowerMessage.includes("aliança") || lowerMessage.includes("alianca")) categoria = "aliancas";
 
     let cor = currentState?.cor_preferida || "";
-    if (lowerResponse.includes("dourada")) cor = "dourada";
-    else if (lowerResponse.includes("prata") || lowerResponse.includes("aço")) cor = "aco";
-    else if (lowerResponse.includes("preta")) cor = "preta";
-    else if (lowerResponse.includes("azul")) cor = "azul";
+    if (lowerMessage.includes("dourada") || lowerResponse.includes("dourada")) cor = "dourada";
+    else if (lowerMessage.includes("prata") || lowerMessage.includes("aço") || 
+             lowerResponse.includes("prata") || lowerResponse.includes("aço")) cor = "aco";
+    else if (lowerMessage.includes("preta") || lowerResponse.includes("preta")) cor = "preta";
+    else if (lowerMessage.includes("azul") || lowerResponse.includes("azul")) cor = "azul";
+
+    // Detectar tipo de aliança
+    let tipoAlianca = currentState?.tipo_alianca || "";
+    if (lowerMessage.includes("namoro") || lowerMessage.includes("compromisso")) tipoAlianca = "namoro";
+    else if (lowerMessage.includes("casamento") || lowerMessage.includes("noivado")) tipoAlianca = "casamento";
+
+    // Detectar se cliente selecionou produto (por número ou SKU)
+    let produtoSelecionado = null;
+    const numMatch = lowerMessage.match(/^(\d)$/);
+    if (numMatch && catalogProducts.length > 0) {
+      const idx = parseInt(numMatch[1]) - 1;
+      if (idx >= 0 && idx < catalogProducts.length) {
+        produtoSelecionado = catalogProducts[idx];
+      }
+    }
+    // Buscar por SKU mencionado
+    const skuMatch = lowerMessage.match(/(?:ac|al|pg)-?\d+/i);
+    if (skuMatch && catalogProducts.length > 0) {
+      const found = catalogProducts.find(p => p.sku?.toLowerCase() === skuMatch[0].toLowerCase());
+      if (found) produtoSelecionado = found;
+    }
+
+    // Detectar dados de CRM (entrega e pagamento)
+    let crmEntrega = currentState?.crm_entrega || null;
+    let crmPagamento = currentState?.crm_pagamento || null;
+    if (lowerMessage.includes("delivery") || lowerMessage.includes("entrega")) crmEntrega = "delivery";
+    else if (lowerMessage.includes("retirada") || lowerMessage.includes("buscar")) crmEntrega = "retirada";
+    if (lowerMessage.includes("pix")) crmPagamento = "pix";
+    else if (lowerMessage.includes("cartão") || lowerMessage.includes("cartao")) crmPagamento = "cartao";
+
+    // Ação sugerida baseada no estado
+    let acaoSugerida = "continuar_conversa";
+    if (actionValue === "show_catalog" || catalogProducts.length > 0) acaoSugerida = "enviar_catalogo";
+    else if (actionValue === "register_lead_crm") acaoSugerida = "finalizar_venda";
+    else if (intencao === "reclamacao") acaoSugerida = "transferir_humano";
+    else if (nodeValue === "coleta_dados") acaoSugerida = "coletar_dados";
+    else if (nodeValue === "selecao" && produtoSelecionado) acaoSugerida = "confirmar_produto";
 
     // Salvar resposta da Aline no histórico
     if (phone && saveHistory) {
@@ -626,7 +679,13 @@ serve(async (req) => {
         phone,
         type: 'text',
         direction: 'out',
-        payload: { text: cleanMessage, node: nodeValue, action: actionValue }
+        payload: { 
+          text: cleanMessage, 
+          node: nodeValue, 
+          action: actionValue,
+          intencao,
+          acao_sugerida: acaoSugerida
+        }
       });
 
       // Atualizar estado da conversa
@@ -634,36 +693,105 @@ serve(async (req) => {
         p_phone: phone,
         p_stage: nodeValue,
         p_categoria: categoria || null,
+        p_tipo_alianca: tipoAlianca || null,
         p_cor_preferida: cor || null,
+        p_selected_sku: produtoSelecionado?.sku || currentState?.selected_sku || null,
+        p_selected_name: produtoSelecionado?.name || currentState?.selected_name || null,
+        p_selected_price: produtoSelecionado?.price || currentState?.selected_price || null,
+        p_crm_entrega: crmEntrega,
+        p_crm_pagamento: crmPagamento,
       });
     }
 
-    // Resposta estruturada para o FiqOn
+    // ===== RESPOSTA ESTRUTURADA PARA FIQON =====
     return new Response(
       JSON.stringify({
         success: true,
-        // Campos originais
-        message: responseText,
-        usage: responseData.usage,
-        // Campos estruturados para FiqOn
+        
+        // ===== MENSAGEM PRINCIPAL =====
         response: cleanMessage,
         mensagem_whatsapp: cleanMessage,
+        message: responseText, // Versão com tags (debug)
+        
+        // ===== FILTROS PARA ROTEAMENTO FIQON =====
+        filtros: {
+          // Intenção detectada
+          intencao,
+          intencao_comprar: intencao === "comprar",
+          intencao_preco: intencao === "preco",
+          intencao_reclamacao: intencao === "reclamacao",
+          intencao_saudacao: intencao === "saudacao",
+          
+          // Categoria
+          categoria,
+          categoria_aliancas: categoria === "aliancas",
+          categoria_pingente: categoria === "pingente",
+          
+          // Cor
+          cor,
+          
+          // Tipo aliança
+          tipo_alianca: tipoAlianca,
+          
+          // Ação sugerida
+          acao_sugerida: acaoSugerida,
+          enviar_catalogo: acaoSugerida === "enviar_catalogo",
+          finalizar_venda: acaoSugerida === "finalizar_venda",
+          transferir_humano: acaoSugerida === "transferir_humano",
+          
+          // Node técnico
+          node: nodeValue,
+          acao_sistema: actionValue,
+        },
+        
+        // ===== PRODUTOS PARA FOR EACH (Z-API) =====
+        produtos: catalogProducts,
+        total_produtos: catalogProducts.length,
+        tem_produtos: catalogProducts.length > 0,
+        
+        // ===== PRODUTO SELECIONADO (se houver) =====
+        produto_selecionado: produtoSelecionado ? {
+          sku: produtoSelecionado.sku,
+          name: produtoSelecionado.name,
+          price: produtoSelecionado.price,
+          price_formatted: produtoSelecionado.price_formatted,
+          image_url: produtoSelecionado.image_url,
+          video_url: produtoSelecionado.video_url,
+          sizes: produtoSelecionado.sizes,
+        } : null,
+        tem_produto_selecionado: produtoSelecionado !== null,
+        
+        // ===== ESTADO DO CRM =====
+        crm: {
+          entrega: crmEntrega,
+          pagamento: crmPagamento,
+          dados_completos: !!(crmEntrega && crmPagamento),
+        },
+        
+        // ===== MEMÓRIA / ESTADO DA CONVERSA =====
+        memoria: {
+          phone,
+          stage: nodeValue,
+          categoria,
+          tipo_alianca: tipoAlianca,
+          cor,
+          produto_sku: produtoSelecionado?.sku || currentState?.selected_sku || null,
+          produto_nome: produtoSelecionado?.name || currentState?.selected_name || null,
+          entrega: crmEntrega,
+          pagamento: crmPagamento,
+        },
+        
+        // ===== CAMPOS LEGADOS (compatibilidade) =====
         node_tecnico: nodeValue,
         acao_nome: actionValue,
         categoria_crm: categoria,
         cor_crm: cor,
         tem_acao: actionValue !== null,
-        // Array de produtos para o FiqOn iterar (For Each)
-        produtos: catalogProducts,
-        total_produtos: catalogProducts.length,
-        tem_produtos: catalogProducts.length > 0,
-        // Estado atual
-        state: {
-          phone,
-          stage: nodeValue,
-          categoria,
-          cor,
-        }
+        
+        // ===== DEBUG/USAGE =====
+        usage: responseData.usage,
+        ai_model: aiConfig?.model || "gpt-4o-mini",
+        ai_name: aiConfig?.name || "Aline",
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
@@ -675,11 +803,18 @@ serve(async (req) => {
       JSON.stringify({
         success: false,
         error: errorMessage,
-        message: "Desculpe, ocorreu um erro ao processar sua mensagem. Por favor, tente novamente.",
+        response: "Desculpe, ocorreu um erro ao processar sua mensagem. Por favor, tente novamente.",
         mensagem_whatsapp: "Desculpe, ocorreu um erro. Por favor, tente novamente.",
-        node_tecnico: "erro",
-        acao_nome: null,
-        tem_acao: false,
+        filtros: {
+          intencao: "erro",
+          acao_sugerida: "transferir_humano",
+          transferir_humano: true,
+          node: "erro",
+        },
+        produtos: [],
+        tem_produtos: false,
+        memoria: null,
+        crm: null,
       }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
