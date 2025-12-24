@@ -58,6 +58,7 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
 
   const apiNavItems = [
     { to: '/api-docs', label: 'Documentação', icon: FileText },
+    { to: '/docs', label: 'Doc. Pública', icon: ExternalLink, isExternal: false },
     { to: '/webhook-tester', label: 'Webhook Tester', icon: TestTube },
   ];
 
