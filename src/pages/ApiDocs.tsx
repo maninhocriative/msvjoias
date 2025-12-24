@@ -3,7 +3,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Copy, Check, ExternalLink, Code, Send, Database, Image, ShoppingCart, Layers } from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { 
+  Copy, 
+  Check, 
+  Database, 
+  Send, 
+  ShoppingCart, 
+  Layers, 
+  Zap,
+  BookOpen,
+  Terminal,
+  ChevronRight
+} from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const BASE_URL = 'https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co';
@@ -20,833 +33,516 @@ const ApiDocs = () => {
   };
 
   const CodeBlock = ({ code, id, language = 'json' }: { code: string; id: string; language?: string }) => (
-    <div className="relative group">
-      <pre className="bg-muted p-4 rounded-lg text-xs overflow-x-auto">
-        <code className={`language-${language}`}>{code}</code>
+    <div className="relative group rounded-lg overflow-hidden">
+      <div className="absolute top-0 left-0 right-0 h-8 bg-muted/80 flex items-center justify-between px-3 border-b border-border/50">
+        <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">{language}</span>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6"
+          onClick={() => copyToClipboard(code, id)}
+        >
+          {copiedId === id ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+        </Button>
+      </div>
+      <pre className="bg-muted/50 pt-10 pb-4 px-4 text-xs overflow-x-auto font-mono">
+        <code>{code}</code>
       </pre>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
-        onClick={() => copyToClipboard(code, id)}
-      >
-        {copiedId === id ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-      </Button>
+    </div>
+  );
+
+  const MethodBadge = ({ method }: { method: 'GET' | 'POST' | 'PUT' | 'DELETE' }) => {
+    const styles = {
+      GET: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20',
+      POST: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
+      PUT: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
+      DELETE: 'bg-red-500/10 text-red-600 border-red-500/20',
+    };
+    return (
+      <Badge variant="outline" className={`font-mono text-xs ${styles[method]}`}>
+        {method}
+      </Badge>
+    );
+  };
+
+  const ParamTable = ({ params }: { params: { name: string; type: string; required?: boolean; desc: string }[] }) => (
+    <div className="rounded-lg border border-border overflow-hidden">
+      <div className="grid grid-cols-[120px_80px_1fr] bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+        <span>Parâmetro</span>
+        <span>Tipo</span>
+        <span>Descrição</span>
+      </div>
+      <div className="divide-y divide-border">
+        {params.map((param) => (
+          <div key={param.name} className="grid grid-cols-[120px_80px_1fr] px-4 py-3 text-sm items-start gap-2">
+            <div className="flex items-center gap-2">
+              <code className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">{param.name}</code>
+              {param.required && <span className="w-1.5 h-1.5 rounded-full bg-primary" title="Obrigatório" />}
+            </div>
+            <span className="text-muted-foreground text-xs">{param.type}</span>
+            <span className="text-muted-foreground">{param.desc}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const EndpointCard = ({ 
+    method, 
+    endpoint, 
+    description, 
+    children 
+  }: { 
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE'; 
+    endpoint: string; 
+    description: string;
+    children: React.ReactNode;
+  }) => (
+    <Card className="overflow-hidden">
+      <CardHeader className="pb-4 border-b border-border/50 bg-muted/30">
+        <div className="flex items-center gap-3">
+          <MethodBadge method={method} />
+          <code className="text-sm font-mono font-semibold">{endpoint}</code>
+        </div>
+        <CardDescription className="mt-2">{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="pt-6 space-y-6">
+        {children}
+      </CardContent>
+    </Card>
+  );
+
+  const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
+    <div className="space-y-3">
+      <h4 className="text-sm font-semibold flex items-center gap-2">
+        <ChevronRight className="w-4 h-4 text-muted-foreground" />
+        {title}
+      </h4>
+      {children}
     </div>
   );
 
   return (
     <div className="min-h-screen bg-background">
-      <main className="p-6 max-w-5xl mx-auto space-y-8">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Documentação da API</h1>
-          <p className="text-muted-foreground mt-2">
-            Integre seu catálogo com automações externas (Fiqon, n8n, Make, Zapier)
-          </p>
+      <main className="p-6 max-w-6xl mx-auto space-y-8">
+        {/* Header */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <Terminal className="w-6 h-6 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">API Interna</h1>
+              <p className="text-muted-foreground text-sm">
+                Documentação para integração com automações (Fiqon, n8n, Make, Zapier)
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border border-border">
+            <BookOpen className="w-4 h-4 text-muted-foreground shrink-0" />
+            <code className="text-xs font-mono text-muted-foreground">{BASE_URL}</code>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-6 w-6 ml-auto"
+              onClick={() => copyToClipboard(BASE_URL, 'base-url')}
+            >
+              {copiedId === 'base-url' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+            </Button>
+          </div>
         </div>
 
+        {/* Tabs */}
         <Tabs defaultValue="catalog" className="space-y-6">
-          <TabsList className="flex-wrap h-auto gap-1">
-            <TabsTrigger value="catalog" className="gap-2">
+          <TabsList className="h-auto p-1 bg-muted/50 rounded-lg grid grid-cols-4 gap-1">
+            <TabsTrigger value="catalog" className="gap-2 data-[state=active]:bg-background">
               <Database className="w-4 h-4" />
-              Catálogo
+              <span className="hidden sm:inline">Catálogo</span>
             </TabsTrigger>
-            <TabsTrigger value="catalog-session" className="gap-2">
+            <TabsTrigger value="sessions" className="gap-2 data-[state=active]:bg-background">
               <Layers className="w-4 h-4" />
-              Sessões
+              <span className="hidden sm:inline">Sessões</span>
             </TabsTrigger>
-            <TabsTrigger value="orders" className="gap-2">
+            <TabsTrigger value="orders" className="gap-2 data-[state=active]:bg-background">
               <ShoppingCart className="w-4 h-4" />
-              Pedidos
+              <span className="hidden sm:inline">Pedidos</span>
             </TabsTrigger>
-            <TabsTrigger value="send" className="gap-2">
+            <TabsTrigger value="messaging" className="gap-2 data-[state=active]:bg-background">
               <Send className="w-4 h-4" />
-              Enviar Mensagem
+              <span className="hidden sm:inline">Mensagens</span>
             </TabsTrigger>
           </TabsList>
 
+          {/* Catálogo */}
           <TabsContent value="catalog" className="space-y-6">
-            {/* Catalog API */}
-            <Card>
-              <CardHeader>
-                <div className="flex items-center gap-3">
-                  <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/30">GET</Badge>
-                  <CardTitle className="text-lg font-mono">/catalog-api</CardTitle>
-                </div>
-                <CardDescription>
-                  Retorna produtos do catálogo com fotos, vídeos, preços e estoque
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div>
-                  <h4 className="font-semibold mb-2">URL Base</h4>
-                  <CodeBlock code={`${BASE_URL}/catalog-api`} id="catalog-url" />
-                </div>
+            <EndpointCard
+              method="GET"
+              endpoint="/catalog-api"
+              description="Retorna produtos do catálogo com fotos, vídeos, preços e estoque"
+            >
+              <Section title="Parâmetros (Query String)">
+                <ParamTable params={[
+                  { name: 'sku', type: 'string', desc: 'Busca produto pelo código SKU exato' },
+                  { name: 'product_id', type: 'uuid', desc: 'Busca produto pelo ID' },
+                  { name: 'category', type: 'string', desc: 'Filtra por categoria (busca exata)' },
+                  { name: 'cor', type: 'string', desc: 'Filtra por cor (busca parcial)' },
+                  { name: 'search', type: 'string', desc: 'Busca em nome, descrição e SKU' },
+                  { name: 'only_available', type: 'boolean', desc: 'Apenas produtos com estoque' },
+                ]} />
+              </Section>
 
-                <div>
-                  <h4 className="font-semibold mb-3">Parâmetros (Query String)</h4>
-                  <div className="space-y-3">
-                    {[
-                      { name: 'sku', type: 'string', desc: 'Busca produto pelo código/SKU exato', example: '?sku=CAM-001' },
-                      { name: 'product_id', type: 'uuid', desc: 'Busca produto pelo ID', example: '?product_id=abc-123...' },
-                      { name: 'category', type: 'string', desc: 'Filtra por categoria (busca EXATA por padrão)', example: '?category=Camisetas' },
-                      { name: 'exact_category', type: 'boolean', desc: 'Se false, busca parcial na categoria', example: '?exact_category=false' },
-                      { name: 'cor', type: 'string', desc: 'Filtra por cor (busca parcial)', example: '?cor=branco' },
-                      { name: 'search', type: 'string', desc: 'Busca em nome, descrição e SKU', example: '?search=branco' },
-                      { name: 'only_available', type: 'boolean', desc: 'Retorna apenas produtos com estoque', example: '?only_available=true' },
-                    ].map((param) => (
-                      <div key={param.name} className="flex items-start gap-4 p-3 bg-muted/50 rounded-lg">
-                        <code className="text-sm font-mono bg-background px-2 py-1 rounded">{param.name}</code>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="secondary" className="text-xs">{param.type}</Badge>
-                            <span className="text-sm text-muted-foreground">{param.desc}</span>
-                          </div>
-                          <code className="text-xs text-muted-foreground">{param.example}</code>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+              <Section title="Exemplo de Requisição">
+                <CodeBlock
+                  id="catalog-request"
+                  language="bash"
+                  code={`curl "${BASE_URL}/catalog-api?category=Pingente&only_available=true"`}
+                />
+              </Section>
 
-                <div>
-                  <h4 className="font-semibold mb-2">Exemplo de Requisição</h4>
-                  <CodeBlock
-                    id="catalog-request"
-                    language="bash"
-                    code={`curl "${BASE_URL}/catalog-api?category=Camisetas&only_available=true"`}
-                  />
-                </div>
-
-                <div>
-                  <h4 className="font-semibold mb-2">Resposta (Lista de Produtos)</h4>
-                  <CodeBlock
-                    id="catalog-response"
-                    code={`{
+              <Accordion type="single" collapsible className="w-full">
+                <AccordionItem value="response" className="border-none">
+                  <AccordionTrigger className="text-sm font-semibold py-2 hover:no-underline">
+                    <span className="flex items-center gap-2">
+                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                      Resposta (expandir)
+                    </span>
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <CodeBlock
+                      id="catalog-response"
+                      code={`{
   "success": true,
   "count": 2,
   "products": [
     {
       "id": "uuid-do-produto",
-      "sku": "CAM-001",
-      "name": "Camiseta Básica Branca",
-      "description": "Camiseta 100% algodão",
-      "price": 59.90,
-      "price_formatted": "R$ 59,90",
-      "category": "Camisetas",
+      "sku": "E0612040",
+      "name": "Pingente Coração Ouro",
+      "price": 289.90,
+      "price_formatted": "R$ 289,90",
+      "category": "Pingente",
       "image_url": "https://...",
       "video_url": "https://...",
-      "images": ["https://foto2.jpg", "https://foto3.jpg"],
-      "all_media": [
-        { "type": "image", "url": "https://...", "is_main": true },
-        { "type": "image", "url": "https://...", "is_main": false },
-        { "type": "video", "url": "https://..." }
-      ],
-      "total_stock": 25,
+      "total_stock": 15,
       "available": true,
       "sizes": [
-        { "size": "P", "stock": 10 },
-        { "size": "M", "stock": 15 }
-      ],
-      "all_sizes": [
-        { "size": "P", "stock": 10, "available": true },
-        { "size": "M", "stock": 15, "available": true },
-        { "size": "G", "stock": 0, "available": false }
+        { "size": "Único", "stock": 15 }
       ]
     }
   ]
 }`}
-                  />
-                </div>
+                    />
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            </EndpointCard>
 
-                <div>
-                  <h4 className="font-semibold mb-2">Resposta (Produto Único - quando usa sku ou product_id)</h4>
-                  <CodeBlock
-                    id="catalog-single"
-                    code={`{
+            <EndpointCard
+              method="GET"
+              endpoint="/catalog-categories"
+              description="Lista todas as categorias disponíveis com contagem de produtos"
+            >
+              <Section title="Exemplo de Requisição">
+                <CodeBlock
+                  id="categories-request"
+                  language="bash"
+                  code={`curl "${BASE_URL}/catalog-categories"`}
+                />
+              </Section>
+
+              <Accordion type="single" collapsible className="w-full">
+                <AccordionItem value="response" className="border-none">
+                  <AccordionTrigger className="text-sm font-semibold py-2 hover:no-underline">
+                    <span className="flex items-center gap-2">
+                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                      Resposta (expandir)
+                    </span>
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <CodeBlock
+                      id="categories-response"
+                      code={`{
   "success": true,
-  "product": {
-    "id": "uuid",
-    "sku": "CAM-001",
-    "name": "Camiseta Básica",
-    "price_formatted": "R$ 59,90",
-    ...
-  }
-}`}
-                  />
-                </div>
-
-                <Card className="bg-muted/30 border-dashed">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <Image className="w-4 h-4" />
-                      Campos de Mídia
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="text-sm space-y-2">
-                    <p><strong>image_url</strong>: Imagem principal do produto</p>
-                    <p><strong>images[]</strong>: Array de URLs de imagens adicionais</p>
-                    <p><strong>video_url</strong>: URL do vídeo do produto</p>
-                    <p><strong>all_media[]</strong>: Array unificado de toda mídia com tipo e flag de principal</p>
-                  </CardContent>
-                </Card>
-              </CardContent>
-            </Card>
-
-            {/* Catalog Categories API */}
-            <Card>
-              <CardHeader>
-                <div className="flex items-center gap-3">
-                  <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/30">GET</Badge>
-                  <CardTitle className="text-lg font-mono">/catalog-categories</CardTitle>
-                </div>
-                <CardDescription>
-                  Lista todas as categorias disponíveis no banco de dados com contagem de produtos
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div>
-                  <h4 className="font-semibold mb-2">URL Base</h4>
-                  <CodeBlock code={`${BASE_URL}/catalog-categories`} id="categories-url" />
-                </div>
-
-                <div>
-                  <h4 className="font-semibold mb-2">Exemplo de Requisição</h4>
-                  <CodeBlock
-                    id="categories-request"
-                    language="bash"
-                    code={`curl "${BASE_URL}/catalog-categories"`}
-                  />
-                </div>
-
-                <div>
-                  <h4 className="font-semibold mb-2">Resposta</h4>
-                  <CodeBlock
-                    id="categories-response"
-                    code={`{
-  "success": true,
-  "count": 3,
+  "count": 5,
   "categories": [
     {
       "name": "Pingente",
-      "name_lowercase": "pingente",
-      "total_products": 9,
-      "products_with_stock": 8
+      "total_products": 12,
+      "products_with_stock": 10
     }
   ],
   "aliases": {
     "pingente": "Pingente",
     "pingentes": "Pingente"
-  },
-  "usage": {
-    "description": "Use o campo 'name' exato para filtrar no /catalog-api",
-    "example": "?category=Pingente"
   }
 }`}
-                  />
-                </div>
-
-                <Card className="bg-muted/30 border-dashed">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">Uso na Automação</CardTitle>
-                  </CardHeader>
-                  <CardContent className="text-sm space-y-2">
-                    <p>• Chame este endpoint para descobrir as categorias disponíveis</p>
-                    <p>• Use o campo <strong>name</strong> no parâmetro category do /catalog-api</p>
-                    <p>• O campo <strong>aliases</strong> mapeia variações para o nome correto</p>
-                  </CardContent>
-                </Card>
-              </CardContent>
-            </Card>
+                    />
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            </EndpointCard>
           </TabsContent>
 
-          {/* Catalog Sessions API */}
-          <TabsContent value="catalog-session" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center gap-3">
-                  <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/30">POST</Badge>
-                  <CardTitle className="text-lg font-mono">/catalog-session</CardTitle>
-                </div>
-                <CardDescription>
-                  Cria uma nova sessão de catálogo para rastrear itens enviados ao cliente
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div>
-                  <h4 className="font-semibold mb-2">URL</h4>
-                  <CodeBlock code={`${BASE_URL}/catalog-session`} id="session-url" />
-                </div>
+          {/* Sessões */}
+          <TabsContent value="sessions" className="space-y-6">
+            <EndpointCard
+              method="POST"
+              endpoint="/catalog-session"
+              description="Cria uma nova sessão de catálogo para rastrear itens enviados ao cliente"
+            >
+              <Section title="Body (JSON)">
+                <ParamTable params={[
+                  { name: 'phone', type: 'string', required: true, desc: 'Telefone E.164 (ex: 5592999999999)' },
+                  { name: 'line', type: 'string', required: true, desc: 'Linha do catálogo (ex: tungstenio)' },
+                  { name: 'intent', type: 'string', desc: 'Intenção do cliente (ex: aliancas)' },
+                  { name: 'preferred_color', type: 'string', desc: 'Cor preferida (ex: dourada)' },
+                  { name: 'budget_max', type: 'number', desc: 'Orçamento máximo' },
+                ]} />
+              </Section>
 
-                <div>
-                  <h4 className="font-semibold mb-3">Corpo da Requisição (JSON)</h4>
-                  <div className="space-y-3">
-                    {[
-                      { name: 'phone', type: 'string', required: true, desc: 'Telefone E.164 sem + (ex: 5592999999999)' },
-                      { name: 'line', type: 'string', required: true, desc: 'Linha do catálogo (ex: tungstenio, oui)' },
-                      { name: 'intent', type: 'string', required: false, desc: 'Intenção do cliente (ex: aliancas, anel)' },
-                      { name: 'preferred_color', type: 'string', required: false, desc: 'Cor preferida (ex: dourada, prata)' },
-                      { name: 'budget_max', type: 'number', required: false, desc: 'Orçamento máximo do cliente' },
-                    ].map((param) => (
-                      <div key={param.name} className="flex items-start gap-4 p-3 bg-muted/50 rounded-lg">
-                        <code className="text-sm font-mono bg-background px-2 py-1 rounded">{param.name}</code>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <Badge variant={param.required ? 'default' : 'secondary'} className="text-xs">
-                              {param.required ? 'obrigatório' : 'opcional'}
-                            </Badge>
-                            <Badge variant="outline" className="text-xs">{param.type}</Badge>
-                          </div>
-                          <p className="text-sm text-muted-foreground mt-1">{param.desc}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="font-semibold mb-2">Exemplo de Requisição</h4>
-                  <CodeBlock
-                    id="session-request"
-                    code={`{
+              <Section title="Exemplo">
+                <CodeBlock
+                  id="session-request"
+                  code={`{
   "phone": "5592999999999",
   "line": "tungstenio",
   "intent": "aliancas",
-  "preferred_color": "dourada",
-  "budget_max": 500
+  "preferred_color": "dourada"
 }`}
-                  />
-                </div>
+                />
+              </Section>
 
-                <div>
-                  <h4 className="font-semibold mb-2">Resposta de Sucesso</h4>
-                  <CodeBlock
-                    id="session-response"
-                    code={`{
+              <Section title="Resposta">
+                <CodeBlock
+                  id="session-response"
+                  code={`{
   "success": true,
   "session_id": "uuid-da-sessao"
 }`}
-                  />
-                </div>
-              </CardContent>
-            </Card>
+                />
+              </Section>
+            </EndpointCard>
 
-            <Card>
-              <CardHeader>
-                <div className="flex items-center gap-3">
-                  <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/30">POST</Badge>
-                  <CardTitle className="text-lg font-mono">/catalog-item</CardTitle>
-                </div>
-                <CardDescription>
-                  Registra um item enviado dentro de uma sessão de catálogo
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div>
-                  <h4 className="font-semibold mb-2">URL</h4>
-                  <CodeBlock code={`${BASE_URL}/catalog-item`} id="item-url" />
-                </div>
+            <EndpointCard
+              method="POST"
+              endpoint="/catalog-item"
+              description="Registra um item enviado dentro de uma sessão de catálogo"
+            >
+              <Section title="Body (JSON)">
+                <ParamTable params={[
+                  { name: 'session_id', type: 'uuid', required: true, desc: 'ID da sessão retornado pelo /catalog-session' },
+                  { name: 'position', type: 'number', required: true, desc: 'Posição do item (1, 2, 3...)' },
+                  { name: 'sku', type: 'string', required: true, desc: 'Código SKU do produto' },
+                  { name: 'name', type: 'string', required: true, desc: 'Nome do produto' },
+                  { name: 'media_type', type: 'string', required: true, desc: '"image" ou "video"' },
+                  { name: 'media_url', type: 'string', required: true, desc: 'URL da mídia enviada' },
+                  { name: 'price', type: 'number', desc: 'Preço do produto' },
+                  { name: 'sizes', type: 'array', desc: 'Tamanhos disponíveis' },
+                ]} />
+              </Section>
 
-                <div>
-                  <h4 className="font-semibold mb-3">Corpo da Requisição (JSON)</h4>
-                  <div className="space-y-3">
-                    {[
-                      { name: 'session_id', type: 'uuid', required: true, desc: 'ID da sessão retornado pelo /catalog-session' },
-                      { name: 'position', type: 'number', required: true, desc: 'Posição do item (1, 2, 3...)' },
-                      { name: 'sku', type: 'string', required: true, desc: 'Código SKU do produto' },
-                      { name: 'name', type: 'string', required: true, desc: 'Nome do produto' },
-                      { name: 'media_type', type: 'string', required: true, desc: 'Tipo: "image" ou "video"' },
-                      { name: 'media_url', type: 'string', required: true, desc: 'URL da mídia enviada' },
-                      { name: 'price', type: 'number', required: false, desc: 'Preço do produto' },
-                      { name: 'price_formatted', type: 'string', required: false, desc: 'Preço formatado (ex: R$ 419,00)' },
-                      { name: 'sizes', type: 'array', required: false, desc: 'Array de tamanhos disponíveis' },
-                      { name: 'image_url', type: 'string', required: false, desc: 'URL da imagem principal' },
-                      { name: 'video_url', type: 'string', required: false, desc: 'URL do vídeo' },
-                      { name: 'stock_total', type: 'number', required: false, desc: 'Estoque total disponível' },
-                    ].map((param) => (
-                      <div key={param.name} className="flex items-start gap-4 p-3 bg-muted/50 rounded-lg">
-                        <code className="text-sm font-mono bg-background px-2 py-1 rounded">{param.name}</code>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <Badge variant={param.required ? 'default' : 'secondary'} className="text-xs">
-                              {param.required ? 'obrigatório' : 'opcional'}
-                            </Badge>
-                            <Badge variant="outline" className="text-xs">{param.type}</Badge>
-                          </div>
-                          <p className="text-sm text-muted-foreground mt-1">{param.desc}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="font-semibold mb-2">Exemplo de Requisição</h4>
-                  <CodeBlock
-                    id="item-request"
-                    code={`{
+              <Section title="Exemplo">
+                <CodeBlock
+                  id="item-request"
+                  code={`{
   "session_id": "uuid-da-sessao",
   "position": 1,
   "sku": "E0612040",
-  "name": "Abaulada Diamantada Dourada 3mm",
+  "name": "Abaulada Diamantada 3mm",
   "price": 419,
-  "price_formatted": "R$ 419,00",
-  "sizes": ["36", "38"],
-  "image_url": "https://...",
   "media_type": "image",
   "media_url": "https://..."
 }`}
-                  />
-                </div>
+                />
+              </Section>
+            </EndpointCard>
 
-                <div>
-                  <h4 className="font-semibold mb-2">Resposta de Sucesso</h4>
-                  <CodeBlock
-                    id="item-response"
-                    code={`{ "success": true }`}
-                  />
-                </div>
-              </CardContent>
-            </Card>
+            <EndpointCard
+              method="GET"
+              endpoint="/catalog-latest"
+              description="Retorna a sessão mais recente e seus itens (para interpretar 'o segundo', 'o do vídeo')"
+            >
+              <Section title="Parâmetros">
+                <ParamTable params={[
+                  { name: 'phone', type: 'string', required: true, desc: 'Telefone E.164' },
+                  { name: 'line', type: 'string', required: true, desc: 'Linha do catálogo' },
+                ]} />
+              </Section>
 
-            <Card>
-              <CardHeader>
-                <div className="flex items-center gap-3">
-                  <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/30">GET</Badge>
-                  <CardTitle className="text-lg font-mono">/catalog-latest</CardTitle>
-                </div>
-                <CardDescription>
-                  Retorna a sessão mais recente ativa e seus itens (para interpretar "o segundo", "o do vídeo")
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div>
-                  <h4 className="font-semibold mb-2">URL</h4>
-                  <CodeBlock code={`${BASE_URL}/catalog-latest?phone=5592999999999&line=tungstenio`} id="latest-url" />
-                </div>
-
-                <div>
-                  <h4 className="font-semibold mb-3">Parâmetros (Query String)</h4>
-                  <div className="space-y-3">
-                    {[
-                      { name: 'phone', type: 'string', required: true, desc: 'Telefone E.164 sem +' },
-                      { name: 'line', type: 'string', required: true, desc: 'Linha do catálogo' },
-                    ].map((param) => (
-                      <div key={param.name} className="flex items-start gap-4 p-3 bg-muted/50 rounded-lg">
-                        <code className="text-sm font-mono bg-background px-2 py-1 rounded">{param.name}</code>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="default" className="text-xs">obrigatório</Badge>
-                            <Badge variant="outline" className="text-xs">{param.type}</Badge>
-                          </div>
-                          <p className="text-sm text-muted-foreground mt-1">{param.desc}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="font-semibold mb-2">Resposta de Sucesso</h4>
-                  <CodeBlock
-                    id="latest-response"
-                    code={`{
-  "success": true,
-  "session": {
-    "id": "uuid-da-sessao",
-    "phone": "5592999999999",
-    "line": "tungstenio",
-    "intent": "aliancas",
-    "created_at": "2024-01-15T10:30:00Z"
-  },
-  "items": [
-    {
-      "position": 1,
-      "sku": "E0612040",
-      "name": "Abaulada Diamantada Dourada 3mm",
-      "media_type": "image",
-      "media_url": "https://...",
-      "sizes": ["36", "38"],
-      "price_formatted": "R$ 419,00"
-    }
-  ]
-}`}
-                  />
-                </div>
-              </CardContent>
-            </Card>
+              <Section title="Exemplo">
+                <CodeBlock
+                  id="latest-url"
+                  language="bash"
+                  code={`curl "${BASE_URL}/catalog-latest?phone=5592999999999&line=tungstenio"`}
+                />
+              </Section>
+            </EndpointCard>
           </TabsContent>
 
-          {/* Orders API */}
+          {/* Pedidos */}
           <TabsContent value="orders" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center gap-3">
-                  <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/30">POST</Badge>
-                  <CardTitle className="text-lg font-mono">/orders-pending</CardTitle>
-                </div>
-                <CardDescription>
-                  Cria ou atualiza um pedido pendente (quando cliente está quase fechando)
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div>
-                  <h4 className="font-semibold mb-2">URL</h4>
-                  <CodeBlock code={`${BASE_URL}/orders-pending`} id="orders-url" />
-                </div>
+            <EndpointCard
+              method="POST"
+              endpoint="/orders-pending"
+              description="Cria ou atualiza um pedido pendente (quando cliente está quase fechando)"
+            >
+              <Section title="Body (JSON)">
+                <ParamTable params={[
+                  { name: 'phone', type: 'string', required: true, desc: 'Telefone E.164' },
+                  { name: 'summary_text', type: 'string', required: true, desc: 'Resumo do pedido para atendente' },
+                  { name: 'session_id', type: 'uuid', desc: 'ID da sessão de catálogo' },
+                  { name: 'selected_sku', type: 'string', desc: 'SKU do produto selecionado' },
+                  { name: 'selected_name', type: 'string', desc: 'Nome do produto' },
+                  { name: 'selected_size_1', type: 'string', desc: 'Tamanho 1' },
+                  { name: 'selected_size_2', type: 'string', desc: 'Tamanho 2 (para par)' },
+                  { name: 'unit_or_pair', type: 'string', desc: '"unidade" ou "par"' },
+                  { name: 'unit_price', type: 'number', desc: 'Preço unitário' },
+                  { name: 'total_price', type: 'number', desc: 'Preço total' },
+                  { name: 'payment_method', type: 'string', desc: 'pix, cartão, etc.' },
+                  { name: 'delivery_method', type: 'string', desc: 'retirada, envio' },
+                ]} />
+              </Section>
 
-                <div>
-                  <h4 className="font-semibold mb-3">Corpo da Requisição (JSON)</h4>
-                  <div className="space-y-3">
-                    {[
-                      { name: 'phone', type: 'string', required: true, desc: 'Telefone E.164 sem +' },
-                      { name: 'session_id', type: 'uuid', required: false, desc: 'ID da sessão de catálogo' },
-                      { name: 'selected_sku', type: 'string', required: false, desc: 'SKU do produto selecionado' },
-                      { name: 'selected_name', type: 'string', required: false, desc: 'Nome do produto selecionado' },
-                      { name: 'selected_size_1', type: 'string', required: false, desc: 'Tamanho 1 (ex: 18)' },
-                      { name: 'selected_size_2', type: 'string', required: false, desc: 'Tamanho 2 para par (ex: 20)' },
-                      { name: 'unit_or_pair', type: 'string', required: false, desc: '"unidade" ou "par"' },
-                      { name: 'quantity', type: 'number', required: false, desc: 'Quantidade (default: 1)' },
-                      { name: 'unit_price', type: 'number', required: false, desc: 'Preço unitário' },
-                      { name: 'total_price', type: 'number', required: false, desc: 'Preço total' },
-                      { name: 'payment_method', type: 'string', required: false, desc: 'Método de pagamento (pix, cartão)' },
-                      { name: 'delivery_method', type: 'string', required: false, desc: 'Método de entrega (retirada, envio)' },
-                      { name: 'delivery_address', type: 'string', required: false, desc: 'Endereço de entrega' },
-                      { name: 'notes', type: 'string', required: false, desc: 'Observações' },
-                      { name: 'summary_text', type: 'string', required: true, desc: 'Resumo do pedido para atendente' },
-                    ].map((param) => (
-                      <div key={param.name} className="flex items-start gap-4 p-3 bg-muted/50 rounded-lg">
-                        <code className="text-sm font-mono bg-background px-2 py-1 rounded">{param.name}</code>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <Badge variant={param.required ? 'default' : 'secondary'} className="text-xs">
-                              {param.required ? 'obrigatório' : 'opcional'}
-                            </Badge>
-                            <Badge variant="outline" className="text-xs">{param.type}</Badge>
-                          </div>
-                          <p className="text-sm text-muted-foreground mt-1">{param.desc}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="font-semibold mb-2">Exemplo de Requisição</h4>
-                  <CodeBlock
-                    id="orders-request"
-                    code={`{
+              <Section title="Exemplo">
+                <CodeBlock
+                  id="orders-request"
+                  code={`{
   "phone": "5592999999999",
-  "session_id": "uuid-da-sessao",
   "selected_sku": "E0612040",
-  "selected_name": "Abaulada Diamantada Dourada 3mm",
+  "selected_name": "Abaulada Diamantada 3mm",
   "selected_size_1": "36",
   "unit_or_pair": "unidade",
   "unit_price": 419,
   "total_price": 419,
   "payment_method": "pix",
   "delivery_method": "retirada",
-  "summary_text": "Pedido pendente: SKU E0612040 (Abaulada), tam 36, unidade, Pix, retirada. Próximo: confirmar estoque e enviar link."
+  "summary_text": "Pedido: SKU E0612040, tam 36, Pix, retirada."
 }`}
-                  />
-                </div>
+                />
+              </Section>
 
-                <div>
-                  <h4 className="font-semibold mb-2">Resposta de Sucesso</h4>
-                  <CodeBlock
-                    id="orders-response"
-                    code={`{
-  "success": true,
-  "order_id": "uuid-do-pedido",
-  "status": "pending_human"
-}`}
-                  />
+              <div className="p-3 rounded-lg bg-muted/50 border border-dashed border-border">
+                <div className="flex items-start gap-2">
+                  <Zap className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+                  <p className="text-xs text-muted-foreground">
+                    <strong>UPSERT:</strong> Se existir pedido pendente para o mesmo telefone nas últimas 6h, ele será atualizado.
+                  </p>
                 </div>
+              </div>
+            </EndpointCard>
 
-                <Card className="bg-muted/30 border-dashed">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">Regra de UPSERT</CardTitle>
-                  </CardHeader>
-                  <CardContent className="text-sm text-muted-foreground">
-                    Se existir um pedido com <code>status='pending'</code> para o mesmo telefone criado nas últimas 6 horas, 
-                    ele será atualizado. Caso contrário, um novo pedido será criado.
-                  </CardContent>
-                </Card>
-              </CardContent>
-            </Card>
+            <EndpointCard
+              method="GET"
+              endpoint="/orders-pending"
+              description="Lista pedidos por status"
+            >
+              <Section title="Parâmetros">
+                <ParamTable params={[
+                  { name: 'status', type: 'string', desc: 'pending, in_progress, done, canceled' },
+                  { name: 'phone', type: 'string', desc: 'Filtrar por telefone' },
+                ]} />
+              </Section>
 
-            <Card>
-              <CardHeader>
-                <div className="flex items-center gap-3">
-                  <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/30">GET</Badge>
-                  <CardTitle className="text-lg font-mono">/orders-pending</CardTitle>
-                </div>
-                <CardDescription>
-                  Lista pedidos por status (para página de pendentes)
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div>
-                  <h4 className="font-semibold mb-2">URL</h4>
-                  <CodeBlock code={`${BASE_URL}/orders-pending?status=pending`} id="orders-list-url" />
-                </div>
+              <Section title="Exemplo">
+                <CodeBlock
+                  id="orders-list-url"
+                  language="bash"
+                  code={`curl "${BASE_URL}/orders-pending?status=pending"`}
+                />
+              </Section>
+            </EndpointCard>
 
-                <div>
-                  <h4 className="font-semibold mb-3">Parâmetros (Query String)</h4>
-                  <div className="space-y-3">
-                    {[
-                      { name: 'status', type: 'string', required: false, desc: 'Filtrar por status: pending, in_progress, done, canceled' },
-                      { name: 'phone', type: 'string', required: false, desc: 'Filtrar por telefone' },
-                    ].map((param) => (
-                      <div key={param.name} className="flex items-start gap-4 p-3 bg-muted/50 rounded-lg">
-                        <code className="text-sm font-mono bg-background px-2 py-1 rounded">{param.name}</code>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="secondary" className="text-xs">opcional</Badge>
-                            <Badge variant="outline" className="text-xs">{param.type}</Badge>
-                          </div>
-                          <p className="text-sm text-muted-foreground mt-1">{param.desc}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+            <EndpointCard
+              method="GET"
+              endpoint="/order-detail"
+              description="Retorna detalhes completos de um pedido"
+            >
+              <Section title="Parâmetros">
+                <ParamTable params={[
+                  { name: 'id', type: 'uuid', required: true, desc: 'ID do pedido' },
+                ]} />
+              </Section>
 
-                <div>
-                  <h4 className="font-semibold mb-2">Resposta de Sucesso</h4>
-                  <CodeBlock
-                    id="orders-list-response"
-                    code={`{
-  "success": true,
-  "orders": [
-    {
-      "id": "uuid",
-      "customer_phone": "5592999999999",
-      "status": "pending",
-      "summary_text": "Pedido pendente: SKU X...",
-      "created_at": "2024-01-15T10:30:00Z",
-      "assigned_to": null
-    }
-  ]
-}`}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <div className="flex items-center gap-3">
-                  <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/30">GET</Badge>
-                  <CardTitle className="text-lg font-mono">/order-detail</CardTitle>
-                </div>
-                <CardDescription>
-                  Retorna detalhes completos de um pedido, incluindo itens do catálogo
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div>
-                  <h4 className="font-semibold mb-2">URL</h4>
-                  <CodeBlock code={`${BASE_URL}/order-detail?id=uuid-do-pedido`} id="order-detail-url" />
-                </div>
-
-                <div>
-                  <h4 className="font-semibold mb-2">Resposta de Sucesso</h4>
-                  <CodeBlock
-                    id="order-detail-response"
-                    code={`{
-  "success": true,
-  "order": {
-    "id": "uuid",
-    "customer_phone": "5592999999999",
-    "status": "pending",
-    "selected_sku": "E0612040",
-    "selected_name": "Abaulada Diamantada Dourada",
-    "selected_size_1": "36",
-    "unit_or_pair": "unidade",
-    "payment_method": "pix",
-    "delivery_method": "retirada",
-    "summary_text": "...",
-    "created_at": "..."
-  },
-  "session": {
-    "id": "uuid-sessao",
-    "line": "tungstenio",
-    "intent": "aliancas"
-  },
-  "catalog_items": [
-    {
-      "position": 1,
-      "sku": "E0612040",
-      "name": "Abaulada Diamantada",
-      "media_type": "image",
-      "media_url": "https://..."
-    }
-  ]
-}`}
-                  />
-                </div>
-              </CardContent>
-            </Card>
+              <Section title="Exemplo">
+                <CodeBlock
+                  id="order-detail-url"
+                  language="bash"
+                  code={`curl "${BASE_URL}/order-detail?id=uuid-do-pedido"`}
+                />
+              </Section>
+            </EndpointCard>
           </TabsContent>
 
-          <TabsContent value="send" className="space-y-6">
-            {/* Send Message API */}
-            <Card>
-              <CardHeader>
-                <div className="flex items-center gap-3">
-                  <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/30">POST</Badge>
-                  <CardTitle className="text-lg font-mono">/automation-send</CardTitle>
-                </div>
-                <CardDescription>
-                  Envia mensagens para clientes via automação (salva no CRM e encaminha para webhook)
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div>
-                  <h4 className="font-semibold mb-2">URL</h4>
-                  <CodeBlock code={`${BASE_URL}/automation-send`} id="send-url" />
-                </div>
+          {/* Mensagens */}
+          <TabsContent value="messaging" className="space-y-6">
+            <EndpointCard
+              method="POST"
+              endpoint="/automation-send"
+              description="Envia mensagens para clientes via automação (salva no CRM e encaminha)"
+            >
+              <Section title="Body (JSON)">
+                <ParamTable params={[
+                  { name: 'phone', type: 'string', required: true, desc: 'Telefone com código do país' },
+                  { name: 'message', type: 'string', desc: 'Conteúdo da mensagem' },
+                  { name: 'platform', type: 'string', desc: '"whatsapp" ou "instagram"' },
+                  { name: 'message_type', type: 'string', desc: 'text, image, audio, video, document' },
+                  { name: 'media_url', type: 'string', desc: 'URL da mídia (para tipos não-texto)' },
+                ]} />
+              </Section>
 
+              <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <h4 className="font-semibold mb-3">Corpo da Requisição (JSON)</h4>
-                  <div className="space-y-3">
-                    {[
-                      { name: 'phone', type: 'string', required: true, desc: 'Número do telefone (com código do país)', example: '"5511999999999"' },
-                      { name: 'message', type: 'string', required: false, desc: 'Conteúdo da mensagem', example: '"Olá! Segue o catálogo..."' },
-                      { name: 'platform', type: 'string', required: false, desc: 'Plataforma: "whatsapp" ou "instagram"', example: '"whatsapp"' },
-                      { name: 'message_type', type: 'string', required: false, desc: 'Tipo: "text", "image", "audio", "video", "document"', example: '"image"' },
-                      { name: 'media_url', type: 'string', required: false, desc: 'URL da mídia (para imagem, áudio, vídeo, documento)', example: '"https://..."' },
-                      { name: 'conversation_id', type: 'uuid', required: false, desc: 'ID da conversa (opcional, resolve automaticamente pelo telefone)', example: '"uuid..."' },
-                    ].map((param) => (
-                      <div key={param.name} className="flex items-start gap-4 p-3 bg-muted/50 rounded-lg">
-                        <code className="text-sm font-mono bg-background px-2 py-1 rounded">{param.name}</code>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <Badge variant={param.required ? 'default' : 'secondary'} className="text-xs">
-                              {param.required ? 'obrigatório' : 'opcional'}
-                            </Badge>
-                            <Badge variant="outline" className="text-xs">{param.type}</Badge>
-                          </div>
-                          <p className="text-sm text-muted-foreground mt-1">{param.desc}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="font-semibold mb-2">Exemplo: Enviar Texto</h4>
+                  <p className="text-xs font-medium text-muted-foreground mb-2">Enviar Texto</p>
                   <CodeBlock
                     id="send-text"
                     code={`{
   "phone": "5511999999999",
-  "message": "Olá! Temos novidades no catálogo 🛍️",
+  "message": "Olá! Temos novidades 🛍️",
   "platform": "whatsapp"
 }`}
                   />
                 </div>
-
                 <div>
-                  <h4 className="font-semibold mb-2">Exemplo: Enviar Imagem do Catálogo</h4>
+                  <p className="text-xs font-medium text-muted-foreground mb-2">Enviar Imagem</p>
                   <CodeBlock
                     id="send-image"
                     code={`{
   "phone": "5511999999999",
-  "message": "Confira nossa Camiseta Básica! R$ 59,90",
+  "message": "Confira!",
   "message_type": "image",
-  "media_url": "https://url-da-imagem-do-produto.jpg",
+  "media_url": "https://...",
   "platform": "whatsapp"
 }`}
                   />
                 </div>
+              </div>
+            </EndpointCard>
 
-                <div>
-                  <h4 className="font-semibold mb-2">Resposta de Sucesso</h4>
-                  <CodeBlock
-                    id="send-response"
-                    code={`{
-  "success": true,
-  "message_id": "uuid-da-mensagem",
-  "forwarded": true
-}`}
-                  />
-                </div>
-              </CardContent>
-            </Card>
+            <EndpointCard
+              method="POST"
+              endpoint="/automation-webhook"
+              description="Recebe mensagens de clientes da sua automação (Fiqon/ZAPI)"
+            >
+              <Section title="URL para configurar na automação">
+                <CodeBlock code={`${BASE_URL}/automation-webhook`} id="webhook-url" language="url" />
+              </Section>
 
-            {/* Webhook Incoming */}
-            <Card>
-              <CardHeader>
-                <div className="flex items-center gap-3">
-                  <Badge variant="outline" className="bg-purple-500/10 text-purple-600 border-purple-500/30">POST</Badge>
-                  <CardTitle className="text-lg font-mono">/automation-webhook</CardTitle>
-                </div>
-                <CardDescription>
-                  Recebe mensagens de clientes da sua automação (Fiqon/ZAPI)
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div>
-                  <h4 className="font-semibold mb-2">URL (configure na sua automação)</h4>
-                  <CodeBlock code={`${BASE_URL}/automation-webhook`} id="webhook-url" />
-                </div>
-
-                <div>
-                  <h4 className="font-semibold mb-2">Payload Esperado</h4>
-                  <CodeBlock
-                    id="webhook-payload"
-                    code={`{
+              <Section title="Payload esperado">
+                <CodeBlock
+                  id="webhook-payload"
+                  code={`{
+  "phone": "5511999999999",
+  "message": "Quero ver alianças",
   "platform": "whatsapp",
-  "contact_number": "5511999999999",
-  "contact_name": "João Silva",
-  "message": "Quero ver o catálogo",
-  "message_type": "text",
-  "media_url": null,
-  "fromMe": false
+  "contact_name": "Maria",
+  "message_type": "text"
 }`}
-                  />
-                </div>
-              </CardContent>
-            </Card>
+                />
+              </Section>
+            </EndpointCard>
           </TabsContent>
         </Tabs>
-
-        {/* Integration Tips */}
-        <Card className="border-primary/20 bg-primary/5">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Code className="w-5 h-5" />
-              Dicas de Integração
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm">
-            <div className="space-y-2">
-              <h4 className="font-semibold">Fiqon / n8n / Make</h4>
-              <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-                <li>Use um nó HTTP Request para chamar a API do catálogo</li>
-                <li>Parse o JSON de resposta para extrair os produtos</li>
-                <li>Monte a mensagem com os dados do produto (nome, preço, imagem)</li>
-                <li>Envie via automation-send ou diretamente pela sua integração de WhatsApp</li>
-              </ol>
-            </div>
-            <div className="space-y-2">
-              <h4 className="font-semibold">Fluxo Típico</h4>
-              <div className="bg-background p-4 rounded-lg font-mono text-xs">
-                Cliente pergunta → Webhook recebe → Busca catálogo → Monta resposta → Envia via API
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <div className="flex justify-center">
-          <Button variant="outline" asChild>
-            <a href="/webhook-tester" className="gap-2">
-              <ExternalLink className="w-4 h-4" />
-              Testar API
-            </a>
-          </Button>
-        </div>
       </main>
     </div>
   );
