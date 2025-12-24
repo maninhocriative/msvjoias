@@ -13,7 +13,7 @@ const tools = [
     type: "function",
     function: {
       name: "search_catalog",
-      description: "Buscar produtos no catálogo por nome, categoria, cor ou faixa de preço. Use sempre que o cliente quiser ver produtos.",
+      description: "OBRIGATÓRIO usar quando o cliente informar a cor desejada. Busca produtos no catálogo por categoria e cor. Você DEVE chamar esta função antes de mostrar qualquer produto ao cliente.",
       parameters: {
         type: "object",
         properties: {
@@ -23,11 +23,11 @@ const tools = [
           },
           category: {
             type: "string",
-            description: "Categoria do produto: aliancas, pingente, aneis"
+            description: "Categoria do produto: aliancas, pingente, aneis. OBRIGATÓRIO quando o cliente escolheu categoria."
           },
           color: {
             type: "string",
-            description: "Cor do produto: dourada, aco, preta, azul, rose"
+            description: "Cor do produto: dourada, aco, preta, azul. OBRIGATÓRIO quando o cliente escolheu cor."
           },
           min_price: {
             type: "number",
@@ -39,10 +39,10 @@ const tools = [
           },
           only_available: {
             type: "boolean",
-            description: "Mostrar apenas produtos com estoque"
+            description: "Mostrar apenas produtos com estoque. Recomendado: true"
           }
         },
-        required: []
+        required: ["category"]
       }
     }
   },
@@ -50,7 +50,7 @@ const tools = [
     type: "function",
     function: {
       name: "get_product_details",
-      description: "Obter detalhes de um produto específico por ID ou SKU",
+      description: "Obter detalhes de um produto específico por ID ou SKU quando o cliente perguntar sobre um produto específico",
       parameters: {
         type: "object",
         properties: {
@@ -198,26 +198,38 @@ Responda com o número (1 ou 2) ou com a opção."
 
 ---
 
-## 7. REGRA DE DISPARO DE CATÁLOGO (SYSTEM_ACTION OBRIGATÓRIO)
+## 7. REGRA DE DISPARO DE CATÁLOGO (OBRIGATÓRIO USAR FERRAMENTA)
 
-Somente APÓS o cliente informar Categoria, Finalidade (se aliança) e Cor, você deve buscar produtos usando a ferramenta search_catalog.
+**ATENÇÃO CRÍTICA:** Quando o cliente informar a COR, você DEVE OBRIGATORIAMENTE:
 
-Texto obrigatório antes de buscar:
+1. Primeiro, dizer: "Aguarde um momento. Vou buscar no nosso catálogo alguns modelos que atendem sua necessidade."
 
-"Aguarde um momento.  
-Vou buscar no nosso catálogo alguns modelos que atendem sua necessidade."
+2. Depois, você DEVE chamar a ferramenta search_catalog com os parâmetros:
+   - category: "pingente" ou "aliancas"
+   - color: a cor escolhida pelo cliente (dourada, aco, preta, azul)
+   - only_available: true
 
-Depois de buscar, apresente os produtos encontrados de forma elegante.
+3. Após receber os produtos da ferramenta, apresente-os de forma elegante:
+   - Liste cada produto com nome, preço e tamanhos disponíveis
+   - Se tiver promoção, destaque o desconto
+   - Se tiver brinde, mencione
+   - Mostre as URLs das imagens para o cliente visualizar
 
-**IMPORTANTE:** Após apresentar o catálogo, inclua a tag de ação:
+4. NÃO PULE ESTA ETAPA! É proibido ir direto para fotogravação ou coleta de dados sem mostrar produtos.
 
-[SYSTEM_ACTION action:"show_catalog"]
+5. Após apresentar o catálogo, inclua: [SYSTEM_ACTION action:"show_catalog"]
+
+**EXEMPLO DE USO DA FERRAMENTA:**
+Quando cliente disser "Dourada" após escolher Pingentes:
+- Você DEVE chamar: search_catalog({ category: "pingente", color: "dourada", only_available: true })
+- Esperar o resultado
+- Mostrar os produtos encontrados
 
 ---
 
 ## 8. PINGENTES COM FOTOGRAVAÇÃO
 
-Quando o cliente escolher um pingente:
+SOMENTE após o cliente ESCOLHER um produto específico do catálogo:
 
 "Ótima escolha! Esse pingente permite fotogravação. Para um resultado perfeito, envie a foto na melhor resolução possível."
 
