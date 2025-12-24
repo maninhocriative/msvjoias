@@ -19,7 +19,8 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
-  ClipboardList
+  ClipboardList,
+  Globe
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -58,7 +59,7 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
 
   const apiNavItems = [
     { to: '/api-docs', label: 'Documentação', icon: FileText },
-    { to: '/docs', label: 'Doc. Pública', icon: ExternalLink, isExternal: false },
+    { to: '/docs', label: 'Doc. Pública', icon: Globe },
     { to: '/webhook-tester', label: 'Webhook Tester', icon: TestTube },
   ];
 
