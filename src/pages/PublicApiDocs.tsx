@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Copy, Check, Database, Send, ShoppingCart, Layers, MessageSquare, Package, ExternalLink, Zap, BookOpen, Bot, FileText } from 'lucide-react';
+import { Copy, Check, Database, Send, ShoppingCart, Layers, MessageSquare, Package, ExternalLink, Zap, BookOpen, Bot, FileText, Workflow } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const BASE_URL = 'https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co';
@@ -157,12 +157,13 @@ const PublicApiDocs = () => {
         </div>
 
         {/* Quick Links */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-10">
           {[
             { icon: Database, label: 'Catálogo', color: 'from-emerald-500 to-teal-600', tab: 'catalog' },
             { icon: Layers, label: 'Sessões', color: 'from-blue-500 to-indigo-600', tab: 'sessions' },
             { icon: ShoppingCart, label: 'Pedidos', color: 'from-purple-500 to-pink-600', tab: 'orders' },
             { icon: MessageSquare, label: 'Mensagens', color: 'from-orange-500 to-red-600', tab: 'messages' },
+            { icon: Workflow, label: 'FiqOn', color: 'from-cyan-500 to-blue-600', tab: 'fiqon' },
           ].map((item) => (
             <a
               key={item.tab}
@@ -199,6 +200,10 @@ const PublicApiDocs = () => {
             <TabsTrigger value="workflow" className="gap-2 data-[state=active]:bg-pink-500 data-[state=active]:text-white rounded-lg">
               <Package className="w-4 h-4" />
               Fluxo
+            </TabsTrigger>
+            <TabsTrigger value="fiqon" className="gap-2 data-[state=active]:bg-cyan-500 data-[state=active]:text-white rounded-lg">
+              <Workflow className="w-4 h-4" />
+              FiqOn
             </TabsTrigger>
           </TabsList>
 
@@ -597,6 +602,232 @@ const PublicApiDocs = () => {
                     </div>
                   ))}
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* FIQON TAB */}
+          <TabsContent value="fiqon" id="fiqon" className="space-y-6">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+                  <Workflow className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Integração FiqOn + Aline</h2>
+                  <p className="text-slate-600 dark:text-slate-400">Configure seu fluxo passo a passo</p>
+                </div>
+              </div>
+              <Button 
+                variant="default" 
+                size="sm" 
+                className="gap-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white shadow-lg"
+                onClick={() => navigate('/fiqon-integration')}
+              >
+                <Bot className="w-4 h-4" />
+                Texto para IA
+              </Button>
+            </div>
+
+            {/* Visão Geral */}
+            <Card className="border-cyan-200 dark:border-cyan-800 bg-cyan-50 dark:bg-cyan-900/20">
+              <CardContent className="p-6">
+                <h3 className="font-bold text-lg text-cyan-800 dark:text-cyan-200 mb-4">🎯 Visão Geral do Fluxo</h3>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-cyan-700 dark:text-cyan-300">
+                      <span className="w-6 h-6 bg-cyan-500 rounded-full flex items-center justify-center text-white text-xs font-bold">1</span>
+                      <span>WEBHOOK recebe mensagem do WhatsApp</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-cyan-700 dark:text-cyan-300">
+                      <span className="w-6 h-6 bg-cyan-500 rounded-full flex items-center justify-center text-white text-xs font-bold">2</span>
+                      <span>JS identifica se é anúncio ou mensagem normal</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-cyan-700 dark:text-cyan-300">
+                      <span className="w-6 h-6 bg-cyan-500 rounded-full flex items-center justify-center text-white text-xs font-bold">3</span>
+                      <span>HTTP REQUEST chama a Aline (ai-chat)</span>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-cyan-700 dark:text-cyan-300">
+                      <span className="w-6 h-6 bg-cyan-500 rounded-full flex items-center justify-center text-white text-xs font-bold">4</span>
+                      <span>FILTRO verifica se tem catálogo para enviar</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-cyan-700 dark:text-cyan-300">
+                      <span className="w-6 h-6 bg-cyan-500 rounded-full flex items-center justify-center text-white text-xs font-bold">5</span>
+                      <span>FOR EACH itera produtos e envia via Z-API</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-cyan-700 dark:text-cyan-300">
+                      <span className="w-6 h-6 bg-cyan-500 rounded-full flex items-center justify-center text-white text-xs font-bold">6</span>
+                      <span>FILTROS adicionais para finalização de venda</span>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* HTTP Request - Chamar Aline */}
+            <EndpointCard method="POST" path="/ai-chat" description="Endpoint principal da IA Aline - conversa com o cliente e retorna produtos">
+              <div>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">URL Completa</h4>
+                <CodeBlock code="https://ahbjwpkpxqqrpvpzmqwa.supabase.co/functions/v1/ai-chat" id="aichat-url" />
+              </div>
+
+              <div>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">Headers</h4>
+                <ParamTable params={[
+                  { name: 'Content-Type', type: 'string', required: true, desc: 'application/json' },
+                  { name: 'Authorization', type: 'string', required: true, desc: 'Bearer {{SUA_ANON_KEY}}' },
+                ]} />
+              </div>
+
+              <div>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">Body da Requisição</h4>
+                <ParamTable params={[
+                  { name: 'phone', type: 'string', required: true, desc: 'Telefone E.164 sem + (ex: 5592999999999)' },
+                  { name: 'message', type: 'string', required: true, desc: 'Mensagem do cliente' },
+                  { name: 'contact_name', type: 'string', desc: 'Nome do contato' },
+                ]} />
+              </div>
+
+              <div>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">Exemplo de Requisição</h4>
+                <CodeBlock
+                  id="aichat-request"
+                  code={`{
+  "phone": "5592999999999",
+  "message": "Quero ver aliança dourada para casamento",
+  "contact_name": "Maria Silva"
+}`}
+                />
+              </div>
+
+              <div>
+                <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">Resposta Completa da Aline</h4>
+                <CodeBlock
+                  id="aichat-response"
+                  code={`{
+  "mensagem_whatsapp": "Oi Maria! 💍 Que lindo, aliança de casamento! Separei algumas opções douradas para você:",
+  "tem_produtos": true,
+  "produtos": [
+    {
+      "position": 1,
+      "sku": "E0612040",
+      "name": "Aliança Abaulada Dourada 3mm",
+      "media_url": "https://...",
+      "media_type": "video",
+      "image_url": "https://...",
+      "video_url": "https://...",
+      "caption": "✨ 1. Aliança Abaulada Dourada 3mm\\n💰 R$ 419,00\\n📏 Tamanhos: 16, 17, 18, 19, 20"
+    }
+  ],
+  "filtros": {
+    "intencao": "comprar",
+    "categoria": "aliancas",
+    "cor": "dourada",
+    "tipo_alianca": "casamento",
+    "enviar_catalogo": true,
+    "finalizar_venda": false,
+    "transferir_humano": false,
+    "acao_sugerida": "enviar_catalogo"
+  },
+  "produto_selecionado": null,
+  "crm": {
+    "entrega": null,
+    "pagamento": null
+  },
+  "memoria": {
+    "phone": "5592999999999",
+    "stage": "catalogo_enviado",
+    "categoria": "aliancas",
+    "cor": "dourada",
+    "tipo_alianca": "casamento"
+  }
+}`}
+                />
+              </div>
+            </EndpointCard>
+
+            {/* Campos de Resposta */}
+            <Card className="border-slate-200 dark:border-slate-700">
+              <CardHeader>
+                <CardTitle className="text-lg">📋 Campos de Resposta para FiqOn</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div>
+                  <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">Mensagem e Produtos</h4>
+                  <ParamTable params={[
+                    { name: 'mensagem_whatsapp', type: 'string', required: true, desc: 'Texto limpo para enviar ao cliente' },
+                    { name: 'tem_produtos', type: 'boolean', required: true, desc: 'Se true, tem catálogo para enviar' },
+                    { name: 'produtos', type: 'array', desc: 'Array de produtos com media_url e caption' },
+                  ]} />
+                </div>
+
+                <div>
+                  <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">Filtros para Roteamento</h4>
+                  <ParamTable params={[
+                    { name: 'filtros.intencao', type: 'string', desc: 'comprar, informacao, suporte, saudacao, troca, reclamacao' },
+                    { name: 'filtros.categoria', type: 'string', desc: 'aliancas, pingentes, aneis, etc' },
+                    { name: 'filtros.cor', type: 'string', desc: 'dourada, prata, rose' },
+                    { name: 'filtros.tipo_alianca', type: 'string', desc: 'namoro, noivado, casamento' },
+                    { name: 'filtros.enviar_catalogo', type: 'boolean', desc: 'Use para decidir se entra no FOR EACH' },
+                    { name: 'filtros.finalizar_venda', type: 'boolean', desc: 'Use para ir para fluxo de pedido' },
+                    { name: 'filtros.transferir_humano', type: 'boolean', desc: 'Use para notificar atendente' },
+                  ]} />
+                </div>
+
+                <div>
+                  <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">Cada Produto no Array</h4>
+                  <ParamTable params={[
+                    { name: 'produtos[].position', type: 'number', desc: 'Posição do produto (1, 2, 3...)' },
+                    { name: 'produtos[].sku', type: 'string', desc: 'Código SKU do produto' },
+                    { name: 'produtos[].name', type: 'string', desc: 'Nome do produto' },
+                    { name: 'produtos[].media_type', type: 'string', desc: '"image" ou "video"' },
+                    { name: 'produtos[].image_url', type: 'string', desc: 'URL da imagem' },
+                    { name: 'produtos[].video_url', type: 'string', desc: 'URL do vídeo (se tiver)' },
+                    { name: 'produtos[].caption', type: 'string', desc: 'Legenda formatada com emojis' },
+                  ]} />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* JS para For Each */}
+            <Card className="border-slate-200 dark:border-slate-700">
+              <CardHeader>
+                <CardTitle className="text-lg">🔧 JS para Preparar Mídia (Dentro do For Each)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CodeBlock
+                  id="js-prepare-media"
+                  language="javascript"
+                  code={`const produto = $input.first().json;
+const phone = $input.first().json.phone || $("Chamar Aline").first().json.memoria.phone;
+
+return {
+  phone: phone,
+  mediaType: produto.media_type,
+  mediaUrl: produto.media_url,
+  caption: produto.caption,
+  imageUrl: produto.image_url,
+  videoUrl: produto.video_url,
+  hasVideo: produto.media_type === "video" && produto.video_url
+};`}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Dicas */}
+            <Card className="border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20">
+              <CardContent className="p-6">
+                <h3 className="font-bold text-lg text-green-800 dark:text-green-200 mb-4">💡 Dicas de Uso</h3>
+                <ul className="space-y-2 text-green-700 dark:text-green-300">
+                  <li>• <strong>filtros.enviar_catalogo</strong> → Use para decidir se entra no For Each</li>
+                  <li>• <strong>memoria.phone</strong> → Use para enviar mensagens (já formatado)</li>
+                  <li>• <strong>hasVideo = true</strong> → Priorize envio de vídeo</li>
+                  <li>• <strong>caption</strong> → Já vem formatada com emojis e informações</li>
+                  <li>• <strong>filtros.finalizar_venda</strong> → Branch para fluxo de pedido</li>
+                  <li>• <strong>filtros.transferir_humano</strong> → Branch para notificar atendente</li>
+                </ul>
               </CardContent>
             </Card>
           </TabsContent>
