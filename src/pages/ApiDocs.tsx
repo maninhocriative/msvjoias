@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,13 +16,15 @@ import {
   Zap,
   BookOpen,
   Terminal,
-  ChevronRight
+  ChevronRight,
+  FileText
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const BASE_URL = 'https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co';
 
 const ApiDocs = () => {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -139,16 +142,22 @@ const ApiDocs = () => {
             </div>
           </div>
           
-          <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border border-border">
-            <BookOpen className="w-4 h-4 text-muted-foreground shrink-0" />
-            <code className="text-xs font-mono text-muted-foreground">{BASE_URL}</code>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="h-6 w-6 ml-auto"
-              onClick={() => copyToClipboard(BASE_URL, 'base-url')}
-            >
-              {copiedId === 'base-url' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border border-border flex-1 min-w-0">
+              <BookOpen className="w-4 h-4 text-muted-foreground shrink-0" />
+              <code className="text-xs font-mono text-muted-foreground truncate">{BASE_URL}</code>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-6 w-6 ml-auto shrink-0"
+                onClick={() => copyToClipboard(BASE_URL, 'base-url')}
+              >
+                {copiedId === 'base-url' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+              </Button>
+            </div>
+            <Button variant="outline" onClick={() => navigate('/db-nomenclature')} className="gap-2">
+              <FileText className="w-4 h-4" />
+              Nomenclatura IA
             </Button>
           </div>
         </div>
