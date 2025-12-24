@@ -22,6 +22,7 @@ import WebhookTester from "./pages/WebhookTester";
 import ApiDocs from "./pages/ApiDocs";
 import PublicApiDocs from "./pages/PublicApiDocs";
 import DatabaseNomenclature from "./pages/DatabaseNomenclature";
+import FiqonIntegrationText from "./pages/FiqonIntegrationText";
 import Customers from "./pages/Customers";
 import Offers from "./pages/Offers";
 import StoreSettings from "./pages/StoreSettings";
@@ -45,6 +46,7 @@ const App = () => (
               <Route path="/pending-approval" element={<PendingApproval />} />
               <Route path="/docs" element={<PublicApiDocs />} />
               <Route path="/nomenclatura" element={<DatabaseNomenclature />} />
+              <Route path="/fiqon-integration" element={<FiqonIntegrationText />} />
               <Route element={<ProtectedRoute />}>
                 <Route element={<MainLayout />}>
                   <Route path="/" element={<Dashboard />} />
