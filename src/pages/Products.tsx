@@ -26,6 +26,7 @@ import { Plus, Pencil, Trash2, Package, Layers, Video, Image, FolderEdit, Search
 import { useToast } from '@/hooks/use-toast';
 import ProductVariantsDialog from '@/components/products/ProductVariantsDialog';
 import ImportCSVDialog from '@/components/products/ImportCSVDialog';
+import { formatCategory, formatColor, allowedCategories } from '@/lib/formatters';
 
 interface ProductWithStock extends Product {
   totalStock?: number;
@@ -347,19 +348,14 @@ const Products = () => {
                     <Label>Nova Categoria</Label>
                     <Select value={bulkCategory} onValueChange={setBulkCategory}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Selecione ou digite" />
+                        <SelectValue placeholder="Selecione uma categoria" />
                       </SelectTrigger>
                       <SelectContent>
-                        {categories.map(cat => (
-                          <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                        {allowedCategories.map(cat => (
+                          <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    <Input
-                      placeholder="Ou digite uma nova categoria"
-                      value={bulkCategory}
-                      onChange={(e) => setBulkCategory(e.target.value)}
-                    />
                   </div>
                   <div className="flex gap-2 justify-end">
                     <Button variant="outline" onClick={() => setBulkCategoryDialogOpen(false)}>
@@ -431,11 +427,19 @@ const Products = () => {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="category">Categoria</Label>
-                    <Input
-                      id="category"
-                      value={formData.category}
-                      onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                    />
+                    <Select 
+                      value={formData.category} 
+                      onValueChange={(value) => setFormData({ ...formData, category: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione uma categoria" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {allowedCategories.map(cat => (
+                          <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -520,8 +524,8 @@ const Products = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todas as categorias</SelectItem>
-              {categories.map(cat => (
-                <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+              {allowedCategories.map(cat => (
+                <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -695,7 +699,7 @@ const Products = () => {
 
                 {product.category && (
                   <Badge variant="outline" className="mt-3 text-xs">
-                    {product.category}
+                    {formatCategory(product.category)}
                   </Badge>
                 )}
               </div>
@@ -739,7 +743,7 @@ const Products = () => {
                     <span className="text-xs font-mono text-muted-foreground">{product.sku}</span>
                   )}
                   {product.category && (
-                    <Badge variant="outline" className="text-xs">{product.category}</Badge>
+                    <Badge variant="outline" className="text-xs">{formatCategory(product.category)}</Badge>
                   )}
                 </div>
               </div>

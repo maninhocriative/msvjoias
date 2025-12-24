@@ -6,6 +6,58 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Helper function to normalize text (remove accents and lowercase)
+function normalizeText(text: string): string {
+  if (!text) return '';
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
+// Category normalization map
+function normalizeCategory(category: string): string {
+  const normalized = normalizeText(category);
+  const categoryMap: Record<string, string> = {
+    'aliancas': 'aliancas',
+    'alianca': 'aliancas',
+    'alianças': 'aliancas',
+    'aliancas de tungstenio': 'aliancas',
+    'aliancas de aco': 'aliancas',
+    'alianças de tungstênio': 'aliancas',
+    'alianças de aço': 'aliancas',
+    'pingente': 'pingente',
+    'pingentes': 'pingente',
+    'aneis': 'aneis',
+    'anel': 'aneis',
+    'anéis': 'aneis',
+    'personalizacao': 'personalizacao',
+    'personalizacoes': 'personalizacao',
+    'personalização': 'personalizacao',
+  };
+  return categoryMap[normalized] || normalized;
+}
+
+// Color normalization
+function normalizeColor(color: string): string {
+  const normalized = normalizeText(color);
+  const colorMap: Record<string, string> = {
+    'dourada': 'dourada',
+    'dourado': 'dourada',
+    'prata': 'prata',
+    'aco': 'aco',
+    'aço': 'aco',
+    'preta': 'preta',
+    'preto': 'preta',
+    'azul': 'azul',
+    'rose': 'rose',
+    'rosé': 'rose',
+    'ouro': 'ouro',
+  };
+  return colorMap[normalized] || normalized;
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -51,7 +103,13 @@ serve(async (req) => {
       limit = "50",
     } = params;
 
+    // Normalize filters for consistent matching
+    const normalizedCategory = category ? normalizeCategory(category) : null;
+    const normalizedColor = color ? normalizeColor(color) : null;
+    const normalizedSearch = search ? normalizeText(search) : null;
+
     console.log("AI Catalog Search params:", params);
+    console.log("Normalized filters:", { normalizedCategory, normalizedColor, normalizedSearch });
 
     // Build query
     let query = supabase
@@ -62,7 +120,7 @@ serve(async (req) => {
       `)
       .eq("active", true);
 
-    // Apply filters
+    // Apply filters with normalized values
     if (product_id) {
       query = query.eq("id", product_id);
     }
@@ -71,12 +129,14 @@ serve(async (req) => {
       query = query.ilike("sku", `%${sku}%`);
     }
 
-    if (category) {
-      query = query.ilike("category", `%${category}%`);
+    if (normalizedCategory) {
+      // Use exact match since DB is now normalized
+      query = query.eq("category", normalizedCategory);
     }
 
-    if (color) {
-      query = query.ilike("color", `%${color}%`);
+    if (normalizedColor) {
+      // Use exact match since DB is now normalized
+      query = query.eq("color", normalizedColor);
     }
 
     if (min_price) {
@@ -88,6 +148,7 @@ serve(async (req) => {
     }
 
     if (search) {
+      // Search in name, description, and also try normalized terms
       query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%`);
     }
 
