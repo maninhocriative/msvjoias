@@ -418,6 +418,22 @@ serve(async (req) => {
       }
 
       // Second API call with tool results
+      console.log("Making second API call with tool results...");
+      console.log("Tool results count:", toolResults.length);
+      
+      const secondCallMessages = [
+        { role: "system", content: fullSystemPrompt },
+        ...messages,
+        {
+          role: "assistant",
+          content: assistantMessage.content || null,
+          tool_calls: assistantMessage.tool_calls
+        },
+        ...toolResults,
+      ];
+      
+      console.log("Second call messages structure:", secondCallMessages.map(m => ({ role: m.role, hasContent: !!m.content, hasTool: !!(m as any).tool_calls })));
+      
       const finalResponse = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -426,13 +442,8 @@ serve(async (req) => {
         },
         body: JSON.stringify({
           model: "gpt-4o-mini",
-          messages: [
-            { role: "system", content: fullSystemPrompt },
-            ...messages,
-            assistantMessage,
-            ...toolResults,
-          ],
-          max_tokens: 1000,
+          messages: secondCallMessages,
+          max_tokens: 1500,
         }),
       });
 
@@ -444,6 +455,12 @@ serve(async (req) => {
 
       responseData = await finalResponse.json();
       assistantMessage = responseData.choices[0].message;
+      
+      console.log("Second API call response:", JSON.stringify(assistantMessage, null, 2).slice(0, 500));
+      
+      if (!assistantMessage.content || assistantMessage.content.length < 50) {
+        console.error("Warning: Second API call returned empty or short response");
+      }
     }
 
     const responseText = assistantMessage.content || "Desculpe, não consegui processar sua mensagem.";
