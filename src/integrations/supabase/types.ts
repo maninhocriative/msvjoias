@@ -780,6 +780,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      unaccent_text: { Args: { "": string }; Returns: string }
       upsert_conversation_state: {
         Args: {
           p_categoria?: string

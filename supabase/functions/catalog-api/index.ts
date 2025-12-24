@@ -6,6 +6,58 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Helper function to normalize text (remove accents and lowercase)
+function normalizeText(text: string): string {
+  if (!text) return '';
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
+// Category normalization map
+function normalizeCategory(category: string): string {
+  const normalized = normalizeText(category);
+  const categoryMap: Record<string, string> = {
+    'aliancas': 'aliancas',
+    'alianca': 'aliancas',
+    'alianças': 'aliancas',
+    'aliancas de tungstenio': 'aliancas',
+    'aliancas de aco': 'aliancas',
+    'alianças de tungstênio': 'aliancas',
+    'alianças de aço': 'aliancas',
+    'pingente': 'pingente',
+    'pingentes': 'pingente',
+    'aneis': 'aneis',
+    'anel': 'aneis',
+    'anéis': 'aneis',
+    'personalizacao': 'personalizacao',
+    'personalizacoes': 'personalizacao',
+    'personalização': 'personalizacao',
+  };
+  return categoryMap[normalized] || normalized;
+}
+
+// Color normalization
+function normalizeColor(color: string): string {
+  const normalized = normalizeText(color);
+  const colorMap: Record<string, string> = {
+    'dourada': 'dourada',
+    'dourado': 'dourada',
+    'prata': 'prata',
+    'aco': 'aco',
+    'aço': 'aco',
+    'preta': 'preta',
+    'preto': 'preta',
+    'azul': 'azul',
+    'rose': 'rose',
+    'rosé': 'rose',
+    'ouro': 'ouro',
+  };
+  return colorMap[normalized] || normalized;
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -26,7 +78,12 @@ serve(async (req) => {
     const cor = url.searchParams.get('cor');
     const exactCategory = url.searchParams.get('exact_category') !== 'false'; // Default: busca exata
 
+    // Normalize filters
+    const normalizedCategory = category ? normalizeCategory(category) : null;
+    const normalizedColor = cor ? normalizeColor(cor) : null;
+
     console.log('Catalog API request:', { category, sku, productId, onlyAvailable, search, cor, exactCategory });
+    console.log('Normalized filters:', { normalizedCategory, normalizedColor });
 
     // Build query
     let query = supabase
@@ -38,6 +95,7 @@ serve(async (req) => {
         description,
         price,
         category,
+        color,
         image_url,
         video_url,
         images,
@@ -51,15 +109,10 @@ serve(async (req) => {
       `)
       .eq('active', true);
 
-    // Apply filters
-    if (category) {
-      if (exactCategory) {
-        // Busca exata (case-insensitive)
-        query = query.ilike('category', category);
-      } else {
-        // Busca parcial
-        query = query.ilike('category', `%${category}%`);
-      }
+    // Apply filters with normalized values
+    if (normalizedCategory) {
+      // Use exact match since DB is now normalized
+      query = query.eq('category', normalizedCategory);
     }
 
     if (sku) {
@@ -74,9 +127,9 @@ serve(async (req) => {
       query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%,sku.ilike.%${search}%`);
     }
 
-    // Filtro de cor (busca parcial com ILIKE)
-    if (cor) {
-      query = query.ilike('color', `%${cor}%`);
+    // Filtro de cor (normalizado)
+    if (normalizedColor) {
+      query = query.eq('color', normalizedColor);
     }
 
     const { data: products, error } = await query.order('name', { ascending: true });
