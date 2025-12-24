@@ -391,6 +391,9 @@ serve(async (req) => {
 
     console.log("Initial response:", JSON.stringify(assistantMessage, null, 2));
 
+    // Variável para guardar os produtos do catálogo
+    let catalogProducts: any[] = [];
+    
     // Handle tool calls if present
     if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
       const toolResults: any[] = [];
@@ -404,6 +407,27 @@ serve(async (req) => {
         let result;
         if (functionName === "search_catalog" || functionName === "get_product_details") {
           result = await searchCatalog(functionArgs, supabaseUrl, supabaseServiceKey);
+          
+          // Guardar os produtos para retornar no response
+          if (result.success && result.products) {
+            catalogProducts = result.products.map((p: any) => ({
+              sku: p.sku,
+              name: p.name,
+              price: p.current_price || p.price,
+              price_formatted: `R$ ${(p.current_price || p.price || 0).toFixed(2).replace('.', ',')}`,
+              image_url: p.image_url,
+              video_url: p.video_url,
+              media_url: p.video_url || p.image_url,
+              media_type: p.video_url ? 'video' : 'image',
+              description: p.description,
+              sizes: p.available_sizes || [],
+              stock_total: p.total_stock || 0,
+              has_promotion: p.on_sale || false,
+              original_price: p.original_price,
+              discount_percent: p.discount_percent
+            }));
+            console.log(`Catalog products extracted: ${catalogProducts.length} items`);
+          }
         } else {
           result = { error: "Unknown function" };
         }
@@ -525,6 +549,10 @@ serve(async (req) => {
         categoria_crm: categoria,
         cor_crm: cor,
         tem_acao: actionValue !== null,
+        // Array de produtos para o FiqOn iterar (For Each)
+        produtos: catalogProducts,
+        total_produtos: catalogProducts.length,
+        tem_produtos: catalogProducts.length > 0,
         // Estado atual
         state: {
           phone,
