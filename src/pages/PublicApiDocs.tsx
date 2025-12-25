@@ -5,7 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Copy, Check, Database, Send, ShoppingCart, Layers, MessageSquare, Package, ExternalLink, Zap, BookOpen, Bot, FileText, Workflow } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Copy, Check, Database, Send, ShoppingCart, Layers, MessageSquare, Package, ExternalLink, Zap, BookOpen, Bot, FileText, Workflow, Settings, Play, Download } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const BASE_URL = 'https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co';
@@ -608,7 +610,7 @@ const PublicApiDocs = () => {
 
           {/* FIQON TAB */}
           <TabsContent value="fiqon" id="fiqon" className="space-y-6">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
                   <Workflow className="w-6 h-6 text-white" />
@@ -618,16 +620,303 @@ const PublicApiDocs = () => {
                   <p className="text-slate-600 dark:text-slate-400">Configure seu fluxo passo a passo</p>
                 </div>
               </div>
-              <Button 
-                variant="default" 
-                size="sm" 
-                className="gap-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white shadow-lg"
-                onClick={() => navigate('/fiqon-integration')}
-              >
-                <Bot className="w-4 h-4" />
-                Texto para IA
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="gap-2"
+                  onClick={() => {
+                    const fiqonConfig = {
+                      httpRequest: {
+                        method: "POST",
+                        url: "https://ahbjwpkpxqqrpvpzmqwa.supabase.co/functions/v1/ai-chat",
+                        headers: {
+                          "Content-Type": "application/json",
+                          "Authorization": "Bearer {{SUA_ANON_KEY}}"
+                        },
+                        body: {
+                          phone: "{{$json.phone}}",
+                          message: "{{$json.message}}",
+                          contact_name: "{{$json.senderName}}"
+                        }
+                      },
+                      filtros: {
+                        temCatalogo: "{{$json.tem_produtos}} == true",
+                        finalizarVenda: "{{$json.filtros.finalizar_venda}} == true",
+                        transferirHumano: "{{$json.filtros.transferir_humano}} == true"
+                      }
+                    };
+                    navigator.clipboard.writeText(JSON.stringify(fiqonConfig, null, 2));
+                    toast({ title: "Configuração copiada!", description: "JSON completo copiado para a área de transferência" });
+                  }}
+                >
+                  <Download className="w-4 h-4" />
+                  Exportar Config
+                </Button>
+                <Button 
+                  variant="default" 
+                  size="sm" 
+                  className="gap-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white shadow-lg"
+                  onClick={() => navigate('/fiqon-integration')}
+                >
+                  <Bot className="w-4 h-4" />
+                  Texto para IA
+                </Button>
+              </div>
             </div>
+
+            {/* Gerador de Configuração */}
+            <Card className="border-purple-200 dark:border-purple-800 bg-gradient-to-br from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20">
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg flex items-center justify-center">
+                    <Settings className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg text-purple-800 dark:text-purple-200">⚡ Gerador de Configuração HTTP Request</CardTitle>
+                    <CardDescription className="text-purple-600 dark:text-purple-400">Copie e cole direto no nó HTTP Request da FiqOn</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-purple-200 dark:border-purple-700">
+                      <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-3 flex items-center gap-2">
+                        <span className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center text-white text-xs">1</span>
+                        URL (copiar)
+                      </h4>
+                      <div className="relative">
+                        <code className="block bg-slate-100 dark:bg-slate-900 p-3 rounded-lg text-xs text-purple-700 dark:text-purple-300 break-all">
+                          https://ahbjwpkpxqqrpvpzmqwa.supabase.co/functions/v1/ai-chat
+                        </code>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="absolute top-1 right-1 h-6 w-6"
+                          onClick={() => {
+                            navigator.clipboard.writeText("https://ahbjwpkpxqqrpvpzmqwa.supabase.co/functions/v1/ai-chat");
+                            toast({ title: "URL copiada!" });
+                          }}
+                        >
+                          <Copy className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-purple-200 dark:border-purple-700">
+                      <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-3 flex items-center gap-2">
+                        <span className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center text-white text-xs">2</span>
+                        Method
+                      </h4>
+                      <Badge className="bg-blue-500 text-white text-lg px-4 py-2">POST</Badge>
+                    </div>
+
+                    <div className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-purple-200 dark:border-purple-700">
+                      <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-3 flex items-center gap-2">
+                        <span className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center text-white text-xs">3</span>
+                        Content-Type
+                      </h4>
+                      <code className="bg-slate-100 dark:bg-slate-900 px-3 py-2 rounded-lg text-sm">application/json</code>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-purple-200 dark:border-purple-700">
+                      <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-3 flex items-center gap-2">
+                        <span className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center text-white text-xs">4</span>
+                        Header Authorization (copiar)
+                      </h4>
+                      <div className="relative">
+                        <code className="block bg-slate-100 dark:bg-slate-900 p-3 rounded-lg text-xs text-purple-700 dark:text-purple-300">
+                          Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                        </code>
+                        <p className="text-xs text-slate-500 mt-2">⚠️ Substitua pela sua ANON KEY do Supabase</p>
+                      </div>
+                    </div>
+
+                    <div className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-purple-200 dark:border-purple-700">
+                      <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-3 flex items-center gap-2">
+                        <span className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center text-white text-xs">5</span>
+                        Body JSON (copiar)
+                      </h4>
+                      <div className="relative">
+                        <pre className="bg-slate-100 dark:bg-slate-900 p-3 rounded-lg text-xs overflow-x-auto">{`{
+  "phone": "{{$json.phone}}",
+  "message": "{{$json.message}}",
+  "contact_name": "{{$json.senderName}}"
+}`}</pre>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="absolute top-1 right-1 h-6 w-6"
+                          onClick={() => {
+                            navigator.clipboard.writeText(`{
+  "phone": "{{$json.phone}}",
+  "message": "{{$json.message}}",
+  "contact_name": "{{$json.senderName}}"
+}`);
+                            toast({ title: "Body copiado!" });
+                          }}
+                        >
+                          <Copy className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Códigos JavaScript Prontos */}
+            <Card className="border-amber-200 dark:border-amber-800 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20">
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gradient-to-br from-amber-500 to-orange-600 rounded-lg flex items-center justify-center">
+                    <Play className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg text-amber-800 dark:text-amber-200">📋 Códigos JS Prontos para Copiar</CardTitle>
+                    <CardDescription className="text-amber-600 dark:text-amber-400">Cole diretamente nos nós JavaScript da FiqOn</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* JS Identificar Origem */}
+                <div className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-amber-200 dark:border-amber-700">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-semibold text-slate-800 dark:text-slate-200">🔍 JS - Identificar Origem (após Webhook)</h4>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1"
+                      onClick={() => {
+                        const code = `// Extrair dados do webhook
+const phone = $input.first().json.phone || $input.first().json.from;
+const message = $input.first().json.message || $input.first().json.text || "";
+const senderName = $input.first().json.senderName || $input.first().json.pushName || "";
+const isAd = $input.first().json.isAd === true || $input.first().json.isAd === "true";
+
+// Limpar telefone (remover + e espaços)
+const cleanPhone = phone.replace(/[^0-9]/g, "");
+
+return {
+  phone: cleanPhone,
+  message: message,
+  senderName: senderName,
+  isAd: isAd,
+  rota: isAd ? "anuncio" : "normal"
+};`;
+                        navigator.clipboard.writeText(code);
+                        toast({ title: "Código copiado!" });
+                      }}
+                    >
+                      <Copy className="w-3 h-3" />
+                      Copiar
+                    </Button>
+                  </div>
+                  <pre className="bg-slate-900 text-slate-100 p-3 rounded-lg text-xs overflow-x-auto max-h-48">{`// Extrair dados do webhook
+const phone = $input.first().json.phone || $input.first().json.from;
+const message = $input.first().json.message || $input.first().json.text || "";
+const senderName = $input.first().json.senderName || $input.first().json.pushName || "";
+const isAd = $input.first().json.isAd === true || $input.first().json.isAd === "true";
+
+// Limpar telefone
+const cleanPhone = phone.replace(/[^0-9]/g, "");
+
+return {
+  phone: cleanPhone,
+  message: message,
+  senderName: senderName,
+  isAd: isAd,
+  rota: isAd ? "anuncio" : "normal"
+};`}</pre>
+                </div>
+
+                {/* JS Preparar Mídia */}
+                <div className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-amber-200 dark:border-amber-700">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-semibold text-slate-800 dark:text-slate-200">📸 JS - Preparar Mídia (dentro do For Each)</h4>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1"
+                      onClick={() => {
+                        const code = `const produto = $input.first().json;
+const phone = $input.first().json.phone || $("Chamar Aline").first().json.memoria.phone;
+
+return {
+  phone: phone,
+  mediaType: produto.media_type,
+  mediaUrl: produto.media_url,
+  caption: produto.caption,
+  imageUrl: produto.image_url,
+  videoUrl: produto.video_url,
+  hasVideo: produto.media_type === "video" && produto.video_url
+};`;
+                        navigator.clipboard.writeText(code);
+                        toast({ title: "Código copiado!" });
+                      }}
+                    >
+                      <Copy className="w-3 h-3" />
+                      Copiar
+                    </Button>
+                  </div>
+                  <pre className="bg-slate-900 text-slate-100 p-3 rounded-lg text-xs overflow-x-auto">{`const produto = $input.first().json;
+const phone = $input.first().json.phone || $("Chamar Aline").first().json.memoria.phone;
+
+return {
+  phone: phone,
+  mediaType: produto.media_type,
+  mediaUrl: produto.media_url,
+  caption: produto.caption,
+  imageUrl: produto.image_url,
+  videoUrl: produto.video_url,
+  hasVideo: produto.media_type === "video" && produto.video_url
+};`}</pre>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Condições de Filtro */}
+            <Card className="border-green-200 dark:border-green-800 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20">
+              <CardHeader>
+                <CardTitle className="text-lg text-green-800 dark:text-green-200">🔀 Condições para Filtros (Copie e Cole)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {[
+                    { label: "Tem Catálogo?", condition: "{{$json.tem_produtos}} == true", desc: "Entra no For Each de produtos" },
+                    { label: "Finalizar Venda?", condition: "{{$json.filtros.finalizar_venda}} == true", desc: "Vai para criar pedido" },
+                    { label: "Transferir Humano?", condition: "{{$json.filtros.transferir_humano}} == true", desc: "Notifica atendente" },
+                    { label: "É Anúncio?", condition: "{{$json.isAd}} == true", desc: "Fluxo de boas-vindas anúncio" },
+                    { label: "Tem Vídeo?", condition: "{{$json.hasVideo}} == true", desc: "Envia vídeo ao invés de imagem" },
+                    { label: "Enviar Catálogo?", condition: "{{$json.filtros.enviar_catalogo}} == true", desc: "Decide se mostra produtos" },
+                  ].map((filter, i) => (
+                    <div key={i} className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-green-200 dark:border-green-700">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-semibold text-slate-800 dark:text-slate-200 text-sm">{filter.label}</span>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6"
+                          onClick={() => {
+                            navigator.clipboard.writeText(filter.condition);
+                            toast({ title: "Condição copiada!" });
+                          }}
+                        >
+                          <Copy className="w-3 h-3" />
+                        </Button>
+                      </div>
+                      <code className="block bg-green-100 dark:bg-green-900/50 px-2 py-1 rounded text-xs text-green-700 dark:text-green-300 mb-2">
+                        {filter.condition}
+                      </code>
+                      <p className="text-xs text-slate-500">{filter.desc}</p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
 
             {/* Visão Geral */}
             <Card className="border-cyan-200 dark:border-cyan-800 bg-cyan-50 dark:bg-cyan-900/20">
