@@ -302,6 +302,113 @@ return {
 5. **Filtros booleanos** facilitam criação de branches no fluxo
 
 6. **A Aline mantém contexto** da conversa automaticamente
+
+---
+
+## TROUBLESHOOTING - ERROS COMUNS
+
+### ❌ Erro 401 - Unauthorized
+**Problema:** Header Authorization incorreto ou faltando
+**Solução:**
+- Verifique se o header está exatamente assim: \`Authorization: Bearer SUA_ANON_KEY\`
+- Não use aspas ao redor da chave
+- A ANON_KEY está no painel do Supabase em Settings > API
+
+### ❌ Erro 400 - Bad Request
+**Problema:** Body da requisição mal formatado
+**Solução:**
+- Verifique se o JSON está válido (use jsonlint.com para testar)
+- Campos obrigatórios: \`phone\` e \`message\`
+- Exemplo correto:
+\`\`\`json
+{
+  "phone": "{{$json.phone}}",
+  "message": "{{$json.message}}",
+  "contact_name": "{{$json.senderName}}"
+}
+\`\`\`
+
+### ❌ Erro 500 - Internal Server Error
+**Problema:** Erro interno na Aline
+**Solução:**
+- Verifique os logs da edge function no Supabase
+- Pode ser problema com OpenAI API (limite de rate)
+- Tente novamente após alguns segundos
+
+### ❌ Resposta vazia ou undefined
+**Problema:** Variáveis não estão sendo passadas corretamente
+**Solução:**
+- Use \`{{$json.campo}}\` para acessar campos do nó anterior
+- Para acessar nó específico: \`$("Nome do Nó").first().json.campo\`
+- Teste cada variável individualmente no console do FiqOn
+
+### ❌ For Each não itera produtos
+**Problema:** Array produtos não está sendo lido
+**Solução:**
+- Verifique se \`tem_produtos\` é true antes de entrar no For Each
+- Use \`{{$json.produtos}}\` como Items do For Each
+- Dentro do loop, acesse com \`{{$json.produto.campo}}\`
+
+### ❌ Vídeo não envia (só imagem)
+**Problema:** Condição hasVideo não está funcionando
+**Solução:**
+- Use o JS "Preparar Mídia" antes do filtro
+- Condição correta: \`{{$json.hasVideo}} == true\`
+- Verifique se \`video_url\` existe no produto
+
+### ❌ Telefone inválido no Z-API
+**Problema:** Formato do telefone incorreto
+**Solução:**
+- Telefone deve ter formato E.164 sem +: \`5592999999999\`
+- Use o JS "Identificar Origem" para limpar: \`phone.replace(/[^0-9]/g, "")\`
+- Não inclua espaços, traços ou parênteses
+
+### ❌ Mensagem não chega ao cliente
+**Problema:** Z-API não está configurado corretamente
+**Solução:**
+- Verifique se a instância Z-API está conectada
+- Confirme que o número tem WhatsApp
+- Teste primeiro com seu próprio número
+
+### ❌ Contexto perdido entre mensagens
+**Problema:** Aline não lembra da conversa anterior
+**Solução:**
+- Isso é normal se o phone mudou entre requisições
+- Verifique se está enviando o mesmo \`phone\` em todas as mensagens
+- A Aline usa o phone como identificador único
+
+### ❌ Catálogo vem vazio
+**Problema:** Nenhum produto retornado
+**Solução:**
+- Verifique se existem produtos ativos no banco
+- A categoria ou cor solicitada pode não existir
+- Tente uma busca mais genérica: "quero ver alianças"
+
+---
+
+## CHECKLIST DE CONFIGURAÇÃO
+
+Antes de ativar o fluxo, verifique:
+
+- [ ] ANON_KEY do Supabase configurada
+- [ ] URL correta: \`https://ahbjwpkpxqqrpvpzmqwa.supabase.co/functions/v1/ai-chat\`
+- [ ] Content-Type: \`application/json\`
+- [ ] Webhook recebendo dados do WhatsApp
+- [ ] JS "Identificar Origem" limpando telefone
+- [ ] Filtro "Tem Catálogo?" antes do For Each
+- [ ] JS "Preparar Mídia" dentro do For Each
+- [ ] Filtro "Vídeo ou Imagem?" com condição correta
+- [ ] Z-API com instância ativa e conectada
+- [ ] Teste com número real de WhatsApp
+
+---
+
+## CONTATO E SUPORTE
+
+Se o problema persistir:
+1. Verifique os logs no painel do Supabase
+2. Teste a requisição no Postman/Insomnia
+3. Entre em contato com o suporte técnico
 `;
 
 const FiqonIntegrationText = () => {
