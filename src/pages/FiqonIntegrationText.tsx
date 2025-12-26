@@ -7,7 +7,80 @@ import { useToast } from '@/hooks/use-toast';
 
 const FIQON_INTEGRATION_TEXT = `# INTEGRAÇÃO FIQON + ALINE (IA) - GUIA COMPLETO
 
-## VISÃO GERAL DO FLUXO
+## ⚡ MODO SIMPLIFICADO: AUTO-REPLY (RECOMENDADO)
+
+**Nova funcionalidade!** Agora você pode usar o endpoint \`ai-chat-auto-reply\` que faz TUDO automaticamente:
+- Recebe a mensagem
+- Processa com a Aline
+- Envia resposta de texto via Z-API
+- Envia catálogo (vídeos e imagens) via Z-API
+
+### Configuração Mínima (Apenas 2 nós!)
+
+#### NÓ 1: WEBHOOK
+Recebe a mensagem do WhatsApp
+
+#### NÓ 2: HTTP REQUEST - AUTO-REPLY
+- **Method**: POST
+- **URL**: \`https://ahbjwpkpxqqrpvpzmqwa.supabase.co/functions/v1/ai-chat-auto-reply\`
+- **Headers**:
+  - Content-Type: application/json
+  - Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFoYmp3cGtweHFxcnB2cHptcXdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU1NTY5NzUsImV4cCI6MjA4MTEzMjk3NX0.jdH0gleC9mcB1ezewdobxCp-yKmM37dixfkMyzzhhaQ
+
+**Body (JSON):**
+\`\`\`json
+{
+  "phone": "{{$json.phone}}",
+  "message": "{{$json.message}}",
+  "contact_name": "{{$json.senderName}}"
+}
+\`\`\`
+
+**Resposta:**
+\`\`\`json
+{
+  "success": true,
+  "resumo": {
+    "texto_enviado": true,
+    "produtos_enviados": 5,
+    "produtos_com_erro": 0,
+    "transferir_humano": false,
+    "finalizar_venda": false
+  },
+  "ai": {
+    "mensagem": "Olá! Sou a Aline...",
+    "node": "escolha_cor",
+    "acao_sugerida": "continuar_conversa"
+  },
+  "produtos_enviados": [
+    {"sku": "E0612040", "type": "video", "success": true}
+  ],
+  "filtros": {
+    "transferir_humano": false,
+    "finalizar_venda": false
+  }
+}
+\`\`\`
+
+### Vantagens do Auto-Reply:
+✅ Fluxo extremamente simples (2 nós)
+✅ Não precisa configurar Z-API no FiqOn
+✅ Envio de vídeo prioritário automático
+✅ Delay entre mensagens para evitar spam
+✅ Notificação automática para vendedor quando finalizar venda
+
+### Filtros disponíveis para uso após o Auto-Reply:
+- \`{{$json.filtros.transferir_humano}}\` - Se precisa de humano
+- \`{{$json.filtros.finalizar_venda}}\` - Se está finalizando venda
+- \`{{$json.resumo.produtos_enviados}}\` - Quantos produtos foram enviados
+
+---
+
+## MODO MANUAL (FLUXO COMPLETO)
+
+Se preferir controlar cada etapa manualmente, use o fluxo abaixo:
+
+### VISÃO GERAL DO FLUXO MANUAL
 
 O fluxo de automação FiqOn integra com a IA Aline para atendimento via WhatsApp:
 
