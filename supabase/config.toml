@@ -30,6 +30,9 @@ verify_jwt = false
 [functions.ai-chat]
 verify_jwt = false
 
+[functions.ai-chat-auto-reply]
+verify_jwt = false
+
 [functions.sales-webhook]
 verify_jwt = false
 
