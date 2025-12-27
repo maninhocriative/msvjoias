@@ -359,6 +359,52 @@ ${message}
       }
     }
 
+    // Coletar produto escolhido (quando estiver no node de catálogo ou confirmação)
+    if (currentNode.includes('catalogo') || validatedNode.includes('confirmacao')) {
+      // Tentar identificar o produto escolhido pelo número ou nome
+      const productIndex = parseInt(normalizedMsg) - 1;
+      const lastCatalog = (conversation.collected_data?.last_catalog as any[]) || [];
+      
+      if (!isNaN(productIndex) && productIndex >= 0 && productIndex < lastCatalog.length) {
+        const selectedProduct = lastCatalog[productIndex];
+        newCollectedData.selected_product = selectedProduct;
+        newCollectedData.selected_sku = selectedProduct.sku;
+        newCollectedData.selected_name = selectedProduct.name;
+        newCollectedData.selected_price = selectedProduct.price;
+        console.log(`[ALINE-REPLY] Produto selecionado: ${selectedProduct.name}`);
+      }
+    }
+
+    // Coletar método de entrega
+    if (currentNode.includes('entrega') || currentNode.includes('coleta_entrega')) {
+      const entregaMap: Record<string, string> = {
+        '1': 'retirada', 'retirada': 'retirada', 'loja': 'retirada',
+        '2': 'entrega', 'entrega': 'entrega', 'envio': 'entrega', 'correios': 'entrega',
+      };
+      if (entregaMap[normalizedMsg]) {
+        newCollectedData.delivery_method = entregaMap[normalizedMsg];
+        console.log(`[ALINE-REPLY] Método de entrega: ${entregaMap[normalizedMsg]}`);
+      } else if (normalizedMsg.length > 10) {
+        // Se for texto longo, provavelmente é endereço
+        newCollectedData.delivery_address = message;
+        newCollectedData.delivery_method = 'entrega';
+        console.log(`[ALINE-REPLY] Endereço coletado`);
+      }
+    }
+
+    // Coletar método de pagamento
+    if (currentNode.includes('pagamento') || currentNode.includes('coleta_pagamento')) {
+      const pagamentoMap: Record<string, string> = {
+        '1': 'pix', 'pix': 'pix',
+        '2': 'cartao', 'cartao': 'cartao', 'cartão': 'cartao', 'credito': 'cartao', 'crédito': 'cartao',
+        '3': 'dinheiro', 'dinheiro': 'dinheiro', 'espécie': 'dinheiro',
+      };
+      if (pagamentoMap[normalizedMsg]) {
+        newCollectedData.payment_method = pagamentoMap[normalizedMsg];
+        console.log(`[ALINE-REPLY] Método de pagamento: ${pagamentoMap[normalizedMsg]}`);
+      }
+    }
+
     // ========================================
     // PASSO 7: EXECUTAR SYSTEM_ACTION OU BUSCAR CATÁLOGO AUTOMATICAMENTE
     // ========================================
@@ -400,6 +446,14 @@ ${message}
           ? products.filter(p => p.color?.toLowerCase().includes(userColor.toLowerCase()))
           : products;
 
+        // Salvar catálogo enviado para referência futura
+        newCollectedData.last_catalog = catalogProducts.map((p: any) => ({
+          id: p.id,
+          sku: p.sku,
+          name: p.name,
+          price: p.price,
+        }));
+
         actionsExecuted.push({
           action: systemAction || 'auto_catalog',
           type: 'catalog',
@@ -419,6 +473,112 @@ ${message}
       // Atualizar status para finalizado
       validatedNode = 'finalizado';
     }
+
+    // ========================================
+    // PASSO 7.1: FINALIZAR PEDIDO E GRAVAR NO CRM
+    // ========================================
+    if (validatedNode === 'finalizado' && newCollectedData.selected_product) {
+      console.log(`[ALINE-REPLY] Finalizando pedido...`);
+      
+      const selectedProduct = newCollectedData.selected_product as any;
+      const deliveryMethod = (newCollectedData.delivery_method as string) || 'retirada';
+      const paymentMethod = (newCollectedData.payment_method as string) || 'pix';
+      const deliveryAddress = (newCollectedData.delivery_address as string) || null;
+      const customerName = (newCollectedData.contact_name as string) || 'Cliente';
+      
+      // Criar resumo do pedido
+      const summaryText = `
+📋 *NOVO PEDIDO VIA ALINE*
+
+👤 Cliente: ${customerName}
+📱 WhatsApp: ${phone}
+
+🛍️ Produto: ${selectedProduct.name}
+🏷️ SKU: ${selectedProduct.sku || 'N/A'}
+💰 Valor: R$ ${selectedProduct.price?.toFixed(2) || '0,00'}
+
+🚚 Entrega: ${deliveryMethod === 'retirada' ? 'Retirada na loja' : 'Envio'}
+${deliveryAddress ? `📍 Endereço: ${deliveryAddress}` : ''}
+💳 Pagamento: ${paymentMethod.toUpperCase()}
+
+📊 Dados coletados:
+- Categoria: ${newCollectedData.categoria || 'N/A'}
+- Cor: ${newCollectedData.cor || 'N/A'}
+- Finalidade: ${newCollectedData.finalidade || 'N/A'}
+
+⏰ Data: ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Manaus' })}
+      `.trim();
+
+      // Gravar pedido no banco
+      const { data: orderData, error: orderError } = await supabase
+        .from('orders')
+        .insert({
+          customer_phone: phone,
+          customer_name: customerName,
+          product_id: selectedProduct.id || null,
+          selected_sku: selectedProduct.sku,
+          selected_name: selectedProduct.name,
+          unit_price: selectedProduct.price || 0,
+          total_price: selectedProduct.price || 0,
+          quantity: 1,
+          delivery_method: deliveryMethod,
+          delivery_address: deliveryAddress,
+          payment_method: paymentMethod,
+          source: 'aline',
+          status: 'pending',
+          summary_text: summaryText,
+          notes: `Conversa ID: ${conversation.id}`,
+        })
+        .select()
+        .single();
+
+      if (orderError) {
+        console.error(`[ALINE-REPLY] Erro ao gravar pedido:`, orderError);
+      } else {
+        console.log(`[ALINE-REPLY] Pedido gravado: ${orderData.id}`);
+        newCollectedData.order_id = orderData.id;
+        
+        actionsExecuted.push({
+          action: 'create_order',
+          type: 'order',
+          order_id: orderData.id,
+        });
+      }
+
+      // Buscar número de notificação da Acium
+      const { data: notifSetting } = await supabase
+        .from('store_settings')
+        .select('value')
+        .eq('key', 'notification_whatsapp')
+        .maybeSingle();
+      
+      const aciumPhone = notifSetting?.value || '5592984145531';
+      
+      // Enviar resumo para o WhatsApp da Acium
+      try {
+        await fetch(`${supabaseUrl}/functions/v1/automation-send`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${supabaseServiceKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            phone: aciumPhone,
+            message: summaryText,
+          }),
+        });
+        console.log(`[ALINE-REPLY] Resumo enviado para Acium: ${aciumPhone}`);
+        
+        actionsExecuted.push({
+          action: 'notify_acium',
+          type: 'notification',
+          phone: aciumPhone,
+        });
+      } catch (notifError) {
+        console.error(`[ALINE-REPLY] Erro ao notificar Acium:`, notifError);
+      }
+    }
+
 
     // Atualizar conversa
     await supabase
