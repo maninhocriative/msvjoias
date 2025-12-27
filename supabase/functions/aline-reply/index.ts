@@ -431,6 +431,66 @@ ${message}
     });
 
     // ========================================
+    // PASSO 7.5: ENVIAR AUTOMATICAMENTE VIA AUTOMATION-SEND
+    // ========================================
+    let sendResult = null;
+    
+    if (catalogProducts.length > 0 || replyText) {
+      console.log(`[ALINE-REPLY] Enviando via automation-send: texto="${replyText.substring(0, 50)}...", produtos=${catalogProducts.length}`);
+      
+      try {
+        // Preparar produtos para envio
+        const productsForSend = catalogProducts.map((p: any) => ({
+          sku: p.sku || 'N/A',
+          name: p.name,
+          price: p.price,
+          image_url: p.image_url,
+          video_url: p.video_url,
+          sizes: p.product_variants?.filter((v: any) => v.stock > 0)?.map((v: any) => ({
+            size: v.size,
+            stock: v.stock,
+          })) || [],
+        }));
+
+        // Chamar automation-send
+        const automationPayload = {
+          phone,
+          message: replyText,
+          products: productsForSend.length > 0 ? productsForSend : undefined,
+          send_video_priority: true,
+        };
+
+        const automationResponse = await fetch(`${supabaseUrl}/functions/v1/automation-send`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${supabaseServiceKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(automationPayload),
+        });
+
+        const automationResult = await automationResponse.json();
+        sendResult = automationResult;
+        
+        console.log(`[ALINE-REPLY] automation-send result: ${JSON.stringify(automationResult).substring(0, 200)}`);
+        
+        if (!automationResult.success) {
+          console.error(`[ALINE-REPLY] Erro no automation-send: ${automationResult.error}`);
+        } else {
+          actionsExecuted.push({
+            action: 'automation_send',
+            type: 'send',
+            messages_sent: automationResult.results?.length || 1,
+            products_sent: productsForSend.length,
+          });
+        }
+      } catch (sendError) {
+        console.error(`[ALINE-REPLY] Erro ao chamar automation-send:`, sendError);
+        sendResult = { success: false, error: sendError instanceof Error ? sendError.message : 'Unknown error' };
+      }
+    }
+
+    // ========================================
     // PASSO 8: RETORNAR RESPOSTA
     // ========================================
     const response = {
@@ -441,7 +501,9 @@ ${message}
       actions_executed: actionsExecuted,
       conversation_status: validatedNode === 'finalizado' ? 'finished' : 'active',
       collected_data: newCollectedData,
-      // Produtos para envio (se houver)
+      // Resultado do envio automático
+      send_result: sendResult,
+      // Produtos encontrados (para referência)
       produtos: catalogProducts.map((p: any) => ({
         id: p.id,
         name: p.name,
@@ -455,7 +517,7 @@ ${message}
       })),
     };
 
-    console.log(`[ALINE-REPLY] Resposta final: node=${validatedNode}, actions=${actionsExecuted.length}, produtos=${catalogProducts.length}`);
+    console.log(`[ALINE-REPLY] Resposta final: node=${validatedNode}, actions=${actionsExecuted.length}, produtos=${catalogProducts.length}, enviado=${sendResult?.success || false}`);
 
     return new Response(JSON.stringify(response), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
