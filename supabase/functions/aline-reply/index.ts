@@ -275,129 +275,138 @@ ${message}
     console.log(`[ALINE-REPLY] Node extraído: ${extractedNode}, Action: ${systemAction}`);
 
     // ========================================
-    // PASSO 5: ANTI-LOOP E VALIDAÇÃO
+    // PASSO 5: DETECÇÃO AUTOMÁTICA DE NODE
     // ========================================
     let validatedNode = extractedNode;
     
-    // Verificar se a transição é válida
-    const allowedTransitions = NODE_FLOW[conversation.current_node] || [];
-    if (extractedNode !== conversation.current_node && !allowedTransitions.includes(extractedNode)) {
-      console.warn(`[ALINE-REPLY] Transição inválida: ${conversation.current_node} -> ${extractedNode}`);
-      // Manter no node atual se transição inválida
-      validatedNode = conversation.current_node;
-    }
-
-    // Anti-loop: detectar repetição excessiva
-    const { data: recentMessages } = await supabase
-      .from('aline_messages')
-      .select('node')
-      .eq('conversation_id', conversation.id)
-      .eq('role', 'aline')
-      .order('created_at', { ascending: false })
-      .limit(3);
-
-    const sameNodeCount = recentMessages?.filter(m => m.node === validatedNode).length || 0;
-    if (sameNodeCount >= 2 && validatedNode === conversation.current_node) {
-      console.warn(`[ALINE-REPLY] Detectado loop no node: ${validatedNode}`);
-      // Forçar avanço ou mensagem de escape
-      if (allowedTransitions.length > 0) {
-        validatedNode = allowedTransitions[0];
-        replyText = 'Desculpe, parece que tivemos uma confusão. Vamos continuar de onde paramos.';
-      }
-    }
-
-    // ========================================
-    // PASSO 6: EXECUTAR SYSTEM_ACTION
-    // ========================================
-    const actionsExecuted: Record<string, unknown>[] = [];
-    let catalogProducts: unknown[] = [];
-
-    if (systemAction && SYSTEM_ACTIONS[systemAction]) {
-      const actionConfig = SYSTEM_ACTIONS[systemAction];
-      console.log(`[ALINE-REPLY] Executando action: ${systemAction}`, actionConfig);
-
-      if (actionConfig.type === 'catalog') {
-        // Buscar catálogo
-        const { data: products, error: prodError } = await supabase
-          .from('products')
-          .select(`
-            id, name, sku, price, image_url, video_url, category, color,
-            product_variants(size, stock)
-          `)
-          .eq('active', true)
-          .ilike('category', `%${actionConfig.filters.category || ''}%`)
-          .order('created_at', { ascending: false })
-          .limit(10);
-
-        if (!prodError && products) {
-          // Filtrar por cor se especificado
-          catalogProducts = actionConfig.filters.color
-            ? products.filter(p => p.color?.toLowerCase().includes(actionConfig.filters.color!.toLowerCase()))
-            : products;
-
-          actionsExecuted.push({
-            action: systemAction,
-            type: 'catalog',
-            products_count: catalogProducts.length,
-            filters: actionConfig.filters,
-          });
-          console.log(`[ALINE-REPLY] Catálogo encontrado: ${catalogProducts.length} produtos`);
-        }
-      } else if (actionConfig.type === 'lead') {
-        // Registrar lead
-        actionsExecuted.push({
-          action: systemAction,
-          type: 'lead',
-          collected_data: conversation.collected_data,
-        });
-
-        // Atualizar status para finalizado
+    // Se o Assistant não retornou #node, inferir baseado no conteúdo
+    if (!nodeMatch) {
+      console.log(`[ALINE-REPLY] Node não detectado, inferindo do conteúdo...`);
+      const replyLower = replyText.toLowerCase();
+      
+      if (replyLower.includes('alianças') && replyLower.includes('pingentes') && (replyLower.includes('1️⃣') || replyLower.includes('menu'))) {
+        validatedNode = 'menu_categoria';
+      } else if (replyLower.includes('namoro') || replyLower.includes('casamento') || replyLower.includes('momento especial')) {
+        validatedNode = 'escolha_finalidade_alianca';
+      } else if ((replyLower.includes('cor') || replyLower.includes('material')) && (replyLower.includes('prata') || replyLower.includes('dourada') || replyLower.includes('preta'))) {
+        validatedNode = 'escolha_cor_alianca';
+      } else if (replyLower.includes('catálogo') || replyLower.includes('opções') || replyLower.includes('modelos')) {
+        validatedNode = 'catalogo_alianca';
+      } else if (replyLower.includes('entrega') || replyLower.includes('envio') || replyLower.includes('retirada')) {
+        validatedNode = 'coleta_entrega';
+      } else if (replyLower.includes('pagamento') || replyLower.includes('pix') || replyLower.includes('cartão')) {
+        validatedNode = 'coleta_pagamento';
+      } else if (replyLower.includes('vendedor') || replyLower.includes('humano') || replyLower.includes('atendimento')) {
         validatedNode = 'finalizado';
       }
+      
+      console.log(`[ALINE-REPLY] Node inferido: ${validatedNode}`);
+    }
+    
+    // Verificar se a transição é válida (permitir avanço livre)
+    const allowedTransitions = NODE_FLOW[conversation.current_node] || [];
+    if (extractedNode !== conversation.current_node && !allowedTransitions.includes(validatedNode) && validatedNode !== conversation.current_node) {
+      console.warn(`[ALINE-REPLY] Transição não mapeada: ${conversation.current_node} -> ${validatedNode}, permitindo...`);
+      // Permitir transições não mapeadas se o Assistant indicou
     }
 
     // ========================================
-    // PASSO 7: ATUALIZAR ESTADO
+    // PASSO 6: COLETAR DADOS DO USUÁRIO
     // ========================================
     const newCollectedData: Record<string, unknown> = {
       ...conversation.collected_data,
       thread_id: threadId,
     };
 
-    // Coletar dados baseado no node
-    if (validatedNode === 'escolha_finalidade_alianca' || validatedNode === 'menu_categoria') {
-      const categoryMap: Record<string, string> = {
-        '1': 'aliancas', 'aliança': 'aliancas', 'aliancas': 'aliancas',
-        '2': 'pingente', 'pingente': 'pingente', 'pingentes': 'pingente',
-      };
-      const normalizedMsg = message.toLowerCase().trim();
-      if (categoryMap[normalizedMsg]) {
-        newCollectedData.categoria = categoryMap[normalizedMsg];
-      }
+    // Coletar categoria
+    const categoryMap: Record<string, string> = {
+      '1': 'aliancas', 'aliança': 'aliancas', 'aliancas': 'aliancas', 'alianças': 'aliancas',
+      '2': 'pingente', 'pingente': 'pingente', 'pingentes': 'pingente',
+    };
+    const normalizedMsg = message.toLowerCase().trim();
+    if (categoryMap[normalizedMsg]) {
+      newCollectedData.categoria = categoryMap[normalizedMsg];
     }
 
-    if (validatedNode === 'escolha_cor_alianca' || validatedNode === 'escolha_cor_pingente') {
-      const finalidadeMap: Record<string, string> = {
-        '1': 'casamento', 'casamento': 'casamento',
-        '2': 'noivado', 'noivado': 'noivado',
-        '3': 'namoro', 'namoro': 'namoro',
-      };
-      const normalizedMsg = message.toLowerCase().trim();
-      if (finalidadeMap[normalizedMsg]) {
-        newCollectedData.finalidade = finalidadeMap[normalizedMsg];
-      }
+    // Coletar finalidade
+    const finalidadeMap: Record<string, string> = {
+      '1': 'namoro', 'namoro': 'namoro', 'compromisso': 'namoro',
+      '2': 'casamento', 'casamento': 'casamento',
+    };
+    if (finalidadeMap[normalizedMsg]) {
+      newCollectedData.finalidade = finalidadeMap[normalizedMsg];
     }
 
-    if (validatedNode.includes('catalogo')) {
-      const colorMap: Record<string, string> = {
-        '1': 'prata', 'prata': 'prata', 'aço': 'prata',
-        '2': 'dourada', 'dourada': 'dourada', 'dourado': 'dourada',
-        '3': 'preta', 'preta': 'preta', 'tungstênio': 'preta',
-      };
-      const normalizedMsg = message.toLowerCase().trim();
-      if (colorMap[normalizedMsg]) {
-        newCollectedData.cor = colorMap[normalizedMsg];
+    // Coletar cor
+    const colorMap: Record<string, string> = {
+      '1': 'dourada', 'dourada': 'dourada', 'dourado': 'dourada',
+      '2': 'prata', 'prata': 'prata', 'aço': 'prata',
+      '3': 'preta', 'preta': 'preta', 'tungstênio': 'preta',
+      '4': 'azul', 'azul': 'azul',
+    };
+    if (colorMap[normalizedMsg]) {
+      newCollectedData.cor = colorMap[normalizedMsg];
+    }
+
+    // ========================================
+    // PASSO 7: EXECUTAR SYSTEM_ACTION OU BUSCAR CATÁLOGO AUTOMATICAMENTE
+    // ========================================
+    const actionsExecuted: Record<string, unknown>[] = [];
+    let catalogProducts: unknown[] = [];
+
+    // Verificar se devemos buscar catálogo (pelo node ou pela action)
+    const shouldFetchCatalog = validatedNode.includes('catalogo') || 
+                               replyText.toLowerCase().includes('buscar no nosso catálogo');
+    
+    if (shouldFetchCatalog || (systemAction && SYSTEM_ACTIONS[systemAction]?.type === 'catalog')) {
+      // Usar cor coletada do usuário
+      const userColor = (newCollectedData.cor as string) || null;
+      const categoria = (newCollectedData.categoria as string) || 'aliancas';
+      
+      console.log(`[ALINE-REPLY] Buscando catálogo: categoria=${categoria}, cor=${userColor}`);
+      
+      // Buscar catálogo baseado nos dados coletados
+      let query = supabase
+        .from('products')
+        .select(`
+          id, name, sku, price, image_url, video_url, category, color,
+          product_variants(size, stock)
+        `)
+        .eq('active', true)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      
+      // Filtrar por categoria
+      if (categoria) {
+        query = query.ilike('category', `%${categoria}%`);
       }
+      
+      const { data: products, error: prodError } = await query;
+
+      if (!prodError && products) {
+        // Filtrar por cor se especificado
+        catalogProducts = userColor
+          ? products.filter(p => p.color?.toLowerCase().includes(userColor.toLowerCase()))
+          : products;
+
+        actionsExecuted.push({
+          action: systemAction || 'auto_catalog',
+          type: 'catalog',
+          products_count: catalogProducts.length,
+          filters: { category: categoria, color: userColor },
+        });
+        console.log(`[ALINE-REPLY] Catálogo encontrado: ${catalogProducts.length} produtos`);
+      }
+    } else if (systemAction && SYSTEM_ACTIONS[systemAction]?.type === 'lead') {
+      // Registrar lead
+      actionsExecuted.push({
+        action: systemAction,
+        type: 'lead',
+        collected_data: newCollectedData,
+      });
+
+      // Atualizar status para finalizado
+      validatedNode = 'finalizado';
     }
 
     // Atualizar conversa
