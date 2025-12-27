@@ -186,15 +186,31 @@ ${message}
         assistant_id: assistantId,
       }),
     });
-    const runData = await runResponse.json();
-    console.log(`[ALINE-REPLY] Run criado: ${runData.id}, status: ${runData.status}`);
+    
+    const runText = await runResponse.text();
+    console.log(`[ALINE-REPLY] Run response raw: ${runText.substring(0, 500)}`);
+    
+    let runData;
+    try {
+      runData = JSON.parse(runText);
+    } catch (e) {
+      console.error(`[ALINE-REPLY] Erro ao parsear run response: ${e}`);
+      throw new Error(`Failed to parse run response: ${runText.substring(0, 200)}`);
+    }
+    
+    if (runData.error) {
+      console.error(`[ALINE-REPLY] OpenAI API Error: ${JSON.stringify(runData.error)}`);
+      throw new Error(`OpenAI API Error: ${runData.error.message || JSON.stringify(runData.error)}`);
+    }
+    
+    console.log(`[ALINE-REPLY] Run criado: id=${runData.id}, status=${runData.status}`);
 
     // Aguardar conclusão com timeout maior
     let runStatus = runData.status;
     let attempts = 0;
     const maxAttempts = 60; // 60 segundos
 
-    while (runStatus !== 'completed' && runStatus !== 'failed' && runStatus !== 'expired' && attempts < maxAttempts) {
+    while (runStatus !== 'completed' && runStatus !== 'failed' && runStatus !== 'expired' && runStatus !== 'cancelled' && attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 1000));
       const statusResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${runData.id}`, {
         headers: {
@@ -206,14 +222,21 @@ ${message}
       runStatus = statusData.status;
       attempts++;
       
-      if (attempts % 5 === 0) {
-        console.log(`[ALINE-REPLY] Aguardando... attempt=${attempts}, status=${runStatus}`);
+      if (attempts % 10 === 0) {
+        console.log(`[ALINE-REPLY] Polling... attempt=${attempts}, status=${runStatus}`);
+      }
+      
+      // Se o run requer ação (tool calls), precisamos tratar
+      if (runStatus === 'requires_action') {
+        console.log(`[ALINE-REPLY] Run requer ação - tools: ${JSON.stringify(statusData.required_action)}`);
+        // Por enquanto, cancelar runs que pedem tools (o Assistant do Playground não deveria pedir)
+        break;
       }
     }
 
     if (runStatus !== 'completed') {
-      console.error(`[ALINE-REPLY] Run falhou: status=${runStatus}, attempts=${attempts}`);
-      throw new Error(`Assistant run failed: ${runStatus}`);
+      console.error(`[ALINE-REPLY] Run não completou: status=${runStatus}, attempts=${attempts}`);
+      throw new Error(`Assistant run failed with status: ${runStatus}`);
     }
 
     console.log(`[ALINE-REPLY] Run completado após ${attempts} tentativas`);
