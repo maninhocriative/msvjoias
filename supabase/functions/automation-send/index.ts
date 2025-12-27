@@ -6,8 +6,116 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+interface Product {
+  sku: string;
+  name: string;
+  price?: number;
+  image_url?: string;
+  video_url?: string;
+  sizes?: { size: string; stock: number }[];
+}
+
+interface SendResult {
+  success: boolean;
+  messageId?: string;
+  error?: string;
+}
+
+// Helper function to send a single message via Z-API
+async function sendViaZAPI(
+  phone: string,
+  messageType: string,
+  content: string | null,
+  mediaUrl: string | null,
+  ZAPI_INSTANCE_ID: string,
+  ZAPI_TOKEN: string,
+  ZAPI_CLIENT_TOKEN?: string
+): Promise<SendResult> {
+  let zapiEndpoint = '';
+  let zapiBody: Record<string, unknown> = {};
+
+  switch (messageType) {
+    case 'text':
+      zapiEndpoint = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-text`;
+      zapiBody = { phone, message: content };
+      break;
+    case 'image':
+      zapiEndpoint = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-image`;
+      zapiBody = { phone, image: mediaUrl, caption: content || '' };
+      break;
+    case 'video':
+      zapiEndpoint = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-video`;
+      zapiBody = { phone, video: mediaUrl, caption: content || '' };
+      break;
+    case 'audio':
+      zapiEndpoint = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-audio`;
+      zapiBody = { phone, audio: mediaUrl };
+      break;
+    case 'document':
+      zapiEndpoint = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-document`;
+      zapiBody = { phone, document: mediaUrl, fileName: content || 'document' };
+      break;
+    default:
+      zapiEndpoint = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-text`;
+      zapiBody = { phone, message: content };
+  }
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (ZAPI_CLIENT_TOKEN) {
+    headers['Client-Token'] = ZAPI_CLIENT_TOKEN;
+  }
+
+  try {
+    const response = await fetch(zapiEndpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(zapiBody),
+    });
+
+    const result = await response.json();
+    
+    if (response.ok && result.zapiMessageId) {
+      return { success: true, messageId: result.zapiMessageId };
+    } else {
+      return { success: false, error: JSON.stringify(result) };
+    }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
+// Helper function to format product caption
+function formatProductCaption(product: Product, index: number): string {
+  const lines: string[] = [];
+  
+  lines.push(`*${index}️⃣ ${product.name}*`);
+  
+  if (product.sku) {
+    lines.push(`📦 SKU: ${product.sku}`);
+  }
+  
+  if (product.price) {
+    const priceFormatted = product.price.toLocaleString('pt-BR', { 
+      style: 'currency', 
+      currency: 'BRL' 
+    });
+    lines.push(`💰 ${priceFormatted}`);
+  }
+  
+  if (product.sizes && product.sizes.length > 0) {
+    const availableSizes = product.sizes
+      .filter(s => s.stock > 0)
+      .map(s => s.size)
+      .join(', ');
+    if (availableSizes) {
+      lines.push(`📏 Tamanhos: ${availableSizes}`);
+    }
+  }
+  
+  return lines.join('\n');
+}
+
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -16,8 +124,6 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const automationWebhook = Deno.env.get('AUTOMATION_OUTGOING_WEBHOOK');
-    
-    // Z-API credentials for direct sending
     const ZAPI_INSTANCE_ID = Deno.env.get('ZAPI_INSTANCE_ID');
     const ZAPI_TOKEN = Deno.env.get('ZAPI_TOKEN');
     const ZAPI_CLIENT_TOKEN = Deno.env.get('ZAPI_CLIENT_TOKEN');
@@ -34,7 +140,10 @@ serve(async (req) => {
       message_type = 'text',
       media_url = null,
       platform = 'whatsapp',
-      fromMe = true // Default to true for outgoing messages
+      fromMe = true,
+      // New: catalog products support
+      products = null,
+      send_video_priority = true
     } = payload;
 
     if (!phone) {
@@ -45,25 +154,21 @@ serve(async (req) => {
       );
     }
 
-    // Normalize phone number (remove non-digits)
     const normalizedPhone = phone.replace(/\D/g, '');
     console.log('[AUTOMATION-SEND] Normalized phone:', normalizedPhone);
 
-    // Validate and normalize conversation_id (must be a valid UUID)
+    // Resolve conversation
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     let conversationId: string | null = null;
 
     if (typeof rawConversationId === 'string' && uuidRegex.test(rawConversationId)) {
       conversationId = rawConversationId;
-    } else if (rawConversationId) {
-      console.warn('[AUTOMATION-SEND] Invalid conversation_id received, will resolve by phone:', rawConversationId);
     }
 
-    // If no valid conversation_id was provided, try to find or create one by phone + platform
     if (!conversationId) {
-      console.log('[AUTOMATION-SEND] Resolving conversation by phone:', normalizedPhone, 'platform:', platform);
+      console.log('[AUTOMATION-SEND] Resolving conversation by phone:', normalizedPhone);
 
-      const { data: existingConversation, error: findError } = await supabase
+      const { data: existingConversation } = await supabase
         .from('conversations')
         .select('id')
         .eq('contact_number', normalizedPhone)
@@ -72,45 +177,187 @@ serve(async (req) => {
         .limit(1)
         .maybeSingle();
 
-      if (findError) {
-        console.error('[AUTOMATION-SEND] Error finding conversation by phone:', findError);
-      }
-
       if (existingConversation?.id) {
         conversationId = existingConversation.id as string;
-        console.log('[AUTOMATION-SEND] Found existing conversation:', conversationId);
       } else {
-        console.log('[AUTOMATION-SEND] No existing conversation found, creating a new one');
         const { data: newConversation, error: createError } = await supabase
           .from('conversations')
           .insert({
             contact_number: normalizedPhone,
             platform,
             contact_name: normalizedPhone,
-            last_message: message || `[${message_type}]`,
+            last_message: message || '[Catálogo]',
             unread_count: 0,
           })
           .select('id')
           .single();
 
         if (createError || !newConversation) {
-          console.error('[AUTOMATION-SEND] Error creating conversation:', createError);
           throw createError || new Error('Failed to create conversation');
         }
-
         conversationId = newConversation.id as string;
-        console.log('[AUTOMATION-SEND] Created new conversation:', conversationId);
       }
     }
 
-    if (!conversationId) {
+    const results: { messages: string[]; forwarded: number; errors: string[] } = {
+      messages: [],
+      forwarded: 0,
+      errors: []
+    };
+
+    // Check if Z-API is configured
+    const hasZAPI = !!(ZAPI_INSTANCE_ID && ZAPI_TOKEN);
+
+    // ========================================
+    // CATALOG PRODUCTS MODE
+    // ========================================
+    if (products && Array.isArray(products) && products.length > 0) {
+      console.log(`[AUTOMATION-SEND] Sending catalog with ${products.length} products`);
+
+      // Send intro message if provided
+      if (message) {
+        const { data: introMsg } = await supabase
+          .from('messages')
+          .insert({
+            conversation_id: conversationId,
+            content: message,
+            message_type: 'text',
+            is_from_me: true,
+            status: 'pending'
+          })
+          .select('id')
+          .single();
+
+        if (introMsg && hasZAPI) {
+          const result = await sendViaZAPI(
+            normalizedPhone, 'text', message, null,
+            ZAPI_INSTANCE_ID!, ZAPI_TOKEN!, ZAPI_CLIENT_TOKEN
+          );
+          
+          if (result.success) {
+            results.forwarded++;
+            await supabase.from('messages').update({ status: 'sent' }).eq('id', introMsg.id);
+          } else {
+            results.errors.push(`Intro: ${result.error}`);
+          }
+        }
+        results.messages.push(introMsg?.id || 'intro');
+        
+        // Small delay between messages
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+      // Send each product
+      for (let i = 0; i < products.length; i++) {
+        const product = products[i] as Product;
+        const caption = formatProductCaption(product, i + 1);
+        
+        // Determine media type and URL (video priority or image)
+        let mediaType: 'image' | 'video' = 'image';
+        let mediaUrl: string | null = null;
+
+        if (send_video_priority && product.video_url) {
+          mediaType = 'video';
+          mediaUrl = product.video_url;
+        } else if (product.image_url) {
+          mediaType = 'image';
+          mediaUrl = product.image_url;
+        } else if (product.video_url) {
+          mediaType = 'video';
+          mediaUrl = product.video_url;
+        }
+
+        // If no media, send as text
+        if (!mediaUrl) {
+          const { data: textMsg } = await supabase
+            .from('messages')
+            .insert({
+              conversation_id: conversationId,
+              content: caption,
+              message_type: 'text',
+              is_from_me: true,
+              status: 'pending'
+            })
+            .select('id')
+            .single();
+
+          if (textMsg && hasZAPI) {
+            const result = await sendViaZAPI(
+              normalizedPhone, 'text', caption, null,
+              ZAPI_INSTANCE_ID!, ZAPI_TOKEN!, ZAPI_CLIENT_TOKEN
+            );
+            if (result.success) {
+              results.forwarded++;
+              await supabase.from('messages').update({ status: 'sent' }).eq('id', textMsg.id);
+            } else {
+              results.errors.push(`Product ${i + 1}: ${result.error}`);
+            }
+          }
+          results.messages.push(textMsg?.id || `product-${i}`);
+        } else {
+          // Send media with caption
+          const { data: mediaMsg } = await supabase
+            .from('messages')
+            .insert({
+              conversation_id: conversationId,
+              content: caption,
+              message_type: mediaType,
+              media_url: mediaUrl,
+              is_from_me: true,
+              status: 'pending'
+            })
+            .select('id')
+            .single();
+
+          if (mediaMsg && hasZAPI) {
+            console.log(`[AUTOMATION-SEND] Sending ${mediaType} for product ${i + 1}: ${product.name}`);
+            
+            const result = await sendViaZAPI(
+              normalizedPhone, mediaType, caption, mediaUrl,
+              ZAPI_INSTANCE_ID!, ZAPI_TOKEN!, ZAPI_CLIENT_TOKEN
+            );
+            
+            if (result.success) {
+              results.forwarded++;
+              await supabase.from('messages').update({ status: 'sent' }).eq('id', mediaMsg.id);
+              console.log(`[AUTOMATION-SEND] Product ${i + 1} sent successfully`);
+            } else {
+              results.errors.push(`Product ${i + 1}: ${result.error}`);
+              console.error(`[AUTOMATION-SEND] Failed to send product ${i + 1}:`, result.error);
+            }
+          }
+          results.messages.push(mediaMsg?.id || `product-${i}`);
+        }
+
+        // Delay between products to avoid rate limiting
+        if (i < products.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+
+      // Update conversation last message
+      await supabase
+        .from('conversations')
+        .update({ last_message: `[Catálogo: ${products.length} produtos]` })
+        .eq('id', conversationId);
+
       return new Response(
-        JSON.stringify({ error: 'Could not resolve a conversation for this phone number' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({
+          success: true,
+          mode: 'catalog',
+          products_count: products.length,
+          messages_sent: results.messages.length,
+          forwarded: results.forwarded,
+          errors: results.errors,
+          conversation_id: conversationId
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Insert message into database first
+    // ========================================
+    // SINGLE MESSAGE MODE (original behavior)
+    // ========================================
     const { data: newMessage, error: messageError } = await supabase
       .from('messages')
       .insert({
@@ -125,162 +372,65 @@ serve(async (req) => {
       .single();
 
     if (messageError) {
-      console.error('[AUTOMATION-SEND] Error inserting message:', messageError);
       throw messageError;
     }
 
-    console.log('[AUTOMATION-SEND] Message saved to DB:', newMessage.id);
-
-    // Update conversation last_message
     await supabase
       .from('conversations')
-      .update({
-        last_message: message || `[${message_type}]`
-      })
+      .update({ last_message: message || `[${message_type}]` })
       .eq('id', conversationId);
 
     let forwarded = false;
     let forwardError: string | null = null;
 
-    // Priority 1: If automation webhook is configured, use it
+    // Try automation webhook first
     if (automationWebhook) {
-      console.log('[AUTOMATION-SEND] Forwarding to automation webhook:', automationWebhook);
-      
       try {
-        const outgoingPayload = {
-          platform,
-          contact_number: normalizedPhone,
-          message,
-          message_type,
-          media_url,
-          message_id: newMessage.id,
-          direction: 'outgoing'
-        };
-
         const webhookResponse = await fetch(automationWebhook, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(outgoingPayload),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            platform,
+            contact_number: normalizedPhone,
+            message,
+            message_type,
+            media_url,
+            message_id: newMessage.id,
+            direction: 'outgoing'
+          }),
         });
 
         if (webhookResponse.ok) {
           forwarded = true;
-          await supabase
-            .from('messages')
-            .update({ status: 'delivered' })
-            .eq('id', newMessage.id);
-          console.log('[AUTOMATION-SEND] Message forwarded via webhook successfully');
+          await supabase.from('messages').update({ status: 'delivered' }).eq('id', newMessage.id);
         } else {
           forwardError = await webhookResponse.text();
-          console.error('[AUTOMATION-SEND] Automation webhook error:', forwardError);
         }
-      } catch (webhookError) {
-        forwardError = webhookError instanceof Error ? webhookError.message : 'Unknown webhook error';
-        console.error('[AUTOMATION-SEND] Error calling automation webhook:', webhookError);
+      } catch (error) {
+        forwardError = error instanceof Error ? error.message : 'Webhook error';
       }
     }
-    // Priority 2: If Z-API credentials are configured, send directly via Z-API
-    else if (ZAPI_INSTANCE_ID && ZAPI_TOKEN) {
-      console.log('[AUTOMATION-SEND] Sending directly via Z-API');
-      
-      try {
-        let zapiEndpoint = '';
-        let zapiBody: Record<string, unknown> = {};
+    // Try Z-API
+    else if (hasZAPI) {
+      const result = await sendViaZAPI(
+        normalizedPhone, message_type, message, media_url,
+        ZAPI_INSTANCE_ID!, ZAPI_TOKEN!, ZAPI_CLIENT_TOKEN
+      );
 
-        // Determine Z-API endpoint based on message type
-        switch (message_type) {
-          case 'text':
-            zapiEndpoint = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-text`;
-            zapiBody = {
-              phone: normalizedPhone,
-              message: message,
-            };
-            break;
-          case 'image':
-            zapiEndpoint = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-image`;
-            zapiBody = {
-              phone: normalizedPhone,
-              image: media_url,
-              caption: message || '',
-            };
-            break;
-          case 'audio':
-            zapiEndpoint = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-audio`;
-            zapiBody = {
-              phone: normalizedPhone,
-              audio: media_url,
-            };
-            break;
-          case 'document':
-            zapiEndpoint = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-document`;
-            zapiBody = {
-              phone: normalizedPhone,
-              document: media_url,
-              fileName: message || 'document',
-            };
-            break;
-          case 'video':
-            zapiEndpoint = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-video`;
-            zapiBody = {
-              phone: normalizedPhone,
-              video: media_url,
-              caption: message || '',
-            };
-            break;
-          default:
-            zapiEndpoint = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-text`;
-            zapiBody = {
-              phone: normalizedPhone,
-              message: message,
-            };
-        }
-
-        console.log('[AUTOMATION-SEND] Z-API endpoint:', zapiEndpoint);
-        console.log('[AUTOMATION-SEND] Z-API body:', JSON.stringify(zapiBody));
-
-        // Add Client-Token header if available
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-        };
-        if (ZAPI_CLIENT_TOKEN) {
-          headers['Client-Token'] = ZAPI_CLIENT_TOKEN;
-        }
-
-        // Send message via Z-API
-        const zapiResponse = await fetch(zapiEndpoint, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(zapiBody),
-        });
-
-        const zapiResult = await zapiResponse.json();
-        console.log('[AUTOMATION-SEND] Z-API response:', JSON.stringify(zapiResult));
-
-        if (zapiResponse.ok && zapiResult.zapiMessageId) {
-          forwarded = true;
-          await supabase
-            .from('messages')
-            .update({ status: 'sent' })
-            .eq('id', newMessage.id);
-          console.log('[AUTOMATION-SEND] Message sent via Z-API successfully, messageId:', zapiResult.zapiMessageId);
-        } else {
-          forwardError = JSON.stringify(zapiResult);
-          console.error('[AUTOMATION-SEND] Z-API error:', forwardError);
-        }
-      } catch (zapiError) {
-        forwardError = zapiError instanceof Error ? zapiError.message : 'Unknown Z-API error';
-        console.error('[AUTOMATION-SEND] Error calling Z-API:', zapiError);
+      if (result.success) {
+        forwarded = true;
+        await supabase.from('messages').update({ status: 'sent' }).eq('id', newMessage.id);
+      } else {
+        forwardError = result.error || 'Z-API error';
       }
     } else {
-      console.log('[AUTOMATION-SEND] No forwarding method configured (no webhook or Z-API credentials)');
       forwardError = 'No forwarding method configured';
     }
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
+      JSON.stringify({
+        success: true,
+        mode: 'single',
         message_id: newMessage.id,
         conversation_id: conversationId,
         forwarded,
@@ -291,9 +441,8 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('[AUTOMATION-SEND] Error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return new Response(
-      JSON.stringify({ error: errorMessage }),
+      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
