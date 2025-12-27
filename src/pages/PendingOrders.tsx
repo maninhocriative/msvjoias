@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -14,6 +14,7 @@ import {
   Copy,
   ExternalLink,
   Loader2,
+  Bell,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -110,6 +111,62 @@ const PendingOrders = () => {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [newOrdersCount, setNewOrdersCount] = useState(0);
+
+  // Real-time subscription para novos pedidos
+  useEffect(() => {
+    const channel = supabase
+      .channel('orders-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'orders'
+        },
+        (payload) => {
+          console.log('[REALTIME] Novo pedido recebido:', payload);
+          
+          const newOrder = payload.new as Order;
+          
+          // Mostrar toast com som
+          toast.success(
+            `🔔 Novo pedido da Aline!`,
+            {
+              description: `Cliente: ${newOrder.customer_name || newOrder.customer_phone} - ${newOrder.selected_name || newOrder.selected_sku || 'Produto'}`,
+              duration: 10000,
+              action: {
+                label: "Ver pedido",
+                onClick: () => {
+                  setStatusFilter("all");
+                  queryClient.invalidateQueries({ queryKey: ["pending-orders"] });
+                }
+              }
+            }
+          );
+          
+          // Tocar som de notificação
+          try {
+            const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+            audio.volume = 0.5;
+            audio.play().catch(() => {});
+          } catch (e) {
+            console.log('Não foi possível tocar som');
+          }
+          
+          // Incrementar contador
+          setNewOrdersCount(prev => prev + 1);
+          
+          // Atualizar lista
+          queryClient.invalidateQueries({ queryKey: ["pending-orders"] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
 
   // Fetch orders
   const { data: orders, isLoading } = useQuery({
@@ -230,7 +287,22 @@ const PendingOrders = () => {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Pedidos Pendentes</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold tracking-tight">Pedidos Pendentes</h1>
+            {newOrdersCount > 0 && (
+              <Badge 
+                variant="destructive" 
+                className="animate-pulse cursor-pointer"
+                onClick={() => {
+                  setNewOrdersCount(0);
+                  queryClient.invalidateQueries({ queryKey: ["pending-orders"] });
+                }}
+              >
+                <Bell className="h-3 w-3 mr-1" />
+                {newOrdersCount} novo{newOrdersCount > 1 ? 's' : ''}
+              </Badge>
+            )}
+          </div>
           <p className="text-muted-foreground text-sm">
             Gerencie pedidos aguardando atendimento humano
           </p>
