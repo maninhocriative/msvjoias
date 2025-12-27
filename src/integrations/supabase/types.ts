@@ -119,6 +119,80 @@ export type Database = {
         }
         Relationships: []
       }
+      aline_conversations: {
+        Row: {
+          collected_data: Json | null
+          created_at: string | null
+          current_node: string
+          id: string
+          last_message_at: string | null
+          last_node: string | null
+          phone: string
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          collected_data?: Json | null
+          created_at?: string | null
+          current_node?: string
+          id?: string
+          last_message_at?: string | null
+          last_node?: string | null
+          phone: string
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          collected_data?: Json | null
+          created_at?: string | null
+          current_node?: string
+          id?: string
+          last_message_at?: string | null
+          last_node?: string | null
+          phone?: string
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      aline_messages: {
+        Row: {
+          actions_executed: Json | null
+          conversation_id: string
+          created_at: string | null
+          id: string
+          message: string
+          node: string | null
+          role: string
+        }
+        Insert: {
+          actions_executed?: Json | null
+          conversation_id: string
+          created_at?: string | null
+          id?: string
+          message: string
+          node?: string | null
+          role: string
+        }
+        Update: {
+          actions_executed?: Json | null
+          conversation_id?: string
+          created_at?: string | null
+          id?: string
+          message?: string
+          node?: string | null
+          role?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "aline_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "aline_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       catalog_items_sent: {
         Row: {
           created_at: string

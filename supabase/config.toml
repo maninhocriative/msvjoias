@@ -1,5 +1,8 @@
 project_id = "ahbjwpkpxqqrpvpzmqwa"
 
+[functions.aline-reply]
+verify_jwt = false
+
 [functions.cleanup-processed-messages]
 verify_jwt = false
 
