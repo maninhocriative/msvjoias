@@ -318,34 +318,45 @@ ${message}
       thread_id: threadId,
     };
 
-    // Coletar categoria
-    const categoryMap: Record<string, string> = {
-      '1': 'aliancas', 'aliança': 'aliancas', 'aliancas': 'aliancas', 'alianças': 'aliancas',
-      '2': 'pingente', 'pingente': 'pingente', 'pingentes': 'pingente',
-    };
     const normalizedMsg = message.toLowerCase().trim();
-    if (categoryMap[normalizedMsg]) {
-      newCollectedData.categoria = categoryMap[normalizedMsg];
+    const currentNode = conversation.current_node;
+
+    // Coletar categoria APENAS quando estiver no node correto (abertura ou menu_categoria)
+    if (currentNode === 'abertura' || currentNode === 'menu_categoria' || currentNode.includes('escolha_tipo')) {
+      const categoryMap: Record<string, string> = {
+        '1': 'aliancas', 'aliança': 'aliancas', 'aliancas': 'aliancas', 'alianças': 'aliancas',
+        '2': 'pingente', 'pingente': 'pingente', 'pingentes': 'pingente',
+      };
+      if (categoryMap[normalizedMsg]) {
+        newCollectedData.categoria = categoryMap[normalizedMsg];
+        console.log(`[ALINE-REPLY] Categoria coletada: ${categoryMap[normalizedMsg]} (node: ${currentNode})`);
+      }
     }
 
-    // Coletar finalidade
-    const finalidadeMap: Record<string, string> = {
-      '1': 'namoro', 'namoro': 'namoro', 'compromisso': 'namoro',
-      '2': 'casamento', 'casamento': 'casamento',
-    };
-    if (finalidadeMap[normalizedMsg]) {
-      newCollectedData.finalidade = finalidadeMap[normalizedMsg];
+    // Coletar finalidade APENAS no node de escolha de finalidade
+    if (currentNode.includes('finalidade')) {
+      const finalidadeMap: Record<string, string> = {
+        '1': 'namoro', 'namoro': 'namoro', 'compromisso': 'namoro',
+        '2': 'casamento', 'casamento': 'casamento',
+      };
+      if (finalidadeMap[normalizedMsg]) {
+        newCollectedData.finalidade = finalidadeMap[normalizedMsg];
+        console.log(`[ALINE-REPLY] Finalidade coletada: ${finalidadeMap[normalizedMsg]}`);
+      }
     }
 
-    // Coletar cor
-    const colorMap: Record<string, string> = {
-      '1': 'dourada', 'dourada': 'dourada', 'dourado': 'dourada',
-      '2': 'prata', 'prata': 'prata', 'aço': 'prata',
-      '3': 'preta', 'preta': 'preta', 'tungstênio': 'preta',
-      '4': 'azul', 'azul': 'azul',
-    };
-    if (colorMap[normalizedMsg]) {
-      newCollectedData.cor = colorMap[normalizedMsg];
+    // Coletar cor APENAS no node de escolha de cor
+    if (currentNode.includes('cor') || currentNode.includes('escolha_cor')) {
+      const colorMap: Record<string, string> = {
+        '1': 'dourada', 'dourada': 'dourada', 'dourado': 'dourada',
+        '2': 'prata', 'prata': 'prata', 'aço': 'prata',
+        '3': 'preta', 'preta': 'preta', 'tungstênio': 'preta',
+        '4': 'azul', 'azul': 'azul',
+      };
+      if (colorMap[normalizedMsg]) {
+        newCollectedData.cor = colorMap[normalizedMsg];
+        console.log(`[ALINE-REPLY] Cor coletada: ${colorMap[normalizedMsg]}`);
+      }
     }
 
     // ========================================
@@ -483,6 +494,38 @@ ${message}
             messages_sent: automationResult.results?.length || 1,
             products_sent: productsForSend.length,
           });
+          
+          // ========================================
+          // MENSAGEM DE FOLLOW-UP APÓS CATÁLOGO
+          // ========================================
+          if (productsForSend.length > 0) {
+            // Aguardar um pouco para não sobrecarregar
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            const followUpMessage = `Esses são alguns modelos que separei para você! 💍\n\nQual deles chamou mais a sua atenção? Me diz o número ou o nome do modelo que você gostou que eu te conto mais sobre ele! 😊`;
+            
+            await fetch(`${supabaseUrl}/functions/v1/automation-send`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${supabaseServiceKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                phone,
+                message: followUpMessage,
+              }),
+            });
+            
+            // Salvar mensagem de follow-up
+            await supabase.from('aline_messages').insert({
+              conversation_id: conversation.id,
+              role: 'aline',
+              message: followUpMessage,
+              node: validatedNode,
+            });
+            
+            console.log(`[ALINE-REPLY] Mensagem de follow-up enviada`);
+          }
         }
       } catch (sendError) {
         console.error(`[ALINE-REPLY] Erro ao chamar automation-send:`, sendError);
