@@ -71,3 +71,6 @@ verify_jwt = false
 
 [functions.sync-assistant]
 verify_jwt = true
+
+[functions.aline-takeover]
+verify_jwt = true
