@@ -599,14 +599,19 @@ const AIConfig = () => {
                         value={config.followup_interval_minutes ?? 10}
                         onChange={(e) => setConfig({ ...config, followup_interval_minutes: parseInt(e.target.value) || 10 })}
                         min={5}
-                        max={60}
+                        max={1440}
                         disabled={!config.followup_enabled}
                         className="w-24"
                       />
                       <span className="text-sm text-muted-foreground">minutos</span>
+                      {(config.followup_interval_minutes ?? 10) >= 60 && (
+                        <span className="text-xs text-muted-foreground">
+                          ({Math.floor((config.followup_interval_minutes ?? 10) / 60)}h{(config.followup_interval_minutes ?? 10) % 60 > 0 ? ` ${(config.followup_interval_minutes ?? 10) % 60}min` : ''})
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Tempo sem resposta antes de enviar follow-up (mín: 5, máx: 60)
+                      Tempo sem resposta antes de enviar follow-up (mín: 5 min, máx: 24 horas)
                     </p>
                   </div>
 
