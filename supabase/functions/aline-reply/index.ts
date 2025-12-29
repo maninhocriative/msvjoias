@@ -70,22 +70,46 @@ serve(async (req) => {
     // ========================================
     let conversation: AlineConversation;
     
+    // Primeiro, buscar qualquer conversa existente para este telefone (ativa ou não)
     const { data: existingConv, error: convError } = await supabase
       .from('aline_conversations')
       .select('*')
       .eq('phone', phone)
-      .eq('status', 'active')
-      .single();
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    if (convError && convError.code !== 'PGRST116') {
+    if (convError) {
       console.error('[ALINE-REPLY] Erro ao buscar conversa:', convError);
       throw convError;
     }
 
     if (existingConv) {
-      conversation = existingConv as AlineConversation;
-      console.log(`[ALINE-REPLY] Conversa existente: node=${conversation.current_node}`);
+      // Se a conversa existente está finished, reativar e resetar
+      if (existingConv.status === 'finished') {
+        const { data: reactivatedConv, error: updateError } = await supabase
+          .from('aline_conversations')
+          .update({
+            status: 'active',
+            current_node: 'abertura',
+            last_node: null,
+            collected_data: { contact_name: contact_name || existingConv.collected_data?.contact_name || 'Cliente' },
+            last_message_at: new Date().toISOString(),
+          })
+          .eq('id', existingConv.id)
+          .select()
+          .single();
+
+        if (updateError) throw updateError;
+        conversation = reactivatedConv as AlineConversation;
+        console.log(`[ALINE-REPLY] Conversa reativada: id=${conversation.id}`);
+      } else {
+        // Conversa ativa existente
+        conversation = existingConv as AlineConversation;
+        console.log(`[ALINE-REPLY] Conversa existente: node=${conversation.current_node}`);
+      }
     } else {
+      // Nenhuma conversa existente, criar nova
       const { data: newConv, error: createError } = await supabase
         .from('aline_conversations')
         .insert({
