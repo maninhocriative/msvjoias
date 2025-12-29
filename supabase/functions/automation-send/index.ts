@@ -73,9 +73,11 @@ async function sendViaZAPI(
     });
 
     const result = await response.json();
+    console.log('[ZAPI] Response:', JSON.stringify(result));
     
-    if (response.ok && result.zapiMessageId) {
-      return { success: true, messageId: result.zapiMessageId };
+    // Z-API returns messageId or zaapId on success
+    if (response.ok && (result.messageId || result.zaapId)) {
+      return { success: true, messageId: result.messageId || result.zaapId };
     } else {
       return { success: false, error: JSON.stringify(result) };
     }

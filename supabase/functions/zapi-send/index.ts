@@ -94,9 +94,12 @@ serve(async (req) => {
     const zapiResult = await zapiResponse.json();
     console.log('ZAPI response:', zapiResult);
 
-    if (!zapiResponse.ok) {
+    // Z-API returns messageId or zaapId on success
+    if (!zapiResponse.ok || (!zapiResult.messageId && !zapiResult.zaapId)) {
       throw new Error(`ZAPI error: ${JSON.stringify(zapiResult)}`);
     }
+
+    const messageId = zapiResult.messageId || zapiResult.zaapId;
 
     // Save message to database
     const { data: savedMessage, error: dbError } = await supabase
@@ -107,7 +110,7 @@ serve(async (req) => {
         message_type,
         media_url,
         is_from_me: true,
-        zapi_message_id: zapiResult.messageId,
+        zapi_message_id: messageId,
         status: 'sent',
       })
       .select()
