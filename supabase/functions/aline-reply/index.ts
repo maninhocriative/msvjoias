@@ -85,6 +85,19 @@ serve(async (req) => {
     }
 
     if (existingConv) {
+      // Se atendimento humano assumiu, NÃO responder
+      if (existingConv.status === 'human_takeover') {
+        console.log(`[ALINE-REPLY] Atendimento humano ativo para ${phone}, ignorando mensagem`);
+        return new Response(JSON.stringify({
+          success: true,
+          skipped: true,
+          reason: 'human_takeover',
+          message: 'Atendimento humano ativo, Aline não responde',
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      
       // Se a conversa existente está finished, reativar e resetar
       if (existingConv.status === 'finished') {
         const { data: reactivatedConv, error: updateError } = await supabase

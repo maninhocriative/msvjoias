@@ -3,7 +3,7 @@ import { supabase, Conversation, Message, LeadStatus } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, Paperclip, Search, MessageSquare, FileText, Mic, Check, CheckCheck, Instagram, Bot, User, Square, Phone, ArrowLeft, MoreVertical, Smile } from 'lucide-react';
+import { Send, Paperclip, Search, MessageSquare, FileText, Mic, Check, CheckCheck, Instagram, Bot, User, Square, Phone, ArrowLeft, MoreVertical, Smile, UserCheck, BotOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { LeadStatusSelect, LeadStatusBadge } from '@/components/chat/LeadStatusSelect';
@@ -20,6 +20,7 @@ const Chat = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [updatingLeadStatus, setUpdatingLeadStatus] = useState(false);
+  const [takingOver, setTakingOver] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -52,6 +53,36 @@ const Chat = () => {
       });
     } finally {
       setUpdatingLeadStatus(false);
+    }
+  };
+
+  const handleTakeover = async (action: 'takeover' | 'release') => {
+    if (!selectedConversation) return;
+    
+    setTakingOver(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('aline-takeover', {
+        body: {
+          phone: selectedConversation.contact_number,
+          action,
+        },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: action === 'takeover' ? '✋ Atendimento assumido' : '🤖 Devolvido para Aline',
+        description: data.message,
+      });
+    } catch (error) {
+      console.error('Takeover error:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível alterar o atendimento.',
+        variant: 'destructive',
+      });
+    } finally {
+      setTakingOver(false);
     }
   };
 
@@ -526,6 +557,20 @@ const Chat = () => {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
+                    <DropdownMenuItem 
+                      onClick={() => handleTakeover('takeover')}
+                      disabled={takingOver}
+                    >
+                      <UserCheck className="w-4 h-4 mr-2" />
+                      Assumir atendimento
+                    </DropdownMenuItem>
+                    <DropdownMenuItem 
+                      onClick={() => handleTakeover('release')}
+                      disabled={takingOver}
+                    >
+                      <Bot className="w-4 h-4 mr-2" />
+                      Devolver para Aline
+                    </DropdownMenuItem>
                     <DropdownMenuItem>Ver perfil</DropdownMenuItem>
                     <DropdownMenuItem>Silenciar</DropdownMenuItem>
                     <DropdownMenuItem className="text-destructive">Arquivar</DropdownMenuItem>
