@@ -6,15 +6,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Mensagens de follow-up
-const FOLLOWUP_MESSAGES = [
+// Mensagens de follow-up padrão (fallback)
+const DEFAULT_FOLLOWUP_MESSAGES = [
   "Oi! Ainda está por aí? Posso te ajudar com algo mais? 😊",
   "Ei, vi que você ainda não respondeu. Se tiver alguma dúvida, é só me chamar! 💬",
   "Olá! Só passando para ver se está tudo bem. Posso te ajudar em algo? 🙋‍♀️",
 ];
-
-// Intervalo entre follow-ups (em minutos)
-const FOLLOWUP_INTERVAL_MINUTES = 10;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -38,21 +35,51 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Calcular threshold (10 minutos atrás)
-    const thresholdTime = new Date(Date.now() - FOLLOWUP_INTERVAL_MINUTES * 60 * 1000).toISOString();
+    // Buscar configurações de follow-up do banco
+    const { data: aiConfig, error: configError } = await supabase
+      .from('ai_agent_config')
+      .select('followup_enabled, followup_interval_minutes, followup_max_attempts, followup_messages')
+      .limit(1)
+      .maybeSingle();
+
+    if (configError) {
+      console.error('[ALINE-FOLLOWUP] Erro ao buscar config:', configError);
+    }
+
+    // Usar configurações do banco ou valores padrão
+    const followupEnabled = aiConfig?.followup_enabled ?? true;
+    const followupIntervalMinutes = aiConfig?.followup_interval_minutes ?? 10;
+    const followupMaxAttempts = aiConfig?.followup_max_attempts ?? 3;
+    const followupMessages = aiConfig?.followup_messages || DEFAULT_FOLLOWUP_MESSAGES;
+
+    console.log(`[ALINE-FOLLOWUP] Config: enabled=${followupEnabled}, interval=${followupIntervalMinutes}min, max=${followupMaxAttempts}`);
+
+    // Se follow-up desativado, retornar
+    if (!followupEnabled) {
+      return new Response(JSON.stringify({
+        success: true,
+        message: 'Follow-up desativado nas configurações',
+        processed: 0,
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Calcular threshold baseado na configuração
+    const thresholdTime = new Date(Date.now() - followupIntervalMinutes * 60 * 1000).toISOString();
     
     console.log(`[ALINE-FOLLOWUP] Buscando conversas inativas antes de ${thresholdTime}`);
 
     // Buscar conversas ativas onde:
     // - status é 'active'
     // - last_message_at é anterior ao threshold
-    // - followup_count < 3 (máximo de 3 tentativas)
+    // - followup_count < max configurado
     const { data: inactiveConversations, error: fetchError } = await supabase
       .from('aline_conversations')
       .select('*')
       .eq('status', 'active')
       .lt('last_message_at', thresholdTime)
-      .lt('followup_count', 3);
+      .lt('followup_count', followupMaxAttempts);
 
     if (fetchError) {
       console.error('[ALINE-FOLLOWUP] Erro ao buscar conversas:', fetchError);
@@ -95,18 +122,18 @@ serve(async (req) => {
           continue;
         }
 
-        // Verificar se a última mensagem é mais recente que 10 min
+        // Verificar se a última mensagem é mais recente que o intervalo configurado
         const lastMsgTime = new Date(lastMessage?.created_at || conversation.last_message_at).getTime();
-        const tenMinutesAgo = Date.now() - FOLLOWUP_INTERVAL_MINUTES * 60 * 1000;
+        const thresholdMs = Date.now() - followupIntervalMinutes * 60 * 1000;
         
-        if (lastMsgTime > tenMinutesAgo) {
+        if (lastMsgTime > thresholdMs) {
           console.log(`[ALINE-FOLLOWUP] Mensagem recente para ${conversation.phone}, pulando`);
           continue;
         }
 
         // Determinar qual mensagem de follow-up enviar
         const followupCount = conversation.followup_count || 0;
-        const followupMessage = FOLLOWUP_MESSAGES[followupCount] || FOLLOWUP_MESSAGES[0];
+        const followupMessage = followupMessages[followupCount] || followupMessages[0];
 
         console.log(`[ALINE-FOLLOWUP] Enviando follow-up #${followupCount + 1} para ${conversation.phone}`);
 
