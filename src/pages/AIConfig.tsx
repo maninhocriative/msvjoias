@@ -587,31 +587,83 @@ const AIConfig = () => {
                 <Separator />
 
                 {/* Configurações de tempo */}
-                <div className="grid sm:grid-cols-2 gap-6">
-                  <div className="space-y-2">
+                <div className="space-y-6">
+                  <div className="space-y-3">
                     <Label className="flex items-center gap-2">
                       <Clock className="w-4 h-4" />
                       Intervalo de Inatividade
                     </Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="number"
-                        value={config.followup_interval_minutes ?? 10}
-                        onChange={(e) => setConfig({ ...config, followup_interval_minutes: parseInt(e.target.value) || 10 })}
-                        min={5}
-                        max={1440}
-                        disabled={!config.followup_enabled}
-                        className="w-24"
-                      />
-                      <span className="text-sm text-muted-foreground">minutos</span>
-                      {(config.followup_interval_minutes ?? 10) >= 60 && (
-                        <span className="text-xs text-muted-foreground">
-                          ({Math.floor((config.followup_interval_minutes ?? 10) / 60)}h{(config.followup_interval_minutes ?? 10) % 60 > 0 ? ` ${(config.followup_interval_minutes ?? 10) % 60}min` : ''})
-                        </span>
-                      )}
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          value={Math.floor((config.followup_interval_minutes ?? 10) / 1440)}
+                          onChange={(e) => {
+                            const days = parseInt(e.target.value) || 0;
+                            const currentTotal = config.followup_interval_minutes ?? 10;
+                            const hours = Math.floor((currentTotal % 1440) / 60);
+                            const minutes = currentTotal % 60;
+                            const newTotal = Math.max(5, (days * 1440) + (hours * 60) + minutes);
+                            setConfig({ ...config, followup_interval_minutes: newTotal });
+                          }}
+                          min={0}
+                          max={7}
+                          disabled={!config.followup_enabled}
+                          className="w-20"
+                        />
+                        <span className="text-sm text-muted-foreground">dias</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          value={Math.floor(((config.followup_interval_minutes ?? 10) % 1440) / 60)}
+                          onChange={(e) => {
+                            const hours = parseInt(e.target.value) || 0;
+                            const currentTotal = config.followup_interval_minutes ?? 10;
+                            const days = Math.floor(currentTotal / 1440);
+                            const minutes = currentTotal % 60;
+                            const newTotal = Math.max(5, (days * 1440) + (hours * 60) + minutes);
+                            setConfig({ ...config, followup_interval_minutes: newTotal });
+                          }}
+                          min={0}
+                          max={23}
+                          disabled={!config.followup_enabled}
+                          className="w-20"
+                        />
+                        <span className="text-sm text-muted-foreground">horas</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          value={(config.followup_interval_minutes ?? 10) % 60}
+                          onChange={(e) => {
+                            const minutes = parseInt(e.target.value) || 0;
+                            const currentTotal = config.followup_interval_minutes ?? 10;
+                            const days = Math.floor(currentTotal / 1440);
+                            const hours = Math.floor((currentTotal % 1440) / 60);
+                            const newTotal = Math.max(5, (days * 1440) + (hours * 60) + minutes);
+                            setConfig({ ...config, followup_interval_minutes: newTotal });
+                          }}
+                          min={0}
+                          max={59}
+                          disabled={!config.followup_enabled}
+                          className="w-20"
+                        />
+                        <span className="text-sm text-muted-foreground">minutos</span>
+                      </div>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Tempo sem resposta antes de enviar follow-up (mín: 5 min, máx: 24 horas)
+                      Tempo sem resposta antes de enviar follow-up (total: {(() => {
+                        const total = config.followup_interval_minutes ?? 10;
+                        const days = Math.floor(total / 1440);
+                        const hours = Math.floor((total % 1440) / 60);
+                        const mins = total % 60;
+                        const parts = [];
+                        if (days > 0) parts.push(`${days}d`);
+                        if (hours > 0) parts.push(`${hours}h`);
+                        if (mins > 0 || parts.length === 0) parts.push(`${mins}min`);
+                        return parts.join(' ');
+                      })()})
                     </p>
                   </div>
 
@@ -644,8 +696,17 @@ const AIConfig = () => {
                 <div className="space-y-4">
                   <Label className="text-base">Mensagens de Follow-up</Label>
                   <p className="text-sm text-muted-foreground">
-                    Cada mensagem será enviada em sequência. A primeira após {config.followup_interval_minutes ?? 10} minutos, 
-                    a segunda após mais {config.followup_interval_minutes ?? 10} minutos, e assim por diante.
+                    Cada mensagem será enviada em sequência. A primeira após {(() => {
+                      const total = config.followup_interval_minutes ?? 10;
+                      const days = Math.floor(total / 1440);
+                      const hours = Math.floor((total % 1440) / 60);
+                      const mins = total % 60;
+                      const parts = [];
+                      if (days > 0) parts.push(`${days} dia${days > 1 ? 's' : ''}`);
+                      if (hours > 0) parts.push(`${hours} hora${hours > 1 ? 's' : ''}`);
+                      if (mins > 0 || parts.length === 0) parts.push(`${mins} minuto${mins !== 1 ? 's' : ''}`);
+                      return parts.join(' e ');
+                    })()}, a segunda após o mesmo intervalo, e assim por diante.
                   </p>
                   
                   <div className="space-y-3">
