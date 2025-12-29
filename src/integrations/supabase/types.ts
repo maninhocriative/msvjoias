@@ -124,6 +124,7 @@ export type Database = {
           collected_data: Json | null
           created_at: string | null
           current_node: string
+          followup_count: number | null
           id: string
           last_message_at: string | null
           last_node: string | null
@@ -135,6 +136,7 @@ export type Database = {
           collected_data?: Json | null
           created_at?: string | null
           current_node?: string
+          followup_count?: number | null
           id?: string
           last_message_at?: string | null
           last_node?: string | null
@@ -146,6 +148,7 @@ export type Database = {
           collected_data?: Json | null
           created_at?: string | null
           current_node?: string
+          followup_count?: number | null
           id?: string
           last_message_at?: string | null
           last_node?: string | null

@@ -74,3 +74,6 @@ verify_jwt = true
 
 [functions.aline-takeover]
 verify_jwt = true
+
+[functions.aline-followup]
+verify_jwt = false
