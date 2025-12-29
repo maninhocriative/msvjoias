@@ -108,6 +108,7 @@ serve(async (req) => {
             last_node: null,
             collected_data: { contact_name: contact_name || existingConv.collected_data?.contact_name || 'Cliente' },
             last_message_at: new Date().toISOString(),
+            followup_count: 0, // Resetar contador de follow-ups
           })
           .eq('id', existingConv.id)
           .select()
@@ -117,9 +118,24 @@ serve(async (req) => {
         conversation = reactivatedConv as AlineConversation;
         console.log(`[ALINE-REPLY] Conversa reativada: id=${conversation.id}`);
       } else {
-        // Conversa ativa existente
-        conversation = existingConv as AlineConversation;
-        console.log(`[ALINE-REPLY] Conversa existente: node=${conversation.current_node}`);
+        // Conversa ativa existente - resetar followup_count quando cliente responde
+        const { data: updatedConv, error: updateError } = await supabase
+          .from('aline_conversations')
+          .update({
+            last_message_at: new Date().toISOString(),
+            followup_count: 0, // Cliente respondeu, resetar contador
+          })
+          .eq('id', existingConv.id)
+          .select()
+          .single();
+        
+        if (updateError) {
+          console.error('[ALINE-REPLY] Erro ao resetar followup_count:', updateError);
+          conversation = existingConv as AlineConversation;
+        } else {
+          conversation = updatedConv as AlineConversation;
+        }
+        console.log(`[ALINE-REPLY] Conversa existente: node=${conversation.current_node}, followup_count resetado`);
       }
     } else {
       // Nenhuma conversa existente, criar nova
