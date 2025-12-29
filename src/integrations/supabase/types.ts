@@ -21,6 +21,10 @@ export type Database = {
           available_functions: string[] | null
           closing_phrases: string[] | null
           created_at: string
+          followup_enabled: boolean | null
+          followup_interval_minutes: number | null
+          followup_max_attempts: number | null
+          followup_messages: string[] | null
           greeting: string | null
           id: string
           include_price: boolean | null
@@ -43,6 +47,10 @@ export type Database = {
           available_functions?: string[] | null
           closing_phrases?: string[] | null
           created_at?: string
+          followup_enabled?: boolean | null
+          followup_interval_minutes?: number | null
+          followup_max_attempts?: number | null
+          followup_messages?: string[] | null
           greeting?: string | null
           id?: string
           include_price?: boolean | null
@@ -65,6 +73,10 @@ export type Database = {
           available_functions?: string[] | null
           closing_phrases?: string[] | null
           created_at?: string
+          followup_enabled?: boolean | null
+          followup_interval_minutes?: number | null
+          followup_max_attempts?: number | null
+          followup_messages?: string[] | null
           greeting?: string | null
           id?: string
           include_price?: boolean | null

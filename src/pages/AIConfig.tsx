@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Bot, Sparkles, Save, Copy, RefreshCw, FileText, Wand2, Check, X, Plus, Trash2, ExternalLink } from 'lucide-react';
+import { Bot, Sparkles, Save, Copy, RefreshCw, FileText, Wand2, Check, X, Plus, Trash2, ExternalLink, MessageCircle, Clock, Timer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
@@ -33,6 +33,11 @@ interface AIAgentConfig {
   include_stock: boolean;
   include_price: boolean;
   is_active: boolean;
+  // Follow-up settings
+  followup_enabled: boolean;
+  followup_interval_minutes: number;
+  followup_max_attempts: number;
+  followup_messages: string[] | null;
 }
 
 interface PromptTemplate {
@@ -55,6 +60,7 @@ const AIConfig = () => {
   const [activeTab, setActiveTab] = useState('prompt');
   const [newRule, setNewRule] = useState('');
   const [newPhrase, setNewPhrase] = useState('');
+  const [newFollowupMessage, setNewFollowupMessage] = useState('');
   const [playgroundInfo, setPlaygroundInfo] = useState<{
     name: string;
     model: string;
@@ -334,9 +340,10 @@ const AIConfig = () => {
 
         {/* Main Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full max-w-xl grid-cols-4">
+          <TabsList className="grid w-full max-w-2xl grid-cols-5">
             <TabsTrigger value="prompt">Prompt</TabsTrigger>
             <TabsTrigger value="sections">Seções</TabsTrigger>
+            <TabsTrigger value="followup">Follow-up</TabsTrigger>
             <TabsTrigger value="templates">Templates</TabsTrigger>
             <TabsTrigger value="playground">Playground</TabsTrigger>
           </TabsList>
@@ -545,6 +552,173 @@ const AIConfig = () => {
                       onCheckedChange={(checked) => setConfig({ ...config, include_price: checked })}
                     />
                   </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Follow-up Tab */}
+          <TabsContent value="followup" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MessageCircle className="w-5 h-5" />
+                  Recuperação de Conversas
+                </CardTitle>
+                <CardDescription>
+                  Configure mensagens automáticas para recuperar clientes que pararam de responder.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Toggle principal */}
+                <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
+                  <div>
+                    <Label className="text-base">Ativar Follow-up Automático</Label>
+                    <p className="text-sm text-muted-foreground">
+                      A {config.name} enviará mensagens para recuperar conversas inativas
+                    </p>
+                  </div>
+                  <Switch
+                    checked={config.followup_enabled ?? true}
+                    onCheckedChange={(checked) => setConfig({ ...config, followup_enabled: checked })}
+                  />
+                </div>
+
+                <Separator />
+
+                {/* Configurações de tempo */}
+                <div className="grid sm:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      <Clock className="w-4 h-4" />
+                      Intervalo de Inatividade
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        value={config.followup_interval_minutes ?? 10}
+                        onChange={(e) => setConfig({ ...config, followup_interval_minutes: parseInt(e.target.value) || 10 })}
+                        min={5}
+                        max={60}
+                        disabled={!config.followup_enabled}
+                        className="w-24"
+                      />
+                      <span className="text-sm text-muted-foreground">minutos</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Tempo sem resposta antes de enviar follow-up (mín: 5, máx: 60)
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      <Timer className="w-4 h-4" />
+                      Máximo de Tentativas
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        value={config.followup_max_attempts ?? 3}
+                        onChange={(e) => setConfig({ ...config, followup_max_attempts: parseInt(e.target.value) || 3 })}
+                        min={1}
+                        max={5}
+                        disabled={!config.followup_enabled}
+                        className="w-24"
+                      />
+                      <span className="text-sm text-muted-foreground">mensagens</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Quantas mensagens de follow-up enviar por conversa (máx: 5)
+                    </p>
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Mensagens de follow-up */}
+                <div className="space-y-4">
+                  <Label className="text-base">Mensagens de Follow-up</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Cada mensagem será enviada em sequência. A primeira após {config.followup_interval_minutes ?? 10} minutos, 
+                    a segunda após mais {config.followup_interval_minutes ?? 10} minutos, e assim por diante.
+                  </p>
+                  
+                  <div className="space-y-3">
+                    {(config.followup_messages || []).map((message, index) => (
+                      <div key={index} className="flex items-start gap-3 p-3 bg-muted rounded-lg">
+                        <Badge variant="outline" className="shrink-0 mt-0.5">
+                          #{index + 1}
+                        </Badge>
+                        <span className="flex-1 text-sm">{message}</span>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-6 w-6 shrink-0" 
+                          onClick={() => setConfig({
+                            ...config,
+                            followup_messages: (config.followup_messages || []).filter((_, i) => i !== index),
+                          })}
+                          disabled={!config.followup_enabled}
+                        >
+                          <Trash2 className="w-3 h-3 text-destructive" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {(config.followup_messages || []).length < (config.followup_max_attempts ?? 3) && (
+                    <div className="flex gap-2">
+                      <Input
+                        value={newFollowupMessage}
+                        onChange={(e) => setNewFollowupMessage(e.target.value)}
+                        placeholder="Nova mensagem de follow-up..."
+                        disabled={!config.followup_enabled}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && newFollowupMessage.trim()) {
+                            setConfig({
+                              ...config,
+                              followup_messages: [...(config.followup_messages || []), newFollowupMessage.trim()],
+                            });
+                            setNewFollowupMessage('');
+                          }
+                        }}
+                      />
+                      <Button 
+                        variant="outline" 
+                        size="icon" 
+                        disabled={!config.followup_enabled || !newFollowupMessage.trim()}
+                        onClick={() => {
+                          if (newFollowupMessage.trim()) {
+                            setConfig({
+                              ...config,
+                              followup_messages: [...(config.followup_messages || []), newFollowupMessage.trim()],
+                            });
+                            setNewFollowupMessage('');
+                          }
+                        }}
+                      >
+                        <Plus className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  )}
+
+                  {(config.followup_messages || []).length >= (config.followup_max_attempts ?? 3) && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                      Você atingiu o máximo de {config.followup_max_attempts ?? 3} mensagens configuradas.
+                    </p>
+                  )}
+                </div>
+
+                {/* Info box */}
+                <div className="p-4 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-2">Como funciona:</h4>
+                  <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
+                    <li>• A cada 5 minutos, o sistema verifica conversas inativas</li>
+                    <li>• Se o cliente não responder por {config.followup_interval_minutes ?? 10} minutos, envia a 1ª mensagem</li>
+                    <li>• Após mais {config.followup_interval_minutes ?? 10} minutos sem resposta, envia a 2ª mensagem</li>
+                    <li>• O contador reseta quando o cliente responde</li>
+                    <li>• Não envia follow-up quando atendimento humano está ativo</li>
+                  </ul>
                 </div>
               </CardContent>
             </Card>
