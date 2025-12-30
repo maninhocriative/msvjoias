@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase, Conversation, Message, LeadStatus } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { LeadStatusSelect, LeadStatusBadge } from '@/components/chat/LeadStatusSelect';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import TypingIndicator from '@/components/chat/TypingIndicator';
 
 const Chat = () => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -21,6 +22,8 @@ const Chat = () => {
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [updatingLeadStatus, setUpdatingLeadStatus] = useState(false);
   const [takingOver, setTakingOver] = useState(false);
+  const [isContactTyping, setIsContactTyping] = useState(false);
+  const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -113,6 +116,7 @@ const Chat = () => {
     if (selectedConversation) {
       fetchMessages(selectedConversation.id);
       markAsRead(selectedConversation.id);
+      setIsContactTyping(false);
       
       const channelName = `messages-${selectedConversation.id}`;
       
@@ -127,6 +131,10 @@ const Chat = () => {
             filter: `conversation_id=eq.${selectedConversation.id}`,
           },
           (payload) => {
+            // When a new message arrives from contact, they stopped typing
+            if (!(payload.new as Message).is_from_me) {
+              setIsContactTyping(false);
+            }
             setMessages((prev) => {
               if (prev.some(m => m.id === payload.new.id)) {
                 return prev;
@@ -153,8 +161,22 @@ const Chat = () => {
         )
         .subscribe();
 
+      // Typing presence channel
+      const typingChannel = supabase
+        .channel(`typing-${selectedConversation.contact_number}`)
+        .on('presence', { event: 'sync' }, () => {
+          const state = typingChannel.presenceState();
+          const typingUsers = Object.values(state).flat();
+          const contactIsTyping = typingUsers.some(
+            (user: any) => user.phone === selectedConversation.contact_number && user.isTyping
+          );
+          setIsContactTyping(contactIsTyping);
+        })
+        .subscribe();
+
       return () => {
         supabase.removeChannel(channel);
+        supabase.removeChannel(typingChannel);
       };
     }
   }, [selectedConversation?.id]);
@@ -690,13 +712,19 @@ const Chat = () => {
                             </div>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  ))}
-                  <div ref={messagesEndRef} />
-                </div>
-              </ScrollArea>
-            </div>
+                    ))}
+                  </div>
+                ))}
+                
+                {/* Typing Indicator */}
+                {isContactTyping && selectedConversation && (
+                  <TypingIndicator contactName={selectedConversation.contact_name} />
+                )}
+                
+                <div ref={messagesEndRef} />
+              </div>
+            </ScrollArea>
+          </div>
 
             {/* Input Area */}
             <div className="p-3 bg-card border-t border-border shrink-0">
