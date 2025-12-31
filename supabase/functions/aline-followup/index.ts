@@ -6,15 +6,94 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Tipos de follow-up: 'text' ou 'button'
+interface FollowupConfig {
+  intervalMinutes: number;
+  message: string;
+  type: 'text' | 'button';
+  buttonText?: string;
+}
+
 // Configuração de follow-ups com intervalos diferentes
-// Cada follow-up tem seu próprio intervalo em minutos
-const DEFAULT_FOLLOWUP_CONFIG = [
-  { intervalMinutes: 5, message: "Oi! Ainda está por aí? Posso te ajudar com algo mais? 😊" },
-  { intervalMinutes: 15, message: "Ei, vi que você ainda não respondeu. Se tiver alguma dúvida, é só me chamar! 💬" },
-  { intervalMinutes: 360, message: "Olá! Só passando para ver se está tudo bem. Posso te ajudar em algo? 🙋‍♀️" }, // 6 horas
-  { intervalMinutes: 1440, message: "🎁 OFERTA ESPECIAL! Comprando o par de alianças, você GANHA um pingente fotogravado personalizado! Essa promoção é por tempo limitado. Quer aproveitar? 💍✨" }, // 24 horas
-  { intervalMinutes: 2880, message: "Oi! Passando aqui pela última vez. Se precisar de ajuda para escolher suas alianças ou pingentes, estou à disposição! 💎" }, // 48 horas
+const DEFAULT_FOLLOWUP_CONFIG: FollowupConfig[] = [
+  { 
+    intervalMinutes: 5, 
+    message: "Oi! Ainda está por aí? Posso te ajudar com algo mais? 😊",
+    type: 'text'
+  },
+  { 
+    intervalMinutes: 15, 
+    message: "Ei, vi que você ainda não respondeu. Se tiver alguma dúvida, é só me chamar! 💬",
+    type: 'text'
+  },
+  { 
+    intervalMinutes: 360, // 6 horas
+    message: "Olá! Só passando para ver se está tudo bem. Posso te ajudar em algo? 🙋‍♀️",
+    type: 'text'
+  },
+  { 
+    intervalMinutes: 1440, // 24 horas
+    message: "🎁 *OFERTA ESPECIAL!*\n\nComprando o par de alianças, você *GANHA um pingente fotogravado* personalizado!\n\n⏰ Essa promoção é por tempo limitado.\n\nQuer aproveitar?",
+    type: 'button',
+    buttonText: "✅ Quero aproveitar!"
+  },
+  { 
+    intervalMinutes: 2880, // 48 horas
+    message: "Oi! 👋\n\nVi que você ainda não finalizou sua compra.\n\nPosso te ajudar a escolher o modelo perfeito de alianças ou pingentes?\n\n💍 Estou aqui para te atender!",
+    type: 'button',
+    buttonText: "💬 Retomar atendimento"
+  },
 ];
+
+// Função para enviar mensagem de texto simples
+async function sendTextMessage(
+  zapiInstanceId: string,
+  zapiToken: string,
+  zapiClientToken: string,
+  phone: string,
+  message: string
+): Promise<Response> {
+  const zapiUrl = `https://api.z-api.io/instances/${zapiInstanceId}/token/${zapiToken}/send-text`;
+  return fetch(zapiUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Client-Token': zapiClientToken,
+    },
+    body: JSON.stringify({ phone, message }),
+  });
+}
+
+// Função para enviar mensagem com botão interativo
+async function sendButtonMessage(
+  zapiInstanceId: string,
+  zapiToken: string,
+  zapiClientToken: string,
+  phone: string,
+  message: string,
+  buttonText: string
+): Promise<Response> {
+  const zapiUrl = `https://api.z-api.io/instances/${zapiInstanceId}/token/${zapiToken}/send-button-list`;
+  return fetch(zapiUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Client-Token': zapiClientToken,
+    },
+    body: JSON.stringify({
+      phone,
+      message,
+      buttonList: {
+        buttons: [
+          {
+            id: "retomar_atendimento",
+            label: buttonText
+          }
+        ]
+      }
+    }),
+  });
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -97,7 +176,7 @@ serve(async (req) => {
       });
     }
 
-    const results: { phone: string; success: boolean; followupNumber?: number; error?: string }[] = [];
+    const results: { phone: string; success: boolean; followupNumber?: number; type?: string; error?: string }[] = [];
     const now = Date.now();
 
     for (const conversation of activeConversations) {
@@ -144,22 +223,31 @@ serve(async (req) => {
         }
 
         const followupMessage = nextFollowupConfig.message;
+        const messageType = nextFollowupConfig.type;
 
-        console.log(`[ALINE-FOLLOWUP] Enviando follow-up #${followupCount + 1} para ${conversation.phone} (intervalo: ${nextFollowupConfig.intervalMinutes}min)`);
+        console.log(`[ALINE-FOLLOWUP] Enviando follow-up #${followupCount + 1} (${messageType}) para ${conversation.phone} (intervalo: ${nextFollowupConfig.intervalMinutes}min)`);
 
-        // Enviar mensagem via Z-API
-        const zapiUrl = `https://api.z-api.io/instances/${zapiInstanceId}/token/${zapiToken}/send-text`;
-        const zapiResponse = await fetch(zapiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Client-Token': zapiClientToken,
-          },
-          body: JSON.stringify({
-            phone: conversation.phone,
-            message: followupMessage,
-          }),
-        });
+        // Enviar mensagem via Z-API (texto simples ou com botão)
+        let zapiResponse: Response;
+        
+        if (messageType === 'button' && nextFollowupConfig.buttonText) {
+          zapiResponse = await sendButtonMessage(
+            zapiInstanceId,
+            zapiToken,
+            zapiClientToken,
+            conversation.phone,
+            followupMessage,
+            nextFollowupConfig.buttonText
+          );
+        } else {
+          zapiResponse = await sendTextMessage(
+            zapiInstanceId,
+            zapiToken,
+            zapiClientToken,
+            conversation.phone,
+            followupMessage
+          );
+        }
 
         const zapiResult = await zapiResponse.json();
         console.log(`[ALINE-FOLLOWUP] Z-API response para ${conversation.phone}:`, zapiResult);
@@ -182,14 +270,23 @@ serve(async (req) => {
         }
 
         // Salvar mensagem de follow-up no histórico
+        const savedMessage = messageType === 'button' 
+          ? `${followupMessage}\n\n[Botão: ${nextFollowupConfig.buttonText}]`
+          : followupMessage;
+          
         await supabase.from('aline_messages').insert({
           conversation_id: conversation.id,
           role: 'assistant',
-          message: followupMessage,
+          message: savedMessage,
           node: conversation.current_node,
         });
 
-        results.push({ phone: conversation.phone, success: true, followupNumber: followupCount + 1 });
+        results.push({ 
+          phone: conversation.phone, 
+          success: true, 
+          followupNumber: followupCount + 1,
+          type: messageType
+        });
 
       } catch (error) {
         console.error(`[ALINE-FOLLOWUP] Erro ao processar ${conversation.phone}:`, error);
