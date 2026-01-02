@@ -3,12 +3,13 @@ import { supabase, Conversation, Message, LeadStatus } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, Paperclip, Search, MessageSquare, FileText, Mic, Check, CheckCheck, Instagram, Bot, User, Square, Phone, ArrowLeft, MoreVertical, Smile, UserCheck, BotOff } from 'lucide-react';
+import { Send, Paperclip, Search, MessageSquare, FileText, Mic, Check, CheckCheck, Instagram, Bot, User, Square, Phone, ArrowLeft, MoreVertical, Smile, UserCheck, BotOff, RefreshCw, Clock, MessageCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { LeadStatusSelect, LeadStatusBadge } from '@/components/chat/LeadStatusSelect';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import TypingIndicator from '@/components/chat/TypingIndicator';
+import { Badge } from '@/components/ui/badge';
 
 const Chat = () => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -24,6 +25,7 @@ const Chat = () => {
   const [takingOver, setTakingOver] = useState(false);
   const [isContactTyping, setIsContactTyping] = useState(false);
   const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [filterStatus, setFilterStatus] = useState<string>('all');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -131,7 +133,6 @@ const Chat = () => {
             filter: `conversation_id=eq.${selectedConversation.id}`,
           },
           (payload) => {
-            // When a new message arrives from contact, they stopped typing
             if (!(payload.new as Message).is_from_me) {
               setIsContactTyping(false);
             }
@@ -161,7 +162,6 @@ const Chat = () => {
         )
         .subscribe();
 
-      // Typing presence channel
       const typingChannel = supabase
         .channel(`typing-${selectedConversation.contact_number}`)
         .on('presence', { event: 'sync' }, () => {
@@ -382,10 +382,12 @@ const Chat = () => {
     }
   };
 
-  const filteredConversations = conversations.filter((conv) =>
-    conv.contact_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    conv.contact_number.includes(searchTerm)
-  );
+  const filteredConversations = conversations.filter((conv) => {
+    const matchesSearch = conv.contact_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      conv.contact_number.includes(searchTerm);
+    const matchesStatus = filterStatus === 'all' || conv.lead_status === filterStatus;
+    return matchesSearch && matchesStatus;
+  });
 
   const handleSelectConversation = (conv: Conversation) => {
     setSelectedConversation(conv);
@@ -393,21 +395,21 @@ const Chat = () => {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'sent': return <Check className="w-3.5 h-3.5" />;
-      case 'delivered': return <CheckCheck className="w-3.5 h-3.5" />;
-      case 'read': return <CheckCheck className="w-3.5 h-3.5 text-blue-400" />;
-      default: return null;
+      case 'sent': return <Check className="w-3 h-3" />;
+      case 'delivered': return <CheckCheck className="w-3 h-3" />;
+      case 'read': return <CheckCheck className="w-3 h-3 text-sky-400" />;
+      default: return <Clock className="w-3 h-3 opacity-50" />;
     }
   };
 
   const getPlatformColor = (platform: string) => {
     return platform === 'instagram' 
-      ? 'from-purple-500 via-pink-500 to-orange-400' 
-      : 'from-green-500 to-green-600';
+      ? 'from-fuchsia-500 via-pink-500 to-orange-400' 
+      : 'from-emerald-400 to-teal-500';
   };
 
   const getPlatformIcon = (platform: string) => {
-    return platform === 'instagram' ? Instagram : MessageSquare;
+    return platform === 'instagram' ? Instagram : MessageCircle;
   };
 
   const formatTime = (date: string) => {
@@ -425,7 +427,20 @@ const Chat = () => {
     return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
   };
 
-  // Group messages by date
+  const formatLastSeen = (date: string) => {
+    const d = new Date(date);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 1) return 'agora';
+    if (diffMins < 60) return `${diffMins}min`;
+    if (diffHours < 24) return `${diffHours}h`;
+    return `${diffDays}d`;
+  };
+
   const groupedMessages = messages.reduce((groups, message) => {
     const date = new Date(message.created_at || '').toDateString();
     if (!groups[date]) groups[date] = [];
@@ -433,97 +448,181 @@ const Chat = () => {
     return groups;
   }, {} as Record<string, Message[]>);
 
+  const unreadTotal = conversations.reduce((sum, c) => sum + (c.unread_count || 0), 0);
+
+  const statusCounts = {
+    all: conversations.length,
+    novo: conversations.filter(c => c.lead_status === 'novo').length,
+    frio: conversations.filter(c => c.lead_status === 'frio').length,
+    quente: conversations.filter(c => c.lead_status === 'quente').length,
+    comprador: conversations.filter(c => c.lead_status === 'comprador').length,
+    sem_interesse: conversations.filter(c => c.lead_status === 'sem_interesse').length,
+  };
+
   return (
-    <div className="h-screen flex bg-muted/30">
+    <div className="h-screen flex bg-background overflow-hidden">
       {/* Conversations Sidebar */}
       <div className={cn(
-        'w-full md:w-[380px] lg:w-[420px] bg-card border-r border-border flex flex-col shrink-0',
+        'w-full md:w-[360px] lg:w-[400px] bg-card border-r border-border flex flex-col shrink-0',
         selectedConversation && 'hidden md:flex'
       )}>
         {/* Header */}
-        <div className="h-16 px-4 flex items-center justify-between border-b border-border bg-card">
-          <h1 className="text-xl font-bold text-foreground">Conversas</h1>
-          <div className="flex items-center gap-1">
-            <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
-              {conversations.length} contatos
-            </span>
+        <div className="h-16 px-4 flex items-center justify-between border-b border-border bg-gradient-to-r from-card to-muted/30">
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center">
+                <MessageCircle className="w-5 h-5 text-white" />
+              </div>
+              {unreadTotal > 0 && (
+                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center border-2 border-card">
+                  {unreadTotal > 99 ? '99+' : unreadTotal}
+                </span>
+              )}
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-foreground">Chat CRM</h1>
+              <p className="text-xs text-muted-foreground">{conversations.length} conversas</p>
+            </div>
           </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={fetchConversations}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </Button>
         </div>
 
-        {/* Search */}
-        <div className="p-3 border-b border-border/50">
+        {/* Search & Filters */}
+        <div className="p-3 space-y-3 border-b border-border/50 bg-muted/20">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
-              placeholder="Buscar ou começar nova conversa"
+              placeholder="Buscar conversa..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 bg-muted/50 border-0 focus-visible:ring-1 h-10 text-sm"
+              className="pl-10 bg-background border-border/50 focus-visible:ring-emerald-500/30 h-10"
             />
+          </div>
+          
+          {/* Status Filter Pills */}
+          <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+            {[
+              { key: 'all', label: 'Todos', color: 'bg-muted' },
+              { key: 'novo', label: 'Novos', color: 'bg-blue-500/10 text-blue-600' },
+              { key: 'frio', label: 'Frios', color: 'bg-slate-500/10 text-slate-600' },
+              { key: 'quente', label: 'Quentes', color: 'bg-amber-500/10 text-amber-600' },
+              { key: 'comprador', label: 'Compradores', color: 'bg-emerald-500/10 text-emerald-600' },
+            ].map(({ key, label, color }) => (
+              <button
+                key={key}
+                onClick={() => setFilterStatus(key)}
+                className={cn(
+                  'px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all',
+                  filterStatus === key 
+                    ? 'bg-foreground text-background shadow-sm' 
+                    : `${color} hover:opacity-80`
+                )}
+              >
+                {label}
+                {statusCounts[key as keyof typeof statusCounts] > 0 && (
+                  <span className="ml-1.5 opacity-70">
+                    {statusCounts[key as keyof typeof statusCounts]}
+                  </span>
+                )}
+              </button>
+            ))}
           </div>
         </div>
 
         {/* Conversations List */}
         <ScrollArea className="flex-1">
           {loading ? (
-            <div className="p-8 text-center">
-              <div className="w-8 h-8 border-2 border-muted-foreground/20 border-t-muted-foreground rounded-full animate-spin mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">Carregando...</p>
+            <div className="p-8 flex flex-col items-center justify-center">
+              <div className="w-10 h-10 border-2 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin mb-4" />
+              <p className="text-sm text-muted-foreground">Carregando conversas...</p>
             </div>
           ) : filteredConversations.length === 0 ? (
-            <div className="p-8 text-center">
-              <div className="w-20 h-20 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-4">
-                <MessageSquare className="w-10 h-10 text-muted-foreground/50" />
+            <div className="p-8 flex flex-col items-center justify-center">
+              <div className="w-16 h-16 rounded-2xl bg-muted/50 flex items-center justify-center mb-4">
+                <MessageSquare className="w-8 h-8 text-muted-foreground/50" />
               </div>
               <p className="font-medium text-foreground">Nenhuma conversa</p>
-              <p className="text-sm text-muted-foreground mt-1">As mensagens aparecerão aqui</p>
+              <p className="text-sm text-muted-foreground text-center mt-1">
+                {searchTerm ? 'Tente outra busca' : 'As mensagens aparecerão aqui'}
+              </p>
             </div>
           ) : (
-            <div>
+            <div className="divide-y divide-border/30">
               {filteredConversations.map((conv) => {
                 const PlatformIcon = getPlatformIcon(conv.platform || 'whatsapp');
+                const hasUnread = (conv.unread_count ?? 0) > 0;
+                
                 return (
                   <button
                     key={conv.id}
                     onClick={() => handleSelectConversation(conv)}
                     className={cn(
-                      'w-full px-3 py-3 flex items-center gap-3 hover:bg-muted/50 transition-colors text-left border-b border-border/30',
-                      selectedConversation?.id === conv.id && 'bg-muted/70'
+                      'w-full px-4 py-3 flex items-start gap-3 hover:bg-muted/50 transition-all text-left relative group',
+                      selectedConversation?.id === conv.id && 'bg-muted/70',
+                      hasUnread && 'bg-emerald-500/5'
                     )}
                   >
+                    {/* Unread Indicator Bar */}
+                    {hasUnread && (
+                      <div className="absolute left-0 top-3 bottom-3 w-1 bg-emerald-500 rounded-r-full" />
+                    )}
+                    
                     {/* Avatar */}
                     <div className="relative shrink-0">
                       <div className={cn(
-                        'w-12 h-12 rounded-full flex items-center justify-center text-lg font-semibold text-white bg-gradient-to-br',
+                        'w-12 h-12 rounded-full flex items-center justify-center text-base font-semibold text-white bg-gradient-to-br shadow-sm',
                         getPlatformColor(conv.platform || 'whatsapp')
                       )}>
                         {conv.contact_name.charAt(0).toUpperCase()}
                       </div>
-                      <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-card flex items-center justify-center">
-                        <PlatformIcon className="w-2.5 h-2.5 text-muted-foreground" />
+                      <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-card flex items-center justify-center shadow-sm border border-border/50">
+                        <PlatformIcon className="w-3 h-3 text-muted-foreground" />
                       </div>
                     </div>
 
                     {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2 mb-0.5">
-                        <p className="font-medium text-foreground truncate">{conv.contact_name}</p>
-                        <span className="text-[10px] text-muted-foreground shrink-0">
-                          {formatDate(conv.created_at)}
+                    <div className="flex-1 min-w-0 py-0.5">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <p className={cn(
+                          'font-medium text-foreground truncate text-sm',
+                          hasUnread && 'font-semibold'
+                        )}>
+                          {conv.contact_name}
+                        </p>
+                        <span className={cn(
+                          'text-[11px] shrink-0',
+                          hasUnread ? 'text-emerald-600 font-medium' : 'text-muted-foreground'
+                        )}>
+                          {formatLastSeen(conv.created_at)}
                         </span>
                       </div>
-                      <div className="flex items-center gap-1.5 mb-1">
+                      
+                      <div className="flex items-center gap-2 mb-1.5">
                         <LeadStatusBadge status={(conv.lead_status as LeadStatus) || 'novo'} />
                       </div>
-                      <p className="text-xs text-muted-foreground truncate">{conv.last_message}</p>
+                      
+                      <div className="flex items-center justify-between gap-2">
+                        <p className={cn(
+                          'text-xs truncate flex-1',
+                          hasUnread ? 'text-foreground font-medium' : 'text-muted-foreground'
+                        )}>
+                          {conv.last_message || 'Sem mensagens'}
+                        </p>
+                        
+                        {hasUnread && (
+                          <span className="w-5 h-5 rounded-full bg-emerald-500 text-white text-[10px] flex items-center justify-center shrink-0 font-bold shadow-sm">
+                            {conv.unread_count}
+                          </span>
+                        )}
+                      </div>
                     </div>
-
-                    {/* Unread Badge */}
-                    {(conv.unread_count ?? 0) > 0 && (
-                      <span className="w-5 h-5 rounded-full bg-green-500 text-white text-[10px] flex items-center justify-center shrink-0 font-bold">
-                        {conv.unread_count}
-                      </span>
-                    )}
                   </button>
                 );
               })}
@@ -534,15 +633,14 @@ const Chat = () => {
 
       {/* Chat Area */}
       <div className={cn(
-        'flex-1 flex flex-col min-w-0',
+        'flex-1 flex flex-col min-w-0 bg-muted/20',
         !selectedConversation && 'hidden md:flex'
       )}>
         {selectedConversation ? (
           <>
             {/* Chat Header */}
-            <div className="h-16 px-4 border-b border-border flex items-center justify-between bg-card shrink-0">
+            <div className="h-16 px-4 border-b border-border flex items-center justify-between bg-card shrink-0 shadow-sm">
               <div className="flex items-center gap-3 min-w-0">
-                {/* Mobile Back Button */}
                 <Button
                   variant="ghost"
                   size="icon"
@@ -552,7 +650,6 @@ const Chat = () => {
                   <ArrowLeft className="w-5 h-5" />
                 </Button>
                 
-                {/* Avatar */}
                 <div className={cn(
                   'w-10 h-10 rounded-full flex items-center justify-center text-base font-semibold text-white bg-gradient-to-br shrink-0',
                   getPlatformColor(selectedConversation.platform || 'whatsapp')
@@ -562,11 +659,15 @@ const Chat = () => {
 
                 <div className="min-w-0">
                   <p className="font-semibold text-foreground truncate">{selectedConversation.contact_name}</p>
-                  <p className="text-xs text-muted-foreground">{selectedConversation.contact_number}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs text-muted-foreground">{selectedConversation.contact_number}</p>
+                    <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
+                    <LeadStatusBadge status={(selectedConversation.lead_status as LeadStatus) || 'novo'} />
+                  </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
                 <LeadStatusSelect
                   value={(selectedConversation.lead_status as LeadStatus) || 'novo'}
                   onChange={(status) => updateLeadStatus(selectedConversation.id, status)}
@@ -578,7 +679,7 @@ const Chat = () => {
                       <MoreVertical className="w-5 h-5" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
+                  <DropdownMenuContent align="end" className="w-48">
                     <DropdownMenuItem 
                       onClick={() => handleTakeover('takeover')}
                       disabled={takingOver}
@@ -593,138 +694,145 @@ const Chat = () => {
                       <Bot className="w-4 h-4 mr-2" />
                       Devolver para Aline
                     </DropdownMenuItem>
-                    <DropdownMenuItem>Ver perfil</DropdownMenuItem>
-                    <DropdownMenuItem>Silenciar</DropdownMenuItem>
-                    <DropdownMenuItem className="text-destructive">Arquivar</DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem>
+                      <Phone className="w-4 h-4 mr-2" />
+                      Ligar
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="text-destructive">
+                      Arquivar conversa
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
             </div>
 
-            {/* Messages Area - WhatsApp Style Background */}
+            {/* Messages Area */}
             <div 
               className="flex-1 overflow-hidden"
               style={{
-                background: 'linear-gradient(180deg, hsl(var(--muted)/0.3) 0%, hsl(var(--muted)/0.5) 100%)',
-                backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='0.02'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+                background: 'linear-gradient(180deg, hsl(var(--muted) / 0.2) 0%, hsl(var(--muted) / 0.4) 100%)',
               }}
             >
               <ScrollArea className="h-full">
-                <div className="p-4 md:p-6 space-y-2 max-w-4xl mx-auto">
-                  {Object.entries(groupedMessages).map(([date, msgs]) => (
-                    <div key={date}>
-                      {/* Date Separator */}
-                      <div className="flex justify-center my-4">
-                        <span className="px-3 py-1 rounded-lg bg-card/80 backdrop-blur text-[11px] text-muted-foreground font-medium shadow-sm">
-                          {formatDate(msgs[0].created_at || '')}
-                        </span>
+                <div className="p-4 md:px-8 space-y-1 max-w-4xl mx-auto min-h-full">
+                  {messages.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-20">
+                      <div className="w-16 h-16 rounded-2xl bg-card flex items-center justify-center mb-4 shadow-sm">
+                        <MessageCircle className="w-8 h-8 text-muted-foreground/50" />
                       </div>
+                      <p className="text-muted-foreground text-center">
+                        Nenhuma mensagem ainda
+                      </p>
+                    </div>
+                  ) : (
+                    Object.entries(groupedMessages).map(([date, msgs]) => (
+                      <div key={date}>
+                        {/* Date Separator */}
+                        <div className="flex justify-center my-4">
+                          <span className="px-3 py-1 rounded-lg bg-card/90 backdrop-blur text-[11px] text-muted-foreground font-medium shadow-sm border border-border/30">
+                            {formatDate(msgs[0].created_at || '')}
+                          </span>
+                        </div>
 
-                      {/* Messages */}
-                      {msgs.map((message) => (
-                        <div
-                          key={message.id}
-                          className={cn(
-                            'flex mb-1',
-                            message.is_from_me ? 'justify-end' : 'justify-start'
-                          )}
-                        >
-                          <div
-                            className={cn(
-                              'relative max-w-[85%] md:max-w-[70%] rounded-lg px-3 py-2 shadow-sm',
-                              message.is_from_me
-                                ? 'bg-foreground text-background rounded-tr-none'
-                                : 'bg-card text-foreground rounded-tl-none'
-                            )}
-                          >
-                            {/* Message Tail */}
+                        {/* Messages */}
+                        {msgs.map((message, idx) => {
+                          const showTail = idx === 0 || msgs[idx - 1]?.is_from_me !== message.is_from_me;
+                          
+                          return (
                             <div
+                              key={message.id}
                               className={cn(
-                                'absolute top-0 w-3 h-3 overflow-hidden',
-                                message.is_from_me ? '-right-2' : '-left-2'
+                                'flex mb-0.5',
+                                message.is_from_me ? 'justify-end' : 'justify-start'
                               )}
                             >
                               <div
                                 className={cn(
-                                  'w-4 h-4 transform rotate-45',
-                                  message.is_from_me 
-                                    ? 'bg-foreground -translate-x-2' 
-                                    : 'bg-card translate-x-0'
-                                )}
-                              />
-                            </div>
-
-                            {/* Media Content */}
-                            {message.message_type === 'image' && message.media_url && (
-                              <img
-                                src={message.media_url}
-                                alt="Imagem"
-                                className="w-full max-w-[280px] rounded cursor-pointer hover:opacity-90 transition-opacity mb-1"
-                                onClick={() => window.open(message.media_url!, '_blank')}
-                              />
-                            )}
-                            {message.message_type === 'audio' && message.media_url && (
-                              <audio controls className="max-w-full mb-1">
-                                <source src={message.media_url} />
-                              </audio>
-                            )}
-                            {message.message_type === 'video' && message.media_url && (
-                              <video controls className="max-w-full rounded mb-1">
-                                <source src={message.media_url} />
-                              </video>
-                            )}
-                            {message.message_type === 'document' && message.media_url && (
-                              <a
-                                href={message.media_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className={cn(
-                                  "flex items-center gap-2 text-sm underline mb-1",
-                                  message.is_from_me ? "text-background/80" : "text-foreground"
+                                  'relative max-w-[85%] md:max-w-[65%] px-3 py-2 shadow-sm',
+                                  message.is_from_me
+                                    ? 'bg-emerald-600 text-white'
+                                    : 'bg-card text-foreground',
+                                  showTail 
+                                    ? message.is_from_me 
+                                      ? 'rounded-2xl rounded-tr-md mt-2' 
+                                      : 'rounded-2xl rounded-tl-md mt-2'
+                                    : 'rounded-2xl'
                                 )}
                               >
-                                <FileText className="w-4 h-4" />
-                                {message.content || 'Documento'}
-                              </a>
-                            )}
-                            
-                            {/* Text Content */}
-                            {(message.message_type === 'text' || message.content) && message.message_type !== 'audio' && (
-                              <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
-                            )}
-                            
-                            {/* Time & Status */}
-                            <div className={cn(
-                              "flex items-center gap-1 mt-1 -mb-0.5",
-                              message.is_from_me ? "justify-end" : "justify-end"
-                            )}>
-                              <span className={cn(
-                                "text-[10px]",
-                                message.is_from_me ? "text-background/50" : "text-muted-foreground"
-                              )}>
-                                {formatTime(message.created_at || '')}
-                              </span>
-                              {message.is_from_me && (
-                                <span className={message.status === 'read' ? 'text-blue-400' : 'text-background/50'}>
-                                  {getStatusIcon(message.status || 'sent')}
-                                </span>
-                              )}
+                                {/* Media Content */}
+                                {message.message_type === 'image' && message.media_url && (
+                                  <img
+                                    src={message.media_url}
+                                    alt="Imagem"
+                                    className="w-full max-w-[280px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity mb-1"
+                                    onClick={() => window.open(message.media_url!, '_blank')}
+                                  />
+                                )}
+                                {message.message_type === 'audio' && message.media_url && (
+                                  <audio controls className="max-w-full mb-1">
+                                    <source src={message.media_url} />
+                                  </audio>
+                                )}
+                                {message.message_type === 'video' && message.media_url && (
+                                  <video controls className="max-w-full rounded-lg mb-1">
+                                    <source src={message.media_url} />
+                                  </video>
+                                )}
+                                {message.message_type === 'document' && message.media_url && (
+                                  <a
+                                    href={message.media_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className={cn(
+                                      "flex items-center gap-2 text-sm underline mb-1 hover:opacity-80",
+                                      message.is_from_me ? "text-white/90" : "text-foreground"
+                                    )}
+                                  >
+                                    <FileText className="w-4 h-4" />
+                                    {message.content || 'Documento'}
+                                  </a>
+                                )}
+                                
+                                {/* Text Content */}
+                                {(message.message_type === 'text' || message.content) && message.message_type !== 'audio' && (
+                                  <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">
+                                    {message.content}
+                                  </p>
+                                )}
+                                
+                                {/* Time & Status */}
+                                <div className="flex items-center gap-1 justify-end mt-1 -mb-0.5">
+                                  <span className={cn(
+                                    "text-[10px]",
+                                    message.is_from_me ? "text-white/60" : "text-muted-foreground"
+                                  )}>
+                                    {formatTime(message.created_at || '')}
+                                  </span>
+                                  {message.is_from_me && (
+                                    <span className={cn(
+                                      message.status === 'read' ? 'text-sky-300' : 'text-white/60'
+                                    )}>
+                                      {getStatusIcon(message.status || 'sent')}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                        </div>
-                    ))}
-                  </div>
-                ))}
-                
-                {/* Typing Indicator */}
-                {isContactTyping && selectedConversation && (
-                  <TypingIndicator contactName={selectedConversation.contact_name} />
-                )}
-                
-                <div ref={messagesEndRef} />
-              </div>
-            </ScrollArea>
-          </div>
+                          );
+                        })}
+                      </div>
+                    ))
+                  )}
+                  
+                  {isContactTyping && selectedConversation && (
+                    <TypingIndicator contactName={selectedConversation.contact_name} />
+                  )}
+                  
+                  <div ref={messagesEndRef} className="h-4" />
+                </div>
+              </ScrollArea>
+            </div>
 
             {/* Input Area */}
             <div className="p-3 bg-card border-t border-border shrink-0">
@@ -740,7 +848,7 @@ const Chat = () => {
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="shrink-0 rounded-full text-muted-foreground hover:text-foreground"
+                  className="shrink-0 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={sending || isRecording}
                 >
@@ -751,15 +859,15 @@ const Chat = () => {
                   <Input
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
-                    placeholder="Digite uma mensagem"
-                    className="bg-muted/50 border-0 focus-visible:ring-1 rounded-full pl-4 pr-10 h-11"
+                    placeholder="Digite uma mensagem..."
+                    className="bg-muted/50 border-border/50 focus-visible:ring-emerald-500/30 rounded-full pl-4 pr-10 h-11"
                     disabled={sending || isRecording}
                   />
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 text-muted-foreground hover:text-foreground"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 text-muted-foreground hover:text-foreground rounded-full"
                   >
                     <Smile className="w-5 h-5" />
                   </Button>
@@ -769,7 +877,7 @@ const Chat = () => {
                   <Button 
                     type="submit" 
                     size="icon" 
-                    className="shrink-0 rounded-full h-11 w-11 bg-green-500 hover:bg-green-600"
+                    className="shrink-0 rounded-full h-11 w-11 bg-emerald-500 hover:bg-emerald-600 shadow-sm"
                     disabled={sending}
                   >
                     <Send className="w-5 h-5" />
@@ -780,8 +888,8 @@ const Chat = () => {
                     variant={isRecording ? "destructive" : "default"}
                     size="icon"
                     className={cn(
-                      "shrink-0 rounded-full h-11 w-11",
-                      !isRecording && "bg-green-500 hover:bg-green-600"
+                      "shrink-0 rounded-full h-11 w-11 shadow-sm",
+                      !isRecording && "bg-emerald-500 hover:bg-emerald-600"
                     )}
                     onClick={isRecording ? stopRecording : startRecording}
                     disabled={sending}
@@ -794,22 +902,22 @@ const Chat = () => {
           </>
         ) : (
           /* Empty State */
-          <div className="flex-1 flex items-center justify-center p-8 bg-muted/20">
+          <div className="flex-1 flex items-center justify-center p-8">
             <div className="text-center max-w-md">
-              <div className="w-24 h-24 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-6">
-                <MessageSquare className="w-12 h-12 text-muted-foreground/50" />
+              <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center mx-auto mb-6 shadow-lg">
+                <MessageCircle className="w-12 h-12 text-white" />
               </div>
-              <h3 className="text-2xl font-semibold text-foreground mb-2">ACIUM Chat</h3>
-              <p className="text-muted-foreground mb-6">
-                Envie e receba mensagens de WhatsApp e Instagram em um só lugar
+              <h3 className="text-2xl font-bold text-foreground mb-2">ACIUM Chat CRM</h3>
+              <p className="text-muted-foreground mb-8">
+                Gerencie todas as suas conversas de WhatsApp e Instagram em um só lugar
               </p>
-              <div className="flex justify-center gap-4">
+              <div className="flex justify-center gap-6">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <div className="w-3 h-3 rounded-full bg-green-500" />
+                  <div className="w-3 h-3 rounded-full bg-gradient-to-r from-emerald-400 to-teal-500" />
                   WhatsApp
                 </div>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <div className="w-3 h-3 rounded-full bg-gradient-to-r from-purple-500 to-pink-500" />
+                  <div className="w-3 h-3 rounded-full bg-gradient-to-r from-fuchsia-500 to-pink-500" />
                   Instagram
                 </div>
               </div>
