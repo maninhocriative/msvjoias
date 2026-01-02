@@ -33,17 +33,29 @@ serve(async (req) => {
     // Formato 1: { text: { phone, message, photo, fromMe, product_id }, contact_name, platform }
     if (payload.text && payload.text.phone) {
       phone = payload.text.phone.replace(/\D/g, '')
-      messageContent = payload.text.message || ''
+      
+      // Extrair mensagem - lidar com diferentes formatos do Fiqon
+      // O Fiqon pode enviar: message, text, body, reply_text, ou body.reply_text
+      messageContent = payload.text.message 
+        || payload.text.text 
+        || payload.text.body 
+        || payload.text.reply_text
+        || (payload.text.body && typeof payload.text.body === 'object' ? payload.text.body.reply_text : '')
+        || ''
+      
+      // Se ainda for uma variável não resolvida ($2.body...), ignorar
+      if (messageContent.startsWith('$')) {
+        messageContent = ''
+      }
+      
       isFromMe = payload.text.fromMe === true
-      contactName = payload.contact_name || phone
+      contactName = payload.contact_name || payload.text.pushName || payload.text.senderName || phone
       platform = payload.platform || 'whatsapp'
       
       // Product interest - quando o cliente pergunta sobre um produto específico
       productInterest = payload.text.product_id || payload.product_id || null
       
       // Detectar imagem real (não foto de perfil)
-      // Foto de perfil geralmente vem em pps.whatsapp.net
-      // Imagem de catálogo/mídia vem em mmg.whatsapp.net ou outros domínios
       const photo = payload.text.photo || ''
       if (photo && !photo.includes('pps.whatsapp.net')) {
         mediaUrl = photo
@@ -71,6 +83,30 @@ serve(async (req) => {
         mediaUrl = payload.text.documentUrl
         messageType = 'document'
       }
+    }
+    
+    // Formato Fiqon alternativo: dados no root do payload
+    else if (payload.phone && (payload.body || payload.message || payload.text)) {
+      phone = payload.phone.replace(/\D/g, '')
+      
+      // Extrair mensagem
+      if (typeof payload.body === 'object' && payload.body.reply_text) {
+        messageContent = payload.body.reply_text
+      } else if (typeof payload.body === 'string') {
+        messageContent = payload.body
+      } else {
+        messageContent = payload.message || payload.text || ''
+      }
+      
+      // Se ainda for uma variável não resolvida, ignorar
+      if (messageContent.startsWith('$')) {
+        messageContent = ''
+      }
+      
+      isFromMe = payload.fromMe === true
+      contactName = payload.pushName || payload.senderName || payload.contact_name || phone
+      platform = payload.isInstagram ? 'instagram' : 'whatsapp'
+      productInterest = payload.product_id || null
     }
     
     // Formato 2: Formato ZAPI direto
