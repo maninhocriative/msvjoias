@@ -155,13 +155,66 @@ serve(async (req) => {
       console.log(`[ALINE-REPLY] Nova conversa criada: id=${conversation.id}`);
     }
 
-    // Salvar mensagem do usuário
+    // Salvar mensagem do usuário em aline_messages
     await supabase.from('aline_messages').insert({
       conversation_id: conversation.id,
       role: 'user',
       message,
       node: conversation.current_node,
     });
+
+    // ========================================
+    // SINCRONIZAR COM CHAT CRM (conversations + messages)
+    // ========================================
+    let crmConversationId: string | null = null;
+    
+    // Buscar ou criar conversa no Chat CRM
+    const { data: existingCrmConv } = await supabase
+      .from('conversations')
+      .select('id, unread_count')
+      .eq('contact_number', phone)
+      .maybeSingle();
+
+    if (existingCrmConv) {
+      crmConversationId = existingCrmConv.id;
+      // Atualizar last_message e incrementar unread
+      await supabase
+        .from('conversations')
+        .update({ 
+          last_message: message,
+          unread_count: (existingCrmConv.unread_count || 0) + 1
+        })
+        .eq('id', crmConversationId);
+    } else {
+      const { data: newCrmConv } = await supabase
+        .from('conversations')
+        .insert({
+          contact_number: phone,
+          contact_name: contact_name || conversation.collected_data?.contact_name as string || phone,
+          platform: 'whatsapp',
+          last_message: message,
+          unread_count: 1,
+          lead_status: 'novo'
+        })
+        .select()
+        .single();
+      
+      if (newCrmConv) {
+        crmConversationId = newCrmConv.id;
+      }
+    }
+
+    // Salvar mensagem do CLIENTE no Chat CRM
+    if (crmConversationId) {
+      await supabase.from('messages').insert({
+        conversation_id: crmConversationId,
+        content: message,
+        is_from_me: false,
+        message_type: 'text',
+        status: 'delivered'
+      });
+      console.log(`[ALINE-REPLY] Mensagem do cliente salva no CRM: conv=${crmConversationId}`);
+    }
 
     // ========================================
     // PASSO 2: CONSTRUIR CONTEXTO PARA ALINE
@@ -645,7 +698,7 @@ ${deliveryAddress ? `📍 Endereço: ${deliveryAddress}` : ''}
       })
       .eq('id', conversation.id);
 
-    // Salvar mensagem da Aline
+    // Salvar mensagem da Aline em aline_messages
     await supabase.from('aline_messages').insert({
       conversation_id: conversation.id,
       role: 'aline',
@@ -653,6 +706,25 @@ ${deliveryAddress ? `📍 Endereço: ${deliveryAddress}` : ''}
       node: validatedNode,
       actions_executed: actionsExecuted.length > 0 ? actionsExecuted : null,
     });
+
+    // Salvar mensagem da Aline no Chat CRM
+    if (crmConversationId && replyText) {
+      await supabase.from('messages').insert({
+        conversation_id: crmConversationId,
+        content: replyText,
+        is_from_me: true,
+        message_type: 'text',
+        status: 'sent'
+      });
+      
+      // Atualizar last_message da conversa
+      await supabase
+        .from('conversations')
+        .update({ last_message: replyText.substring(0, 100) })
+        .eq('id', crmConversationId);
+      
+      console.log(`[ALINE-REPLY] Resposta Aline salva no CRM: conv=${crmConversationId}`);
+    }
 
     // ========================================
     // PASSO 7.5: ENVIAR AUTOMATICAMENTE VIA AUTOMATION-SEND
