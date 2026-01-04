@@ -123,7 +123,7 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
       )}>
         {!collapsed && (
           <span className="text-lg font-semibold tracking-[0.2em] text-sidebar-foreground">
-            ACIUM
+            MSV
           </span>
         )}
         <Button
