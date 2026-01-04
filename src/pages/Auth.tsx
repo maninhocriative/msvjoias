@@ -138,7 +138,7 @@ const Auth = () => {
               <img src={aciumLogo} alt="ACIUM Logo" className="w-full h-full object-cover" />
             </div>
             <h1 className="text-5xl font-bold tracking-[0.4em] text-background mb-4">
-              ACIUM
+              MSV
             </h1>
             <p className="text-background/60 text-lg max-w-md">
               Sistema inteligente de gestão e automação para sua loja
@@ -170,7 +170,7 @@ const Auth = () => {
               <img src={aciumLogo} alt="ACIUM Logo" className="w-full h-full object-cover" />
             </div>
             <h1 className="text-3xl font-bold tracking-[0.3em] text-foreground">
-              ACIUM
+              MSV
             </h1>
           </div>
 

@@ -429,13 +429,27 @@ ${message}
 
     // Coletar categoria APENAS quando estiver no node correto (abertura ou menu_categoria)
     if (currentNode === 'abertura' || currentNode === 'menu_categoria' || currentNode.includes('escolha_tipo')) {
-      const categoryMap: Record<string, string> = {
-        '1': 'aliancas', 'aliança': 'aliancas', 'aliancas': 'aliancas', 'alianças': 'aliancas',
-        '2': 'pingente', 'pingente': 'pingente', 'pingentes': 'pingente',
-      };
-      if (categoryMap[normalizedMsg]) {
-        newCollectedData.categoria = categoryMap[normalizedMsg];
-        console.log(`[ALINE-REPLY] Categoria coletada: ${categoryMap[normalizedMsg]} (node: ${currentNode})`);
+      // Detectar categoria por correspondência parcial para capturar variações
+      let detectedCategory: string | null = null;
+      
+      // Verificar se é aliança (prioridade - verifica PRIMEIRO)
+      if (normalizedMsg === '1' || 
+          normalizedMsg.includes('aliança') || 
+          normalizedMsg.includes('alianca') || 
+          normalizedMsg.includes('alianças') || 
+          normalizedMsg.includes('aliancas')) {
+        detectedCategory = 'aliancas';
+      }
+      // Verificar se é pingente (só se NÃO for aliança)
+      else if (normalizedMsg === '2' || 
+               normalizedMsg.includes('pingente') || 
+               normalizedMsg.includes('pingentes')) {
+        detectedCategory = 'pingente';
+      }
+      
+      if (detectedCategory) {
+        newCollectedData.categoria = detectedCategory;
+        console.log(`[ALINE-REPLY] Categoria coletada: ${detectedCategory} (msg: "${normalizedMsg}", node: ${currentNode})`);
       }
     }
 
