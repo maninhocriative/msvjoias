@@ -436,7 +436,7 @@ const Chat = () => {
         </div>
 
         {/* Status Filter Pills */}
-        <div className="px-4 py-3 flex gap-2 overflow-x-auto border-b border-white/5 scrollbar-hide">
+        <div className="px-4 py-3 flex gap-2 border-b border-white/5" style={{ overflowX: 'hidden' }}>
           {statusFilters.map(({ key, label, emoji }) => (
             <button
               key={key}
