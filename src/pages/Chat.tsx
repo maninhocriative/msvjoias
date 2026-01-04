@@ -436,28 +436,20 @@ const Chat = () => {
         </div>
 
         {/* Status Filter Pills */}
-        <div className="px-4 py-3 flex gap-2 border-b border-white/5" style={{ overflowX: 'hidden' }}>
+        <div className="px-3 py-2.5 grid grid-cols-5 gap-1.5 border-b border-white/5">
           {statusFilters.map(({ key, label, emoji }) => (
             <button
               key={key}
               onClick={() => setFilterStatus(key)}
               className={cn(
-                'px-3.5 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-all flex items-center gap-1.5',
+                'px-2 py-2 rounded-lg text-[10px] font-medium transition-all flex flex-col items-center gap-0.5',
                 filterStatus === key 
                   ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/25' 
                   : 'bg-slate-800/50 text-slate-400 hover:bg-slate-700/50 hover:text-white'
               )}
             >
-              <span>{emoji}</span>
-              <span>{label}</span>
-              {statusCounts[key] > 0 && (
-                <span className={cn(
-                  'ml-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold',
-                  filterStatus === key ? 'bg-white/20' : 'bg-slate-700'
-                )}>
-                  {statusCounts[key]}
-                </span>
-              )}
+              <span className="text-base">{emoji}</span>
+              <span className="truncate w-full text-center">{statusCounts[key]}</span>
             </button>
           ))}
         </div>
