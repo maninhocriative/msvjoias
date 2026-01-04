@@ -377,6 +377,18 @@ ${message}
       .replace(/\[SYSTEM_ACTION[^\]]+\]/gi, '')
       .replace(/\[CONTEXTO[^\]]*\]/gi, '')
       .trim();
+    
+    // Remover linhas duplicadas consecutivas (problema de mensagens repetidas)
+    const lines = replyText.split('\n');
+    const uniqueLines: string[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      const trimmedLine = lines[i].trim();
+      // Se não for igual à linha anterior, adicionar
+      if (i === 0 || trimmedLine !== lines[i - 1].trim() || trimmedLine === '') {
+        uniqueLines.push(lines[i]);
+      }
+    }
+    replyText = uniqueLines.join('\n').trim();
 
     console.log(`[ALINE-REPLY] Node extraído: ${extractedNode}, Action: ${systemAction}`);
 
@@ -481,11 +493,14 @@ ${message}
 
     // Coletar produto escolhido (quando estiver no node de catálogo ou confirmação)
     if (currentNode.includes('catalogo') || validatedNode.includes('confirmacao')) {
-      // Tentar identificar o produto escolhido pelo número ou nome
-      const productIndex = parseInt(normalizedMsg) - 1;
+      // Extrair número da mensagem (aceita "3", "Ou 3", "quero o 3", etc.)
+      const numberMatch = normalizedMsg.match(/(\d+)/);
+      const productIndex = numberMatch ? parseInt(numberMatch[1]) - 1 : -1;
       const lastCatalog = (conversation.collected_data?.last_catalog as any[]) || [];
       
-      if (!isNaN(productIndex) && productIndex >= 0 && productIndex < lastCatalog.length) {
+      console.log(`[ALINE-REPLY] Tentando selecionar produto: msg="${normalizedMsg}", index=${productIndex}, catalog_size=${lastCatalog.length}`);
+      
+      if (productIndex >= 0 && productIndex < lastCatalog.length) {
         const selectedProduct = lastCatalog[productIndex];
         newCollectedData.selected_product = selectedProduct;
         newCollectedData.selected_sku = selectedProduct.sku;
@@ -531,9 +546,12 @@ ${message}
     const actionsExecuted: Record<string, unknown>[] = [];
     let catalogProducts: unknown[] = [];
 
-    // Verificar se devemos buscar catálogo (pelo node ou pela action)
+    // Verificar se devemos buscar catálogo (pelo node ou pela action ou pela resposta da IA)
+    const replyLower = replyText.toLowerCase();
     const shouldFetchCatalog = validatedNode.includes('catalogo') || 
-                               replyText.toLowerCase().includes('buscar no nosso catálogo');
+                               replyLower.includes('buscar no nosso catálogo') ||
+                               replyLower.includes('catálogo alguns modelos') ||
+                               replyLower.includes('aguarde um momento');
     
     if (shouldFetchCatalog || (systemAction && SYSTEM_ACTIONS[systemAction]?.type === 'catalog')) {
       // Usar cor coletada do usuário
@@ -815,13 +833,24 @@ ${deliveryAddress ? `📍 Endereço: ${deliveryAddress}` : ''}
               }),
             });
             
-            // Salvar mensagem de follow-up
+            // Salvar mensagem de follow-up no aline_messages
             await supabase.from('aline_messages').insert({
               conversation_id: conversation.id,
               role: 'aline',
               message: followUpMessage,
               node: validatedNode,
             });
+            
+            // Salvar mensagem de follow-up no Chat CRM também
+            if (crmConversationId) {
+              await supabase.from('messages').insert({
+                conversation_id: crmConversationId,
+                content: followUpMessage,
+                is_from_me: true,
+                message_type: 'text',
+                status: 'sent'
+              });
+            }
             
             console.log(`[ALINE-REPLY] Mensagem de follow-up enviada`);
           }
