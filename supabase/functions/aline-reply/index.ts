@@ -735,9 +735,29 @@ ${deliveryAddress ? `📍 Endereço: ${deliveryAddress}` : ''}
         .maybeSingle();
       
       const aciumPhone = notifSetting?.value || '5592984145531';
+      const productImageUrl = selectedProduct.image_url || selectedProduct.video_url || null;
       
-      // Enviar resumo para o WhatsApp da Acium
+      // Enviar resumo para o WhatsApp da Acium (com foto do produto se disponível)
       try {
+        // Primeiro enviar a foto do produto se existir
+        if (productImageUrl) {
+          await fetch(`${supabaseUrl}/functions/v1/automation-send`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${supabaseServiceKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              phone: aciumPhone,
+              message: `📸 *Foto do Produto Escolhido*`,
+              message_type: 'image',
+              media_url: productImageUrl,
+            }),
+          });
+          console.log(`[ALINE-REPLY] Foto do produto enviada para Acium: ${productImageUrl}`);
+        }
+
+        // Depois enviar o resumo do pedido
         await fetch(`${supabaseUrl}/functions/v1/automation-send`, {
           method: 'POST',
           headers: {
