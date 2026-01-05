@@ -378,17 +378,36 @@ ${message}
       .replace(/\[CONTEXTO[^\]]*\]/gi, '')
       .trim();
     
-    // Remover linhas duplicadas consecutivas (problema de mensagens repetidas)
+    // ========================================
+    // REMOVER MENSAGENS DUPLICADAS (linhas e parágrafos repetidos)
+    // ========================================
     const lines = replyText.split('\n');
+    const seenLines = new Set<string>();
     const uniqueLines: string[] = [];
-    for (let i = 0; i < lines.length; i++) {
-      const trimmedLine = lines[i].trim();
-      // Se não for igual à linha anterior, adicionar
-      if (i === 0 || trimmedLine !== lines[i - 1].trim() || trimmedLine === '') {
-        uniqueLines.push(lines[i]);
+    
+    for (const line of lines) {
+      const normalizedLine = line.trim().toLowerCase();
+      // Permitir linhas vazias, mas não duplicar conteúdo
+      if (line.trim() === '' || !seenLines.has(normalizedLine)) {
+        uniqueLines.push(line);
+        if (normalizedLine) seenLines.add(normalizedLine);
       }
     }
     replyText = uniqueLines.join('\n').trim();
+    
+    // Remover também parágrafos duplicados (blocos de texto repetidos)
+    const paragraphs = replyText.split(/\n\n+/);
+    const seenParagraphs = new Set<string>();
+    const uniqueParagraphs: string[] = [];
+    
+    for (const para of paragraphs) {
+      const normalizedPara = para.trim().toLowerCase();
+      if (!seenParagraphs.has(normalizedPara)) {
+        uniqueParagraphs.push(para);
+        seenParagraphs.add(normalizedPara);
+      }
+    }
+    replyText = uniqueParagraphs.join('\n\n').trim();
 
     console.log(`[ALINE-REPLY] Node extraído: ${extractedNode}, Action: ${systemAction}`);
 
@@ -783,16 +802,21 @@ ${deliveryAddress ? `📍 Endereço: ${deliveryAddress}` : ''}
 
 
     // Atualizar conversa
+    // Se finalizado, colocar em human_takeover para que Aline PARE de responder
+    const newStatus = validatedNode === 'finalizado' ? 'human_takeover' : 'active';
+    
     await supabase
       .from('aline_conversations')
       .update({
         current_node: validatedNode,
         last_node: conversation.current_node,
         collected_data: newCollectedData,
-        status: validatedNode === 'finalizado' ? 'finished' : 'active',
+        status: newStatus,
         last_message_at: new Date().toISOString(),
       })
       .eq('id', conversation.id);
+    
+    console.log(`[ALINE-REPLY] Conversa atualizada: node=${validatedNode}, status=${newStatus}`);
 
     // Salvar mensagem da Aline em aline_messages
     await supabase.from('aline_messages').insert({
