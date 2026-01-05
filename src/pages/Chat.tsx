@@ -754,61 +754,91 @@ const Chat = () => {
             </div>
 
             {/* Input Area */}
-            <div className="p-4 bg-slate-900/80 backdrop-blur-xl border-t border-white/5 shrink-0">
-              <form onSubmit={sendMessage} className="flex items-center gap-3 max-w-4xl mx-auto">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  className="hidden"
-                  onChange={handleFileUpload}
-                  accept="image/*,audio/*,video/*,.pdf,.doc,.docx"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="shrink-0 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 h-11 w-11"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={sending || isRecording}
-                >
-                  <Paperclip className="w-5 h-5" />
-                </Button>
-                
-                <div className="flex-1 relative">
-                  <Input
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                    placeholder="Digite uma mensagem..."
-                    className="pr-12 bg-slate-800/50 border-white/10 text-white placeholder:text-slate-500 focus-visible:ring-emerald-500/50 h-12 rounded-2xl text-[15px]"
-                    disabled={sending || isRecording}
+            <div className="px-4 py-3 bg-slate-900/95 backdrop-blur-xl border-t border-white/5 shrink-0">
+              <form onSubmit={sendMessage} className="max-w-4xl mx-auto">
+                <div className="flex items-end gap-2">
+                  {/* Attachment Button */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    onChange={handleFileUpload}
+                    accept="image/*,audio/*,video/*,.pdf,.doc,.docx"
                   />
-                </div>
-
-                {newMessage.trim() ? (
-                  <Button 
-                    type="submit" 
-                    size="icon"
-                    disabled={sending}
-                    className="shrink-0 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white h-11 w-11 shadow-lg shadow-emerald-500/25"
-                  >
-                    <Send className="w-5 h-5" />
-                  </Button>
-                ) : (
                   <Button
                     type="button"
+                    variant="ghost"
                     size="icon"
-                    className={cn(
-                      'shrink-0 rounded-xl h-11 w-11 transition-all',
-                      isRecording 
-                        ? 'bg-rose-500 hover:bg-rose-600 text-white animate-pulse shadow-lg shadow-rose-500/25' 
-                        : 'bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white'
-                    )}
-                    onClick={isRecording ? stopRecording : startRecording}
-                    disabled={sending}
+                    className="shrink-0 rounded-xl text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 h-10 w-10 transition-colors"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={sending || isRecording}
+                    title="Anexar arquivo"
                   >
-                    {isRecording ? <X className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                    <Paperclip className="w-5 h-5" />
                   </Button>
-                )}
+                  
+                  {/* Input Container */}
+                  <div className="flex-1 relative bg-slate-800/60 rounded-2xl border border-white/5 focus-within:border-emerald-500/50 focus-within:ring-1 focus-within:ring-emerald-500/20 transition-all">
+                    <Input
+                      value={newMessage}
+                      onChange={(e) => setNewMessage(e.target.value)}
+                      placeholder="Digite uma mensagem..."
+                      className="border-0 bg-transparent text-white placeholder:text-slate-500 focus-visible:ring-0 h-11 px-4 text-[15px]"
+                      disabled={sending || isRecording}
+                    />
+                    
+                    {/* Emoji/extra buttons could go here */}
+                    {isRecording && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                        <span className="flex items-center gap-1.5 text-rose-400 text-sm font-medium animate-pulse">
+                          <span className="w-2 h-2 rounded-full bg-rose-500" />
+                          Gravando...
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Action Buttons */}
+                  {newMessage.trim() ? (
+                    <Button 
+                      type="submit" 
+                      size="icon"
+                      disabled={sending}
+                      className="shrink-0 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white h-10 w-10 shadow-lg shadow-emerald-500/25 transition-all hover:scale-105"
+                      title="Enviar mensagem"
+                    >
+                      <Send className="w-4 h-4" />
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      size="icon"
+                      className={cn(
+                        'shrink-0 rounded-xl h-10 w-10 transition-all',
+                        isRecording 
+                          ? 'bg-gradient-to-r from-rose-500 to-rose-600 text-white shadow-lg shadow-rose-500/25 hover:scale-105' 
+                          : 'bg-slate-800/80 hover:bg-emerald-500/20 text-slate-400 hover:text-emerald-400'
+                      )}
+                      onClick={isRecording ? stopRecording : startRecording}
+                      disabled={sending}
+                      title={isRecording ? "Parar gravação" : "Gravar áudio"}
+                    >
+                      {isRecording ? <X className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                    </Button>
+                  )}
+                </div>
+                
+                {/* Helper text */}
+                <div className="flex items-center justify-center gap-4 mt-2 text-[10px] text-slate-500">
+                  <span className="flex items-center gap-1">
+                    <Paperclip className="w-3 h-3" />
+                    Fotos, áudios e documentos
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Mic className="w-3 h-3" />
+                    Segure para gravar
+                  </span>
+                </div>
               </form>
             </div>
           </>

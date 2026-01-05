@@ -599,6 +599,23 @@ ${message}
           filters: { category: categoria, color: userColor },
         });
         console.log(`[ALINE-REPLY] Catálogo encontrado: ${catalogProducts.length} produtos`);
+
+        // ========================================
+        // REGISTRAR PROCURAS (product_interest) PARA CADA PRODUTO DO CATÁLOGO
+        // ========================================
+        if (crmConversationId && catalogProducts.length > 0) {
+          for (const prod of catalogProducts as any[]) {
+            await supabase.from('messages').insert({
+              conversation_id: crmConversationId,
+              content: `[CATÁLOGO] Produto enviado: ${prod.name}`,
+              is_from_me: true,
+              message_type: 'text',
+              status: 'sent',
+              product_interest: prod.id,
+            });
+          }
+          console.log(`[ALINE-REPLY] Procuras registradas para ${catalogProducts.length} produtos`);
+        }
       }
     } else if (systemAction && SYSTEM_ACTIONS[systemAction]?.type === 'lead') {
       // Registrar lead
@@ -681,6 +698,33 @@ ${deliveryAddress ? `📍 Endereço: ${deliveryAddress}` : ''}
           type: 'order',
           order_id: orderData.id,
         });
+
+        // ========================================
+        // ATUALIZAR LEAD_STATUS PARA 'comprador' NO CRM
+        // ========================================
+        if (crmConversationId) {
+          await supabase
+            .from('conversations')
+            .update({ lead_status: 'comprador' })
+            .eq('id', crmConversationId);
+          console.log(`[ALINE-REPLY] Lead atualizado para 'comprador': ${crmConversationId}`);
+        }
+
+        // ========================================
+        // INCREMENTAR PROCURAS DO PRODUTO (messages.product_interest)
+        // ========================================
+        if (selectedProduct.id && crmConversationId) {
+          // Registrar interesse no produto (isso é usado para contar procuras)
+          await supabase.from('messages').insert({
+            conversation_id: crmConversationId,
+            content: `[VENDA] Produto selecionado: ${selectedProduct.name}`,
+            is_from_me: true,
+            message_type: 'text',
+            status: 'sent',
+            product_interest: selectedProduct.id,
+          });
+          console.log(`[ALINE-REPLY] Interesse/venda registrado para produto: ${selectedProduct.id}`);
+        }
       }
 
       // Buscar número de notificação da Acium
