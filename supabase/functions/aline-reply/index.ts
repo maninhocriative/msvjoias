@@ -23,13 +23,35 @@ const NODE_FLOW: Record<string, string[]> = {
 };
 
 // Mapeamento de ações técnicas
-const SYSTEM_ACTIONS: Record<string, { type: string; filters: Record<string, string> }> = {
-  'show_catalog_alianca_aco': { type: 'catalog', filters: { category: 'aliancas', color: 'prata' } },
-  'show_catalog_alianca_tungstenio': { type: 'catalog', filters: { category: 'aliancas', color: 'preta' } },
+// TUNGSTÊNIO (casamento): dourada, prata, azul, preta
+// AÇO (namoro): prata, dourada
+const SYSTEM_ACTIONS: Record<string, { type: string; filters: Record<string, string>; material?: string }> = {
+  // Alianças de AÇO (namoro/compromisso) - cores: prata, dourada
+  'show_catalog_alianca_aco': { type: 'catalog', filters: { category: 'aliancas' }, material: 'aco' },
+  'show_catalog_alianca_aco_prata': { type: 'catalog', filters: { category: 'aliancas', color: 'prata' }, material: 'aco' },
+  'show_catalog_alianca_aco_dourada': { type: 'catalog', filters: { category: 'aliancas', color: 'dourada' }, material: 'aco' },
+  // Alianças de TUNGSTÊNIO (casamento) - cores: dourada, prata, azul, preta
+  'show_catalog_alianca_tungstenio': { type: 'catalog', filters: { category: 'aliancas' }, material: 'tungstenio' },
+  'show_catalog_alianca_tungstenio_dourada': { type: 'catalog', filters: { category: 'aliancas', color: 'dourada' }, material: 'tungstenio' },
+  'show_catalog_alianca_tungstenio_prata': { type: 'catalog', filters: { category: 'aliancas', color: 'prata' }, material: 'tungstenio' },
+  'show_catalog_alianca_tungstenio_azul': { type: 'catalog', filters: { category: 'aliancas', color: 'azul' }, material: 'tungstenio' },
+  'show_catalog_alianca_tungstenio_preta': { type: 'catalog', filters: { category: 'aliancas', color: 'preta' }, material: 'tungstenio' },
+  // Genérico por cor (mantido para compatibilidade)
   'show_catalog_alianca_dourada': { type: 'catalog', filters: { category: 'aliancas', color: 'dourada' } },
+  'show_catalog_alianca_preta': { type: 'catalog', filters: { category: 'aliancas', color: 'preta' } },
+  'show_catalog_alianca_azul': { type: 'catalog', filters: { category: 'aliancas', color: 'azul' } },
+  'show_catalog_alianca_prata': { type: 'catalog', filters: { category: 'aliancas', color: 'prata' } },
+  // Pingentes
   'show_catalog_pingentes': { type: 'catalog', filters: { category: 'pingente' } },
+  'show_catalog_pingente_prata': { type: 'catalog', filters: { category: 'pingente', color: 'prata' } },
+  'show_catalog_pingente_dourada': { type: 'catalog', filters: { category: 'pingente', color: 'dourada' } },
   'register_lead_crm': { type: 'lead', filters: {} },
 };
+
+// Cores disponíveis por material
+const CORES_TUNGSTENIO = ['dourada', 'prata', 'azul', 'preta'];
+const CORES_ACO = ['prata', 'dourada'];
+const CORES_PINGENTE = ['prata', 'dourada'];
 
 interface AlineConversation {
   id: string;
@@ -592,27 +614,38 @@ ${message}
                                replyLower.includes('aguarde um momento');
     
     if (shouldFetchCatalog || (systemAction && SYSTEM_ACTIONS[systemAction]?.type === 'catalog')) {
-      // Determinar cor baseado na FINALIDADE (casamento = tungstênio/preta, namoro = aço/prata)
+      // Obter cor selecionada pelo usuário
       let userColor = (newCollectedData.cor as string) || null;
       const finalidade = (newCollectedData.finalidade as string) || null;
       const categoria = (newCollectedData.categoria as string) || 'aliancas';
       
-      // ========================================
-      // MAPEAMENTO CORRETO: CASAMENTO = TUNGSTÊNIO, NAMORO = AÇO
-      // ========================================
-      if (categoria === 'aliancas' && finalidade && !userColor) {
+      // Determinar material baseado na finalidade
+      // CASAMENTO = Tungstênio (cores: dourada, prata, azul, preta)
+      // NAMORO = Aço (cores: prata, dourada)
+      let material: string | null = null;
+      
+      if (categoria === 'aliancas' && finalidade) {
         if (finalidade === 'casamento') {
-          // Casamento = alianças de tungstênio (cor preta)
-          userColor = 'preta';
-          console.log(`[ALINE-REPLY] Finalidade CASAMENTO -> Cor PRETA (tungstênio)`);
+          material = 'tungstenio';
+          console.log(`[ALINE-REPLY] Finalidade CASAMENTO -> Material TUNGSTÊNIO (cores disponíveis: dourada, prata, azul, preta)`);
         } else if (finalidade === 'namoro') {
-          // Namoro/Compromisso = alianças de aço (cor prata)
-          userColor = 'prata';
-          console.log(`[ALINE-REPLY] Finalidade NAMORO -> Cor PRATA (aço)`);
+          material = 'aco';
+          console.log(`[ALINE-REPLY] Finalidade NAMORO -> Material AÇO (cores disponíveis: prata, dourada)`);
         }
       }
       
-      console.log(`[ALINE-REPLY] Buscando catálogo: categoria=${categoria}, cor=${userColor}, finalidade=${finalidade}`);
+      // Se SYSTEM_ACTION especificou filtros, usar esses
+      if (systemAction && SYSTEM_ACTIONS[systemAction]) {
+        const actionConfig = SYSTEM_ACTIONS[systemAction];
+        if (actionConfig.filters.color) {
+          userColor = actionConfig.filters.color;
+        }
+        if (actionConfig.material) {
+          material = actionConfig.material;
+        }
+      }
+      
+      console.log(`[ALINE-REPLY] Buscando catálogo: categoria=${categoria}, cor=${userColor}, finalidade=${finalidade}, material=${material}`);
       
       // Buscar catálogo baseado nos dados coletados
       let query = supabase
@@ -633,10 +666,26 @@ ${message}
       const { data: products, error: prodError } = await query;
 
       if (!prodError && products) {
+        // Filtrar produtos
+        let filteredProducts = [...products];
+        
         // Filtrar por cor se especificado
-        catalogProducts = userColor
-          ? products.filter(p => p.color?.toLowerCase().includes(userColor.toLowerCase()))
-          : products;
+        if (userColor) {
+          filteredProducts = filteredProducts.filter(p => 
+            p.color?.toLowerCase().includes(userColor.toLowerCase())
+          );
+        }
+        
+        // Filtrar por material (baseado na descrição/tags ou nome do produto)
+        // Tungstênio: geralmente tem "tungstênio" no nome ou descrição
+        // Aço: geralmente tem "aço" no nome ou descrição
+        if (material && !userColor) {
+          // Se material foi definido mas cor não, filtrar por tags ou descrição
+          // Por enquanto, confia na cor selecionada pelo usuário
+          console.log(`[ALINE-REPLY] Material ${material} definido, aguardando seleção de cor`);
+        }
+        
+        catalogProducts = filteredProducts;
 
         // Salvar catálogo enviado para referência futura
         newCollectedData.last_catalog = catalogProducts.map((p: any) => ({
@@ -644,13 +693,14 @@ ${message}
           sku: p.sku,
           name: p.name,
           price: p.price,
+          image_url: p.image_url,
         }));
 
         actionsExecuted.push({
           action: systemAction || 'auto_catalog',
           type: 'catalog',
           products_count: catalogProducts.length,
-          filters: { category: categoria, color: userColor, finalidade },
+          filters: { category: categoria, color: userColor, finalidade, material },
         });
         console.log(`[ALINE-REPLY] Catálogo encontrado: ${catalogProducts.length} produtos`);
 
