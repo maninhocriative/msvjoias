@@ -14,31 +14,31 @@ interface FollowupConfig {
   buttonText?: string;
 }
 
-// Configuração de follow-ups com intervalos diferentes
+// Configuração de follow-ups com intervalos MAIS CURTOS para testes
 const DEFAULT_FOLLOWUP_CONFIG: FollowupConfig[] = [
   { 
-    intervalMinutes: 5, 
+    intervalMinutes: 3, // 3 minutos
     message: "Oi! Ainda está por aí? Posso te ajudar com algo mais? 😊",
     type: 'text'
   },
   { 
-    intervalMinutes: 15, 
+    intervalMinutes: 10, // 10 minutos
     message: "Ei, vi que você ainda não respondeu. Se tiver alguma dúvida, é só me chamar! 💬",
     type: 'text'
   },
   { 
-    intervalMinutes: 360, // 6 horas
+    intervalMinutes: 30, // 30 minutos
     message: "Olá! Só passando para ver se está tudo bem. Posso te ajudar em algo? 🙋‍♀️",
     type: 'text'
   },
   { 
-    intervalMinutes: 1440, // 24 horas
+    intervalMinutes: 120, // 2 horas
     message: "🎁 *OFERTA ESPECIAL!*\n\nComprando o par de alianças, você *GANHA um pingente fotogravado* personalizado!\n\n⏰ Essa promoção é por tempo limitado.\n\nQuer aproveitar?",
     type: 'button',
     buttonText: "✅ Quero aproveitar!"
   },
   { 
-    intervalMinutes: 2880, // 48 horas
+    intervalMinutes: 360, // 6 horas
     message: "Oi! 👋\n\nVi que você ainda não finalizou sua compra.\n\nPosso te ajudar a escolher o modelo perfeito de alianças ou pingentes?\n\n💍 Estou aqui para te atender!",
     type: 'button',
     buttonText: "💬 Retomar atendimento"

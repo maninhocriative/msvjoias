@@ -379,15 +379,16 @@ ${message}
       .trim();
     
     // ========================================
-    // REMOVER MENSAGENS DUPLICADAS (linhas e parágrafos repetidos)
+    // REMOVER MENSAGENS DUPLICADAS - SISTEMA AVANÇADO
     // ========================================
+    
+    // 1. Remover linhas completamente duplicadas
     const lines = replyText.split('\n');
     const seenLines = new Set<string>();
     const uniqueLines: string[] = [];
     
     for (const line of lines) {
-      const normalizedLine = line.trim().toLowerCase();
-      // Permitir linhas vazias, mas não duplicar conteúdo
+      const normalizedLine = line.trim().toLowerCase().replace(/\s+/g, ' ');
       if (line.trim() === '' || !seenLines.has(normalizedLine)) {
         uniqueLines.push(line);
         if (normalizedLine) seenLines.add(normalizedLine);
@@ -395,19 +396,37 @@ ${message}
     }
     replyText = uniqueLines.join('\n').trim();
     
-    // Remover também parágrafos duplicados (blocos de texto repetidos)
+    // 2. Remover parágrafos duplicados
     const paragraphs = replyText.split(/\n\n+/);
     const seenParagraphs = new Set<string>();
     const uniqueParagraphs: string[] = [];
     
     for (const para of paragraphs) {
-      const normalizedPara = para.trim().toLowerCase();
+      const normalizedPara = para.trim().toLowerCase().replace(/\s+/g, ' ');
       if (!seenParagraphs.has(normalizedPara)) {
         uniqueParagraphs.push(para);
         seenParagraphs.add(normalizedPara);
       }
     }
     replyText = uniqueParagraphs.join('\n\n').trim();
+    
+    // 3. Remover frases duplicadas (mesmo se aparecem em lugares diferentes)
+    const sentences = replyText.split(/(?<=[.!?])\s+/);
+    const seenSentences = new Set<string>();
+    const uniqueSentences: string[] = [];
+    
+    for (const sentence of sentences) {
+      const normalized = sentence.trim().toLowerCase().replace(/\s+/g, ' ');
+      // Ignorar frases muito curtas (menos de 10 caracteres)
+      if (normalized.length < 10 || !seenSentences.has(normalized)) {
+        uniqueSentences.push(sentence);
+        if (normalized.length >= 10) seenSentences.add(normalized);
+      }
+    }
+    replyText = uniqueSentences.join(' ').trim();
+    
+    // 4. Limpar espaços múltiplos e quebras de linha excessivas
+    replyText = replyText.replace(/\n{3,}/g, '\n\n').replace(/  +/g, ' ').trim();
 
     console.log(`[ALINE-REPLY] Node extraído: ${extractedNode}, Action: ${systemAction}`);
 
@@ -573,11 +592,27 @@ ${message}
                                replyLower.includes('aguarde um momento');
     
     if (shouldFetchCatalog || (systemAction && SYSTEM_ACTIONS[systemAction]?.type === 'catalog')) {
-      // Usar cor coletada do usuário
-      const userColor = (newCollectedData.cor as string) || null;
+      // Determinar cor baseado na FINALIDADE (casamento = tungstênio/preta, namoro = aço/prata)
+      let userColor = (newCollectedData.cor as string) || null;
+      const finalidade = (newCollectedData.finalidade as string) || null;
       const categoria = (newCollectedData.categoria as string) || 'aliancas';
       
-      console.log(`[ALINE-REPLY] Buscando catálogo: categoria=${categoria}, cor=${userColor}`);
+      // ========================================
+      // MAPEAMENTO CORRETO: CASAMENTO = TUNGSTÊNIO, NAMORO = AÇO
+      // ========================================
+      if (categoria === 'aliancas' && finalidade && !userColor) {
+        if (finalidade === 'casamento') {
+          // Casamento = alianças de tungstênio (cor preta)
+          userColor = 'preta';
+          console.log(`[ALINE-REPLY] Finalidade CASAMENTO -> Cor PRETA (tungstênio)`);
+        } else if (finalidade === 'namoro') {
+          // Namoro/Compromisso = alianças de aço (cor prata)
+          userColor = 'prata';
+          console.log(`[ALINE-REPLY] Finalidade NAMORO -> Cor PRATA (aço)`);
+        }
+      }
+      
+      console.log(`[ALINE-REPLY] Buscando catálogo: categoria=${categoria}, cor=${userColor}, finalidade=${finalidade}`);
       
       // Buscar catálogo baseado nos dados coletados
       let query = supabase
@@ -615,7 +650,7 @@ ${message}
           action: systemAction || 'auto_catalog',
           type: 'catalog',
           products_count: catalogProducts.length,
-          filters: { category: categoria, color: userColor },
+          filters: { category: categoria, color: userColor, finalidade },
         });
         console.log(`[ALINE-REPLY] Catálogo encontrado: ${catalogProducts.length} produtos`);
 
