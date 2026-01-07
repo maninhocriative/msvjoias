@@ -24,6 +24,7 @@ const Chat = () => {
   const [takingOver, setTakingOver] = useState(false);
   const [isContactTyping, setIsContactTyping] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [alineStatus, setAlineStatus] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -73,6 +74,9 @@ const Chat = () => {
 
       if (error) throw error;
 
+      // Atualizar o status local da Aline
+      setAlineStatus(action === 'takeover' ? 'human_takeover' : 'active');
+
       toast({
         title: action === 'takeover' ? '✋ Atendimento assumido' : '🤖 Devolvido para Aline',
         description: data.message,
@@ -111,6 +115,7 @@ const Chat = () => {
       fetchMessages(selectedConversation.id);
       markAsRead(selectedConversation.id);
       setIsContactTyping(false);
+      fetchAlineStatus(selectedConversation.contact_number);
       
       const channel = supabase
         .channel(`messages-${selectedConversation.id}`)
@@ -182,6 +187,29 @@ const Chat = () => {
       .from('conversations')
       .update({ unread_count: 0 })
       .eq('id', conversationId);
+  };
+
+  const fetchAlineStatus = async (phone: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('aline_conversations')
+        .select('status')
+        .eq('phone', phone)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching aline status:', error);
+        setAlineStatus(null);
+        return;
+      }
+
+      setAlineStatus(data?.status || null);
+    } catch (error) {
+      console.error('Error fetching aline status:', error);
+      setAlineStatus(null);
+    }
   };
 
   const sendMessage = async (e: React.FormEvent) => {
@@ -581,7 +609,30 @@ const Chat = () => {
                 </div>
 
                 <div className="min-w-0">
-                  <p className="font-semibold text-white truncate">{selectedConversation.contact_name || selectedConversation.contact_number}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold text-white truncate">{selectedConversation.contact_name || selectedConversation.contact_number}</p>
+                    {/* Indicador de Atendimento */}
+                    {alineStatus && (
+                      <span className={cn(
+                        'px-2 py-0.5 rounded-full text-[10px] font-semibold flex items-center gap-1 shrink-0',
+                        alineStatus === 'human_takeover' 
+                          ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' 
+                          : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                      )}>
+                        {alineStatus === 'human_takeover' ? (
+                          <>
+                            <User className="w-3 h-3" />
+                            Vendedor
+                          </>
+                        ) : (
+                          <>
+                            <Bot className="w-3 h-3" />
+                            Aline
+                          </>
+                        )}
+                      </span>
+                    )}
+                  </div>
                   <div className="flex items-center gap-2 text-xs text-slate-400">
                     <span>{selectedConversation.contact_number}</span>
                     <span className="w-1 h-1 rounded-full bg-slate-600" />
