@@ -571,23 +571,30 @@ ${message}
     }
 
     // Coletar método de entrega
+    let deliveryMethodJustCollected = false;
     if (currentNode.includes('entrega') || currentNode.includes('coleta_entrega')) {
       const entregaMap: Record<string, string> = {
         '1': 'retirada', 'retirada': 'retirada', 'loja': 'retirada',
-        '2': 'entrega', 'entrega': 'entrega', 'envio': 'entrega', 'correios': 'entrega',
+        '2': 'entrega', 'entrega': 'entrega', 'envio': 'entrega', 'correios': 'entrega', 'delivery': 'entrega',
+        'via delivery': 'entrega', 'via entrega': 'entrega',
       };
-      if (entregaMap[normalizedMsg]) {
-        newCollectedData.delivery_method = entregaMap[normalizedMsg];
-        console.log(`[ALINE-REPLY] Método de entrega: ${entregaMap[normalizedMsg]}`);
+      // Verificar se alguma chave corresponde
+      const entregaKey = Object.keys(entregaMap).find(key => normalizedMsg.includes(key) || normalizedMsg === key);
+      if (entregaKey) {
+        newCollectedData.delivery_method = entregaMap[entregaKey];
+        deliveryMethodJustCollected = true;
+        console.log(`[ALINE-REPLY] Método de entrega coletado: ${entregaMap[entregaKey]}`);
       } else if (normalizedMsg.length > 10) {
         // Se for texto longo, provavelmente é endereço
         newCollectedData.delivery_address = message;
         newCollectedData.delivery_method = 'entrega';
+        deliveryMethodJustCollected = true;
         console.log(`[ALINE-REPLY] Endereço coletado`);
       }
     }
 
     // Coletar método de pagamento
+    let paymentMethodJustCollected = false;
     if (currentNode.includes('pagamento') || currentNode.includes('coleta_pagamento')) {
       const pagamentoMap: Record<string, string> = {
         '1': 'pix', 'pix': 'pix',
@@ -596,9 +603,15 @@ ${message}
       };
       if (pagamentoMap[normalizedMsg]) {
         newCollectedData.payment_method = pagamentoMap[normalizedMsg];
+        paymentMethodJustCollected = true;
         console.log(`[ALINE-REPLY] Método de pagamento: ${pagamentoMap[normalizedMsg]}`);
       }
     }
+
+    // ========================================
+    // ENCAMINHAR AO VENDEDOR SE COLETOU ENTREGA OU PAGAMENTO
+    // ========================================
+    const shouldForwardToSeller = deliveryMethodJustCollected || paymentMethodJustCollected;
 
     // ========================================
     // PASSO 7: EXECUTAR SYSTEM_ACTION OU BUSCAR CATÁLOGO AUTOMATICAMENTE
@@ -734,9 +747,112 @@ ${message}
     }
 
     // ========================================
-    // PASSO 7.1: FINALIZAR PEDIDO E GRAVAR NO CRM
+    // PASSO 7.1: ENCAMINHAR AO VENDEDOR QUANDO COLETAR ENTREGA OU PAGAMENTO
     // ========================================
-    if (validatedNode === 'finalizado' && newCollectedData.selected_product) {
+    if (shouldForwardToSeller && newCollectedData.selected_product) {
+      console.log(`[ALINE-REPLY] Encaminhando ao vendedor (coletou entrega ou pagamento)...`);
+      
+      const selectedProduct = newCollectedData.selected_product as any;
+      const deliveryMethod = (newCollectedData.delivery_method as string) || 'N/A';
+      const paymentMethod = (newCollectedData.payment_method as string) || 'N/A';
+      const deliveryAddress = (newCollectedData.delivery_address as string) || null;
+      const customerName = (newCollectedData.contact_name as string) || 'Cliente';
+      
+      // Criar resumo para encaminhar ao vendedor
+      const forwardSummary = `
+🔔 *CLIENTE AGUARDANDO ATENDIMENTO*
+
+👤 Cliente: ${customerName}
+📱 WhatsApp: ${phone}
+
+🛍️ Produto escolhido: ${selectedProduct.name}
+🏷️ SKU: ${selectedProduct.sku || 'N/A'}
+💰 Valor: R$ ${selectedProduct.price?.toFixed(2) || '0,00'}
+
+${deliveryMethod !== 'N/A' ? `🚚 Forma de envio: ${deliveryMethod === 'retirada' ? 'Retirada na loja' : 'Delivery/Envio'}` : ''}
+${deliveryAddress ? `📍 Endereço: ${deliveryAddress}` : ''}
+${paymentMethod !== 'N/A' ? `💳 Pagamento: ${paymentMethod.toUpperCase()}` : ''}
+
+📊 Dados coletados:
+- Categoria: ${newCollectedData.categoria || 'N/A'}
+- Cor: ${newCollectedData.cor || 'N/A'}
+- Finalidade: ${newCollectedData.finalidade || 'N/A'}
+
+⏰ Data: ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Manaus' })}
+
+⚠️ *A Aline encaminhou para atendimento humano. Por favor, entre em contato com o cliente.*
+      `.trim();
+
+      // Atualizar lead_status para 'vendedor' no CRM
+      if (crmConversationId) {
+        await supabase
+          .from('conversations')
+          .update({ lead_status: 'vendedor' })
+          .eq('id', crmConversationId);
+        console.log(`[ALINE-REPLY] Lead atualizado para 'vendedor': ${crmConversationId}`);
+      }
+
+      // Buscar número de notificação da Acium
+      const { data: notifSettingForward } = await supabase
+        .from('store_settings')
+        .select('value')
+        .eq('key', 'notification_whatsapp')
+        .maybeSingle();
+      
+      const aciumPhoneForward = notifSettingForward?.value || '5592984145531';
+      const productImageUrlForward = selectedProduct.image_url || selectedProduct.video_url || null;
+      
+      // Enviar notificação para o WhatsApp da Acium
+      try {
+        // Primeiro enviar a foto do produto se existir
+        if (productImageUrlForward) {
+          await fetch(`${supabaseUrl}/functions/v1/automation-send`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${supabaseServiceKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              phone: aciumPhoneForward,
+              message: `📸 *Foto do Produto Escolhido*`,
+              message_type: 'image',
+              media_url: productImageUrlForward,
+            }),
+          });
+          console.log(`[ALINE-REPLY] Foto enviada para Acium (forward): ${productImageUrlForward}`);
+        }
+
+        // Depois enviar o resumo
+        await fetch(`${supabaseUrl}/functions/v1/automation-send`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${supabaseServiceKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            phone: aciumPhoneForward,
+            message: forwardSummary,
+          }),
+        });
+        console.log(`[ALINE-REPLY] Notificação enviada para vendedor: ${aciumPhoneForward}`);
+        
+        actionsExecuted.push({
+          action: 'forward_to_seller',
+          type: 'notification',
+          phone: aciumPhoneForward,
+        });
+      } catch (notifError) {
+        console.error(`[ALINE-REPLY] Erro ao notificar vendedor:`, notifError);
+      }
+
+      // Marcar para human_takeover
+      validatedNode = 'finalizado';
+    }
+
+    // ========================================
+    // PASSO 7.2: FINALIZAR PEDIDO E GRAVAR NO CRM (SE TIVER TODOS OS DADOS)
+    // ========================================
+    if (validatedNode === 'finalizado' && newCollectedData.selected_product && !shouldForwardToSeller) {
       console.log(`[ALINE-REPLY] Finalizando pedido...`);
       
       const selectedProduct = newCollectedData.selected_product as any;
@@ -887,8 +1003,8 @@ ${deliveryAddress ? `📍 Endereço: ${deliveryAddress}` : ''}
 
 
     // Atualizar conversa
-    // Se finalizado, colocar em human_takeover para que Aline PARE de responder
-    const newStatus = validatedNode === 'finalizado' ? 'human_takeover' : 'active';
+    // Se finalizado ou encaminhado ao vendedor, colocar em human_takeover para que Aline PARE de responder
+    const newStatus = (validatedNode === 'finalizado' || shouldForwardToSeller) ? 'human_takeover' : 'active';
     
     await supabase
       .from('aline_conversations')
