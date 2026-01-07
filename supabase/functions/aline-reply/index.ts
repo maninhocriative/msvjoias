@@ -570,26 +570,27 @@ ${message}
       }
     }
 
-    // Coletar método de entrega
+    // Coletar método de entrega - verificar SEMPRE que o usuário mencionar entrega/retirada
+    // Não precisa estar em um node específico
     let deliveryMethodJustCollected = false;
-    if (currentNode.includes('entrega') || currentNode.includes('coleta_entrega')) {
-      const entregaMap: Record<string, string> = {
-        '1': 'retirada', 'retirada': 'retirada', 'loja': 'retirada',
-        '2': 'entrega', 'entrega': 'entrega', 'envio': 'entrega', 'correios': 'entrega', 'delivery': 'entrega',
-        'via delivery': 'entrega', 'via entrega': 'entrega',
-      };
-      // Verificar se alguma chave corresponde
-      const entregaKey = Object.keys(entregaMap).find(key => normalizedMsg.includes(key) || normalizedMsg === key);
-      if (entregaKey) {
-        newCollectedData.delivery_method = entregaMap[entregaKey];
-        deliveryMethodJustCollected = true;
-        console.log(`[ALINE-REPLY] Método de entrega coletado: ${entregaMap[entregaKey]}`);
-      } else if (normalizedMsg.length > 10) {
-        // Se for texto longo, provavelmente é endereço
+    const entregaMap: Record<string, string> = {
+      'retirada': 'retirada', 'retirar': 'retirada', 'loja': 'retirada', 'buscar': 'retirada', 'retirar na loja': 'retirada',
+      'entrega': 'entrega', 'envio': 'entrega', 'correios': 'entrega', 'delivery': 'entrega', 'enviar': 'entrega',
+      'via delivery': 'entrega', 'via entrega': 'entrega', 'receber em casa': 'entrega', 'mandar': 'entrega',
+    };
+    // Verificar se alguma chave corresponde na mensagem
+    const entregaKey = Object.keys(entregaMap).find(key => normalizedMsg.includes(key));
+    if (entregaKey && !newCollectedData.delivery_method) {
+      newCollectedData.delivery_method = entregaMap[entregaKey];
+      deliveryMethodJustCollected = true;
+      console.log(`[ALINE-REPLY] Método de entrega coletado (global): ${entregaMap[entregaKey]} (msg: "${normalizedMsg}")`);
+    } else if (currentNode.includes('entrega') || currentNode.includes('coleta')) {
+      // Se estiver no node de entrega e for texto longo, provavelmente é endereço
+      if (normalizedMsg.length > 15 && !entregaKey) {
         newCollectedData.delivery_address = message;
         newCollectedData.delivery_method = 'entrega';
         deliveryMethodJustCollected = true;
-        console.log(`[ALINE-REPLY] Endereço coletado`);
+        console.log(`[ALINE-REPLY] Endereço coletado: ${message.substring(0, 50)}...`);
       }
     }
 
@@ -748,27 +749,39 @@ ${message}
 
     // ========================================
     // PASSO 7.1: ENCAMINHAR AO VENDEDOR QUANDO COLETAR ENTREGA OU PAGAMENTO
+    // Agora encaminha mesmo SEM produto selecionado (só ter escolhido forma de entrega já basta)
     // ========================================
-    if (shouldForwardToSeller && newCollectedData.selected_product) {
+    if (shouldForwardToSeller) {
       console.log(`[ALINE-REPLY] Encaminhando ao vendedor (coletou entrega ou pagamento)...`);
       
-      const selectedProduct = newCollectedData.selected_product as any;
+      const selectedProduct = newCollectedData.selected_product as any || null;
       const deliveryMethod = (newCollectedData.delivery_method as string) || 'N/A';
       const paymentMethod = (newCollectedData.payment_method as string) || 'N/A';
       const deliveryAddress = (newCollectedData.delivery_address as string) || null;
       const customerName = (newCollectedData.contact_name as string) || 'Cliente';
       
       // Criar resumo para encaminhar ao vendedor
-      const forwardSummary = `
+      let forwardSummary = `
 🔔 *CLIENTE AGUARDANDO ATENDIMENTO*
 
 👤 Cliente: ${customerName}
 📱 WhatsApp: ${phone}
+`;
 
+      // Se tem produto selecionado, incluir detalhes
+      if (selectedProduct) {
+        forwardSummary += `
 🛍️ Produto escolhido: ${selectedProduct.name}
 🏷️ SKU: ${selectedProduct.sku || 'N/A'}
 💰 Valor: R$ ${selectedProduct.price?.toFixed(2) || '0,00'}
+`;
+      } else {
+        forwardSummary += `
+🛍️ Produto: Ainda não selecionado
+`;
+      }
 
+      forwardSummary += `
 ${deliveryMethod !== 'N/A' ? `🚚 Forma de envio: ${deliveryMethod === 'retirada' ? 'Retirada na loja' : 'Delivery/Envio'}` : ''}
 ${deliveryAddress ? `📍 Endereço: ${deliveryAddress}` : ''}
 ${paymentMethod !== 'N/A' ? `💳 Pagamento: ${paymentMethod.toUpperCase()}` : ''}
@@ -800,7 +813,7 @@ ${paymentMethod !== 'N/A' ? `💳 Pagamento: ${paymentMethod.toUpperCase()}` : '
         .maybeSingle();
       
       const aciumPhoneForward = notifSettingForward?.value || '5592984145531';
-      const productImageUrlForward = selectedProduct.image_url || selectedProduct.video_url || null;
+      const productImageUrlForward = selectedProduct?.image_url || selectedProduct?.video_url || null;
       
       // Enviar notificação para o WhatsApp da Acium
       try {
@@ -845,7 +858,7 @@ ${paymentMethod !== 'N/A' ? `💳 Pagamento: ${paymentMethod.toUpperCase()}` : '
         console.error(`[ALINE-REPLY] Erro ao notificar vendedor:`, notifError);
       }
 
-      // Marcar para human_takeover
+      // Marcar para human_takeover e atualizar status na aline_conversations
       validatedNode = 'finalizado';
     }
 
