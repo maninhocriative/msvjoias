@@ -796,13 +796,13 @@ ${paymentMethod !== 'N/A' ? `💳 Pagamento: ${paymentMethod.toUpperCase()}` : '
 ⚠️ *A Aline encaminhou para atendimento humano. Por favor, entre em contato com o cliente.*
       `.trim();
 
-      // Atualizar lead_status para 'vendedor' no CRM
+      // Atualizar lead_status para 'comprador' no CRM (cliente mostrou intenção de compra)
       if (crmConversationId) {
         await supabase
           .from('conversations')
-          .update({ lead_status: 'vendedor' })
+          .update({ lead_status: 'comprador' })
           .eq('id', crmConversationId);
-        console.log(`[ALINE-REPLY] Lead atualizado para 'vendedor': ${crmConversationId}`);
+        console.log(`[ALINE-REPLY] Lead atualizado para 'comprador': ${crmConversationId}`);
       }
 
       // Buscar número de notificação da Acium
@@ -1116,46 +1116,9 @@ ${deliveryAddress ? `📍 Endereço: ${deliveryAddress}` : ''}
           
           // ========================================
           // MENSAGEM DE FOLLOW-UP APÓS CATÁLOGO
+          // (REMOVIDO - mensagem já é enviada pelo automation-send, estava duplicando)
           // ========================================
-          if (productsForSend.length > 0) {
-            // Aguardar um pouco para não sobrecarregar
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            
-            const followUpMessage = `Esses são alguns modelos que separei para você! 💍\n\nQual deles chamou mais a sua atenção? Me diz o número ou o nome do modelo que você gostou que eu te conto mais sobre ele! 😊`;
-            
-            await fetch(`${supabaseUrl}/functions/v1/automation-send`, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${supabaseServiceKey}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                phone,
-                message: followUpMessage,
-              }),
-            });
-            
-            // Salvar mensagem de follow-up no aline_messages
-            await supabase.from('aline_messages').insert({
-              conversation_id: conversation.id,
-              role: 'aline',
-              message: followUpMessage,
-              node: validatedNode,
-            });
-            
-            // Salvar mensagem de follow-up no Chat CRM também
-            if (crmConversationId) {
-              await supabase.from('messages').insert({
-                conversation_id: crmConversationId,
-                content: followUpMessage,
-                is_from_me: true,
-                message_type: 'text',
-                status: 'sent'
-              });
-            }
-            
-            console.log(`[ALINE-REPLY] Mensagem de follow-up enviada`);
-          }
+          console.log(`[ALINE-REPLY] Catálogo enviado com ${productsForSend.length} produtos`);
         }
       } catch (sendError) {
         console.error(`[ALINE-REPLY] Erro ao chamar automation-send:`, sendError);

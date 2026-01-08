@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Plus, Search, Wallet, History, Edit, Trash2 } from 'lucide-react';
+import { Plus, Search, Wallet, History, Edit, Trash2, ShoppingCart } from 'lucide-react';
 import { useUserRole } from '@/hooks/useUserRole';
 
 interface Customer {
@@ -67,6 +67,10 @@ const Customers = () => {
     type: 'CREDIT' as 'CREDIT' | 'DEBIT',
     description: '',
   });
+
+  // Estado para registrar compra (gerar cashback)
+  const [purchaseDialogOpen, setPurchaseDialogOpen] = useState(false);
+  const [purchaseAmount, setPurchaseAmount] = useState('');
 
   useEffect(() => {
     fetchCustomers();
@@ -211,6 +215,45 @@ const Customers = () => {
     }
   };
 
+  // Registrar compra e gerar cashback
+  const handlePurchase = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCustomer) return;
+
+    const amount = parseFloat(purchaseAmount.replace(',', '.'));
+    if (isNaN(amount) || amount <= 0) {
+      toast.error('Valor inválido');
+      return;
+    }
+
+    try {
+      // Usar a RPC para calcular e adicionar cashback
+      const { data, error } = await supabase.rpc('add_customer_cashback', {
+        p_customer_id: selectedCustomer.id,
+        p_order_reference: `MANUAL-${Date.now()}`,
+        p_order_value: amount,
+      });
+
+      if (error) throw error;
+
+      // Atualizar total_orders
+      await supabase
+        .from('customers')
+        .update({ 
+          total_orders: selectedCustomer.total_orders + 1 
+        })
+        .eq('id', selectedCustomer.id);
+
+      const cashbackAmount = data || 0;
+      toast.success(`Compra de ${formatCurrency(amount)} registrada! Cashback de ${formatCurrency(cashbackAmount)} creditado.`);
+      setPurchaseDialogOpen(false);
+      setPurchaseAmount('');
+      fetchCustomers();
+    } catch (error: any) {
+      toast.error('Erro ao registrar compra: ' + error.message);
+    }
+  };
+
   const resetForm = () => {
     setFormData({ name: '', whatsapp: '', cpf: '' });
     setEditingCustomer(null);
@@ -235,6 +278,11 @@ const Customers = () => {
   const openAdjustDialog = (customer: Customer) => {
     setSelectedCustomer(customer);
     setAdjustDialogOpen(true);
+  };
+
+  const openPurchaseDialog = (customer: Customer) => {
+    setSelectedCustomer(customer);
+    setPurchaseDialogOpen(true);
   };
 
   const filteredCustomers = customers.filter(c =>
@@ -392,6 +440,15 @@ const Customers = () => {
                           <Button
                             variant="ghost"
                             size="icon"
+                            onClick={() => openPurchaseDialog(customer)}
+                            title="Registrar compra"
+                            className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                          >
+                            <ShoppingCart className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             onClick={() => openAdjustDialog(customer)}
                             title="Ajustar saldo"
                           >
@@ -537,6 +594,55 @@ const Customers = () => {
                 Cancelar
               </Button>
               <Button type="submit">Confirmar Ajuste</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Purchase Dialog - Registrar Compra */}
+      <Dialog open={purchaseDialogOpen} onOpenChange={setPurchaseDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShoppingCart className="w-5 h-5 text-green-600" />
+              Registrar Compra - {selectedCustomer?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handlePurchase} className="space-y-4">
+            <div className="p-4 bg-muted rounded-lg">
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Saldo atual de cashback:</span>
+                <span className="font-semibold text-green-600">
+                  {formatCurrency(selectedCustomer?.wallet_balance || 0)}
+                </span>
+              </div>
+              <div className="flex justify-between items-center mt-2">
+                <span className="text-muted-foreground">Total de pedidos:</span>
+                <span className="font-semibold">{selectedCustomer?.total_orders || 0}</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="purchaseAmount">Valor da Compra (R$)</Label>
+              <Input
+                id="purchaseAmount"
+                type="text"
+                inputMode="decimal"
+                value={purchaseAmount}
+                onChange={(e) => setPurchaseAmount(e.target.value)}
+                placeholder="Ex: 299,90"
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                O cashback será calculado automaticamente com base na porcentagem configurada na loja.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setPurchaseDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" className="bg-green-600 hover:bg-green-700">
+                Registrar Compra
+              </Button>
             </div>
           </form>
         </DialogContent>
