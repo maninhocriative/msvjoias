@@ -457,6 +457,7 @@ export type Database = {
           id: string
           name: string
           total_orders: number
+          total_purchases: number
           updated_at: string
           wallet_balance: number
           whatsapp: string
@@ -467,6 +468,7 @@ export type Database = {
           id?: string
           name: string
           total_orders?: number
+          total_purchases?: number
           updated_at?: string
           wallet_balance?: number
           whatsapp: string
@@ -477,6 +479,7 @@ export type Database = {
           id?: string
           name?: string
           total_orders?: number
+          total_purchases?: number
           updated_at?: string
           wallet_balance?: number
           whatsapp?: string

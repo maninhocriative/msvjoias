@@ -30,6 +30,7 @@ interface Customer {
   cpf: string | null;
   wallet_balance: number;
   total_orders: number;
+  total_purchases: number;
   created_at: string;
 }
 
@@ -236,11 +237,12 @@ const Customers = () => {
 
       if (error) throw error;
 
-      // Atualizar total_orders
+      // Atualizar total_orders e total_purchases
       await supabase
         .from('customers')
         .update({ 
-          total_orders: selectedCustomer.total_orders + 1 
+          total_orders: selectedCustomer.total_orders + 1,
+          total_purchases: (selectedCustomer.total_purchases || 0) + amount
         })
         .eq('id', selectedCustomer.id);
 
@@ -396,6 +398,7 @@ const Customers = () => {
               <TableHead>WhatsApp</TableHead>
               <TableHead>CPF</TableHead>
               <TableHead className="text-right">Saldo Cashback</TableHead>
+              <TableHead className="text-right">Total Compras</TableHead>
               <TableHead className="text-center">Pedidos</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow>
@@ -403,13 +406,13 @@ const Customers = () => {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8">
+                <TableCell colSpan={7} className="text-center py-8">
                   Carregando...
                 </TableCell>
               </TableRow>
             ) : filteredCustomers.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                   Nenhum cliente encontrado
                 </TableCell>
               </TableRow>
@@ -423,6 +426,9 @@ const Customers = () => {
                     <Badge variant={customer.wallet_balance > 0 ? 'default' : 'secondary'}>
                       {formatCurrency(customer.wallet_balance)}
                     </Badge>
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
+                    {formatCurrency(customer.total_purchases || 0)}
                   </TableCell>
                   <TableCell className="text-center">{customer.total_orders}</TableCell>
                   <TableCell>
