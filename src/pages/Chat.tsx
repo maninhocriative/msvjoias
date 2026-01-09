@@ -24,7 +24,9 @@ const Chat = () => {
   const [takingOver, setTakingOver] = useState(false);
   const [isContactTyping, setIsContactTyping] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterAttendant, setFilterAttendant] = useState<string>('all');
   const [alineStatus, setAlineStatus] = useState<string | null>(null);
+  const [alineStatusMap, setAlineStatusMap] = useState<Record<string, string>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -160,6 +162,23 @@ const Chat = () => {
 
       if (error) throw error;
       setConversations(data || []);
+      
+      // Buscar status de atendimento de todas as conversas
+      if (data && data.length > 0) {
+        const phones = data.map(c => c.contact_number);
+        const { data: alineData } = await supabase
+          .from('aline_conversations')
+          .select('phone, status')
+          .in('phone', phones);
+        
+        if (alineData) {
+          const statusMap: Record<string, string> = {};
+          alineData.forEach(ac => {
+            statusMap[ac.phone] = ac.status;
+          });
+          setAlineStatusMap(statusMap);
+        }
+      }
     } catch (error) {
       console.error('Error fetching conversations:', error);
     } finally {
@@ -345,7 +364,16 @@ const Chat = () => {
     const matchesSearch = conv.contact_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       conv.contact_number?.includes(searchTerm);
     const matchesStatus = filterStatus === 'all' || conv.lead_status === filterStatus;
-    return matchesSearch && matchesStatus;
+    
+    // Filtro por atendente
+    const convAlineStatus = alineStatusMap[conv.contact_number];
+    const isHumanAttendant = convAlineStatus === 'human_takeover';
+    const isAlineAttendant = convAlineStatus === 'active' || !convAlineStatus;
+    const matchesAttendant = filterAttendant === 'all' || 
+      (filterAttendant === 'vendedor' && isHumanAttendant) ||
+      (filterAttendant === 'aline' && isAlineAttendant);
+    
+    return matchesSearch && matchesStatus && matchesAttendant;
   });
 
   const getStatusIcon = (status: string) => {
@@ -407,12 +435,24 @@ const Chat = () => {
     { key: 'comprador', label: 'Compradores', emoji: '💰' },
   ];
 
+  const attendantFilters = [
+    { key: 'all', label: 'Todos', icon: null },
+    { key: 'aline', label: 'Aline', icon: Bot },
+    { key: 'vendedor', label: 'Vendedor', icon: User },
+  ];
+
   const statusCounts: Record<string, number> = {
     all: conversations.length,
     novo: conversations.filter(c => c.lead_status === 'novo').length,
     quente: conversations.filter(c => c.lead_status === 'quente').length,
     frio: conversations.filter(c => c.lead_status === 'frio').length,
     comprador: conversations.filter(c => c.lead_status === 'comprador').length,
+  };
+
+  const attendantCounts: Record<string, number> = {
+    all: conversations.length,
+    aline: conversations.filter(c => alineStatusMap[c.contact_number] !== 'human_takeover').length,
+    vendedor: conversations.filter(c => alineStatusMap[c.contact_number] === 'human_takeover').length,
   };
 
   return (
@@ -464,7 +504,7 @@ const Chat = () => {
         </div>
 
         {/* Status Filter Pills */}
-        <div className="px-3 py-2.5 grid grid-cols-5 gap-1.5 border-b border-white/5">
+        <div className="px-3 py-2 grid grid-cols-5 gap-1.5 border-b border-white/5">
           {statusFilters.map(({ key, label, emoji }) => (
             <button
               key={key}
@@ -478,6 +518,30 @@ const Chat = () => {
             >
               <span className="text-base">{emoji}</span>
               <span className="truncate w-full text-center">{statusCounts[key]}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Attendant Filter */}
+        <div className="px-3 py-2 flex gap-2 border-b border-white/5">
+          {attendantFilters.map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              onClick={() => setFilterAttendant(key)}
+              className={cn(
+                'flex-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5',
+                filterAttendant === key 
+                  ? key === 'aline' 
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : key === 'vendedor'
+                    ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                    : 'bg-slate-700 text-white border border-white/10'
+                  : 'bg-slate-800/50 text-slate-400 hover:bg-slate-700/50 hover:text-white border border-transparent'
+              )}
+            >
+              {Icon && <Icon className="w-3.5 h-3.5" />}
+              <span>{label}</span>
+              <span className="ml-1 text-[10px] opacity-70">({attendantCounts[key]})</span>
             </button>
           ))}
         </div>
