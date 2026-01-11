@@ -16,7 +16,7 @@ const registerSchema = z.object({
   email: z.string().email('Email inválido'),
   password: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres'),
   phone: z.string().min(10, 'Telefone inválido').max(20),
-  instagram: z.string().min(1, 'Instagram é obrigatório').max(50),
+  instagram: z.string().max(50).optional(),
 });
 
 const Register = () => {
@@ -115,17 +115,6 @@ const Register = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
-
-    // Validate photo is required
-    if (!avatarFile) {
-      setErrors({ avatar: 'Foto é obrigatória' });
-      toast({
-        title: 'Foto obrigatória',
-        description: 'Por favor, tire uma foto para continuar.',
-        variant: 'destructive',
-      });
-      return;
-    }
 
     try {
       registerSchema.parse({
@@ -238,7 +227,7 @@ const Register = () => {
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Avatar Section */}
             <div className="flex flex-col items-center gap-4 mb-6">
-              <Label className="text-sm font-medium">Foto *</Label>
+              <Label className="text-sm font-medium">Foto (opcional)</Label>
               {showCamera ? (
                 <div className="relative">
                   <video
@@ -385,7 +374,7 @@ const Register = () => {
 
             {/* Instagram */}
             <div className="space-y-2">
-              <Label htmlFor="instagram">Instagram *</Label>
+              <Label htmlFor="instagram">Instagram (opcional)</Label>
               <div className="relative">
                 <Instagram className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
