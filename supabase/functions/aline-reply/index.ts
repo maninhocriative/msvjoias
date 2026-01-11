@@ -1082,12 +1082,13 @@ ${deliveryAddress ? `📍 Endereço: ${deliveryAddress}` : ''}
           })) || [],
         }));
 
-        // Chamar automation-send
+        // Chamar automation-send com skip_crm_save para evitar duplicação
         const automationPayload = {
           phone,
           message: replyText,
           products: productsForSend.length > 0 ? productsForSend : undefined,
           send_video_priority: true,
+          skip_crm_save: true, // Já salvamos no CRM acima, não duplicar
         };
 
         const automationResponse = await fetch(`${supabaseUrl}/functions/v1/automation-send`, {

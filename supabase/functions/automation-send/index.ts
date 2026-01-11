@@ -145,7 +145,9 @@ serve(async (req) => {
       fromMe = true,
       // New: catalog products support
       products = null,
-      send_video_priority = true
+      send_video_priority = true,
+      // Skip saving to CRM (used when caller already saved the message)
+      skip_crm_save = false
     } = payload;
 
     if (!phone) {
@@ -218,19 +220,26 @@ serve(async (req) => {
 
       // Send intro message if provided
       if (message) {
-        const { data: introMsg } = await supabase
-          .from('messages')
-          .insert({
-            conversation_id: conversationId,
-            content: message,
-            message_type: 'text',
-            is_from_me: true,
-            status: 'pending'
-          })
-          .select('id')
-          .single();
+        let introMsgId: string | null = null;
+        
+        // Only save to CRM if not already saved by caller
+        if (!skip_crm_save) {
+          const { data: introMsg } = await supabase
+            .from('messages')
+            .insert({
+              conversation_id: conversationId,
+              content: message,
+              message_type: 'text',
+              is_from_me: true,
+              status: 'pending'
+            })
+            .select('id')
+            .single();
+          introMsgId = introMsg?.id || null;
+          results.messages.push(introMsgId || 'intro');
+        }
 
-        if (introMsg && hasZAPI) {
+        if (hasZAPI) {
           const result = await sendViaZAPI(
             normalizedPhone, 'text', message, null,
             ZAPI_INSTANCE_ID!, ZAPI_TOKEN!, ZAPI_CLIENT_TOKEN
@@ -238,12 +247,13 @@ serve(async (req) => {
           
           if (result.success) {
             results.forwarded++;
-            await supabase.from('messages').update({ status: 'sent' }).eq('id', introMsg.id);
+            if (introMsgId) {
+              await supabase.from('messages').update({ status: 'sent' }).eq('id', introMsgId);
+            }
           } else {
             results.errors.push(`Intro: ${result.error}`);
           }
         }
-        results.messages.push(introMsg?.id || 'intro');
         
         // Small delay between messages
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -360,27 +370,34 @@ serve(async (req) => {
     // ========================================
     // SINGLE MESSAGE MODE (original behavior)
     // ========================================
-    const { data: newMessage, error: messageError } = await supabase
-      .from('messages')
-      .insert({
-        conversation_id: conversationId,
-        content: message,
-        message_type,
-        media_url,
-        is_from_me: fromMe,
-        status: 'pending'
-      })
-      .select()
-      .single();
+    let newMessageId: string | null = null;
+    
+    // Only save to CRM if not already saved by caller
+    if (!skip_crm_save) {
+      const { data: newMessage, error: messageError } = await supabase
+        .from('messages')
+        .insert({
+          conversation_id: conversationId,
+          content: message,
+          message_type,
+          media_url,
+          is_from_me: fromMe,
+          status: 'pending'
+        })
+        .select()
+        .single();
 
-    if (messageError) {
-      throw messageError;
+      if (messageError) {
+        throw messageError;
+      }
+      
+      newMessageId = newMessage.id;
+
+      await supabase
+        .from('conversations')
+        .update({ last_message: message || `[${message_type}]` })
+        .eq('id', conversationId);
     }
-
-    await supabase
-      .from('conversations')
-      .update({ last_message: message || `[${message_type}]` })
-      .eq('id', conversationId);
 
     let forwarded = false;
     let forwardError: string | null = null;
@@ -397,14 +414,16 @@ serve(async (req) => {
             message,
             message_type,
             media_url,
-            message_id: newMessage.id,
+            message_id: newMessageId,
             direction: 'outgoing'
           }),
         });
 
         if (webhookResponse.ok) {
           forwarded = true;
-          await supabase.from('messages').update({ status: 'delivered' }).eq('id', newMessage.id);
+          if (newMessageId) {
+            await supabase.from('messages').update({ status: 'delivered' }).eq('id', newMessageId);
+          }
         } else {
           forwardError = await webhookResponse.text();
         }
@@ -421,7 +440,9 @@ serve(async (req) => {
 
       if (result.success) {
         forwarded = true;
-        await supabase.from('messages').update({ status: 'sent' }).eq('id', newMessage.id);
+        if (newMessageId) {
+          await supabase.from('messages').update({ status: 'sent' }).eq('id', newMessageId);
+        }
       } else {
         forwardError = result.error || 'Z-API error';
       }
@@ -433,7 +454,7 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         mode: 'single',
-        message_id: newMessage.id,
+        message_id: newMessageId,
         conversation_id: conversationId,
         forwarded,
         forward_error: forwardError
