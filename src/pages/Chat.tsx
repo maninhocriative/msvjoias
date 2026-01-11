@@ -3,12 +3,13 @@ import { supabase, Conversation, Message, LeadStatus } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, Paperclip, Search, MessageSquare, FileText, Mic, Check, CheckCheck, Instagram, Bot, User, Phone, ArrowLeft, MoreVertical, UserCheck, RefreshCw, Clock, MessageCircle, Sparkles, X, Volume2 } from 'lucide-react';
+import { Send, Paperclip, Search, MessageSquare, FileText, Mic, Check, CheckCheck, Instagram, Bot, User, Phone, ArrowLeft, MoreVertical, UserCheck, RefreshCw, Clock, MessageCircle, Sparkles, X, Volume2, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { LeadStatusSelect, LeadStatusBadge } from '@/components/chat/LeadStatusSelect';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import TypingIndicator from '@/components/chat/TypingIndicator';
+import SellerToolsPanel from '@/components/chat/SellerToolsPanel';
 
 const Chat = () => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -27,6 +28,7 @@ const Chat = () => {
   const [filterAttendant, setFilterAttendant] = useState<string>('all');
   const [alineStatus, setAlineStatus] = useState<string | null>(null);
   const [alineStatusMap, setAlineStatusMap] = useState<Record<string, string>>({});
+  const [showSellerTools, setShowSellerTools] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -235,20 +237,26 @@ const Chat = () => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedConversation || sending) return;
 
+    await sendMessageDirect(newMessage);
+    setNewMessage('');
+  };
+
+  const sendMessageDirect = async (messageText: string) => {
+    if (!messageText.trim() || !selectedConversation) return;
+
     setSending(true);
     try {
       const { error } = await supabase.functions.invoke('automation-send', {
         body: {
           conversation_id: selectedConversation.id,
           phone: selectedConversation.contact_number,
-          message: newMessage,
+          message: messageText,
           message_type: 'text',
           platform: selectedConversation.platform || 'whatsapp',
         },
       });
 
       if (error) throw error;
-      setNewMessage('');
     } catch (error) {
       console.error('Error sending message:', error);
       toast({ title: 'Erro', description: 'Não foi possível enviar a mensagem.', variant: 'destructive' });
@@ -711,6 +719,20 @@ const Chat = () => {
                   onChange={(status) => updateLeadStatus(selectedConversation.id, status)}
                   disabled={updatingLeadStatus}
                 />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    "shrink-0 rounded-xl transition-colors",
+                    showSellerTools 
+                      ? "text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20" 
+                      : "text-slate-400 hover:text-white hover:bg-white/10"
+                  )}
+                  onClick={() => setShowSellerTools(!showSellerTools)}
+                  title={showSellerTools ? 'Ocultar ferramentas' : 'Mostrar ferramentas'}
+                >
+                  {showSellerTools ? <PanelRightClose className="w-5 h-5" /> : <PanelRightOpen className="w-5 h-5" />}
+                </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="shrink-0 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl">
@@ -971,6 +993,18 @@ const Chat = () => {
           </div>
         )}
       </div>
+
+      {/* Seller Tools Panel */}
+      {selectedConversation && showSellerTools && (
+        <div className="hidden lg:block w-[320px] shrink-0">
+          <SellerToolsPanel
+            phone={selectedConversation.contact_number}
+            contactName={selectedConversation.contact_name || ''}
+            conversationId={selectedConversation.id}
+            onSendMessage={sendMessageDirect}
+          />
+        </div>
+      )}
     </div>
   );
 };
