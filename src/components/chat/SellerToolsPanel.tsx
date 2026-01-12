@@ -80,6 +80,7 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
   const [loading, setLoading] = useState(true);
   const [creatingOrder, setCreatingOrder] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [activePanel, setActivePanel] = useState<'info' | 'order' | 'quick' | null>(null);
   
   // Order form
   const [orderDelivery, setOrderDelivery] = useState<'retirada' | 'envio'>('retirada');
@@ -248,8 +249,6 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
       </div>
     );
   }
-
-  const [activePanel, setActivePanel] = useState<'info' | 'order' | 'quick' | null>(null);
 
   const togglePanel = (panel: 'info' | 'order' | 'quick') => {
     setActivePanel(activePanel === panel ? null : panel);
