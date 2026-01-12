@@ -295,7 +295,16 @@ No final de CADA resposta, adicione o nó técnico:
 - APENAS 1 mensagem por vez
 - NÃO repita menus
 - NÃO invente produtos (use apenas os da ferramenta)
-- NÃO diga "vou buscar" sem chamar search_catalog`;
+- NÃO diga "vou buscar" sem chamar search_catalog
+
+---
+
+## 11. INFORMAÇÕES IMPORTANTES DA LOJA
+
+**PRAZO DE ENTREGA:** O prazo de produção e entrega é de **10 HORAS** após o fechamento do pedido (não são dias, são HORAS).
+- NUNCA informe prazos diferentes como "7 a 10 dias úteis"
+- Se perguntarem sobre prazo, diga: "Nosso prazo é de apenas 10 horas após a confirmação do pedido!"
+- Isso é um diferencial da ACIUM: entrega super rápida`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
