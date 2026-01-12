@@ -3,7 +3,7 @@ import { supabase, Conversation, Message, LeadStatus } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, Paperclip, Search, MessageSquare, FileText, Mic, Check, CheckCheck, Instagram, Bot, User, Phone, ArrowLeft, MoreVertical, UserCheck, RefreshCw, Clock, MessageCircle, Sparkles, X, Volume2, PanelRightClose, PanelRightOpen } from 'lucide-react';
+import { Send, Paperclip, Search, MessageSquare, FileText, Mic, Check, CheckCheck, Instagram, Bot, User, Phone, ArrowLeft, MoreVertical, UserCheck, RefreshCw, Clock, MessageCircle, Sparkles, X, Volume2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { LeadStatusSelect, LeadStatusBadge } from '@/components/chat/LeadStatusSelect';
@@ -28,7 +28,7 @@ const Chat = () => {
   const [filterAttendant, setFilterAttendant] = useState<string>('all');
   const [alineStatus, setAlineStatus] = useState<string | null>(null);
   const [alineStatusMap, setAlineStatusMap] = useState<Record<string, string>>({});
-  const [showSellerTools, setShowSellerTools] = useState(true);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -719,20 +719,6 @@ const Chat = () => {
                   onChange={(status) => updateLeadStatus(selectedConversation.id, status)}
                   disabled={updatingLeadStatus}
                 />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    "shrink-0 rounded-xl transition-colors",
-                    showSellerTools 
-                      ? "text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20" 
-                      : "text-slate-400 hover:text-white hover:bg-white/10"
-                  )}
-                  onClick={() => setShowSellerTools(!showSellerTools)}
-                  title={showSellerTools ? 'Ocultar ferramentas' : 'Mostrar ferramentas'}
-                >
-                  {showSellerTools ? <PanelRightClose className="w-5 h-5" /> : <PanelRightOpen className="w-5 h-5" />}
-                </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="shrink-0 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl">
@@ -994,9 +980,9 @@ const Chat = () => {
         )}
       </div>
 
-      {/* Seller Tools Panel */}
-      {selectedConversation && showSellerTools && (
-        <div className="hidden lg:block w-[320px] shrink-0">
+      {/* Seller Tools Panel - Icon toolbar */}
+      {selectedConversation && (
+        <div className="hidden lg:block shrink-0">
           <SellerToolsPanel
             phone={selectedConversation.contact_number}
             contactName={selectedConversation.contact_name || ''}
