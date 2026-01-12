@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+// Tabs removed - using icon toolbar instead
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -249,34 +249,83 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
     );
   }
 
+  const [activePanel, setActivePanel] = useState<'info' | 'order' | 'quick' | null>(null);
+
+  const togglePanel = (panel: 'info' | 'order' | 'quick') => {
+    setActivePanel(activePanel === panel ? null : panel);
+  };
+
   return (
-    <div className="h-full flex flex-col bg-slate-900/95 border-l border-white/5">
-      <div className="px-4 py-3 border-b border-white/5">
-        <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-emerald-400" />
-          Ferramentas do Vendedor
-        </h3>
+    <div className="h-full flex bg-slate-900/95 border-l border-white/5">
+      {/* Icon toolbar */}
+      <div className="w-12 shrink-0 flex flex-col items-center py-3 gap-2 border-r border-white/5 bg-slate-950/50">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => togglePanel('info')}
+          className={cn(
+            "w-10 h-10 rounded-xl transition-all",
+            activePanel === 'info' 
+              ? "bg-emerald-600 text-white shadow-lg shadow-emerald-500/20" 
+              : "text-slate-400 hover:text-white hover:bg-white/10"
+          )}
+          title="Cliente"
+        >
+          <User className="w-5 h-5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => togglePanel('order')}
+          className={cn(
+            "w-10 h-10 rounded-xl transition-all",
+            activePanel === 'order' 
+              ? "bg-emerald-600 text-white shadow-lg shadow-emerald-500/20" 
+              : "text-slate-400 hover:text-white hover:bg-white/10"
+          )}
+          title="Pedido"
+        >
+          <ShoppingCart className="w-5 h-5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => togglePanel('quick')}
+          className={cn(
+            "w-10 h-10 rounded-xl transition-all",
+            activePanel === 'quick' 
+              ? "bg-emerald-600 text-white shadow-lg shadow-emerald-500/20" 
+              : "text-slate-400 hover:text-white hover:bg-white/10"
+          )}
+          title="Respostas Rápidas"
+        >
+          <MessageSquare className="w-5 h-5" />
+        </Button>
       </div>
 
-      <Tabs defaultValue="info" className="flex-1 flex flex-col">
-        <TabsList className="mx-3 mt-2 bg-slate-800/50 rounded-xl p-1">
-          <TabsTrigger value="info" className="flex-1 text-xs data-[state=active]:bg-emerald-600">
-            <User className="w-3 h-3 mr-1" />
-            Cliente
-          </TabsTrigger>
-          <TabsTrigger value="order" className="flex-1 text-xs data-[state=active]:bg-emerald-600">
-            <ShoppingCart className="w-3 h-3 mr-1" />
-            Pedido
-          </TabsTrigger>
-          <TabsTrigger value="quick" className="flex-1 text-xs data-[state=active]:bg-emerald-600">
-            <MessageSquare className="w-3 h-3 mr-1" />
-            Rápidas
-          </TabsTrigger>
-        </TabsList>
+      {/* Expanded panel content */}
+      {activePanel && (
+        <div className="flex-1 flex flex-col w-[280px]">
+          <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              {activePanel === 'info' && <><User className="w-4 h-4 text-emerald-400" /> Cliente</>}
+              {activePanel === 'order' && <><ShoppingCart className="w-4 h-4 text-emerald-400" /> Criar Pedido</>}
+              {activePanel === 'quick' && <><MessageSquare className="w-4 h-4 text-emerald-400" /> Respostas Rápidas</>}
+            </h3>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setActivePanel(null)}
+              className="w-7 h-7 text-slate-400 hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
 
-        <ScrollArea className="flex-1">
-          {/* Tab: Cliente Info */}
-          <TabsContent value="info" className="p-3 space-y-3 mt-0">
+          <ScrollArea className="flex-1">
+            {/* Panel: Cliente Info */}
+            {activePanel === 'info' && (
+              <div className="p-3 space-y-3">
             {/* Dados do Cliente */}
             <Card className="bg-slate-800/50 border-white/5">
               <CardHeader className="py-3 px-4">
@@ -396,10 +445,12 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
                 </CardContent>
               </Card>
             )}
-          </TabsContent>
+              </div>
+            )}
 
-          {/* Tab: Criar Pedido */}
-          <TabsContent value="order" className="p-3 space-y-3 mt-0">
+            {/* Panel: Criar Pedido */}
+            {activePanel === 'order' && (
+              <div className="p-3 space-y-3">
             {/* Buscar Produto */}
             <Card className="bg-slate-800/50 border-white/5">
               <CardHeader className="py-3 px-4">
@@ -594,10 +645,12 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
                 </CardContent>
               </Card>
             )}
-          </TabsContent>
+              </div>
+            )}
 
-          {/* Tab: Respostas Rápidas */}
-          <TabsContent value="quick" className="p-3 space-y-2 mt-0">
+            {/* Panel: Respostas Rápidas */}
+            {activePanel === 'quick' && (
+              <div className="p-3 space-y-2">
             {QUICK_RESPONSES.map((response, index) => (
               <Card 
                 key={index}
@@ -635,9 +688,11 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
                 </CardContent>
               </Card>
             ))}
-          </TabsContent>
-        </ScrollArea>
-      </Tabs>
+              </div>
+            )}
+          </ScrollArea>
+        </div>
+      )}
     </div>
   );
 };
