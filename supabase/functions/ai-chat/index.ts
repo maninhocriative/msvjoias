@@ -345,26 +345,59 @@ serve(async (req) => {
 
     console.log("AI Config loaded:", aiConfig?.name, "Model:", aiConfig?.model);
 
-    // Se recebeu phone + message, buscar histórico e montar mensagens
+    // Se recebeu phone + message, buscar histórico COMPLETO e montar mensagens
     if (phone && newMessage) {
-      // Buscar histórico de mensagens do conversation_events
-      const { data: history } = await supabase
-        .from('conversation_events')
-        .select('*')
+      // Primeiro, buscar a conversa da Aline para pegar o histórico
+      const { data: alineConv } = await supabase
+        .from('aline_conversations')
+        .select('id')
         .eq('phone', phone)
-        .in('type', ['text', 'message'])
-        .order('ts', { ascending: true })
-        .limit(20); // Últimas 20 mensagens para contexto
+        .single();
 
-      if (history && history.length > 0) {
-        messages = history.map(event => ({
-          role: event.direction === 'in' ? 'user' : 'assistant',
-          content: (event.payload as any)?.text || (event.payload as any)?.message || ''
-        })).filter(m => m.content);
+      let historyMessages: { role: string; content: string }[] = [];
+
+      // Buscar histórico da tabela aline_messages (mais completo e confiável)
+      if (alineConv?.id) {
+        const { data: alineHistory } = await supabase
+          .from('aline_messages')
+          .select('role, message, created_at')
+          .eq('conversation_id', alineConv.id)
+          .order('created_at', { ascending: true })
+          .limit(50); // Aumentado para 50 mensagens - contexto completo
+
+        if (alineHistory && alineHistory.length > 0) {
+          historyMessages = alineHistory.map(msg => ({
+            role: msg.role === 'user' ? 'user' : 'assistant',
+            content: msg.message
+          })).filter(m => m.content);
+        }
       }
+
+      // Se não tem histórico na aline_messages, buscar do conversation_events como fallback
+      if (historyMessages.length === 0) {
+        const { data: history } = await supabase
+          .from('conversation_events')
+          .select('*')
+          .eq('phone', phone)
+          .in('type', ['text', 'message'])
+          .order('ts', { ascending: true })
+          .limit(50); // Aumentado para 50 mensagens
+
+        if (history && history.length > 0) {
+          historyMessages = history.map(event => ({
+            role: event.direction === 'in' ? 'user' : 'assistant',
+            content: (event.payload as any)?.text || (event.payload as any)?.message || ''
+          })).filter(m => m.content);
+        }
+      }
+
+      messages = historyMessages;
 
       // Adicionar a nova mensagem do usuário
       messages.push({ role: 'user', content: newMessage });
+
+      // Log para debug
+      console.log(`[AI-CHAT] Histórico carregado: ${messages.length} mensagens para ${phone}`);
 
       // Salvar a mensagem do usuário no histórico
       if (saveHistory) {
