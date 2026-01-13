@@ -281,6 +281,53 @@ serve(async (req) => {
           node: conversation.current_node,
         });
 
+        // ========== NOTIFICAR ACIUM APÓS ENVIO DE CATÁLOGO SEM RESPOSTA ==========
+        // Se o stage atual é 'catalog_sent' e é o primeiro follow-up, notifica a Acium
+        if (followupCount === 0 && conversation.current_node === 'catalog_sent') {
+          try {
+            // Buscar número de notificação das configurações
+            const { data: notifConfig } = await supabase
+              .from('store_settings')
+              .select('value')
+              .eq('key', 'notification_whatsapp')
+              .single();
+
+            const aciumPhone = notifConfig?.value || '5592984145531';
+            
+            // Buscar dados do catálogo enviado
+            const { data: catalogSession } = await supabase
+              .from('catalog_sessions')
+              .select('categoria, cor_preferida, tipo_alianca, created_at')
+              .eq('phone', conversation.phone)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .single();
+
+            const catalogInfo = catalogSession 
+              ? `📋 *Catálogo enviado:*\n• Categoria: ${catalogSession.categoria || 'N/A'}\n• Cor: ${catalogSession.cor_preferida || 'N/A'}\n• Tipo: ${catalogSession.tipo_alianca || 'N/A'}`
+              : '📋 Catálogo enviado (sem detalhes)';
+
+            const notificationMsg = `🔔 *ALERTA DE LEAD SEM RESPOSTA*\n\n` +
+              `📱 *Cliente:* ${conversation.phone}\n` +
+              `⏰ *Tempo sem resposta:* ${nextFollowupConfig.intervalMinutes} minutos\n\n` +
+              `${catalogInfo}\n\n` +
+              `💡 O cliente recebeu o catálogo mas não respondeu. Aline enviou o primeiro follow-up automático.`;
+
+            await sendTextMessage(
+              zapiInstanceId,
+              zapiToken,
+              zapiClientToken,
+              aciumPhone,
+              notificationMsg
+            );
+
+            console.log(`[ALINE-FOLLOWUP] Notificação enviada para Acium sobre ${conversation.phone}`);
+          } catch (notifError) {
+            console.error(`[ALINE-FOLLOWUP] Erro ao notificar Acium:`, notifError);
+            // Não bloqueia o fluxo se a notificação falhar
+          }
+        }
+
         results.push({ 
           phone: conversation.phone, 
           success: true, 
