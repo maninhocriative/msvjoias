@@ -47,8 +47,31 @@ interface CustomerData {
   total_orders: number;
 }
 
+interface CatalogItem {
+  id: string;
+  name: string;
+  sku: string;
+  price: number;
+  image_url: string;
+}
+
 interface AlineData {
-  collected_data: Record<string, any>;
+  collected_data: {
+    categoria?: string;
+    cor?: string;
+    selected_product?: {
+      id?: string;
+      name?: string;
+      sku?: string;
+      price?: number;
+      image_url?: string;
+      category?: string;
+    };
+    last_catalog?: CatalogItem[];
+    delivery_method?: string;
+    payment_method?: string;
+    [key: string]: any;
+  };
   current_node: string;
   status: string;
 }
@@ -410,18 +433,87 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
               </CardContent>
             </Card>
 
-            {/* Produto Selecionado */}
-            {(selectedProduct || conversationState?.selected_sku) && (
+            {/* Catálogo Enviado - mostrar produtos do last_catalog */}
+            {alineData?.collected_data?.last_catalog && alineData.collected_data.last_catalog.length > 0 && (
               <Card className="bg-gradient-to-br from-emerald-500/10 to-green-500/10 border-emerald-500/20">
                 <CardHeader className="py-3 px-4">
                   <CardTitle className="text-sm text-white flex items-center gap-2">
                     <Package className="w-4 h-4 text-emerald-400" />
-                    Item Selecionado
+                    Catálogo Enviado ({alineData.collected_data.last_catalog.length} itens)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pb-4 space-y-3">
+                  {/* Preferências */}
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {alineData.collected_data.categoria && (
+                      <Badge className="bg-emerald-500/20 text-emerald-300 text-xs capitalize">
+                        {alineData.collected_data.categoria}
+                      </Badge>
+                    )}
+                    {alineData.collected_data.cor && (
+                      <Badge className="bg-amber-500/20 text-amber-300 text-xs capitalize">
+                        {alineData.collected_data.cor}
+                      </Badge>
+                    )}
+                  </div>
+                  
+                  {/* Lista de produtos enviados */}
+                  <div className="space-y-2">
+                    {alineData.collected_data.last_catalog.map((item: CatalogItem, index: number) => (
+                      <div 
+                        key={item.id || index}
+                        className="flex gap-3 items-start bg-slate-800/50 rounded-lg p-2 cursor-pointer hover:bg-slate-700/50 transition-colors"
+                        onClick={() => setSelectedProduct({
+                          id: item.id,
+                          name: item.name,
+                          sku: item.sku,
+                          price: item.price,
+                          image_url: item.image_url,
+                          category: alineData.collected_data?.categoria || '',
+                        })}
+                      >
+                        {item.image_url && (
+                          <img 
+                            src={item.image_url} 
+                            alt="" 
+                            className="w-12 h-12 rounded-lg object-cover border border-white/10"
+                          />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs text-white font-medium truncate">
+                            {item.name}
+                          </p>
+                          <p className="text-xs text-slate-400 font-mono">
+                            {item.sku}
+                          </p>
+                          <p className="text-sm text-emerald-400 font-bold">
+                            {formatCurrency(item.price)}
+                          </p>
+                        </div>
+                        {selectedProduct?.sku === item.sku && (
+                          <Badge className="bg-emerald-500 text-white text-xs shrink-0">
+                            Selecionado
+                          </Badge>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Produto Selecionado - quando há um selecionado */}
+            {selectedProduct && (
+              <Card className="bg-gradient-to-br from-blue-500/10 to-cyan-500/10 border-blue-500/20">
+                <CardHeader className="py-3 px-4">
+                  <CardTitle className="text-sm text-white flex items-center gap-2">
+                    <Check className="w-4 h-4 text-blue-400" />
+                    Item para Pedido
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="px-4 pb-4 space-y-3">
                   <div className="flex gap-3 items-start bg-slate-800/50 rounded-lg p-3">
-                    {selectedProduct?.image_url && (
+                    {selectedProduct.image_url && (
                       <img 
                         src={selectedProduct.image_url} 
                         alt="" 
@@ -430,31 +522,31 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
                     )}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-white font-medium">
-                        {selectedProduct?.name || conversationState?.selected_name}
+                        {selectedProduct.name}
                       </p>
                       <p className="text-xs text-slate-400 font-mono mt-1">
-                        SKU: {selectedProduct?.sku || conversationState?.selected_sku}
+                        SKU: {selectedProduct.sku}
                       </p>
                       <p className="text-lg text-emerald-400 font-bold mt-1">
-                        {formatCurrency(selectedProduct?.price || conversationState?.selected_price || 0)}
+                        {formatCurrency(selectedProduct.price || 0)}
                       </p>
                     </div>
                   </div>
                   
                   {/* Características */}
                   <div className="space-y-2 pt-2 border-t border-white/10">
-                    {(conversationState?.categoria || selectedProduct?.category) && (
+                    {(alineData?.collected_data?.categoria || selectedProduct.category) && (
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-slate-400">Categoria</span>
                         <Badge className="bg-emerald-500/20 text-emerald-300 text-xs capitalize">
-                          {conversationState?.categoria || selectedProduct?.category}
+                          {alineData?.collected_data?.categoria || selectedProduct.category}
                         </Badge>
                       </div>
                     )}
-                    {conversationState?.cor_preferida && (
+                    {alineData?.collected_data?.cor && (
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-slate-400">Cor</span>
-                        <span className="text-sm text-white capitalize">{conversationState.cor_preferida}</span>
+                        <span className="text-sm text-white capitalize">{alineData.collected_data.cor}</span>
                       </div>
                     )}
                     {conversationState?.tipo_alianca && (
@@ -484,6 +576,15 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
                       </div>
                     )}
                   </div>
+                  
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedProduct(null)}
+                    className="w-full text-slate-400 hover:text-white text-xs"
+                  >
+                    <X className="w-3 h-3 mr-1" /> Limpar seleção
+                  </Button>
                 </CardContent>
               </Card>
             )}
