@@ -53,6 +53,18 @@ interface AlineData {
   status: string;
 }
 
+interface ConversationState {
+  selected_sku: string | null;
+  selected_name: string | null;
+  selected_price: number | null;
+  categoria: string | null;
+  cor_preferida: string | null;
+  tipo_alianca: string | null;
+  stage: string | null;
+  crm_entrega: string | null;
+  crm_pagamento: string | null;
+}
+
 interface Product {
   id: string;
   name: string;
@@ -74,6 +86,7 @@ const QUICK_RESPONSES = [
 const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }: SellerToolsPanelProps) => {
   const [customer, setCustomer] = useState<CustomerData | null>(null);
   const [alineData, setAlineData] = useState<AlineData | null>(null);
+  const [conversationState, setConversationState] = useState<ConversationState | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [searchProduct, setSearchProduct] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -118,8 +131,35 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
       
       setAlineData(alineConv);
 
-      // Se Aline coletou produto selecionado, buscar ele
-      if (alineConv?.collected_data?.selected_product) {
+      // Buscar conversation_state que contém o produto selecionado
+      const { data: convState } = await supabase
+        .from('conversation_state')
+        .select('selected_sku, selected_name, selected_price, categoria, cor_preferida, tipo_alianca, stage, crm_entrega, crm_pagamento')
+        .eq('phone', phone)
+        .maybeSingle();
+      
+      setConversationState(convState);
+
+      // Se temos produto selecionado no conversation_state, buscar detalhes do produto
+      if (convState?.selected_sku) {
+        const { data: productData } = await supabase
+          .from('products')
+          .select('id, name, sku, price, image_url, category')
+          .eq('sku', convState.selected_sku)
+          .maybeSingle();
+        
+        if (productData) {
+          setSelectedProduct({
+            id: productData.id,
+            name: convState.selected_name || productData.name,
+            sku: convState.selected_sku,
+            price: convState.selected_price || productData.price || 0,
+            image_url: productData.image_url || '',
+            category: productData.category || '',
+          });
+        }
+      } else if (alineConv?.collected_data?.selected_product) {
+        // Fallback para dados coletados pela Aline
         const selectedProd = alineConv.collected_data.selected_product;
         setSelectedProduct({
           id: selectedProd.id || '',
@@ -370,6 +410,84 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
               </CardContent>
             </Card>
 
+            {/* Produto Selecionado */}
+            {(selectedProduct || conversationState?.selected_sku) && (
+              <Card className="bg-gradient-to-br from-emerald-500/10 to-green-500/10 border-emerald-500/20">
+                <CardHeader className="py-3 px-4">
+                  <CardTitle className="text-sm text-white flex items-center gap-2">
+                    <Package className="w-4 h-4 text-emerald-400" />
+                    Item Selecionado
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pb-4 space-y-3">
+                  <div className="flex gap-3 items-start bg-slate-800/50 rounded-lg p-3">
+                    {selectedProduct?.image_url && (
+                      <img 
+                        src={selectedProduct.image_url} 
+                        alt="" 
+                        className="w-16 h-16 rounded-lg object-cover border border-white/10"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-white font-medium">
+                        {selectedProduct?.name || conversationState?.selected_name}
+                      </p>
+                      <p className="text-xs text-slate-400 font-mono mt-1">
+                        SKU: {selectedProduct?.sku || conversationState?.selected_sku}
+                      </p>
+                      <p className="text-lg text-emerald-400 font-bold mt-1">
+                        {formatCurrency(selectedProduct?.price || conversationState?.selected_price || 0)}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {/* Características */}
+                  <div className="space-y-2 pt-2 border-t border-white/10">
+                    {(conversationState?.categoria || selectedProduct?.category) && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-slate-400">Categoria</span>
+                        <Badge className="bg-emerald-500/20 text-emerald-300 text-xs capitalize">
+                          {conversationState?.categoria || selectedProduct?.category}
+                        </Badge>
+                      </div>
+                    )}
+                    {conversationState?.cor_preferida && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-slate-400">Cor</span>
+                        <span className="text-sm text-white capitalize">{conversationState.cor_preferida}</span>
+                      </div>
+                    )}
+                    {conversationState?.tipo_alianca && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-slate-400">Tipo</span>
+                        <span className="text-sm text-white capitalize">{conversationState.tipo_alianca}</span>
+                      </div>
+                    )}
+                    {conversationState?.crm_entrega && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-slate-400 flex items-center gap-1">
+                          <Truck className="w-3 h-3" /> Entrega
+                        </span>
+                        <Badge className="bg-blue-500/20 text-blue-300 text-xs capitalize">
+                          {conversationState.crm_entrega === 'retirada' ? 'Retirada' : 'Envio'}
+                        </Badge>
+                      </div>
+                    )}
+                    {conversationState?.crm_pagamento && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-slate-400 flex items-center gap-1">
+                          <CreditCard className="w-3 h-3" /> Pagamento
+                        </span>
+                        <Badge className="bg-amber-500/20 text-amber-300 text-xs uppercase">
+                          {conversationState.crm_pagamento}
+                        </Badge>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Dados coletados pela Aline */}
             {alineData?.collected_data && Object.keys(alineData.collected_data).length > 0 && (
               <Card className="bg-gradient-to-br from-violet-500/10 to-purple-500/10 border-violet-500/20">
@@ -401,28 +519,6 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
                     <div className="flex justify-between items-center">
                       <span className="text-xs text-slate-400">Cor preferida</span>
                       <span className="text-sm text-white capitalize">{alineData.collected_data.cor}</span>
-                    </div>
-                  )}
-                  {alineData.collected_data.selected_product && (
-                    <div className="pt-2 border-t border-white/5">
-                      <span className="text-xs text-slate-400 block mb-2">Produto escolhido</span>
-                      <div className="flex gap-2 items-center bg-slate-800/50 rounded-lg p-2">
-                        {alineData.collected_data.selected_product.image_url && (
-                          <img 
-                            src={alineData.collected_data.selected_product.image_url} 
-                            alt="" 
-                            className="w-12 h-12 rounded object-cover"
-                          />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs text-white font-medium truncate">
-                            {alineData.collected_data.selected_product.name}
-                          </p>
-                          <p className="text-xs text-emerald-400 font-bold">
-                            {formatCurrency(alineData.collected_data.selected_product.price || 0)}
-                          </p>
-                        </div>
-                      </div>
                     </div>
                   )}
                   {alineData.collected_data.delivery_method && (
