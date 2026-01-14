@@ -367,7 +367,7 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
 
       {/* Expanded panel content */}
       {activePanel && (
-        <div className="flex-1 flex flex-col w-[280px]">
+        <div className="flex-1 flex flex-col w-[320px]">
           <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-white flex items-center gap-2">
               {activePanel === 'info' && <><User className="w-4 h-4 text-emerald-400" /> Cliente</>}
@@ -397,13 +397,15 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-4 pb-4 space-y-2">
-                <div className="flex justify-between items-center">
+                <div className="flex flex-col gap-1">
                   <span className="text-xs text-slate-400">Nome</span>
-                  <span className="text-sm text-white font-medium">{customer?.name || contactName || 'Não informado'}</span>
+                  <span className="text-sm text-white font-medium break-words">
+                    {customer?.name || alineData?.collected_data?.contact_name || contactName || 'Não informado'}
+                  </span>
                 </div>
-                <div className="flex justify-between items-center">
+                <div className="flex flex-col gap-1">
                   <span className="text-xs text-slate-400">WhatsApp</span>
-                  <span className="text-sm text-white font-mono">{phone}</span>
+                  <span className="text-sm text-white font-mono break-all">{phone}</span>
                 </div>
                 {customer && (
                   <>
@@ -462,7 +464,12 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
                     {alineData.collected_data.last_catalog.map((item: CatalogItem, index: number) => (
                       <div 
                         key={item.id || index}
-                        className="flex gap-3 items-start bg-slate-800/50 rounded-lg p-2 cursor-pointer hover:bg-slate-700/50 transition-colors"
+                        className={cn(
+                          "flex gap-3 items-start rounded-lg p-2 cursor-pointer transition-all",
+                          selectedProduct?.sku === item.sku 
+                            ? "bg-emerald-500/20 ring-1 ring-emerald-500/50" 
+                            : "bg-slate-800/50 hover:bg-slate-700/50"
+                        )}
                         onClick={() => setSelectedProduct({
                           id: item.id,
                           name: item.name,
@@ -476,24 +483,22 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
                           <img 
                             src={item.image_url} 
                             alt="" 
-                            className="w-12 h-12 rounded-lg object-cover border border-white/10"
+                            className="w-12 h-12 rounded-lg object-cover border border-white/10 shrink-0"
                           />
                         )}
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs text-white font-medium truncate">
+                          <p className="text-xs text-white font-medium leading-tight">
                             {item.name}
                           </p>
-                          <p className="text-xs text-slate-400 font-mono">
+                          <p className="text-xs text-slate-400 font-mono mt-0.5">
                             {item.sku}
                           </p>
-                          <p className="text-sm text-emerald-400 font-bold">
+                          <p className="text-sm text-emerald-400 font-bold mt-0.5">
                             {formatCurrency(item.price)}
                           </p>
                         </div>
                         {selectedProduct?.sku === item.sku && (
-                          <Badge className="bg-emerald-500 text-white text-xs shrink-0">
-                            Selecionado
-                          </Badge>
+                          <Check className="w-4 h-4 text-emerald-400 shrink-0" />
                         )}
                       </div>
                     ))}
