@@ -1,29 +1,27 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Package, MessageSquare, TrendingUp, Users, RefreshCw, Clock } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { 
+  Package, MessageSquare, TrendingUp, Users, RefreshCw, Clock, 
+  Bot, ShoppingBag, Timer, Send, CheckCircle2, AlertCircle,
+  ArrowRight, Phone
+} from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { formatDistanceToNow } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { useNavigate } from 'react-router-dom';
+import { formatCurrency } from '@/lib/formatters';
 
 interface DashboardStats {
   totalProducts: number;
   activeConversations: number;
   totalStock: number;
   totalCustomers: number;
-}
-
-interface RecentActivity {
-  id: string;
-  type: 'message' | 'product' | 'stock';
-  description: string;
-  time: string;
-}
-
-interface PopularProduct {
-  id: string;
-  name: string;
-  stock: number;
+  alineOrders: number;
+  activeFollowups: number;
 }
 
 interface WaitingConversation {
@@ -32,180 +30,154 @@ interface WaitingConversation {
   contact_number: string;
   platform: string | null;
   last_message: string | null;
-  last_message_time: Date;
   waiting_since: Date;
+  waiting_seconds: number;
 }
 
+interface AlineOrder {
+  id: string;
+  customer_name: string | null;
+  customer_phone: string;
+  selected_name: string | null;
+  selected_sku: string | null;
+  total_price: number;
+  status: string;
+  created_at: string;
+}
+
+interface FollowupConversation {
+  id: string;
+  phone: string;
+  status: string;
+  followup_count: number;
+  last_message_at: string | null;
+  created_at: string | null;
+  current_node: string;
+}
+
+const FOLLOWUP_INTERVALS = [
+  { minutes: 3, label: "3 min" },
+  { minutes: 10, label: "10 min" },
+  { minutes: 30, label: "30 min" },
+  { minutes: 120, label: "2h" },
+  { minutes: 360, label: "6h" },
+];
+
 const Dashboard = () => {
+  const navigate = useNavigate();
   const [stats, setStats] = useState<DashboardStats>({
     totalProducts: 0,
     activeConversations: 0,
     totalStock: 0,
     totalCustomers: 0,
+    alineOrders: 0,
+    activeFollowups: 0,
   });
-  const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
-  const [popularProducts, setPopularProducts] = useState<PopularProduct[]>([]);
   const [waitingConversations, setWaitingConversations] = useState<WaitingConversation[]>([]);
+  const [alineOrders, setAlineOrders] = useState<AlineOrder[]>([]);
+  const [followupConversations, setFollowupConversations] = useState<FollowupConversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [, setTick] = useState(0); // For real-time timer updates
+  const [currentTime, setCurrentTime] = useState(Date.now());
 
-  const fetchDashboardData = async () => {
+  // Update current time every second for real-time timers
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const fetchDashboardData = useCallback(async () => {
     try {
-      // Fetch products count
-      const { count: productsCount } = await supabase
-        .from('products')
-        .select('*', { count: 'exact', head: true })
-        .eq('active', true);
+      // Execute all queries in parallel for speed
+      const [
+        productsResult,
+        stockResult,
+        conversationsResult,
+        customersResult,
+        alineOrdersResult,
+        followupsResult,
+        waitingResult
+      ] = await Promise.all([
+        // Products count
+        supabase.from('products').select('*', { count: 'exact', head: true }).eq('active', true),
+        // Total stock
+        supabase.from('product_variants').select('stock'),
+        // Conversations count
+        supabase.from('conversations').select('*', { count: 'exact', head: true }),
+        // Unique customers
+        supabase.from('conversations').select('contact_number'),
+        // Aline orders (last 20)
+        supabase.from('orders').select('id, customer_name, customer_phone, selected_name, selected_sku, total_price, status, created_at')
+          .eq('source', 'aline').order('created_at', { ascending: false }).limit(20),
+        // Active followups
+        supabase.from('aline_conversations').select('*').eq('status', 'active').order('last_message_at', { ascending: false }).limit(50),
+        // Waiting conversations (messages where last is from customer)
+        supabase.from('conversations').select('id, contact_name, contact_number, platform, last_message, created_at')
+          .order('created_at', { ascending: false }).limit(30)
+      ]);
 
-      // Fetch total stock from variants
-      const { data: stockData } = await supabase
-        .from('product_variants')
-        .select('stock');
-      
-      const totalStock = stockData?.reduce((acc, v) => acc + (v.stock || 0), 0) || 0;
-
-      // Fetch active conversations (with messages in last 24h)
-      const { count: conversationsCount } = await supabase
-        .from('conversations')
-        .select('*', { count: 'exact', head: true });
-
-      // Fetch unique customers count
-      const { data: customersData } = await supabase
-        .from('conversations')
-        .select('contact_number');
-      
-      const uniqueCustomers = new Set(customersData?.map(c => c.contact_number)).size;
+      const totalStock = stockResult.data?.reduce((acc, v) => acc + (v.stock || 0), 0) || 0;
+      const uniqueCustomers = new Set(customersResult.data?.map(c => c.contact_number)).size;
+      const activeFollowups = followupsResult.data?.filter(f => f.followup_count < 5).length || 0;
 
       setStats({
-        totalProducts: productsCount || 0,
-        activeConversations: conversationsCount || 0,
-        totalStock: totalStock,
+        totalProducts: productsResult.count || 0,
+        activeConversations: conversationsResult.count || 0,
+        totalStock,
         totalCustomers: uniqueCustomers,
+        alineOrders: alineOrdersResult.data?.length || 0,
+        activeFollowups,
       });
 
-      // Fetch recent messages for activity
-      const { data: recentMessages } = await supabase
-        .from('messages')
-        .select('id, content, created_at, is_from_me')
-        .order('created_at', { ascending: false })
-        .limit(5);
+      setAlineOrders(alineOrdersResult.data || []);
+      setFollowupConversations(followupsResult.data || []);
 
-      const activities: RecentActivity[] = (recentMessages || []).map(msg => ({
-        id: msg.id,
-        type: 'message' as const,
-        description: msg.is_from_me ? 'Mensagem enviada' : 'Nova mensagem recebida',
-        time: formatTimeAgo(new Date(msg.created_at)),
-      }));
-
-      setRecentActivity(activities);
-
-      // Fetch conversations waiting for response (last message is from customer)
-      const { data: conversations } = await supabase
-        .from('conversations')
-        .select(`
-          id,
-          contact_name,
-          contact_number,
-          platform,
-          last_message,
-          created_at
-        `)
-        .order('created_at', { ascending: false })
-        .limit(20);
-
-      // For each conversation, check if last message is from customer
-      const waitingList: WaitingConversation[] = [];
-      
-      for (const conv of conversations || []) {
-        const { data: lastMsg } = await supabase
-          .from('messages')
-          .select('is_from_me, created_at')
-          .eq('conversation_id', conv.id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+      // Process waiting conversations efficiently
+      if (waitingResult.data && waitingResult.data.length > 0) {
+        const conversationIds = waitingResult.data.map(c => c.id);
         
-        // If last message is from customer (not from us), they're waiting
-        if (lastMsg && !lastMsg.is_from_me) {
-          waitingList.push({
-            id: conv.id,
-            contact_name: conv.contact_name,
-            contact_number: conv.contact_number,
-            platform: conv.platform,
-            last_message: conv.last_message,
-            last_message_time: new Date(lastMsg.created_at),
-            waiting_since: new Date(lastMsg.created_at),
-          });
-        }
+        // Get last message for each conversation in a single query
+        const { data: lastMessages } = await supabase
+          .from('messages')
+          .select('conversation_id, is_from_me, created_at')
+          .in('conversation_id', conversationIds)
+          .order('created_at', { ascending: false });
+
+        // Group by conversation and get the last message
+        const lastMessageByConv: Record<string, { is_from_me: boolean; created_at: string }> = {};
+        lastMessages?.forEach(msg => {
+          if (!lastMessageByConv[msg.conversation_id]) {
+            lastMessageByConv[msg.conversation_id] = msg;
+          }
+        });
+
+        const waitingList: WaitingConversation[] = [];
+        waitingResult.data.forEach(conv => {
+          const lastMsg = lastMessageByConv[conv.id];
+          if (lastMsg && !lastMsg.is_from_me) {
+            const waitingSince = new Date(lastMsg.created_at);
+            waitingList.push({
+              id: conv.id,
+              contact_name: conv.contact_name,
+              contact_number: conv.contact_number,
+              platform: conv.platform,
+              last_message: conv.last_message,
+              waiting_since: waitingSince,
+              waiting_seconds: Math.floor((Date.now() - waitingSince.getTime()) / 1000),
+            });
+          }
+        });
+
+        waitingList.sort((a, b) => b.waiting_seconds - a.waiting_seconds);
+        setWaitingConversations(waitingList.slice(0, 10));
       }
-
-      // Sort by waiting time (oldest first)
-      waitingList.sort((a, b) => a.waiting_since.getTime() - b.waiting_since.getTime());
-      setWaitingConversations(waitingList.slice(0, 5));
-
-      // Fetch popular products (with most stock)
-      const { data: products } = await supabase
-        .from('products')
-        .select(`
-          id,
-          name,
-          product_variants (stock)
-        `)
-        .eq('active', true)
-        .limit(5);
-
-      const productsWithStock: PopularProduct[] = (products || [])
-        .map(p => ({
-          id: p.id,
-          name: p.name,
-          stock: (p.product_variants as any[])?.reduce((acc, v) => acc + (v.stock || 0), 0) || 0,
-        }))
-        .sort((a, b) => b.stock - a.stock)
-        .slice(0, 4);
-
-      setPopularProducts(productsWithStock);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
-
-  const formatTimeAgo = (date: Date): string => {
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffMins < 1) return 'agora';
-    if (diffMins < 60) return `há ${diffMins} min`;
-    if (diffHours < 24) return `há ${diffHours}h`;
-    return `há ${diffDays}d`;
-  };
-
-  const formatWaitingTime = (date: Date): string => {
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffSecs = Math.floor(diffMs / 1000);
-    const diffMins = Math.floor(diffSecs / 60);
-    const diffHours = Math.floor(diffMins / 60);
-
-    if (diffMins < 1) return `${diffSecs}s`;
-    if (diffHours < 1) return `${diffMins}min`;
-    return `${diffHours}h ${diffMins % 60}min`;
-  };
-
-  const getWaitingBadgeVariant = (date: Date): 'default' | 'secondary' | 'destructive' => {
-    const now = new Date();
-    const diffMins = Math.floor((now.getTime() - date.getTime()) / 60000);
-    
-    if (diffMins < 5) return 'secondary';
-    if (diffMins < 15) return 'default';
-    return 'destructive';
-  };
+  }, []);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -215,175 +187,327 @@ const Dashboard = () => {
   useEffect(() => {
     fetchDashboardData();
 
-    // Set up realtime subscription for updates
+    // Real-time subscriptions
     const channel = supabase
-      .channel('dashboard-updates')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => {
-        fetchDashboardData();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'product_variants' }, () => {
-        fetchDashboardData();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, () => {
-        fetchDashboardData();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => {
-        fetchDashboardData();
-      })
+      .channel('dashboard-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, fetchDashboardData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchDashboardData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'aline_conversations' }, fetchDashboardData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'aline_messages' }, fetchDashboardData)
       .subscribe();
-
-    // Update waiting times every 10 seconds
-    const timerInterval = setInterval(() => {
-      setTick(t => t + 1);
-    }, 10000);
 
     return () => {
       supabase.removeChannel(channel);
-      clearInterval(timerInterval);
     };
-  }, []);
+  }, [fetchDashboardData]);
+
+  const formatWaitingTime = useCallback((waitingSince: Date): string => {
+    const diffMs = currentTime - waitingSince.getTime();
+    const diffSecs = Math.floor(diffMs / 1000);
+    const hours = Math.floor(diffSecs / 3600);
+    const mins = Math.floor((diffSecs % 3600) / 60);
+    const secs = diffSecs % 60;
+
+    if (hours > 0) return `${hours}h ${mins}m`;
+    if (mins > 0) return `${mins}m ${secs}s`;
+    return `${secs}s`;
+  }, [currentTime]);
+
+  const getWaitingBadgeVariant = (waitingSince: Date): 'default' | 'secondary' | 'destructive' => {
+    const diffMins = Math.floor((currentTime - waitingSince.getTime()) / 60000);
+    if (diffMins < 5) return 'secondary';
+    if (diffMins < 15) return 'default';
+    return 'destructive';
+  };
+
+  const getFollowupStatus = useCallback((followupCount: number, lastMessageAt: string | null) => {
+    if (followupCount >= 5) {
+      return { label: "Concluído", color: "bg-muted text-muted-foreground", icon: CheckCircle2 };
+    }
+    
+    const nextFollowup = FOLLOWUP_INTERVALS[followupCount];
+    if (!nextFollowup) {
+      return { label: "Completo", color: "bg-muted text-muted-foreground", icon: CheckCircle2 };
+    }
+
+    if (!lastMessageAt) {
+      return { label: `Aguardando`, color: "bg-yellow-500/20 text-yellow-600", icon: Clock };
+    }
+
+    const elapsed = (currentTime - new Date(lastMessageAt).getTime()) / 60000;
+    
+    if (elapsed >= nextFollowup.minutes) {
+      return { label: "Pronto", color: "bg-green-500/20 text-green-600", icon: Send };
+    }
+
+    const remaining = Math.ceil(nextFollowup.minutes - elapsed);
+    return { 
+      label: `${remaining}min`, 
+      color: "bg-blue-500/20 text-blue-600", 
+      icon: Timer 
+    };
+  }, [currentTime]);
+
+  const formatPhone = (phone: string) => {
+    if (!phone) return '';
+    const cleaned = phone.replace(/\D/g, '');
+    if (cleaned.length >= 12) {
+      return `(${cleaned.slice(2, 4)}) ${cleaned.slice(4, 9)}-${cleaned.slice(9, 13)}`;
+    }
+    return phone;
+  };
+
+  const followupStats = useMemo(() => {
+    const active = followupConversations.filter(c => c.followup_count < 5);
+    const ready = active.filter(c => {
+      const status = getFollowupStatus(c.followup_count, c.last_message_at);
+      return status.label === "Pronto";
+    });
+    const waiting = active.filter(c => {
+      const status = getFollowupStatus(c.followup_count, c.last_message_at);
+      return status.label.includes("min") || status.label === "Aguardando";
+    });
+    
+    return {
+      active: active.length,
+      ready: ready.length,
+      waiting: waiting.length,
+      completed: followupConversations.filter(c => c.followup_count >= 5).length,
+    };
+  }, [followupConversations, getFollowupStatus]);
 
   const statCards = [
-    { label: 'Produtos Ativos', value: stats.totalProducts.toString(), icon: Package },
-    { label: 'Conversas', value: stats.activeConversations.toString(), icon: MessageSquare },
-    { label: 'Estoque Total', value: stats.totalStock.toString(), icon: TrendingUp },
-    { label: 'Clientes', value: stats.totalCustomers.toString(), icon: Users },
+    { label: 'Produtos', value: stats.totalProducts, icon: Package, color: 'text-blue-500' },
+    { label: 'Estoque', value: stats.totalStock, icon: TrendingUp, color: 'text-emerald-500' },
+    { label: 'Conversas', value: stats.activeConversations, icon: MessageSquare, color: 'text-purple-500' },
+    { label: 'Clientes', value: stats.totalCustomers, icon: Users, color: 'text-orange-500' },
   ];
 
+  if (loading) {
+    return (
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-8 max-w-[1920px] mx-auto">
+        <div className="flex items-center justify-between mb-8">
+          <Skeleton className="h-10 w-48" />
+          <Skeleton className="h-9 w-24" />
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1,2,3,4].map(i => <Skeleton key={i} className="h-24" />)}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="w-full px-4 sm:px-6 lg:px-8 py-8 max-w-[1920px] mx-auto">
-      <div className="flex items-center justify-between mb-8">
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-8 max-w-[1920px] mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-semibold text-foreground tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground mt-1">Visão geral do seu sistema</p>
+          <p className="text-muted-foreground mt-1">Visão geral em tempo real</p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleRefresh}
-          disabled={refreshing}
-          className="gap-2"
-        >
+        <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing} className="gap-2">
           <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
           Atualizar
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+      {/* Stats Grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {statCards.map((stat) => (
-          <Card key={stat.label} className="border-border bg-card hover:shadow-lg transition-shadow duration-300">
-            <CardHeader className="flex flex-row items-center justify-between p-4 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                {stat.label}
-              </CardTitle>
-              <stat.icon className="w-5 h-5 text-muted-foreground" />
-            </CardHeader>
-            <CardContent className="p-4 pt-2">
-              {loading ? (
-                <Skeleton className="h-8 w-20" />
-              ) : (
-                <div className="text-2xl font-bold text-foreground">{stat.value}</div>
-              )}
+          <Card key={stat.label} className="border-border bg-card">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">{stat.label}</p>
+                  <p className="text-2xl font-bold text-foreground">{stat.value.toLocaleString()}</p>
+                </div>
+                <stat.icon className={`w-8 h-8 ${stat.color} opacity-80`} />
+              </div>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      {/* Waiting Conversations Section */}
+      {/* Waiting Customers - Full Width */}
       {waitingConversations.length > 0 && (
-        <div className="mt-6 lg:mt-8">
-          <Card className="border-border border-l-4 border-l-orange-500">
-            <CardHeader className="p-4 pb-2">
-              <CardTitle className="text-lg font-semibold flex items-center gap-2">
+        <Card className="border-l-4 border-l-orange-500">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
                 <Clock className="w-5 h-5 text-orange-500" />
-                Clientes Aguardando Atendimento
-                <Badge variant="secondary" className="ml-2">{waitingConversations.length}</Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 pt-2">
-              <div className="space-y-3">
-                {waitingConversations.map((conv) => (
-                  <div key={conv.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium text-foreground truncate">
-                          {conv.contact_name || conv.contact_number}
-                        </p>
-                        <Badge variant="outline" className="text-xs">
-                          {conv.platform || 'whatsapp'}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground truncate mt-1">
-                        {conv.last_message || 'Sem mensagem'}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 ml-4">
-                      <Clock className="w-4 h-4 text-muted-foreground" />
-                      <Badge variant={getWaitingBadgeVariant(conv.waiting_since)}>
-                        {formatWaitingTime(conv.waiting_since)}
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
+                Clientes Aguardando
+                <Badge variant="secondary">{waitingConversations.length}</Badge>
               </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      <div className="mt-6 lg:mt-8 grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
-        <Card className="border-border">
-          <CardHeader className="p-4 pb-2">
-            <CardTitle className="text-lg font-semibold">Atividade Recente</CardTitle>
+              <Button variant="ghost" size="sm" onClick={() => navigate('/chat')}>
+                Ver Chat <ArrowRight className="w-4 h-4 ml-1" />
+              </Button>
+            </CardTitle>
           </CardHeader>
-          <CardContent className="p-4 pt-2">
-            <div className="space-y-4">
-              {loading ? (
-                Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton key={i} className="h-14 w-full" />
-                ))
-              ) : recentActivity.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  Nenhuma atividade recente
-                </p>
-              ) : (
-                recentActivity.map((activity) => (
-                  <div key={activity.id} className="flex items-center gap-4 p-3 rounded-lg bg-muted/50">
-                    <div className="w-2 h-2 rounded-full bg-foreground" />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-foreground">{activity.description}</p>
-                      <p className="text-xs text-muted-foreground">{activity.time}</p>
+          <CardContent className="pt-0">
+            <div className="grid gap-2">
+              {waitingConversations.slice(0, 5).map((conv) => (
+                <div key={conv.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center shrink-0">
+                      <Phone className="w-5 h-5 text-orange-500" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">
+                        {conv.contact_name || formatPhone(conv.contact_number)}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">{conv.last_message}</p>
                     </div>
                   </div>
-                ))
-              )}
+                  <Badge variant={getWaitingBadgeVariant(conv.waiting_since)} className="shrink-0 ml-2 font-mono">
+                    {formatWaitingTime(conv.waiting_since)}
+                  </Badge>
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>
+      )}
 
-        <Card className="border-border">
-          <CardHeader className="p-4 pb-2">
-            <CardTitle className="text-lg font-semibold">Produtos com Estoque</CardTitle>
+      {/* Two Column Layout */}
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* Aline Orders */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Bot className="w-5 h-5 text-emerald-500" />
+                Pedidos da Aline
+                <Badge variant="secondary">{alineOrders.length}</Badge>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => navigate('/pedidos/pendentes')}>
+                Ver Todos <ArrowRight className="w-4 h-4 ml-1" />
+              </Button>
+            </CardTitle>
           </CardHeader>
-          <CardContent className="p-4 pt-2">
-            <div className="space-y-4">
-              {loading ? (
-                Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton key={i} className="h-12 w-full" />
-                ))
-              ) : popularProducts.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  Nenhum produto cadastrado
-                </p>
+          <CardContent className="pt-0">
+            <ScrollArea className="h-[320px]">
+              {alineOrders.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
+                  <ShoppingBag className="w-8 h-8 mb-2 opacity-50" />
+                  <p className="text-sm">Nenhum pedido da Aline</p>
+                </div>
               ) : (
-                popularProducts.map((product) => (
-                  <div key={product.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                    <span className="text-sm font-medium text-foreground">{product.name}</span>
-                    <span className="text-xs text-muted-foreground">{product.stock} unidades</span>
-                  </div>
-                ))
+                <div className="space-y-2">
+                  {alineOrders.map((order) => (
+                    <div key={order.id} className="p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-foreground truncate">
+                            {order.selected_name || 'Produto'}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs text-muted-foreground font-mono">
+                              {formatPhone(order.customer_phone)}
+                            </span>
+                            <Badge variant={order.status === 'pending' ? 'default' : 'secondary'} className="text-xs">
+                              {order.status === 'pending' ? 'Pendente' : order.status}
+                            </Badge>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-sm font-bold text-emerald-500">
+                            {formatCurrency(order.total_price)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatDistanceToNow(new Date(order.created_at), { addSuffix: true, locale: ptBR })}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
+            </ScrollArea>
+          </CardContent>
+        </Card>
+
+        {/* Follow-up Status */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Timer className="w-5 h-5 text-blue-500" />
+                Status de Follow-ups
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => navigate('/ai/followups')}>
+                Monitor <ArrowRight className="w-4 h-4 ml-1" />
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {/* Follow-up Stats */}
+            <div className="grid grid-cols-4 gap-2 mb-4">
+              <div className="p-2 rounded-lg bg-blue-500/10 text-center">
+                <p className="text-lg font-bold text-blue-600">{followupStats.active}</p>
+                <p className="text-xs text-muted-foreground">Ativos</p>
+              </div>
+              <div className="p-2 rounded-lg bg-green-500/10 text-center">
+                <p className="text-lg font-bold text-green-600">{followupStats.ready}</p>
+                <p className="text-xs text-muted-foreground">Prontos</p>
+              </div>
+              <div className="p-2 rounded-lg bg-yellow-500/10 text-center">
+                <p className="text-lg font-bold text-yellow-600">{followupStats.waiting}</p>
+                <p className="text-xs text-muted-foreground">Aguardando</p>
+              </div>
+              <div className="p-2 rounded-lg bg-muted text-center">
+                <p className="text-lg font-bold text-muted-foreground">{followupStats.completed}</p>
+                <p className="text-xs text-muted-foreground">Concluídos</p>
+              </div>
             </div>
+
+            <ScrollArea className="h-[240px]">
+              {followupConversations.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
+                  <AlertCircle className="w-8 h-8 mb-2 opacity-50" />
+                  <p className="text-sm">Nenhum follow-up ativo</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {followupConversations.slice(0, 10).map((conv) => {
+                    const status = getFollowupStatus(conv.followup_count, conv.last_message_at);
+                    const StatusIcon = status.icon;
+                    
+                    return (
+                      <div key={conv.id} className="p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-mono text-foreground">
+                              {formatPhone(conv.phone)}
+                            </p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <div className="flex gap-0.5">
+                                {[...Array(5)].map((_, i) => (
+                                  <div
+                                    key={i}
+                                    className={`w-2 h-2 rounded-full ${
+                                      i < conv.followup_count ? 'bg-primary' : 'bg-muted-foreground/30'
+                                    }`}
+                                  />
+                                ))}
+                              </div>
+                              <span className="text-xs text-muted-foreground">
+                                {conv.followup_count}/5
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <Badge className={`${status.color} text-xs`}>
+                              <StatusIcon className="w-3 h-3 mr-1" />
+                              {status.label}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </ScrollArea>
           </CardContent>
         </Card>
       </div>
