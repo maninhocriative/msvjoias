@@ -93,6 +93,12 @@ const CHART_COLORS = {
   muted: 'hsl(var(--muted-foreground))',
 };
 
+const PERIOD_OPTIONS = [
+  { value: 7, label: '7 dias' },
+  { value: 15, label: '15 dias' },
+  { value: 30, label: '30 dias' },
+];
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState<DashboardStats>({
@@ -112,6 +118,8 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [currentTime, setCurrentTime] = useState(Date.now());
+  const [chartPeriod, setChartPeriod] = useState(7);
+  const [conversionPeriod, setConversionPeriod] = useState(7);
 
   // Update current time every second for real-time timers
   useEffect(() => {
@@ -121,7 +129,8 @@ const Dashboard = () => {
 
   const fetchDashboardData = useCallback(async () => {
     try {
-      const sevenDaysAgo = subDays(new Date(), 7).toISOString();
+      const chartPeriodDate = subDays(new Date(), chartPeriod).toISOString();
+      const conversionPeriodDate = subDays(new Date(), conversionPeriod).toISOString();
       
       // Execute all queries in parallel for speed
       const [
@@ -135,7 +144,7 @@ const Dashboard = () => {
         allAlineConversations,
         allAlineOrders,
         forwardedOrdersResult,
-        ordersLast7Days
+        ordersForPeriod
       ] = await Promise.all([
         supabase.from('products').select('*', { count: 'exact', head: true }).eq('active', true),
         supabase.from('product_variants').select('stock'),
@@ -146,12 +155,12 @@ const Dashboard = () => {
         supabase.from('aline_conversations').select('*').eq('status', 'active').order('last_message_at', { ascending: false }).limit(50),
         supabase.from('conversations').select('id, contact_name, contact_number, platform, last_message, created_at')
           .order('created_at', { ascending: false }).limit(30),
-        supabase.from('aline_conversations').select('phone, followup_count'),
-        supabase.from('orders').select('customer_phone').eq('source', 'aline'),
+        supabase.from('aline_conversations').select('phone, followup_count, created_at').gte('created_at', conversionPeriodDate),
+        supabase.from('orders').select('customer_phone, created_at').eq('source', 'aline').gte('created_at', conversionPeriodDate),
         // Orders forwarded to Acium (status vendedor or has assigned_to)
         supabase.from('conversations').select('id, lead_status').eq('lead_status', 'vendedor'),
-        // Orders from last 7 days for chart
-        supabase.from('orders').select('id, source, status, created_at').gte('created_at', sevenDaysAgo)
+        // Orders from selected period for chart
+        supabase.from('orders').select('id, source, status, created_at').gte('created_at', chartPeriodDate)
       ]);
 
       const totalStock = stockResult.data?.reduce((acc, v) => acc + (v.stock || 0), 0) || 0;
@@ -161,12 +170,12 @@ const Dashboard = () => {
 
       // Process daily order data for chart
       const dailyData: Record<string, { total: number; aline: number; forwarded: number }> = {};
-      for (let i = 6; i >= 0; i--) {
+      for (let i = chartPeriod - 1; i >= 0; i--) {
         const date = format(subDays(new Date(), i), 'yyyy-MM-dd');
         dailyData[date] = { total: 0, aline: 0, forwarded: 0 };
       }
 
-      ordersLast7Days.data?.forEach(order => {
+      ordersForPeriod.data?.forEach(order => {
         const date = format(new Date(order.created_at), 'yyyy-MM-dd');
         if (dailyData[date]) {
           dailyData[date].total++;
@@ -182,7 +191,9 @@ const Dashboard = () => {
 
       const chartData: DailyOrderData[] = Object.entries(dailyData).map(([date, data]) => ({
         date,
-        dateLabel: format(new Date(date), 'EEE', { locale: ptBR }),
+        dateLabel: chartPeriod <= 7 
+          ? format(new Date(date), 'EEE', { locale: ptBR })
+          : format(new Date(date), 'dd/MM', { locale: ptBR }),
         ...data,
       }));
 
@@ -272,7 +283,7 @@ const Dashboard = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [chartPeriod, conversionPeriod]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -512,11 +523,28 @@ const Dashboard = () => {
             <CardTitle className="flex items-center justify-between text-base">
               <div className="flex items-center gap-2">
                 <Send className="w-4 h-4 text-amber-500" />
-                Pedidos Encaminhados para Acium
+                Pedidos Encaminhados
               </div>
-              <Badge variant="secondary" className="bg-amber-500/10 text-amber-600">
-                {totalForwarded} esta semana
-              </Badge>
+              <div className="flex items-center gap-2">
+                <div className="flex rounded-lg border border-border overflow-hidden">
+                  {PERIOD_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      onClick={() => setChartPeriod(option.value)}
+                      className={`px-2 py-1 text-[10px] font-medium transition-colors ${
+                        chartPeriod === option.value
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <Badge variant="secondary" className="bg-amber-500/10 text-amber-600 text-[10px]">
+                  {totalForwarded} no período
+                </Badge>
+              </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -592,11 +620,28 @@ const Dashboard = () => {
             <CardTitle className="flex items-center justify-between text-base">
               <div className="flex items-center gap-2">
                 <BarChart3 className="w-4 h-4 text-purple-500" />
-                Taxa de Conversão por Follow-up
+                Taxa de Conversão
               </div>
-              <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-600">
-                {totalConversionRate}% geral
-              </Badge>
+              <div className="flex items-center gap-2">
+                <div className="flex rounded-lg border border-border overflow-hidden">
+                  {PERIOD_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      onClick={() => setConversionPeriod(option.value)}
+                      className={`px-2 py-1 text-[10px] font-medium transition-colors ${
+                        conversionPeriod === option.value
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-600 text-[10px]">
+                  {totalConversionRate}% geral
+                </Badge>
+              </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
