@@ -133,6 +133,10 @@ export type Database = {
       }
       aline_conversations: {
         Row: {
+          assigned_at: string | null
+          assigned_seller_id: string | null
+          assigned_seller_name: string | null
+          assignment_reason: string | null
           collected_data: Json | null
           created_at: string | null
           current_node: string
@@ -145,6 +149,10 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          assigned_at?: string | null
+          assigned_seller_id?: string | null
+          assigned_seller_name?: string | null
+          assignment_reason?: string | null
           collected_data?: Json | null
           created_at?: string | null
           current_node?: string
@@ -157,6 +165,10 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          assigned_at?: string | null
+          assigned_seller_id?: string | null
+          assigned_seller_name?: string | null
+          assignment_reason?: string | null
           collected_data?: Json | null
           created_at?: string | null
           current_node?: string
@@ -867,6 +879,36 @@ export type Database = {
           last_name?: string | null
           phone?: string | null
           role?: string | null
+        }
+        Relationships: []
+      }
+      seller_presence: {
+        Row: {
+          created_at: string | null
+          full_name: string | null
+          id: string
+          is_online: boolean | null
+          last_seen_at: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          full_name?: string | null
+          id?: string
+          is_online?: boolean | null
+          last_seen_at?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          full_name?: string | null
+          id?: string
+          is_online?: boolean | null
+          last_seen_at?: string | null
+          updated_at?: string | null
+          user_id?: string
         }
         Relationships: []
       }

@@ -1,15 +1,26 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase, Conversation, Message, LeadStatus } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, Paperclip, Search, MessageSquare, FileText, Mic, Check, CheckCheck, Instagram, Bot, User, Phone, ArrowLeft, MoreVertical, UserCheck, RefreshCw, Clock, MessageCircle, Sparkles, X, Volume2 } from 'lucide-react';
+import { Send, Paperclip, Search, MessageSquare, FileText, Mic, Check, CheckCheck, Instagram, Bot, User, Phone, ArrowLeft, MoreVertical, UserCheck, RefreshCw, Clock, MessageCircle, Sparkles, X, Volume2, Loader2, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { LeadStatusSelect, LeadStatusBadge } from '@/components/chat/LeadStatusSelect';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import TypingIndicator from '@/components/chat/TypingIndicator';
 import SellerToolsPanel from '@/components/chat/SellerToolsPanel';
+import { useSellerPresence, assignConversationToSeller } from '@/hooks/useSellerPresence';
+import { Badge } from '@/components/ui/badge';
+
+interface AlineConversation {
+  id: string;
+  phone: string;
+  status: string;
+  assigned_seller_id?: string;
+  assigned_seller_name?: string;
+  assignment_reason?: string;
+}
 
 const Chat = () => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -18,6 +29,7 @@ const Chat = () => {
   const [newMessage, setNewMessage] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [sending, setSending] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
@@ -27,11 +39,12 @@ const Chat = () => {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterAttendant, setFilterAttendant] = useState<string>('all');
   const [alineStatus, setAlineStatus] = useState<string | null>(null);
-  const [alineStatusMap, setAlineStatusMap] = useState<Record<string, string>>({});
+  const [alineStatusMap, setAlineStatusMap] = useState<Record<string, AlineConversation>>({});
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const { onlineSellers, getRandomOnlineSeller } = useSellerPresence();
 
   const updateLeadStatus = async (conversationId: string, status: LeadStatus) => {
     setUpdatingLeadStatus(true);
@@ -98,23 +111,6 @@ const Chat = () => {
   };
 
   useEffect(() => {
-    fetchConversations();
-
-    const convChannel = supabase
-      .channel('conversations-realtime')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'conversations' },
-        () => fetchConversations()
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(convChannel);
-    };
-  }, []);
-
-  useEffect(() => {
     if (selectedConversation) {
       fetchMessages(selectedConversation.id);
       markAsRead(selectedConversation.id);
@@ -155,8 +151,9 @@ const Chat = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const fetchConversations = async () => {
+  const fetchConversations = useCallback(async (showToast = false) => {
     try {
+      setRefreshing(true);
       const { data, error } = await supabase
         .from('conversations')
         .select('*')
@@ -165,28 +162,54 @@ const Chat = () => {
       if (error) throw error;
       setConversations(data || []);
       
-      // Buscar status de atendimento de todas as conversas
+      // Buscar status de atendimento de todas as conversas com dados completos
       if (data && data.length > 0) {
         const phones = data.map(c => c.contact_number);
         const { data: alineData } = await supabase
           .from('aline_conversations')
-          .select('phone, status')
+          .select('id, phone, status, assigned_seller_id, assigned_seller_name, assignment_reason')
           .in('phone', phones);
         
         if (alineData) {
-          const statusMap: Record<string, string> = {};
+          const statusMap: Record<string, AlineConversation> = {};
           alineData.forEach(ac => {
-            statusMap[ac.phone] = ac.status;
+            statusMap[ac.phone] = ac;
           });
           setAlineStatusMap(statusMap);
         }
       }
+      
+      if (showToast) {
+        toast({ title: '✅ Atualizado!', description: `${data?.length || 0} conversas carregadas` });
+      }
     } catch (error) {
       console.error('Error fetching conversations:', error);
+      if (showToast) {
+        toast({ title: 'Erro', description: 'Não foi possível atualizar', variant: 'destructive' });
+      }
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, [toast]);
+
+  // useEffect para buscar conversas e monitorar mudanças em tempo real
+  useEffect(() => {
+    fetchConversations(false);
+
+    const convChannel = supabase
+      .channel('conversations-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'conversations' },
+        () => fetchConversations(false)
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(convChannel);
+    };
+  }, [fetchConversations]);
 
   const fetchMessages = async (conversationId: string) => {
     try {
@@ -374,9 +397,10 @@ const Chat = () => {
     const matchesStatus = filterStatus === 'all' || conv.lead_status === filterStatus;
     
     // Filtro por atendente
-    const convAlineStatus = alineStatusMap[conv.contact_number];
-    const isHumanAttendant = convAlineStatus === 'human_takeover';
-    const isAlineAttendant = convAlineStatus === 'active' || !convAlineStatus;
+    const convAlineData = alineStatusMap[conv.contact_number];
+    const convStatus = convAlineData?.status;
+    const isHumanAttendant = convStatus === 'human_takeover';
+    const isAlineAttendant = convStatus === 'active' || !convStatus;
     const matchesAttendant = filterAttendant === 'all' || 
       (filterAttendant === 'vendedor' && isHumanAttendant) ||
       (filterAttendant === 'aline' && isAlineAttendant);
@@ -459,8 +483,8 @@ const Chat = () => {
 
   const attendantCounts: Record<string, number> = {
     all: conversations.length,
-    aline: conversations.filter(c => alineStatusMap[c.contact_number] !== 'human_takeover').length,
-    vendedor: conversations.filter(c => alineStatusMap[c.contact_number] === 'human_takeover').length,
+    aline: conversations.filter(c => alineStatusMap[c.contact_number]?.status !== 'human_takeover').length,
+    vendedor: conversations.filter(c => alineStatusMap[c.contact_number]?.status === 'human_takeover').length,
   };
 
   return (
@@ -492,12 +516,37 @@ const Chat = () => {
             <Button
               variant="ghost"
               size="icon"
-              onClick={fetchConversations}
+              onClick={() => fetchConversations(true)}
+              disabled={refreshing}
               className="text-slate-400 hover:text-white hover:bg-white/10 rounded-xl"
             >
-              <RefreshCw className="w-4 h-4" />
+              {refreshing ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
             </Button>
           </div>
+
+          {/* Vendedores Online */}
+          {onlineSellers.length > 0 && (
+            <div className="flex items-center gap-2 mb-3 px-1 py-1.5 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
+              <div className="flex items-center gap-1.5 text-emerald-400">
+                <Users className="w-4 h-4" />
+                <span className="text-xs font-medium">Online:</span>
+              </div>
+              <div className="flex items-center gap-1 flex-wrap">
+                {onlineSellers.slice(0, 3).map((seller, idx) => (
+                  <Badge key={seller.user_id} variant="outline" className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 text-[10px] py-0">
+                    {seller.full_name?.split(' ')[0] || 'Vendedor'}
+                  </Badge>
+                ))}
+                {onlineSellers.length > 3 && (
+                  <span className="text-emerald-400 text-[10px]">+{onlineSellers.length - 3}</span>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Search */}
           <div className="relative">
@@ -625,8 +674,21 @@ const Chat = () => {
                         </span>
                       </div>
                       
-                      <div className="mb-1.5">
+                      <div className="flex items-center gap-1.5 mb-1.5">
                         <LeadStatusBadge status={(conv.lead_status as LeadStatus) || 'novo'} />
+                        {/* Mostrar atendente e vendedor atribuído */}
+                        {alineStatusMap[conv.contact_number]?.status === 'human_takeover' && (
+                          <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded text-[9px] font-medium flex items-center gap-0.5">
+                            <User className="w-2.5 h-2.5" />
+                            {alineStatusMap[conv.contact_number]?.assigned_seller_name?.split(' ')[0] || 'Vendedor'}
+                          </span>
+                        )}
+                        {alineStatusMap[conv.contact_number]?.status === 'active' && (
+                          <span className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded text-[9px] font-medium flex items-center gap-0.5">
+                            <Bot className="w-2.5 h-2.5" />
+                            Aline
+                          </span>
+                        )}
                       </div>
                       
                       <div className="flex items-center justify-between gap-2">
@@ -681,7 +743,7 @@ const Chat = () => {
                 </div>
 
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-semibold text-white truncate">{selectedConversation.contact_name || selectedConversation.contact_number}</p>
                     {/* Indicador de Atendimento */}
                     {alineStatus && (
@@ -705,10 +767,20 @@ const Chat = () => {
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-slate-400">
+                  <div className="flex items-center gap-2 text-xs text-slate-400 flex-wrap">
                     <span>{selectedConversation.contact_number}</span>
                     <span className="w-1 h-1 rounded-full bg-slate-600" />
                     <LeadStatusBadge status={(selectedConversation.lead_status as LeadStatus) || 'novo'} />
+                    {/* Mostrar vendedor atribuído */}
+                    {alineStatusMap[selectedConversation.contact_number]?.assigned_seller_name && (
+                      <>
+                        <span className="w-1 h-1 rounded-full bg-slate-600" />
+                        <span className="flex items-center gap-1 text-amber-400">
+                          <UserCheck className="w-3 h-3" />
+                          {alineStatusMap[selectedConversation.contact_number]?.assigned_seller_name}
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
