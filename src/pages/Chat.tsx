@@ -91,8 +91,19 @@ const Chat = () => {
 
       if (error) throw error;
 
+      const newStatus = action === 'takeover' ? 'human_takeover' : 'active';
+      
       // Atualizar o status local da Aline
-      setAlineStatus(action === 'takeover' ? 'human_takeover' : 'active');
+      setAlineStatus(newStatus);
+      
+      // Atualizar o mapa de status para refletir na contagem e filtro
+      setAlineStatusMap(prev => ({
+        ...prev,
+        [selectedConversation.contact_number]: {
+          ...prev[selectedConversation.contact_number],
+          status: newStatus,
+        }
+      }));
 
       toast({
         title: action === 'takeover' ? '✋ Atendimento assumido' : '🤖 Devolvido para Aline',
@@ -206,8 +217,28 @@ const Chat = () => {
       )
       .subscribe();
 
+    // Canal para monitorar mudanças no status de atendimento (aline_conversations)
+    const alineChannel = supabase
+      .channel('aline-conversations-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'aline_conversations' },
+        (payload) => {
+          // Atualizar o mapa de status quando houver mudança
+          const updated = payload.new as AlineConversation;
+          if (updated && updated.phone) {
+            setAlineStatusMap(prev => ({
+              ...prev,
+              [updated.phone]: updated
+            }));
+          }
+        }
+      )
+      .subscribe();
+
     return () => {
       supabase.removeChannel(convChannel);
+      supabase.removeChannel(alineChannel);
     };
   }, [fetchConversations]);
 
