@@ -3,14 +3,16 @@ import { supabase, Conversation, Message, LeadStatus } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, Paperclip, Search, MessageSquare, FileText, Mic, Check, CheckCheck, Instagram, Bot, User, Phone, ArrowLeft, MoreVertical, UserCheck, RefreshCw, Clock, MessageCircle, Sparkles, X, Volume2, Loader2, Users } from 'lucide-react';
+import { Send, Paperclip, Search, MessageSquare, FileText, Mic, Check, CheckCheck, Instagram, Bot, User, Phone, ArrowLeft, MoreVertical, UserCheck, RefreshCw, Clock, MessageCircle, Sparkles, X, Volume2, Loader2, Users, UserPlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { LeadStatusSelect, LeadStatusBadge } from '@/components/chat/LeadStatusSelect';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import TypingIndicator from '@/components/chat/TypingIndicator';
 import SellerToolsPanel from '@/components/chat/SellerToolsPanel';
+import AssignSellerDialog from '@/components/chat/AssignSellerDialog';
 import { useSellerPresence, assignConversationToSeller } from '@/hooks/useSellerPresence';
+import { useUserRole } from '@/hooks/useUserRole';
 import { Badge } from '@/components/ui/badge';
 
 interface AlineConversation {
@@ -40,11 +42,13 @@ const Chat = () => {
   const [filterAttendant, setFilterAttendant] = useState<string>('all');
   const [alineStatus, setAlineStatus] = useState<string | null>(null);
   const [alineStatusMap, setAlineStatusMap] = useState<Record<string, AlineConversation>>({});
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const { onlineSellers, getRandomOnlineSeller } = useSellerPresence();
+  const { isAdmin, isGerente } = useUserRole();
 
   const updateLeadStatus = async (conversationId: string, status: LeadStatus) => {
     setUpdatingLeadStatus(true);
@@ -877,6 +881,19 @@ const Chat = () => {
                       <Bot className="w-4 h-4 mr-2" />
                       Devolver para Aline
                     </DropdownMenuItem>
+                    {/* Opção de atribuir vendedor - apenas para admin/gerente */}
+                    {(isAdmin || isGerente) && (
+                      <>
+                        <DropdownMenuSeparator className="bg-white/10" />
+                        <DropdownMenuItem 
+                          onClick={() => setAssignDialogOpen(true)}
+                          className="text-emerald-400 focus:bg-emerald-500/10 focus:text-emerald-300"
+                        >
+                          <UserPlus className="w-4 h-4 mr-2" />
+                          Atribuir vendedor
+                        </DropdownMenuItem>
+                      </>
+                    )}
                     <DropdownMenuSeparator className="bg-white/10" />
                     <DropdownMenuItem className="text-slate-200 focus:bg-white/10 focus:text-white">
                       <Phone className="w-4 h-4 mr-2" />
@@ -1125,6 +1142,21 @@ const Chat = () => {
             onSendMessage={sendMessageDirect}
           />
         </div>
+      )}
+
+      {/* Dialog para atribuir vendedor (apenas admin/gerente) */}
+      {selectedConversation && (isAdmin || isGerente) && (
+        <AssignSellerDialog
+          open={assignDialogOpen}
+          onOpenChange={setAssignDialogOpen}
+          conversationPhone={selectedConversation.contact_number}
+          currentSellerId={alineStatusMap[selectedConversation.contact_number]?.assigned_seller_id}
+          currentSellerName={alineStatusMap[selectedConversation.contact_number]?.assigned_seller_name}
+          onAssigned={() => {
+            fetchConversations(false);
+            fetchAlineStatus(selectedConversation.contact_number);
+          }}
+        />
       )}
     </div>
   );
