@@ -301,6 +301,10 @@ No final de CADA resposta, adicione o nó técnico:
 
 ## 11. INFORMAÇÕES IMPORTANTES DA LOJA
 
+**ENDEREÇO DA LOJA:** Shopping Sumaúma - Av. Noel Nutels - Cidade Nova, Manaus - AM, 69090-970
+- Quando o cliente perguntar sobre endereço ou quiser buscar na loja, informe: "Nossa loja fica no Shopping Sumaúma, na Av. Noel Nutels - Cidade Nova, Manaus - AM, CEP 69090-970."
+- NUNCA invente outros endereços como "Rua Joaquim Sarmento" ou "centro"
+
 **PRAZO DE ENTREGA:** O prazo de produção e entrega é de **10 HORAS** após o fechamento do pedido (não são dias, são HORAS).
 - NUNCA informe prazos diferentes como "7 a 10 dias úteis"
 - Se perguntarem sobre prazo, diga: "Nosso prazo é de apenas 10 horas após a confirmação do pedido!"

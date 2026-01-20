@@ -101,7 +101,7 @@ const QUICK_RESPONSES = [
   { label: 'Saudação', text: 'Olá! Sou o vendedor da ACIUM Manaus. Como posso te ajudar?' },
   { label: 'Confirmar pedido', text: 'Perfeito! Vou confirmar seu pedido:\n\n🛍️ Produto: {produto}\n💰 Valor: {valor}\n🚚 Entrega: {entrega}\n💳 Pagamento: {pagamento}\n\nEstá tudo certo?' },
   { label: 'PIX', text: 'Segue nossa chave PIX para pagamento:\n\n📱 Chave PIX: (CNPJ)\n🏪 ACIUM MANAUS\n\nApós o pagamento, envie o comprovante aqui.' },
-  { label: 'Endereço loja', text: '📍 Nossa loja fica localizada em:\n\nRua das Alianças, 123\nCentro - Manaus/AM\n\n⏰ Funcionamos de seg a sáb, das 9h às 18h.' },
+  { label: 'Endereço loja', text: '📍 Nossa loja fica localizada no:\n\nShopping Sumaúma\nAv. Noel Nutels - Cidade Nova\nManaus - AM, CEP 69090-970\n\n⏰ Funcionamos de seg a sáb, das 9h às 18h.' },
   { label: 'Prazo envio', text: '📦 O prazo de envio é de 3 a 5 dias úteis após a confirmação do pagamento.\n\nVocê receberá o código de rastreio assim que for postado.' },
   { label: 'Agradecimento', text: 'Muito obrigado pela compra! 🎉\n\nQualquer dúvida, estamos à disposição.\n\n💍 ACIUM Manaus - Joias que contam histórias' },
 ];
