@@ -528,25 +528,57 @@ const Chat = () => {
             </Button>
           </div>
 
-          {/* Vendedores Online */}
-          {onlineSellers.length > 0 && (
-            <div className="flex items-center gap-2 mb-3 px-1 py-1.5 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
-              <div className="flex items-center gap-1.5 text-emerald-400">
-                <Users className="w-4 h-4" />
-                <span className="text-xs font-medium">Online:</span>
+          {/* Vendedores Online - Painel Destacado */}
+          <div className="mb-3 p-3 bg-gradient-to-r from-emerald-500/10 via-cyan-500/10 to-emerald-500/10 rounded-xl border border-emerald-500/20">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Users className="w-5 h-5 text-emerald-400" />
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                </div>
+                <span className="text-sm font-semibold text-white">Vendedores Online</span>
               </div>
-              <div className="flex items-center gap-1 flex-wrap">
-                {onlineSellers.slice(0, 3).map((seller, idx) => (
-                  <Badge key={seller.user_id} variant="outline" className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 text-[10px] py-0">
-                    {seller.full_name?.split(' ')[0] || 'Vendedor'}
-                  </Badge>
-                ))}
-                {onlineSellers.length > 3 && (
-                  <span className="text-emerald-400 text-[10px]">+{onlineSellers.length - 3}</span>
-                )}
-              </div>
+              <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30">
+                {onlineSellers.length} {onlineSellers.length === 1 ? 'ativo' : 'ativos'}
+              </Badge>
             </div>
-          )}
+            
+            {onlineSellers.length > 0 ? (
+              <div className="grid grid-cols-2 gap-2">
+                {onlineSellers.map((seller) => (
+                  <div 
+                    key={seller.user_id} 
+                    className="flex items-center gap-2 px-2.5 py-2 bg-slate-800/50 rounded-lg border border-white/5 hover:bg-slate-700/50 transition-colors"
+                  >
+                    <div className="relative shrink-0">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center text-white text-sm font-semibold">
+                        {(seller.full_name || 'V').charAt(0).toUpperCase()}
+                      </div>
+                      <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-slate-800 rounded-full" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-white truncate">
+                        {seller.full_name || 'Vendedor'}
+                      </p>
+                      <p className="text-[10px] text-emerald-400">
+                        Disponível agora
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 px-3 py-2 bg-slate-800/50 rounded-lg border border-white/5">
+                <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center">
+                  <User className="w-4 h-4 text-slate-500" />
+                </div>
+                <div>
+                  <p className="text-sm text-slate-400">Nenhum vendedor online</p>
+                  <p className="text-[10px] text-slate-500">Aline está atendendo</p>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Search */}
           <div className="relative">
