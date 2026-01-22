@@ -642,23 +642,128 @@ serve(async (req) => {
     historyMessages.push({ role: 'user', content: message });
 
     // ========================================
-    // PASSO 4: MONTAR CONTEXTO
+    // PASSO 4: COLETAR DADOS DO USUÁRIO (ANTES DA IA)
     // ========================================
     const collectedData = conversation.collected_data || {};
+    const newCollectedData: Record<string, unknown> = { ...collectedData };
+    const normalizedMsg = message.toLowerCase().trim();
+    
+    // IMPORTANTE: Determinar o ESTADO LÓGICO baseado nos dados já coletados
+    const hasCategoria = !!newCollectedData.categoria;
+    const hasFinalidade = !!newCollectedData.finalidade;
+    const hasCor = !!newCollectedData.cor;
+    const isAliancas = newCollectedData.categoria === 'aliancas';
+    const isPingente = newCollectedData.categoria === 'pingente';
+
+    console.log(`[ALINE-REPLY] Estado ANTES: categoria=${newCollectedData.categoria}, finalidade=${newCollectedData.finalidade}, cor=${newCollectedData.cor}`);
+    console.log(`[ALINE-REPLY] Mensagem: "${normalizedMsg}"`);
+
+    // ETAPA 1: Coletar CATEGORIA (se não tem categoria)
+    if (!hasCategoria) {
+      if (/aliança|alianca|alianças|aliancas/i.test(normalizedMsg)) {
+        newCollectedData.categoria = 'aliancas';
+        console.log(`[ALINE-REPLY] Categoria detectada via texto: aliancas`);
+      } else if (/pingente|pingentes/i.test(normalizedMsg)) {
+        newCollectedData.categoria = 'pingente';
+        console.log(`[ALINE-REPLY] Categoria detectada via texto: pingente`);
+      } else if (normalizedMsg === '1') {
+        newCollectedData.categoria = 'aliancas';
+        console.log(`[ALINE-REPLY] Categoria detectada via número: aliancas`);
+      } else if (normalizedMsg === '2') {
+        newCollectedData.categoria = 'pingente';
+        console.log(`[ALINE-REPLY] Categoria detectada via número: pingente`);
+      }
+    }
+    // ETAPA 2: Coletar FINALIDADE (se tem categoria aliancas mas não tem finalidade)
+    else if (isAliancas && !hasFinalidade) {
+      if (/namoro|compromisso/i.test(normalizedMsg)) {
+        newCollectedData.finalidade = 'namoro';
+        console.log(`[ALINE-REPLY] Finalidade detectada via texto: namoro`);
+      } else if (/casamento/i.test(normalizedMsg)) {
+        newCollectedData.finalidade = 'casamento';
+        console.log(`[ALINE-REPLY] Finalidade detectada via texto: casamento`);
+      } else if (normalizedMsg === '1') {
+        newCollectedData.finalidade = 'namoro';
+        console.log(`[ALINE-REPLY] Finalidade detectada via número: namoro`);
+      } else if (normalizedMsg === '2') {
+        newCollectedData.finalidade = 'casamento';
+        console.log(`[ALINE-REPLY] Finalidade detectada via número: casamento`);
+      }
+    }
+    // ETAPA 3: Coletar COR (se tem categoria E (não é aliancas OU já tem finalidade) E não tem cor)
+    else if (hasCategoria && (isPingente || hasFinalidade) && !hasCor) {
+      if (/dourada|dourado|ouro/i.test(normalizedMsg)) {
+        newCollectedData.cor = 'dourada';
+        console.log(`[ALINE-REPLY] Cor detectada via texto: dourada`);
+      } else if (/prata|aço|aco|prateada/i.test(normalizedMsg)) {
+        newCollectedData.cor = 'prata';
+        console.log(`[ALINE-REPLY] Cor detectada via texto: prata`);
+      } else if (/preta|preto/i.test(normalizedMsg)) {
+        newCollectedData.cor = 'preta';
+        console.log(`[ALINE-REPLY] Cor detectada via texto: preta`);
+      } else if (/azul/i.test(normalizedMsg)) {
+        newCollectedData.cor = 'azul';
+        console.log(`[ALINE-REPLY] Cor detectada via texto: azul`);
+      } else if (normalizedMsg === '1') {
+        newCollectedData.cor = 'dourada';
+        console.log(`[ALINE-REPLY] Cor detectada via número: dourada`);
+      } else if (normalizedMsg === '2') {
+        newCollectedData.cor = 'prata';
+        console.log(`[ALINE-REPLY] Cor detectada via número: prata`);
+      } else if (normalizedMsg === '3') {
+        newCollectedData.cor = 'preta';
+        console.log(`[ALINE-REPLY] Cor detectada via número: preta`);
+      } else if (normalizedMsg === '4') {
+        newCollectedData.cor = 'azul';
+        console.log(`[ALINE-REPLY] Cor detectada via número: azul`);
+      }
+    }
+
+    // Calcular próximo passo ANTES de chamar a IA
+    const finalCategoria = newCollectedData.categoria as string | undefined;
+    const finalFinalidade = newCollectedData.finalidade as string | undefined;
+    const finalCor = newCollectedData.cor as string | undefined;
+    
+    let nextStep: string;
+    let nextStepInstruction: string;
+    
+    if (finalCor) {
+      nextStep = 'catalogo';
+      nextStepInstruction = `AÇÃO OBRIGATÓRIA: O cliente já escolheu categoria "${finalCategoria}", finalidade "${finalFinalidade || 'N/A'}" e cor "${finalCor}". Use a ferramenta search_catalog AGORA para mostrar os produtos.`;
+    } else if (finalCategoria === 'aliancas' && finalFinalidade) {
+      nextStep = 'escolha_cor';
+      nextStepInstruction = `AÇÃO OBRIGATÓRIA: O cliente escolheu alianças de ${finalFinalidade}. Agora pergunte a COR preferida com as opções: 1️⃣ Dourada, 2️⃣ Aço (prata), 3️⃣ Preta, 4️⃣ Azul. NÃO pergunte finalidade novamente!`;
+    } else if (finalCategoria === 'pingente') {
+      nextStep = 'escolha_cor';
+      nextStepInstruction = `AÇÃO OBRIGATÓRIA: O cliente escolheu pingentes. Agora pergunte a COR preferida com as opções: 1️⃣ Dourada, 2️⃣ Prata (Aço). NÃO pergunte categoria novamente!`;
+    } else if (finalCategoria === 'aliancas') {
+      nextStep = 'escolha_finalidade';
+      nextStepInstruction = `AÇÃO OBRIGATÓRIA: O cliente escolheu alianças. Agora pergunte a FINALIDADE com as opções: 1️⃣ Namoro ou Compromisso, 2️⃣ Casamento. NÃO pergunte categoria novamente!`;
+    } else {
+      nextStep = 'abertura';
+      nextStepInstruction = `AÇÃO OBRIGATÓRIA: Apresente-se e pergunte a CATEGORIA com as opções: 1️⃣ Alianças, 2️⃣ Pingentes.`;
+    }
+
+    console.log(`[ALINE-REPLY] Próximo passo: ${nextStep}`);
+
+    // ========================================
+    // PASSO 5: MONTAR CONTEXTO PARA A IA
+    // ========================================
     let contextInfo = "";
     
-    if (contact_name || collectedData.contact_name) {
-      contextInfo += `\nO nome do cliente é: ${contact_name || collectedData.contact_name}`;
+    if (contact_name || newCollectedData.contact_name) {
+      contextInfo += `\nO nome do cliente é: ${contact_name || newCollectedData.contact_name}`;
     }
     
-    contextInfo += `\n\nESTADO ATUAL DA CONVERSA:`;
-    contextInfo += `\n- Node atual: ${conversation.current_node}`;
-    if (collectedData.categoria) contextInfo += `\n- Categoria escolhida: ${collectedData.categoria}`;
-    if (collectedData.finalidade) contextInfo += `\n- Finalidade: ${collectedData.finalidade}`;
-    if (collectedData.cor) contextInfo += `\n- Cor preferida: ${collectedData.cor}`;
-    if (collectedData.selected_sku) contextInfo += `\n- Produto selecionado: ${collectedData.selected_sku}`;
-    if (collectedData.delivery_method) contextInfo += `\n- Entrega: ${collectedData.delivery_method}`;
-    if (collectedData.payment_method) contextInfo += `\n- Pagamento: ${collectedData.payment_method}`;
+    contextInfo += `\n\n=== DADOS JÁ COLETADOS ===`;
+    if (newCollectedData.categoria) contextInfo += `\n- Categoria: ${newCollectedData.categoria}`;
+    if (newCollectedData.finalidade) contextInfo += `\n- Finalidade: ${newCollectedData.finalidade}`;
+    if (newCollectedData.cor) contextInfo += `\n- Cor: ${newCollectedData.cor}`;
+    if (newCollectedData.selected_sku) contextInfo += `\n- Produto selecionado: ${newCollectedData.selected_sku}`;
+    if (newCollectedData.delivery_method) contextInfo += `\n- Entrega: ${newCollectedData.delivery_method}`;
+    if (newCollectedData.payment_method) contextInfo += `\n- Pagamento: ${newCollectedData.payment_method}`;
+    
+    contextInfo += `\n\n=== ${nextStepInstruction} ===`;
 
     // Buscar configuração da IA do banco de dados
     const { data: aiConfig } = await supabase
@@ -845,82 +950,8 @@ serve(async (req) => {
     cleanMessage = uniqueLines.join('\n').trim();
 
     // ========================================
-    // PASSO 9: COLETAR DADOS DO USUÁRIO (BASEADO NOS DADOS JÁ COLETADOS)
+    // PASSO 9: COLETAR DADOS ADICIONAIS (PRODUTO, ENTREGA, PAGAMENTO)
     // ========================================
-    const newCollectedData: Record<string, unknown> = { ...collectedData };
-    const normalizedMsg = message.toLowerCase().trim();
-    
-    // IMPORTANTE: Determinar o ESTADO LÓGICO baseado nos dados já coletados
-    const hasCategoria = !!newCollectedData.categoria;
-    const hasFinalidade = !!newCollectedData.finalidade;
-    const hasCor = !!newCollectedData.cor;
-    const isAliancas = newCollectedData.categoria === 'aliancas';
-    const isPingente = newCollectedData.categoria === 'pingente';
-
-    console.log(`[ALINE-REPLY] Estado atual: categoria=${newCollectedData.categoria}, finalidade=${newCollectedData.finalidade}, cor=${newCollectedData.cor}`);
-    console.log(`[ALINE-REPLY] Mensagem: "${normalizedMsg}"`);
-
-    // ETAPA 1: Coletar CATEGORIA (se não tem categoria)
-    if (!hasCategoria) {
-      if (/aliança|alianca|alianças|aliancas/i.test(normalizedMsg)) {
-        newCollectedData.categoria = 'aliancas';
-        console.log(`[ALINE-REPLY] Categoria detectada via texto: aliancas`);
-      } else if (/pingente|pingentes/i.test(normalizedMsg)) {
-        newCollectedData.categoria = 'pingente';
-        console.log(`[ALINE-REPLY] Categoria detectada via texto: pingente`);
-      } else if (normalizedMsg === '1') {
-        newCollectedData.categoria = 'aliancas';
-        console.log(`[ALINE-REPLY] Categoria detectada via número: aliancas`);
-      } else if (normalizedMsg === '2') {
-        newCollectedData.categoria = 'pingente';
-        console.log(`[ALINE-REPLY] Categoria detectada via número: pingente`);
-      }
-    }
-    // ETAPA 2: Coletar FINALIDADE (se tem categoria aliancas mas não tem finalidade)
-    else if (isAliancas && !hasFinalidade) {
-      if (/namoro|compromisso/i.test(normalizedMsg)) {
-        newCollectedData.finalidade = 'namoro';
-        console.log(`[ALINE-REPLY] Finalidade detectada via texto: namoro`);
-      } else if (/casamento/i.test(normalizedMsg)) {
-        newCollectedData.finalidade = 'casamento';
-        console.log(`[ALINE-REPLY] Finalidade detectada via texto: casamento`);
-      } else if (normalizedMsg === '1') {
-        newCollectedData.finalidade = 'namoro';
-        console.log(`[ALINE-REPLY] Finalidade detectada via número: namoro`);
-      } else if (normalizedMsg === '2') {
-        newCollectedData.finalidade = 'casamento';
-        console.log(`[ALINE-REPLY] Finalidade detectada via número: casamento`);
-      }
-    }
-    // ETAPA 3: Coletar COR (se tem categoria E (não é aliancas OU já tem finalidade) E não tem cor)
-    else if (hasCategoria && (isPingente || hasFinalidade) && !hasCor) {
-      if (/dourada|dourado|ouro/i.test(normalizedMsg)) {
-        newCollectedData.cor = 'dourada';
-        console.log(`[ALINE-REPLY] Cor detectada via texto: dourada`);
-      } else if (/prata|aço|aco|prateada/i.test(normalizedMsg)) {
-        newCollectedData.cor = 'prata';
-        console.log(`[ALINE-REPLY] Cor detectada via texto: prata`);
-      } else if (/preta|preto/i.test(normalizedMsg)) {
-        newCollectedData.cor = 'preta';
-        console.log(`[ALINE-REPLY] Cor detectada via texto: preta`);
-      } else if (/azul/i.test(normalizedMsg)) {
-        newCollectedData.cor = 'azul';
-        console.log(`[ALINE-REPLY] Cor detectada via texto: azul`);
-      } else if (normalizedMsg === '1') {
-        newCollectedData.cor = 'dourada';
-        console.log(`[ALINE-REPLY] Cor detectada via número: dourada`);
-      } else if (normalizedMsg === '2') {
-        newCollectedData.cor = 'prata';
-        console.log(`[ALINE-REPLY] Cor detectada via número: prata`);
-      } else if (normalizedMsg === '3') {
-        newCollectedData.cor = 'preta';
-        console.log(`[ALINE-REPLY] Cor detectada via número: preta`);
-      } else if (normalizedMsg === '4') {
-        newCollectedData.cor = 'azul';
-        console.log(`[ALINE-REPLY] Cor detectada via número: azul`);
-      }
-    }
-
     // Coletar seleção de produto (apenas se catálogo foi enviado)
     const numberMatch = normalizedMsg.match(/^(\d)$|quero\s*o?\s*(\d)|escolho\s*o?\s*(\d)/);
     if (numberMatch && catalogProducts.length > 0) {
@@ -950,33 +981,22 @@ serve(async (req) => {
     }
 
     // ========================================
-    // PASSO 10: CALCULAR NODE CORRETO (BASEADO NOS DADOS COLETADOS)
+    // PASSO 10: CALCULAR NODE FINAL (COM DADOS ADICIONAIS)
     // ========================================
-    let nodeValue: string;
-    const finalCategoria = newCollectedData.categoria as string | undefined;
-    const finalFinalidade = newCollectedData.finalidade as string | undefined;
-    const finalCor = newCollectedData.cor as string | undefined;
     const finalProduto = newCollectedData.selected_sku as string | undefined;
     const finalEntrega = newCollectedData.delivery_method as string | undefined;
     const finalPagamento = newCollectedData.payment_method as string | undefined;
 
+    let nodeValue: string;
     if (finalEntrega && finalPagamento) {
       nodeValue = 'finalizado';
     } else if (finalProduto) {
       nodeValue = 'coleta_dados';
-    } else if (finalCor) {
-      nodeValue = 'catalogo';
-    } else if (finalCategoria === 'aliancas' && finalFinalidade) {
-      nodeValue = 'escolha_cor';
-    } else if (finalCategoria === 'pingente') {
-      nodeValue = 'escolha_cor';
-    } else if (finalCategoria === 'aliancas') {
-      nodeValue = 'escolha_finalidade';
     } else {
-      nodeValue = 'abertura';
+      nodeValue = nextStep; // Usar o próximo passo calculado no PASSO 4
     }
 
-    console.log(`[ALINE-REPLY] Node calculado: ${nodeValue} (dados: categoria=${finalCategoria}, finalidade=${finalFinalidade}, cor=${finalCor})`);
+    console.log(`[ALINE-REPLY] Node final: ${nodeValue} (dados: categoria=${finalCategoria}, finalidade=${finalFinalidade}, cor=${finalCor})`);
 
     // ========================================
     // PASSO 11: PROTEÇÃO ANTI-LOOP
