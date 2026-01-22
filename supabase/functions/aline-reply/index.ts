@@ -985,6 +985,9 @@ serve(async (req) => {
     // ========================================
     console.log(`[ALINE-REPLY] ====== FIM ======`);
     
+    // Versão da mensagem sem quebras de linha (para JSON seguro no Fiqon)
+    const mensagemSemQuebras = cleanMessage.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
+    
     return new Response(
       JSON.stringify({
         success: true,
@@ -992,6 +995,10 @@ serve(async (req) => {
         // Mensagem principal
         response: cleanMessage,
         mensagem_whatsapp: cleanMessage,
+        
+        // NOVO: Mensagem sem quebras para uso seguro em JSON no Fiqon
+        reply_text: mensagemSemQuebras,
+        mensagem_linha_unica: mensagemSemQuebras,
         
         // Dados técnicos
         node_tecnico: nodeValue,
