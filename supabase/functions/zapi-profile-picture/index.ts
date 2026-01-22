@@ -84,19 +84,27 @@ serve(async (req) => {
     const updates = results.filter(r => r.profilePicUrl);
     
     for (const update of updates) {
-      // Tentar atualizar customer existente
+      // Atualizar customer existente com a foto
       const { error } = await supabase
         .from('customers')
-        .upsert({
-          whatsapp: update.phone,
-          name: update.phone, // Nome padrão se não existir
-        }, {
-          onConflict: 'whatsapp',
-          ignoreDuplicates: true,
-        });
+        .update({ profile_pic_url: update.profilePicUrl })
+        .eq('whatsapp', update.phone);
 
       if (error) {
-        console.log(`[ZAPI-PROFILE] Could not upsert customer ${update.phone}:`, error.message);
+        console.log(`[ZAPI-PROFILE] Could not update customer ${update.phone}:`, error.message);
+        
+        // Se não existe, tentar criar
+        const { error: insertError } = await supabase
+          .from('customers')
+          .insert({
+            whatsapp: update.phone,
+            name: update.phone,
+            profile_pic_url: update.profilePicUrl,
+          });
+          
+        if (insertError) {
+          console.log(`[ZAPI-PROFILE] Could not insert customer ${update.phone}:`, insertError.message);
+        }
       }
     }
 
