@@ -54,7 +54,7 @@ serve(async (req) => {
     console.log(`[ALINE-TAKEOVER] Action: ${action}, Phone: ${normalizedPhone}`);
 
     // Buscar conversa da Aline para este telefone
-    const { data: alineConv, error: findError } = await supabase
+    let { data: alineConv, error: findError } = await supabase
       .from('aline_conversations')
       .select('*')
       .eq('phone', normalizedPhone)
@@ -66,15 +66,27 @@ serve(async (req) => {
       throw findError;
     }
 
+    // Se não existe conversa Aline, criar uma nova para permitir o takeover
     if (!alineConv) {
-      console.log(`[ALINE-TAKEOVER] Nenhuma conversa Aline encontrada para ${normalizedPhone}`);
-      return new Response(JSON.stringify({
-        success: true,
-        message: 'Nenhuma conversa Aline encontrada para este número',
-        aline_conversation: null,
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      console.log(`[ALINE-TAKEOVER] Criando conversa Aline para ${normalizedPhone}`);
+      
+      const { data: newConv, error: createError } = await supabase
+        .from('aline_conversations')
+        .insert({
+          phone: normalizedPhone,
+          status: 'active',
+          current_node: 'start',
+        })
+        .select()
+        .single();
+
+      if (createError) {
+        console.error(`[ALINE-TAKEOVER] Erro ao criar conversa:`, createError);
+        throw createError;
+      }
+
+      alineConv = newConv;
+      console.log(`[ALINE-TAKEOVER] Conversa criada: ${alineConv.id}`);
     }
 
     let newStatus: string;
