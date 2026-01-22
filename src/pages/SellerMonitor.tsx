@@ -36,6 +36,9 @@ interface SellerPresence {
   full_name: string;
   is_online: boolean;
   last_seen_at: string;
+  is_chatting?: boolean;
+  current_chat_phone?: string | null;
+  chat_started_at?: string | null;
 }
 
 interface SellerStats {
@@ -439,38 +442,61 @@ const SellerMonitor = () => {
                       s.full_name?.toLowerCase().includes(name.split(' ')[0].toLowerCase())
                     );
                     const isOnline = seller?.is_online || false;
+                    const isChatting = seller?.is_chatting || false;
                     
                     return (
                       <div
                         key={idx}
                         className={cn(
                           'flex items-center justify-between p-4 rounded-xl border transition-all',
-                          isOnline 
-                            ? 'bg-emerald-500/10 border-emerald-500/30' 
-                            : 'bg-rose-500/10 border-rose-500/30'
+                          isChatting
+                            ? 'bg-cyan-500/10 border-cyan-500/30 animate-pulse'
+                            : isOnline 
+                              ? 'bg-emerald-500/10 border-emerald-500/30' 
+                              : 'bg-rose-500/10 border-rose-500/30'
                         )}
                       >
                         <div className="flex items-center gap-3">
                           <div className={cn(
-                            'w-10 h-10 rounded-full flex items-center justify-center font-bold',
-                            isOnline ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'
+                            'w-10 h-10 rounded-full flex items-center justify-center font-bold relative',
+                            isChatting ? 'bg-cyan-500 text-white' : isOnline ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'
                           )}>
                             {name.charAt(0)}
+                            {isChatting && (
+                              <div className="absolute -top-1 -right-1 w-4 h-4 bg-cyan-400 rounded-full flex items-center justify-center">
+                                <MessageCircle className="w-2.5 h-2.5 text-white" />
+                              </div>
+                            )}
                           </div>
                           <div>
                             <p className="font-medium text-white">{name}</p>
                             <p className="text-xs text-slate-400">
-                              {seller ? formatLastSeen(seller.last_seen_at) : 'Nunca acessou'}
+                              {isChatting && seller?.current_chat_phone
+                                ? `Atendendo: ${seller.current_chat_phone.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3')}`
+                                : seller ? formatLastSeen(seller.last_seen_at) : 'Nunca acessou'}
                             </p>
+                            {isChatting && seller?.chat_started_at && (
+                              <p className="text-xs text-cyan-400 flex items-center gap-1 mt-0.5">
+                                <Timer className="w-3 h-3" />
+                                Em atendimento há {formatLastSeen(seller.chat_started_at).replace(' atrás', '')}
+                              </p>
+                            )}
                           </div>
                         </div>
                         <Badge className={cn(
                           'gap-1',
-                          isOnline 
-                            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                            : 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                          isChatting 
+                            ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30'
+                            : isOnline 
+                              ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                              : 'bg-rose-500/20 text-rose-400 border-rose-500/30'
                         )}>
-                          {isOnline ? (
+                          {isChatting ? (
+                            <>
+                              <MessageCircle className="w-3 h-3" />
+                              Atendendo
+                            </>
+                          ) : isOnline ? (
                             <>
                               <CheckCircle2 className="w-3 h-3" />
                               Online
@@ -512,40 +538,58 @@ const SellerMonitor = () => {
                   ) : (
                     <ScrollArea className="h-[300px]">
                       <div className="space-y-2">
-                        {sellers.map((seller) => (
-                          <div
-                            key={seller.id}
-                            className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50 border border-transparent hover:border-white/10 transition-all"
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="relative">
-                                <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-sm font-medium text-white">
-                                  {seller.full_name?.charAt(0) || '?'}
+                        {sellers.map((seller) => {
+                          const isChatting = seller.is_chatting || false;
+                          
+                          return (
+                            <div
+                              key={seller.id}
+                              className={cn(
+                                "flex items-center justify-between p-3 rounded-lg border transition-all",
+                                isChatting
+                                  ? 'bg-cyan-500/5 border-cyan-500/20'
+                                  : 'bg-slate-800/50 border-transparent hover:border-white/10'
+                              )}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="relative">
+                                  <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-sm font-medium text-white">
+                                    {seller.full_name?.charAt(0) || '?'}
+                                  </div>
+                                  <div className={cn(
+                                    'absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-slate-900',
+                                    isChatting ? 'bg-cyan-500' : seller.is_online ? 'bg-emerald-500' : 'bg-slate-500'
+                                  )} />
                                 </div>
-                                <div className={cn(
-                                  'absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-slate-900',
-                                  seller.is_online ? 'bg-emerald-500' : 'bg-slate-500'
-                                )} />
+                                <div>
+                                  <p className="text-sm font-medium text-white">
+                                    {seller.full_name || 'Sem nome'}
+                                  </p>
+                                  <p className="text-xs text-slate-400">
+                                    {isChatting && seller.current_chat_phone
+                                      ? `Atendendo: ${seller.current_chat_phone.slice(-4)}`
+                                      : formatLastSeen(seller.last_seen_at)}
+                                  </p>
+                                </div>
                               </div>
-                              <div>
-                                <p className="text-sm font-medium text-white">
-                                  {seller.full_name || 'Sem nome'}
-                                </p>
-                                <p className="text-xs text-slate-400">
-                                  {formatLastSeen(seller.last_seen_at)}
-                                </p>
-                              </div>
+                              <Badge variant="outline" className={cn(
+                                'text-[10px]',
+                                isChatting 
+                                  ? 'border-cyan-500/30 text-cyan-400'
+                                  : seller.is_online 
+                                    ? 'border-emerald-500/30 text-emerald-400'
+                                    : 'border-slate-600 text-slate-400'
+                              )}>
+                                {isChatting ? (
+                                  <span className="flex items-center gap-1">
+                                    <MessageCircle className="w-3 h-3" />
+                                    Atendendo
+                                  </span>
+                                ) : seller.is_online ? 'Online' : 'Offline'}
+                              </Badge>
                             </div>
-                            <Badge variant="outline" className={cn(
-                              'text-[10px]',
-                              seller.is_online 
-                                ? 'border-emerald-500/30 text-emerald-400'
-                                : 'border-slate-600 text-slate-400'
-                            )}>
-                              {seller.is_online ? 'Online' : 'Offline'}
-                            </Badge>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </ScrollArea>
                   )}
