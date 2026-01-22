@@ -99,15 +99,19 @@ Faça perguntas ABERTAS e entenda o que o cliente quer.
 
 ---
 
-## CATEGORIAS DISPONÍVEIS
+## CATEGORIAS E MATERIAL (REGRA CRÍTICA!)
 
-- **Alianças de Namoro/Compromisso** (peças de aço)
-- **Alianças de Casamento** (peças de tungstênio)
-- **Pingentes** (com opção de fotogravação)
+### ALIANÇAS DE CASAMENTO = TUNGSTÊNIO
+- Material: Tungstênio (resistente, premium)
+- Cores: Dourada, Prata, Preta, Azul
 
-**Cores disponíveis:**
-- Alianças: dourada, prata (aço), preta, azul
-- Pingentes: dourada, prata
+### ALIANÇAS DE NAMORO/COMPROMISSO = AÇO
+- Material: Aço inoxidável
+- Cores: Dourada, Prata, Preta, Azul
+
+### PINGENTES
+- Opção de fotogravação GRATUITA (1 lado)
+- Cores: Dourada, Prata
 
 ---
 
@@ -117,7 +121,9 @@ Faça perguntas ABERTAS e entenda o que o cliente quer.
 2. **SEMPRE** entenda linguagem natural
 3. **MÁXIMO** 1 mensagem por vez
 4. **NUNCA** repita perguntas já respondidas
-5. Use a memória da conversa
+5. **CASAMENTO = TUNGSTÊNIO** (sempre!)
+6. **NAMORO = AÇO** (sempre!)
+7. Use a memória da conversa
 
 ---
 
@@ -125,72 +131,45 @@ Faça perguntas ABERTAS e entenda o que o cliente quer.
 
 ### Se cliente menciona tudo de uma vez:
 "Quero ver alianças douradas de casamento"
-→ Use search_catalog IMEDIATAMENTE
-→ "Que momento especial! Vou te mostrar nossas opções de alianças douradas para casamento! ✨"
+→ Use search_catalog IMEDIATAMENTE com category="aliancas" e search="tungstenio"
+→ "Que momento especial! Vou te mostrar nossas alianças de tungstênio douradas para casamento! ✨"
 
 ### Se cliente só cumprimenta:
 "Oi" / "Olá" / "Boa tarde"
-→ "Olá! 😊 Sou a Aline, da ACIUM Manaus. Estou aqui para te ajudar a encontrar a joia perfeita! O que você está procurando hoje? Alianças ou pingentes?"
+→ "Olá! 😊 Sou a Aline, da ACIUM Manaus. Estou aqui para te ajudar a encontrar a joia perfeita! O que você está procurando hoje?"
 
 ### Se cliente menciona categoria:
 "Quero ver alianças" / "Vocês têm pingentes?"
 → Se ALIANÇAS: "Que lindo! 💍 Vocês estão celebrando namoro/compromisso ou casamento?"
 → Se PINGENTES: "Ótima escolha! 💫 Qual cor você prefere? Temos em dourada e prata."
 
-### Se cliente menciona cor:
-"Quero dourada" / "Prefiro prata"
-→ Se faltam dados: pergunte o que falta naturalmente
-→ Se tem tudo: use search_catalog
-
----
-
-## EXEMPLOS DE CONVERSA NATURAL
-
-❌ ERRADO (robótico):
-"Escolha uma opção:
-1️⃣ Alianças
-2️⃣ Pingentes"
-
-✅ CORRETO (humano):
-"O que você está procurando hoje? Temos lindas alianças e pingentes personalizados!"
-
-❌ ERRADO:
-"Qual cor? 1️⃣ Dourada 2️⃣ Prata 3️⃣ Preta"
-
-✅ CORRETO:
-"E qual cor vocês preferem? Temos opções em dourada, prata, preta e azul."
-
----
-
-## DETECÇÃO INTELIGENTE (O QUE VOCÊ DEVE ENTENDER)
-
-**Categoria:**
-- "aliança", "alianças", "par de alianças" → aliancas
-- "pingente", "pingentes", "colar" → pingente
-
-**Finalidade (só para alianças):**
-- "namoro", "compromisso", "namorada", "namorado" → namoro
-- "casamento", "casar", "noiva", "noivo", "noivado" → casamento
-
-**Cor:**
-- "dourada", "dourado", "ouro", "gold" → dourada
-- "prata", "prateada", "aço", "aco", "silver" → prata
-- "preta", "preto", "black" → preta
-- "azul", "blue" → azul
+### Se cliente menciona finalidade:
+"É pra casamento" → Vou buscar alianças de TUNGSTÊNIO
+"É pra namoro" → Vou buscar alianças de AÇO
 
 ---
 
 ## QUANDO DISPARAR CATÁLOGO (search_catalog)
 
 CHAME search_catalog quando tiver:
-- **Alianças:** categoria + finalidade + cor
-- **Pingentes:** categoria + cor
-
-Exemplo de chamada:
-\`search_catalog({ category: "aliancas", color: "dourada" })\`
+- **Alianças de CASAMENTO:** category="aliancas", search="tungstenio", color=cor
+- **Alianças de NAMORO:** category="aliancas", search="aco", color=cor
+- **Pingentes:** category="pingente", color=cor
 
 Após buscar, diga naturalmente:
 "Encontrei algumas opções maravilhosas! Veja com calma e me diz qual chamou sua atenção 💍"
+
+---
+
+## FLUXO COMPLETO (NÃO ENCERRAR ANTES!)
+
+1. **Catálogo** → Mostrar produtos
+2. **Seleção** → Cliente escolhe produto
+3. **Tamanhos** → Perguntar tamanho de CADA pessoa (alianças: 14-28)
+4. **Entrega** → Retirada na loja OU entrega em casa
+5. **Pagamento** → Pix OU cartão
+6. **Fotogravação** (só pingentes) → Pedir foto para gravar
+7. **SOMENTE ENTÃO** → Encaminhar ao vendedor
 
 ---
 
@@ -199,23 +178,37 @@ Após buscar, diga naturalmente:
 - Gravação de UM LADO é GRATUITA
 - Dois lados tem custo adicional
 
-"Esse pingente permite fotogravação personalizada! 📸 A gravação de um lado já está inclusa no valor. Me manda a foto que você quer gravar!"
+"Esse pingente permite fotogravação personalizada! 📸 A gravação de um lado já está inclusa. Me manda a foto que você quer gravar!"
+
+---
+
+## COLETA DE TAMANHOS
+
+Quando cliente escolher produto de aliança:
+"Excelente escolha! 💍 Me conta os tamanhos de vocês? Geralmente fica entre 14 e 28."
 
 ---
 
 ## PRÉ-FECHAMENTO
 
-Quando cliente escolher produto:
-"Excelente escolha! 💍 
-Para finalizar, me conta: você prefere retirar na nossa loja no Shopping Sumaúma ou receber em casa?
+Quando tiver produto E tamanhos:
+"Perfeito! 
+Vocês preferem retirar na nossa loja no Shopping Sumaúma ou receber em casa?
 E vai pagar com Pix ou cartão?"
 
 ---
 
-## FINALIZAÇÃO
+## FINALIZAÇÃO (SÓ DEPOIS DE TER TUDO)
+
+SOMENTE encaminhe ao vendedor quando tiver:
+- ✅ Produto selecionado
+- ✅ Tamanhos (para alianças)
+- ✅ Forma de entrega
+- ✅ Forma de pagamento
+- ✅ Foto para gravação (para pingentes)
 
 "Perfeito! Já tenho tudo anotado! 🎉
-Vou passar para nosso vendedor finalizar. Ele te chama em instantes!
+Vou passar para nosso vendedor finalizar o pedido. Ele te chama em instantes!
 Foi um prazer te atender! 💍"
 
 [SYSTEM_ACTION action:"register_lead_crm"]
@@ -238,7 +231,10 @@ No final de CADA resposta, adicione:
 - #node: escolha_cor
 - #node: catalogo
 - #node: selecao
-- #node: coleta_dados
+- #node: coleta_tamanhos
+- #node: coleta_entrega
+- #node: coleta_pagamento
+- #node: coleta_foto (pingentes)
 - #node: finalizado`;
 
 // Função para formatar legenda do produto para WhatsApp
@@ -279,12 +275,14 @@ function formatProductCaption(
   return lines.join('\n');
 }
 
-// Função para buscar catálogo
+// Função para buscar catálogo - COM LÓGICA CASAMENTO=TUNGSTÊNIO, NAMORO=AÇO
 async function searchCatalog(
   params: Record<string, any>,
-  supabase: any
+  supabase: any,
+  collectedData?: Record<string, any>
 ): Promise<any> {
   console.log(`[ALINE-REPLY] Buscando catálogo:`, params);
+  console.log(`[ALINE-REPLY] Dados coletados:`, collectedData);
   
   let query = supabase
     .from('products')
@@ -304,8 +302,25 @@ async function searchCatalog(
     query = query.ilike('color', `%${params.color}%`);
   }
   
-  if (params.search) {
-    query = query.or(`name.ilike.%${params.search}%,description.ilike.%${params.search}%`);
+  // LÓGICA CRÍTICA: Filtrar por material baseado na finalidade
+  // CASAMENTO = Tungstênio, NAMORO = Aço
+  const finalidade = collectedData?.finalidade || params.finalidade;
+  let searchTerm = params.search || '';
+  
+  if (params.category === 'aliancas' || params.category?.includes('alianca')) {
+    if (finalidade === 'casamento') {
+      // Casamento SEMPRE busca tungstênio
+      searchTerm = searchTerm ? `${searchTerm} tungstenio` : 'tungstenio';
+      console.log(`[ALINE-REPLY] CASAMENTO → Buscando TUNGSTÊNIO`);
+    } else if (finalidade === 'namoro') {
+      // Namoro/compromisso busca aço
+      searchTerm = searchTerm ? `${searchTerm} aco` : 'aco';
+      console.log(`[ALINE-REPLY] NAMORO → Buscando AÇO`);
+    }
+  }
+  
+  if (searchTerm) {
+    query = query.or(`name.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
   }
   
   if (params.min_price) {
@@ -350,12 +365,13 @@ async function searchCatalog(
     };
   });
   
-  console.log(`[ALINE-REPLY] Encontrados ${processedProducts.length} produtos`);
+  console.log(`[ALINE-REPLY] Encontrados ${processedProducts.length} produtos (finalidade: ${finalidade || 'N/A'})`);
   
   return {
     success: true,
     products: processedProducts,
     total: processedProducts.length,
+    material: finalidade === 'casamento' ? 'tungstenio' : (finalidade === 'namoro' ? 'aco' : null),
   };
 }
 
@@ -786,7 +802,8 @@ serve(async (req) => {
 
         let result;
         if (functionName === "search_catalog") {
-          result = await searchCatalog(functionArgs, supabase);
+          // Passar collectedData para aplicar lógica casamento→tungstênio
+          result = await searchCatalog(functionArgs, supabase, newCollectedData);
           
           if (result.success && result.products) {
             // Buscar configurações de exibição
@@ -1080,23 +1097,55 @@ serve(async (req) => {
       newCollectedData.payment_method = 'cartao';
     }
 
+    // Detectar envio de foto (para fotogravação em pingentes)
+    // Verificar se a mensagem contém uma mídia (será detectada pela presença de URL de imagem)
+    // OU se o cliente menciona que enviou/vai enviar foto
+    if (/enviei|mandei|segue a foto|aqui a foto|foto.*grav|grav.*foto/i.test(normalizedMsg)) {
+      newCollectedData.foto_gravacao = 'pendente_confirmacao';
+      console.log(`[ALINE-REPLY] [NLU] Cliente indicou que enviou foto para gravação`);
+    }
+
     // ========================================
     // PASSO 10: CALCULAR NODE FINAL (COM DADOS ADICIONAIS)
+    // Lógica: só finaliza quando tiver TODOS os dados necessários
     // ========================================
     const finalProduto = newCollectedData.selected_sku as string | undefined;
+    const finalTamanho = newCollectedData.tamanho_1 as string | undefined;
     const finalEntrega = newCollectedData.delivery_method as string | undefined;
     const finalPagamento = newCollectedData.payment_method as string | undefined;
+    const finalFoto = newCollectedData.foto_gravacao as string | undefined;
+    const isPingenteCategoria = finalCategoria === 'pingente';
+    const isAliancaCategoria = finalCategoria === 'aliancas';
+
+    // Verificar se tem todos os dados necessários para finalizar
+    const temProduto = !!finalProduto;
+    const temTamanho = !!finalTamanho || isPingenteCategoria; // Pingentes não precisam de tamanho
+    const temEntrega = !!finalEntrega;
+    const temPagamento = !!finalPagamento;
+    const temFoto = !!finalFoto || !isPingenteCategoria; // Só pingentes precisam de foto
+    
+    const podeFinalizarAtendimento = temProduto && temTamanho && temEntrega && temPagamento && temFoto;
 
     let nodeValue: string;
-    if (finalEntrega && finalPagamento) {
+    if (podeFinalizarAtendimento) {
       nodeValue = 'finalizado';
-    } else if (finalProduto) {
-      nodeValue = 'coleta_dados';
+    } else if (finalProduto && finalTamanho && finalEntrega) {
+      nodeValue = 'coleta_pagamento';
+    } else if (finalProduto && finalTamanho) {
+      nodeValue = 'coleta_entrega';
+    } else if (finalProduto && isAliancaCategoria) {
+      nodeValue = 'coleta_tamanhos';
+    } else if (finalProduto && isPingenteCategoria) {
+      nodeValue = 'coleta_foto';
+    } else if (catalogProducts.length > 0) {
+      nodeValue = 'catalogo';
     } else {
       nodeValue = nextStep; // Usar o próximo passo calculado no PASSO 4
     }
 
-    console.log(`[ALINE-REPLY] Node final: ${nodeValue} (dados: categoria=${finalCategoria}, finalidade=${finalFinalidade}, cor=${finalCor})`);
+    console.log(`[ALINE-REPLY] Node final: ${nodeValue}`);
+    console.log(`[ALINE-REPLY] Dados: produto=${temProduto}, tamanho=${temTamanho}, entrega=${temEntrega}, pagamento=${temPagamento}, foto=${temFoto}`);
+    console.log(`[ALINE-REPLY] Pode finalizar? ${podeFinalizarAtendimento}`);
 
     // ========================================
     // PASSO 11: PROTEÇÃO ANTI-LOOP
@@ -1178,15 +1227,17 @@ serve(async (req) => {
     }
 
     // ========================================
-    // PASSO 11: ENCAMINHAR AO VENDEDOR (se finalizado)
+    // PASSO 11: ENCAMINHAR AO VENDEDOR (SOMENTE SE TIVER TODOS OS DADOS)
     // ========================================
-    if (actionValue === 'register_lead_crm' || nodeValue === 'finalizado') {
-      console.log(`[ALINE-REPLY] Finalizando atendimento e encaminhando ao vendedor...`);
+    // Só encaminha se: produto + tamanho (alianças) + entrega + pagamento + foto (pingentes)
+    if (podeFinalizarAtendimento && (actionValue === 'register_lead_crm' || nodeValue === 'finalizado')) {
+      console.log(`[ALINE-REPLY] ✅ TODOS os dados coletados! Finalizando e encaminhando ao vendedor...`);
+      console.log(`[ALINE-REPLY] Resumo: produto=${finalProduto}, tamanho=${finalTamanho}, entrega=${finalEntrega}, pagamento=${finalPagamento}`);
       
-      // Atualizar status da conversa
+      // Atualizar status da conversa para human_takeover
       await supabase
         .from('aline_conversations')
-        .update({ status: 'finished' })
+        .update({ status: 'human_takeover' })
         .eq('id', conversation.id);
 
       // Atualizar lead_status no CRM
@@ -1196,6 +1247,9 @@ serve(async (req) => {
           .update({ lead_status: 'comprador' })
           .eq('id', crmConversationId);
       }
+    } else if (nodeValue === 'finalizado' && !podeFinalizarAtendimento) {
+      // Corrigir node se ainda faltam dados
+      console.log(`[ALINE-REPLY] ⚠️ Tentou finalizar mas faltam dados. Corrigindo node...`);
     }
 
     // ========================================
