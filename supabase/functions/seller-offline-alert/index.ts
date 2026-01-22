@@ -99,9 +99,16 @@ serve(async (req) => {
     }
 
     // Montar mensagem de alerta - apenas vendedoras ausentes
+    // Usar timezone de Manaus (America/Manaus - UTC-4)
     const now = new Date();
-    const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    const dateStr = now.toLocaleDateString('pt-BR');
+    const timeStr = now.toLocaleTimeString('pt-BR', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      timeZone: 'America/Manaus'
+    });
+    const dateStr = now.toLocaleDateString('pt-BR', {
+      timeZone: 'America/Manaus'
+    });
 
     const message = `🚨 *ALERTA DE VENDEDORA AUSENTE*
 
