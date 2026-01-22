@@ -121,8 +121,8 @@ const AssignSellerDialog = ({
         body: {
           phone: conversationPhone,
           action: 'takeover',
-          assignedSellerId: sellerId,
-          assignedSellerName: sellerName,
+          seller_id: sellerId,
+          seller_name: sellerName,
           reason: 'Atribuído manualmente por administrador',
         },
       });
