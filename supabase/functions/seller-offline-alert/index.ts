@@ -13,10 +13,10 @@ const ALERT_NUMBERS = [
   '5592984078295',
 ];
 
-// Vendedoras específicas para monitorar
+// Vendedoras específicas para monitorar (padrões para busca ILIKE)
 const MONITORED_SELLERS = [
-  'Kelryanne Moraes',
-  'Tatiane Napoles',
+  '%Kelryanne%Moraes%',
+  '%Tatiane%Nápoles%',
 ];
 
 serve(async (req) => {
@@ -37,15 +37,26 @@ serve(async (req) => {
       throw new Error('ZAPI credentials not configured');
     }
 
-    // Buscar perfis das vendedoras monitoradas
-    const { data: profiles, error: profilesError } = await supabase
-      .from('profiles')
-      .select('id, full_name')
-      .in('full_name', MONITORED_SELLERS);
+    // Buscar perfis das vendedoras monitoradas usando ILIKE para cada padrão
+    const allProfiles: Array<{ id: string; full_name: string }> = [];
+    
+    for (const pattern of MONITORED_SELLERS) {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .ilike('full_name', pattern);
+      
+      if (error) throw error;
+      if (data) {
+        for (const profile of data) {
+          if (!allProfiles.find(p => p.id === profile.id)) {
+            allProfiles.push(profile);
+          }
+        }
+      }
+    }
 
-    if (profilesError) throw profilesError;
-
-    if (!profiles || profiles.length === 0) {
+    if (allProfiles.length === 0) {
       console.log('[SELLER-OFFLINE-ALERT] Nenhuma vendedora monitorada encontrada');
       return new Response(JSON.stringify({
         success: true,
@@ -56,7 +67,7 @@ serve(async (req) => {
       });
     }
 
-    const userIds = profiles.map(p => p.id);
+    const userIds = allProfiles.map(p => p.id);
 
     // Buscar presença das vendedoras monitoradas
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
@@ -71,9 +82,9 @@ serve(async (req) => {
     if (presenceError) throw presenceError;
 
     const onlineUserIds = new Set(onlineSellers?.map(s => s.user_id) || []);
-    const offlineSellers = profiles.filter(p => !onlineUserIds.has(p.id));
+    const offlineSellers = allProfiles.filter(p => !onlineUserIds.has(p.id));
 
-    console.log(`[SELLER-OFFLINE-ALERT] Monitoradas: ${profiles.length}, Online: ${onlineSellers?.length || 0}, Offline: ${offlineSellers.length}`);
+    console.log(`[SELLER-OFFLINE-ALERT] Monitoradas: ${allProfiles.length}, Online: ${onlineSellers?.length || 0}, Offline: ${offlineSellers.length}`);
 
     // Se todas estão online, não enviar alerta
     if (offlineSellers.length === 0) {
