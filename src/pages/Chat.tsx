@@ -132,6 +132,52 @@ const Chat = () => {
     }
   };
 
+  // Função para atribuir conversa a um vendedor específico
+  const handleAssignToSeller = async (sellerId: string, sellerName: string) => {
+    if (!selectedConversation) return;
+    
+    setTakingOver(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('aline-takeover', {
+        body: {
+          phone: selectedConversation.contact_number,
+          action: 'takeover',
+          seller_id: sellerId,
+          seller_name: sellerName,
+          reason: 'Atribuição manual via painel',
+        },
+      });
+
+      if (error) throw error;
+
+      // Atualizar o status local
+      setAlineStatus('human_takeover');
+      setAlineStatusMap(prev => ({
+        ...prev,
+        [selectedConversation.contact_number]: {
+          ...prev[selectedConversation.contact_number],
+          status: 'human_takeover',
+          assigned_seller_id: sellerId,
+          assigned_seller_name: sellerName,
+        }
+      }));
+
+      toast({
+        title: '✅ Conversa atribuída',
+        description: `Conversa atribuída para ${sellerName}`,
+      });
+    } catch (error) {
+      console.error('Assignment error:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível atribuir a conversa.',
+        variant: 'destructive',
+      });
+    } finally {
+      setTakingOver(false);
+    }
+  };
+
   useEffect(() => {
     if (selectedConversation) {
       fetchMessages(selectedConversation.id);
@@ -586,27 +632,45 @@ const Chat = () => {
             </div>
             
             {onlineSellers.length > 0 ? (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-2">
                 {onlineSellers.map((seller) => (
-                  <div 
+                  <button 
                     key={seller.user_id} 
-                    className="flex items-center gap-2 px-2.5 py-2 bg-slate-800/50 rounded-lg border border-white/5 hover:bg-slate-700/50 transition-colors"
+                    onClick={() => {
+                      if (selectedConversation) {
+                        // Atribuir conversa selecionada ao vendedor
+                        handleAssignToSeller(seller.user_id, seller.full_name || 'Vendedor');
+                      } else {
+                        toast({
+                          title: 'Selecione uma conversa',
+                          description: `Para atribuir a ${seller.full_name || 'Vendedor'}, selecione uma conversa primeiro.`,
+                        });
+                      }
+                    }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 bg-slate-800/50 rounded-lg border border-white/5 hover:bg-emerald-500/10 hover:border-emerald-500/30 transition-all group"
                   >
                     <div className="relative shrink-0">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center text-white text-sm font-semibold">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center text-white text-sm font-bold shadow-lg">
                         {(seller.full_name || 'V').charAt(0).toUpperCase()}
                       </div>
-                      <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-slate-800 rounded-full" />
+                      <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-slate-800 rounded-full" />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-white truncate">
+                    <div className="flex-1 min-w-0 text-left">
+                      <p className="text-sm font-semibold text-white truncate group-hover:text-emerald-300 transition-colors">
                         {seller.full_name || 'Vendedor'}
                       </p>
                       <p className="text-[10px] text-emerald-400">
                         Disponível agora
                       </p>
                     </div>
-                  </div>
+                    {selectedConversation && (
+                      <div className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="px-2 py-1 bg-emerald-500/20 rounded text-[10px] text-emerald-300 font-medium">
+                          Atribuir
+                        </div>
+                      </div>
+                    )}
+                  </button>
                 ))}
               </div>
             ) : (
