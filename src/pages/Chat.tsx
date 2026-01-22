@@ -3,7 +3,7 @@ import { supabase, Conversation, Message, LeadStatus } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, Paperclip, Search, MessageSquare, FileText, Mic, Check, CheckCheck, Instagram, Bot, User, Phone, ArrowLeft, MoreVertical, UserCheck, RefreshCw, Clock, MessageCircle, Sparkles, X, Volume2, Loader2, Users, UserPlus, BarChart3 } from 'lucide-react';
+import { Send, Paperclip, Search, MessageSquare, FileText, Mic, Check, CheckCheck, Instagram, Bot, User, Phone, ArrowLeft, MoreVertical, UserCheck, RefreshCw, Clock, MessageCircle, Sparkles, X, Volume2, Loader2, Users, UserPlus, BarChart3, Bell } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { LeadStatusSelect, LeadStatusBadge } from '@/components/chat/LeadStatusSelect';
@@ -47,6 +47,7 @@ const Chat = () => {
   const [alineStatusMap, setAlineStatusMap] = useState<Record<string, AlineConversation>>({});
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [statsExpanded, setStatsExpanded] = useState(false);
+  const [sendingOfflineAlert, setSendingOfflineAlert] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -175,6 +176,30 @@ const Chat = () => {
       });
     } finally {
       setTakingOver(false);
+    }
+  };
+
+  // Função para enviar alerta de vendedores offline
+  const handleSendOfflineAlert = async () => {
+    setSendingOfflineAlert(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('seller-offline-alert');
+
+      if (error) throw error;
+
+      toast({
+        title: '📱 Alerta enviado!',
+        description: data.message || `${data.offline} vendedores offline notificados`,
+      });
+    } catch (error) {
+      console.error('Error sending offline alert:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível enviar o alerta.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSendingOfflineAlert(false);
     }
   };
 
@@ -678,11 +703,29 @@ const Chat = () => {
                 <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center">
                   <User className="w-4 h-4 text-slate-500" />
                 </div>
-                <div>
+                <div className="flex-1">
                   <p className="text-sm text-slate-400">Nenhum vendedor online</p>
                   <p className="text-[10px] text-slate-500">Aline está atendendo</p>
                 </div>
               </div>
+            )}
+
+            {/* Botão para enviar alerta de vendedores offline */}
+            {(isAdmin || isGerente) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleSendOfflineAlert}
+                disabled={sendingOfflineAlert}
+                className="w-full mt-2 h-8 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 border border-rose-500/20 hover:border-rose-500/30"
+              >
+                {sendingOfflineAlert ? (
+                  <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                ) : (
+                  <Bell className="w-3.5 h-3.5 mr-2" />
+                )}
+                Alertar vendedores offline
+              </Button>
             )}
           </div>
 
