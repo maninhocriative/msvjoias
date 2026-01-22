@@ -31,6 +31,100 @@ async function getOnlineSeller(supabase: any): Promise<SellerPresence | null> {
   return data[0];
 }
 
+// Buscar produtos que o cliente demonstrou interesse
+async function getCustomerInterests(supabase: any, phone: string): Promise<string[]> {
+  const normalizedPhone = phone.replace(/\D/g, '');
+  
+  // Buscar últimos itens enviados do catálogo
+  const { data: catalogItems } = await supabase
+    .from('catalog_items_sent')
+    .select('name, sku')
+    .eq('session_id', (
+      await supabase
+        .from('catalog_sessions')
+        .select('id')
+        .eq('phone', normalizedPhone)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+    )?.data?.id)
+    .order('created_at', { ascending: false })
+    .limit(5);
+
+  if (catalogItems && catalogItems.length > 0) {
+    return catalogItems.map((item: any) => item.name);
+  }
+
+  // Fallback: buscar da conversa Aline collected_data
+  const { data: alineConv } = await supabase
+    .from('aline_conversations')
+    .select('collected_data')
+    .eq('phone', normalizedPhone)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (alineConv?.collected_data) {
+    const interests: string[] = [];
+    const data = alineConv.collected_data;
+    
+    if (data.categoria) interests.push(data.categoria);
+    if (data.finalidade) interests.push(`para ${data.finalidade}`);
+    if (data.cor_preferida) interests.push(`na cor ${data.cor_preferida}`);
+    
+    return interests;
+  }
+
+  return [];
+}
+
+// Buscar conversa CRM para associar mensagem
+async function getCrmConversation(supabase: any, phone: string): Promise<any> {
+  const normalizedPhone = phone.replace(/\D/g, '');
+  
+  const { data } = await supabase
+    .from('conversations')
+    .select('id')
+    .eq('contact_number', normalizedPhone)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  return data;
+}
+
+// Enviar mensagem via zapi-send
+async function sendWhatsAppMessage(
+  supabaseUrl: string,
+  supabaseServiceKey: string,
+  conversationId: string,
+  phone: string,
+  message: string
+): Promise<boolean> {
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/zapi-send`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseServiceKey}`,
+      },
+      body: JSON.stringify({
+        conversation_id: conversationId,
+        phone: phone,
+        message: message,
+        message_type: 'text',
+      }),
+    });
+
+    const result = await response.json();
+    console.log('[ALINE-TAKEOVER] Mensagem de apresentação enviada:', result);
+    return response.ok;
+  } catch (error) {
+    console.error('[ALINE-TAKEOVER] Erro ao enviar mensagem:', error);
+    return false;
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -41,7 +135,7 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { phone, action, seller_id, seller_name, reason } = await req.json();
+    const { phone, action, seller_id, seller_name, reason, send_intro = true } = await req.json();
 
     if (!phone) {
       return new Response(
@@ -184,6 +278,39 @@ serve(async (req) => {
 
     console.log(`[ALINE-TAKEOVER] Conversa ${alineConv.id} atualizada para status: ${newStatus}, vendedor: ${assignedSellerName || 'nenhum'}`);
 
+    // Enviar mensagem de apresentação do vendedor via WhatsApp
+    let introMessageSent = false;
+    if ((action === 'takeover' || action === 'auto_forward') && assignedSellerName && send_intro) {
+      const crmConversation = await getCrmConversation(supabase, normalizedPhone);
+      
+      if (crmConversation) {
+        // Buscar interesses do cliente
+        const interests = await getCustomerInterests(supabase, normalizedPhone);
+        
+        // Montar mensagem de apresentação
+        let introMessage = `Olá! Sou ${assignedSellerName} e vou continuar seu atendimento. 😊`;
+        
+        if (interests.length > 0) {
+          introMessage += `\n\nVi que você se interessou por ${interests.slice(0, 3).join(', ')}.`;
+          introMessage += `\n\nPosso te ajudar com mais informações sobre esses produtos ou alguma outra peça?`;
+        } else {
+          introMessage += `\n\nEstou à disposição para te ajudar! Como posso te auxiliar hoje?`;
+        }
+
+        introMessageSent = await sendWhatsAppMessage(
+          supabaseUrl,
+          supabaseServiceKey,
+          crmConversation.id,
+          normalizedPhone,
+          introMessage
+        );
+
+        if (introMessageSent) {
+          console.log(`[ALINE-TAKEOVER] Mensagem de apresentação enviada para ${normalizedPhone}`);
+        }
+      }
+    }
+
     // Registrar evento de atribuição no histórico
     if (action === 'takeover' || action === 'auto_forward' || action === 'release') {
       const eventPayload = {
@@ -193,6 +320,7 @@ serve(async (req) => {
         seller_id: assignedSellerId,
         seller_name: assignedSellerName,
         reason: assignmentReason,
+        intro_message_sent: introMessageSent,
         timestamp: new Date().toISOString(),
       };
 
@@ -217,6 +345,7 @@ serve(async (req) => {
       assigned_seller_id: assignedSellerId,
       assigned_seller_name: assignedSellerName,
       assignment_reason: assignmentReason,
+      intro_message_sent: introMessageSent,
       aline_conversation: updatedConv,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
