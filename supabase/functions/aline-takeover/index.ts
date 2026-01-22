@@ -172,6 +172,31 @@ serve(async (req) => {
 
     console.log(`[ALINE-TAKEOVER] Conversa ${alineConv.id} atualizada para status: ${newStatus}, vendedor: ${assignedSellerName || 'nenhum'}`);
 
+    // Registrar evento de atribuição no histórico
+    if (action === 'takeover' || action === 'auto_forward' || action === 'release') {
+      const eventPayload = {
+        action,
+        previous_status: alineConv.status,
+        new_status: newStatus,
+        seller_id: assignedSellerId,
+        seller_name: assignedSellerName,
+        reason: assignmentReason,
+        timestamp: new Date().toISOString(),
+      };
+
+      await supabase
+        .from('conversation_events')
+        .insert({
+          phone: normalizedPhone,
+          thread_id: alineConv.thread_id || null,
+          direction: 'out',
+          type: 'assignment',
+          payload: eventPayload,
+        });
+
+      console.log(`[ALINE-TAKEOVER] Evento de atribuição registrado para ${normalizedPhone}`);
+    }
+
     return new Response(JSON.stringify({
       success: true,
       message,

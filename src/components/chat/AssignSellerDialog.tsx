@@ -3,10 +3,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { User, UserCheck, Loader2, Circle, Check } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { User, UserCheck, Loader2, Circle, Check, History } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import AssignmentHistoryPanel from './AssignmentHistoryPanel';
 
 interface SellerWithPresence {
   user_id: string;
@@ -185,116 +187,141 @@ const AssignSellerDialog = ({
           </div>
         )}
 
-        <ScrollArea className="max-h-[400px]">
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="w-6 h-6 animate-spin text-emerald-400" />
-            </div>
-          ) : sellers.length === 0 ? (
-            <div className="text-center py-8 text-slate-400">
-              <User className="w-12 h-12 mx-auto mb-3 opacity-50" />
-              <p>Nenhum vendedor encontrado</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {/* Vendedores Online */}
-              {onlineSellers.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-2 mb-2 px-1">
-                    <Circle className="w-2 h-2 fill-emerald-400 text-emerald-400" />
-                    <span className="text-xs font-medium text-emerald-400 uppercase">
-                      Online ({onlineSellers.length})
-                    </span>
-                  </div>
-                  <div className="space-y-1">
-                    {onlineSellers.map((seller) => (
-                      <button
-                        key={seller.user_id}
-                        onClick={() => handleAssign(seller.user_id, seller.full_name || 'Vendedor')}
-                        disabled={assigning === seller.user_id}
-                        className={cn(
-                          'w-full flex items-center gap-3 p-3 rounded-lg transition-all text-left',
-                          'bg-slate-800/50 hover:bg-emerald-500/10 border border-transparent hover:border-emerald-500/20',
-                          currentSellerId === seller.user_id && 'border-amber-500/30 bg-amber-500/10'
-                        )}
-                      >
-                        <div className="relative shrink-0">
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center text-white font-semibold">
-                            {(seller.full_name || 'V').charAt(0).toUpperCase()}
-                          </div>
-                          <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-slate-900 rounded-full" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-white truncate">
-                            {seller.full_name || 'Vendedor'}
-                          </p>
-                          <p className="text-xs text-emerald-400">Disponível agora</p>
-                        </div>
-                        {currentSellerId === seller.user_id ? (
-                          <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">
-                            Atual
-                          </Badge>
-                        ) : assigning === seller.user_id ? (
-                          <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
-                        ) : (
-                          <Check className="w-4 h-4 text-slate-500 opacity-0 group-hover:opacity-100" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
+        <Tabs defaultValue="assign" className="w-full">
+          <TabsList className="w-full bg-slate-800/50 border border-white/10">
+            <TabsTrigger 
+              value="assign" 
+              className="flex-1 data-[state=active]:bg-emerald-500/20 data-[state=active]:text-emerald-400"
+            >
+              <UserCheck className="w-4 h-4 mr-2" />
+              Atribuir
+            </TabsTrigger>
+            <TabsTrigger 
+              value="history" 
+              className="flex-1 data-[state=active]:bg-slate-700 data-[state=active]:text-white"
+            >
+              <History className="w-4 h-4 mr-2" />
+              Histórico
+            </TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="assign" className="mt-4">
+            <ScrollArea className="max-h-[400px]">
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-emerald-400" />
                 </div>
-              )}
+              ) : sellers.length === 0 ? (
+                <div className="text-center py-8 text-slate-400">
+                  <User className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p>Nenhum vendedor encontrado</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Vendedores Online */}
+                  {onlineSellers.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2 px-1">
+                        <Circle className="w-2 h-2 fill-emerald-400 text-emerald-400" />
+                        <span className="text-xs font-medium text-emerald-400 uppercase">
+                          Online ({onlineSellers.length})
+                        </span>
+                      </div>
+                      <div className="space-y-1">
+                        {onlineSellers.map((seller) => (
+                          <button
+                            key={seller.user_id}
+                            onClick={() => handleAssign(seller.user_id, seller.full_name || 'Vendedor')}
+                            disabled={assigning === seller.user_id}
+                            className={cn(
+                              'w-full flex items-center gap-3 p-3 rounded-lg transition-all text-left',
+                              'bg-slate-800/50 hover:bg-emerald-500/10 border border-transparent hover:border-emerald-500/20',
+                              currentSellerId === seller.user_id && 'border-amber-500/30 bg-amber-500/10'
+                            )}
+                          >
+                            <div className="relative shrink-0">
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center text-white font-semibold">
+                                {(seller.full_name || 'V').charAt(0).toUpperCase()}
+                              </div>
+                              <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-slate-900 rounded-full" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-white truncate">
+                                {seller.full_name || 'Vendedor'}
+                              </p>
+                              <p className="text-xs text-emerald-400">Disponível agora</p>
+                            </div>
+                            {currentSellerId === seller.user_id ? (
+                              <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">
+                                Atual
+                              </Badge>
+                            ) : assigning === seller.user_id ? (
+                              <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+                            ) : (
+                              <Check className="w-4 h-4 text-slate-500 opacity-0 group-hover:opacity-100" />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
-              {/* Vendedores Offline */}
-              {offlineSellers.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-2 mb-2 px-1">
-                    <Circle className="w-2 h-2 fill-slate-500 text-slate-500" />
-                    <span className="text-xs font-medium text-slate-500 uppercase">
-                      Offline ({offlineSellers.length})
-                    </span>
-                  </div>
-                  <div className="space-y-1">
-                    {offlineSellers.map((seller) => (
-                      <button
-                        key={seller.user_id}
-                        onClick={() => handleAssign(seller.user_id, seller.full_name || 'Vendedor')}
-                        disabled={assigning === seller.user_id}
-                        className={cn(
-                          'w-full flex items-center gap-3 p-3 rounded-lg transition-all text-left',
-                          'bg-slate-800/30 hover:bg-slate-800/50 border border-transparent hover:border-white/10',
-                          currentSellerId === seller.user_id && 'border-amber-500/30 bg-amber-500/10'
-                        )}
-                      >
-                        <div className="relative shrink-0">
-                          <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-slate-300 font-semibold">
-                            {(seller.full_name || 'V').charAt(0).toUpperCase()}
-                          </div>
-                          <span className="absolute bottom-0 right-0 w-3 h-3 bg-slate-600 border-2 border-slate-900 rounded-full" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-slate-300 truncate">
-                            {seller.full_name || 'Vendedor'}
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            Visto {formatLastSeen(seller.last_seen_at)}
-                          </p>
-                        </div>
-                        {currentSellerId === seller.user_id ? (
-                          <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">
-                            Atual
-                          </Badge>
-                        ) : assigning === seller.user_id ? (
-                          <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
-                        ) : null}
-                      </button>
-                    ))}
-                  </div>
+                  {/* Vendedores Offline */}
+                  {offlineSellers.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2 px-1">
+                        <Circle className="w-2 h-2 fill-slate-500 text-slate-500" />
+                        <span className="text-xs font-medium text-slate-500 uppercase">
+                          Offline ({offlineSellers.length})
+                        </span>
+                      </div>
+                      <div className="space-y-1">
+                        {offlineSellers.map((seller) => (
+                          <button
+                            key={seller.user_id}
+                            onClick={() => handleAssign(seller.user_id, seller.full_name || 'Vendedor')}
+                            disabled={assigning === seller.user_id}
+                            className={cn(
+                              'w-full flex items-center gap-3 p-3 rounded-lg transition-all text-left',
+                              'bg-slate-800/30 hover:bg-slate-800/50 border border-transparent hover:border-white/10',
+                              currentSellerId === seller.user_id && 'border-amber-500/30 bg-amber-500/10'
+                            )}
+                          >
+                            <div className="relative shrink-0">
+                              <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-slate-300 font-semibold">
+                                {(seller.full_name || 'V').charAt(0).toUpperCase()}
+                              </div>
+                              <span className="absolute bottom-0 right-0 w-3 h-3 bg-slate-600 border-2 border-slate-900 rounded-full" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-slate-300 truncate">
+                                {seller.full_name || 'Vendedor'}
+                              </p>
+                              <p className="text-xs text-slate-500">
+                                Visto {formatLastSeen(seller.last_seen_at)}
+                              </p>
+                            </div>
+                            {currentSellerId === seller.user_id ? (
+                              <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">
+                                Atual
+                              </Badge>
+                            ) : assigning === seller.user_id ? (
+                              <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+                            ) : null}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
-          )}
-        </ScrollArea>
+            </ScrollArea>
+          </TabsContent>
+          
+          <TabsContent value="history" className="mt-4">
+            <AssignmentHistoryPanel phone={conversationPhone} />
+          </TabsContent>
+        </Tabs>
 
         <div className="flex justify-end gap-2 mt-4">
           <Button
