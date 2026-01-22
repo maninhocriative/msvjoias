@@ -834,6 +834,104 @@ serve(async (req) => {
       newCollectedData.quer_ver_catalogo = true;
     }
 
+    // ========================================
+    // NLU: DETECTAR SELEÇÃO DE PRODUTO (ANTES DA IA!)
+    // Isso DEVE acontecer antes de calcular o próximo passo
+    // ========================================
+    const catalogoAnterior = collectedData.last_catalog || [];
+    
+    if (!newCollectedData.selected_sku && catalogoAnterior.length > 0) {
+      console.log(`[ALINE-REPLY] [NLU] Verificando seleção de produto... Catálogo anterior: ${catalogoAnterior.length} itens`);
+      
+      // 1. Detectar SKU diretamente (ex: "quero o AC-015", "PF010003-01")
+      const skuPatterns = [
+        /\b([A-Z]{2,3}[-\s]?\d{2,4}(?:-\d{2})?)\b/i,  // AC-015, PG-002, PF010003-01
+        /código\s*:?\s*([A-Z]{2,3}[-\s]?\d{2,4}(?:-\d{2})?)/i,
+        /cod\.?\s*:?\s*([A-Z]{2,3}[-\s]?\d{2,4}(?:-\d{2})?)/i,
+      ];
+      
+      for (const pattern of skuPatterns) {
+        const match = normalizedMsg.match(pattern);
+        if (match) {
+          const detectedSku = match[1].toUpperCase().replace(/\s+/g, '-');
+          const produto = catalogoAnterior.find((p: any) => 
+            p.sku?.toUpperCase() === detectedSku || 
+            p.sku?.toUpperCase().includes(detectedSku)
+          );
+          if (produto) {
+            newCollectedData.selected_product = produto;
+            newCollectedData.selected_sku = produto.sku;
+            newCollectedData.selected_name = produto.name;
+            newCollectedData.selected_price = produto.price;
+            console.log(`[ALINE-REPLY] [NLU] ✅ Produto selecionado por SKU: ${produto.name} (${produto.sku})`);
+          }
+          break;
+        }
+      }
+      
+      // 2. Detectar seleção por número/posição
+      if (!newCollectedData.selected_sku) {
+        const numberPatterns = [
+          /^(\d)$/,  // Só o número: "1", "2"
+          /quero\s*o?\s*(\d)/i,
+          /escolho\s*o?\s*(\d)/i,
+          /gostei\s*d[oa]?\s*(\d)/i,
+          /prefiro\s*o?\s*(\d)/i,
+          /pode\s*ser\s*o?\s*(\d)/i,
+          /vou\s*de\s*(\d)/i,
+          /manda\s*o?\s*(\d)/i,
+          /esse\s*(\d)/i,
+        ];
+        
+        let productIndex: number | null = null;
+        
+        for (const pattern of numberPatterns) {
+          const match = normalizedMsg.match(pattern);
+          if (match) {
+            productIndex = parseInt(match[1]) - 1;
+            console.log(`[ALINE-REPLY] [NLU] Número detectado: posição ${productIndex + 1}`);
+            break;
+          }
+        }
+        
+        // 3. Detectar ordinais (primeiro, segundo, último, etc)
+        if (productIndex === null) {
+          const ordinalPatterns = [
+            { pattern: /\b(primeiro|primeira)\b/i, idx: 0 },
+            { pattern: /\b(segundo|segunda)\b/i, idx: 1 },
+            { pattern: /\b(terceiro|terceira)\b/i, idx: 2 },
+            { pattern: /\b(quarto|quarta)\b/i, idx: 3 },
+            { pattern: /\b(quinto|quinta)\b/i, idx: 4 },
+            { pattern: /\b(último|ultima|ultimo|últim[ao])\b/i, idx: -1 }, // -1 = último
+          ];
+          
+          for (const { pattern, idx } of ordinalPatterns) {
+            if (pattern.test(normalizedMsg)) {
+              if (idx === -1) {
+                // "último" = último item do catálogo
+                productIndex = catalogoAnterior.length - 1;
+                console.log(`[ALINE-REPLY] [NLU] "ÚLTIMO" detectado → posição ${productIndex + 1} de ${catalogoAnterior.length}`);
+              } else {
+                productIndex = idx;
+                console.log(`[ALINE-REPLY] [NLU] Ordinal detectado: posição ${productIndex + 1}`);
+              }
+              break;
+            }
+          }
+        }
+        
+        // Aplicar seleção
+        if (productIndex !== null && productIndex >= 0 && productIndex < catalogoAnterior.length) {
+          const selectedProduct = catalogoAnterior[productIndex];
+          newCollectedData.selected_product = selectedProduct;
+          newCollectedData.selected_sku = selectedProduct.sku;
+          newCollectedData.selected_name = selectedProduct.name;
+          newCollectedData.selected_price = selectedProduct.price;
+          console.log(`[ALINE-REPLY] [NLU] ✅ Produto selecionado por posição #${productIndex + 1}: ${selectedProduct.name} (${selectedProduct.sku})`);
+        }
+      }
+    }
+
     // Calcular próximo passo ANTES de chamar a IA
     const finalCategoria = newCollectedData.categoria as string | undefined;
     const finalFinalidade = newCollectedData.finalidade as string | undefined;
@@ -849,31 +947,61 @@ serve(async (req) => {
     const querVerCatalogo = newCollectedData.quer_ver_catalogo === true;
     const mudouCategoria = newCollectedData.mudou_categoria === true;
     
-    // NOVA LÓGICA: Se quer outras cores, instrução especial
-    if (wantsOtherColors && coresMostradas.length > 0) {
+    // VERIFICAR SE CLIENTE JÁ SELECIONOU UM PRODUTO (para decidir próximo passo)
+    const jaSelecionouProduto = !!newCollectedData.selected_sku;
+    const jaTemTamanho = !!newCollectedData.tamanho_1;
+    const jaTemEntrega = !!newCollectedData.delivery_method;
+    const jaTemPagamento = !!newCollectedData.payment_method;
+    const jaTemFoto = !!newCollectedData.foto_gravacao;
+    const isAliancaSelecionada = jaSelecionouProduto && finalCategoria === 'aliancas';
+    const isPingenteSelecionado = jaSelecionouProduto && finalCategoria === 'pingente';
+    
+    console.log(`[ALINE-REPLY] Estado seleção: produto=${jaSelecionouProduto}, tamanho=${jaTemTamanho}, entrega=${jaTemEntrega}, pagamento=${jaTemPagamento}, foto=${jaTemFoto}`);
+    
+    // PRIORIDADE: Se cliente selecionou produto, seguir para coleta de dados!
+    if (jaSelecionouProduto && jaTemTamanho && jaTemEntrega && jaTemPagamento) {
+      // FINALIZAR!
+      nextStep = 'finalizado';
+      nextStepInstruction = `✅ PERFEITO! Temos TODOS os dados! Produto: ${newCollectedData.selected_name}. Diga: "Perfeito! Já tenho tudo anotado! 🎉 Vou passar para nosso vendedor finalizar o pedido. Ele te chama em instantes!" [SYSTEM_ACTION action:"register_lead_crm"]`;
+    } else if (jaSelecionouProduto && jaTemTamanho && jaTemEntrega && !jaTemPagamento) {
+      nextStep = 'coleta_pagamento';
+      nextStepInstruction = `O cliente escolheu ${newCollectedData.selected_name}. Pergunte a forma de PAGAMENTO: "E vai ser Pix ou cartão?"`;
+    } else if (jaSelecionouProduto && jaTemTamanho && !jaTemEntrega) {
+      nextStep = 'coleta_entrega';
+      nextStepInstruction = `O cliente escolheu ${newCollectedData.selected_name} com tamanho(s). Pergunte a forma de ENTREGA: "Vocês preferem retirar na nossa loja no Shopping Sumaúma ou receber em casa?"`;
+    } else if (isAliancaSelecionada && !jaTemTamanho) {
+      // ALIANÇA selecionada → Perguntar tamanhos
+      nextStep = 'coleta_tamanhos';
+      nextStepInstruction = `✅ O cliente ESCOLHEU a aliança "${newCollectedData.selected_name}" (${newCollectedData.selected_sku})! Agora pergunte os TAMANHOS de forma natural: "Excelente escolha! 💍 Me diz, qual o tamanho de cada um de vocês? Geralmente fica entre 14 e 28."`;
+    } else if (isPingenteSelecionado && !jaTemFoto) {
+      // PINGENTE selecionado → Perguntar sobre fotogravação
+      nextStep = 'coleta_foto';
+      nextStepInstruction = `✅ O cliente ESCOLHEU o pingente "${newCollectedData.selected_name}" (${newCollectedData.selected_sku})! Este pingente permite FOTOGRAVAÇÃO personalizada. Pergunte: "Excelente escolha! 💫 Esse pingente permite fotogravação personalizada - a gravação de um lado é GRATUITA! Me manda a foto que você quer gravar! 📸"`;
+    } else if (isPingenteSelecionado && jaTemFoto && !jaTemEntrega) {
+      // Pingente com foto → Perguntar entrega
+      nextStep = 'coleta_entrega';
+      nextStepInstruction = `O cliente escolheu ${newCollectedData.selected_name} com fotogravação. Pergunte a forma de ENTREGA: "Perfeito! Vocês preferem retirar na nossa loja no Shopping Sumaúma ou receber em casa?"`;
+    } else if (wantsOtherColors && coresMostradas.length > 0) {
+      // Cliente pediu outras cores
       nextStep = 'catalogo_outras_cores';
       const coresExcluir = coresMostradas.join(', ');
       nextStepInstruction = `O cliente PEDIU OUTRAS CORES! Cores já mostradas: ${coresExcluir}. Use search_catalog com exclude_shown_colors=true para mostrar produtos de OUTRAS cores. NÃO mostre novamente ${coresExcluir}. Diga algo como "Claro! Deixa eu te mostrar outras opções de cores! 💍"`;
     } else if (mudouCategoria && finalCategoria === 'pingente') {
-      // NOVO: Cliente mudou para pingentes - mostrar catálogo direto
       nextStep = 'catalogo_pingentes';
       nextStepInstruction = `IMPORTANTE: O cliente PERGUNTOU sobre PINGENTES! Use search_catalog com category="pingente" IMEDIATAMENTE para mostrar os pingentes disponíveis. Diga algo como "Claro! Temos pingentes lindos, vou te mostrar! 💫"`;
     } else if (mudouCategoria && finalCategoria === 'aliancas') {
-      // NOVO: Cliente mudou para alianças
       nextStep = 'escolha_finalidade';
       nextStepInstruction = `O cliente perguntou sobre ALIANÇAS. Pergunte a finalidade: "Que legal! Vocês estão celebrando namoro/compromisso ou casamento?"`;
     } else if (querVerCatalogo && finalCategoria === 'pingente') {
-      // Cliente disse "sim" para pingentes
       nextStep = 'catalogo_pingentes';
       nextStepInstruction = `O cliente quer ver pingentes! Use search_catalog com category="pingente" AGORA para mostrar os produtos. Diga algo como "Ótimo! Vou te mostrar nossos pingentes! 💫"`;
     } else if (querVerCatalogo && finalCategoria === 'aliancas' && finalFinalidade) {
       nextStep = 'catalogo';
       nextStepInstruction = `O cliente quer ver o catálogo! Use search_catalog AGORA com category="aliancas". Diga algo como "Perfeito! Separei algumas opções para você! 💍"`;
-    } else if (finalCategoria === 'pingente' && finalCor) {
-      // PINGENTE + COR = Mostrar catálogo de pingentes!
+    } else if (finalCategoria === 'pingente' && finalCor && !jaSelecionouProduto) {
       nextStep = 'catalogo_pingentes';
       nextStepInstruction = `IMPORTANTE: O cliente quer PINGENTES na cor ${finalCor}! Use search_catalog com category="pingente" e color="${finalCor}" AGORA. NÃO mostre alianças! Diga algo como "Separei algumas opções incríveis de pingentes para você! 💫"`;
-    } else if (finalCategoria === 'aliancas' && finalCor && finalFinalidade) {
+    } else if (finalCategoria === 'aliancas' && finalCor && finalFinalidade && !jaSelecionouProduto) {
       nextStep = 'catalogo';
       nextStepInstruction = `O cliente quer alianças de ${finalFinalidade} na cor ${finalCor}. Use search_catalog com category="aliancas" e color="${finalCor}". Diga algo como "Vou te mostrar algumas opções incríveis!"`;
     } else if (finalCategoria === 'aliancas' && finalFinalidade) {
