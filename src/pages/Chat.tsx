@@ -3,7 +3,7 @@ import { supabase, Conversation, Message, LeadStatus } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, Paperclip, Search, MessageSquare, FileText, Mic, Check, CheckCheck, Instagram, Bot, User, Phone, ArrowLeft, MoreVertical, UserCheck, RefreshCw, Clock, MessageCircle, Sparkles, X, Volume2, Loader2, Users, UserPlus, BarChart3, Bell } from 'lucide-react';
+import { Send, Paperclip, Search, MessageSquare, FileText, Mic, Check, CheckCheck, Instagram, Bot, User, Phone, ArrowLeft, MoreVertical, UserCheck, RefreshCw, Clock, MessageCircle, Sparkles, X, Volume2, Loader2, Users, UserPlus, Timer } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { LeadStatusSelect, LeadStatusBadge } from '@/components/chat/LeadStatusSelect';
@@ -11,12 +11,12 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import TypingIndicator from '@/components/chat/TypingIndicator';
 import SellerToolsPanel from '@/components/chat/SellerToolsPanel';
 import AssignSellerDialog from '@/components/chat/AssignSellerDialog';
-import SellerStatsPanel from '@/components/chat/SellerStatsPanel';
+
 import { useSellerPresence, assignConversationToSeller } from '@/hooks/useSellerPresence';
 import { useUserRole } from '@/hooks/useUserRole';
 import { Badge } from '@/components/ui/badge';
 import { useAssignmentNotification } from '@/hooks/useAssignmentNotification';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+
 
 interface AlineConversation {
   id: string;
@@ -25,6 +25,13 @@ interface AlineConversation {
   assigned_seller_id?: string;
   assigned_seller_name?: string;
   assignment_reason?: string;
+  assigned_at?: string;
+}
+
+interface CustomerProfile {
+  whatsapp: string;
+  name?: string;
+  avatar_url?: string;
 }
 
 const Chat = () => {
@@ -46,8 +53,7 @@ const Chat = () => {
   const [alineStatus, setAlineStatus] = useState<string | null>(null);
   const [alineStatusMap, setAlineStatusMap] = useState<Record<string, AlineConversation>>({});
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
-  const [statsExpanded, setStatsExpanded] = useState(false);
-  const [sendingOfflineAlert, setSendingOfflineAlert] = useState(false);
+  const [customerProfiles, setCustomerProfiles] = useState<Record<string, CustomerProfile>>({});
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -179,29 +185,6 @@ const Chat = () => {
     }
   };
 
-  // Função para enviar alerta de vendedores offline
-  const handleSendOfflineAlert = async () => {
-    setSendingOfflineAlert(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('seller-offline-alert');
-
-      if (error) throw error;
-
-      toast({
-        title: '📱 Alerta enviado!',
-        description: data.message || `${data.offline} vendedores offline notificados`,
-      });
-    } catch (error) {
-      console.error('Error sending offline alert:', error);
-      toast({
-        title: 'Erro',
-        description: 'Não foi possível enviar o alerta.',
-        variant: 'destructive',
-      });
-    } finally {
-      setSendingOfflineAlert(false);
-    }
-  };
 
   useEffect(() => {
     if (selectedConversation) {
@@ -260,8 +243,14 @@ const Chat = () => {
         const phones = data.map(c => c.contact_number);
         const { data: alineData } = await supabase
           .from('aline_conversations')
-          .select('id, phone, status, assigned_seller_id, assigned_seller_name, assignment_reason')
+          .select('id, phone, status, assigned_seller_id, assigned_seller_name, assignment_reason, assigned_at')
           .in('phone', phones);
+        
+        // Buscar dados de clientes para fotos
+        const { data: customersData } = await supabase
+          .from('customers')
+          .select('whatsapp, name')
+          .in('whatsapp', phones);
         
         if (alineData) {
           const statusMap: Record<string, AlineConversation> = {};
@@ -269,6 +258,15 @@ const Chat = () => {
             statusMap[ac.phone] = ac;
           });
           setAlineStatusMap(statusMap);
+        }
+        
+        // Salvar perfis dos clientes
+        if (customersData) {
+          const profilesMap: Record<string, CustomerProfile> = {};
+          customersData.forEach(c => {
+            profilesMap[c.whatsapp] = { whatsapp: c.whatsapp, name: c.name };
+          });
+          setCustomerProfiles(profilesMap);
         }
       }
       
@@ -563,6 +561,25 @@ const Chat = () => {
     return `${diffDays}d`;
   };
 
+  // Calcula tempo de espera desde o encaminhamento para humano
+  const getWaitingTime = (phone: string): string | null => {
+    const alineData = alineStatusMap[phone];
+    if (!alineData || alineData.status !== 'human_takeover' || !alineData.assigned_at) {
+      return null;
+    }
+    
+    const assignedAt = new Date(alineData.assigned_at);
+    const now = new Date();
+    const diffMs = now.getTime() - assignedAt.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    
+    if (diffMins < 1) return 'agora';
+    if (diffMins < 60) return `${diffMins}min`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ${diffMins % 60}min`;
+    return `${Math.floor(diffHours / 24)}d`;
+  };
+
   const groupedMessages = messages.reduce((groups, message) => {
     const date = new Date(message.created_at || '').toDateString();
     if (!groups[date]) groups[date] = [];
@@ -709,48 +726,7 @@ const Chat = () => {
                 </div>
               </div>
             )}
-
-            {/* Botão para enviar alerta de vendedores offline */}
-            {(isAdmin || isGerente) && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleSendOfflineAlert}
-                disabled={sendingOfflineAlert}
-                className="w-full mt-2 h-8 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 border border-rose-500/20 hover:border-rose-500/30"
-              >
-                {sendingOfflineAlert ? (
-                  <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
-                ) : (
-                  <Bell className="w-3.5 h-3.5 mr-2" />
-                )}
-                Alertar vendedores offline
-              </Button>
-            )}
           </div>
-
-          {/* Estatísticas - Collapsible (só para admin/gerente) */}
-          {(isAdmin || isGerente) && (
-            <Collapsible open={statsExpanded} onOpenChange={setStatsExpanded}>
-              <CollapsibleTrigger asChild>
-                <button className="w-full flex items-center justify-between p-2.5 bg-slate-800/30 rounded-xl border border-white/5 hover:bg-slate-800/50 transition-colors mb-3">
-                  <div className="flex items-center gap-2">
-                    <BarChart3 className="w-4 h-4 text-purple-400" />
-                    <span className="text-sm font-medium text-white">Estatísticas</span>
-                  </div>
-                  <span className={cn(
-                    'text-xs text-slate-400 transition-transform',
-                    statsExpanded && 'rotate-180'
-                  )}>
-                    ▼
-                  </span>
-                </button>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <SellerStatsPanel className="mb-3 border-0" />
-              </CollapsibleContent>
-            </Collapsible>
-          )}
 
           {/* Search */}
           <div className="relative">
@@ -830,6 +806,8 @@ const Chat = () => {
                 const PlatformIcon = getPlatformIcon(conv.platform || 'whatsapp');
                 const hasUnread = (conv.unread_count ?? 0) > 0;
                 const isInstagram = conv.platform === 'instagram';
+                const customerProfile = customerProfiles[conv.contact_number];
+                const waitingTime = getWaitingTime(conv.contact_number);
                 
                 return (
                   <button
@@ -843,22 +821,38 @@ const Chat = () => {
                     )}
                     style={{ width: 'calc(100% - 16px)' }}
                   >
-                    {/* Avatar */}
+                    {/* Avatar com foto de perfil */}
                     <div className="relative shrink-0">
-                      <div className={cn(
-                        'w-12 h-12 rounded-2xl flex items-center justify-center text-lg font-semibold text-white shadow-lg',
-                        isInstagram 
-                          ? 'bg-gradient-to-br from-fuchsia-500 via-pink-500 to-orange-400' 
-                          : 'bg-gradient-to-br from-emerald-400 to-cyan-500'
-                      )}>
-                        {(conv.contact_name || conv.contact_number).charAt(0).toUpperCase()}
-                      </div>
+                      {customerProfile?.avatar_url ? (
+                        <img
+                          src={customerProfile.avatar_url}
+                          alt={conv.contact_name || 'Cliente'}
+                          className="w-12 h-12 rounded-2xl object-cover shadow-lg"
+                        />
+                      ) : (
+                        <div className={cn(
+                          'w-12 h-12 rounded-2xl flex items-center justify-center text-lg font-semibold text-white shadow-lg',
+                          isInstagram 
+                            ? 'bg-gradient-to-br from-fuchsia-500 via-pink-500 to-orange-400' 
+                            : 'bg-gradient-to-br from-emerald-400 to-cyan-500'
+                        )}>
+                          {(conv.contact_name || conv.contact_number).charAt(0).toUpperCase()}
+                        </div>
+                      )}
                       <div className={cn(
                         'absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-lg flex items-center justify-center shadow-md',
                         isInstagram ? 'bg-gradient-to-br from-fuchsia-500 to-orange-400' : 'bg-emerald-500'
                       )}>
                         <PlatformIcon className="w-3 h-3 text-white" />
                       </div>
+                      
+                      {/* Indicador de tempo de espera */}
+                      {waitingTime && (
+                        <div className="absolute -top-1 -left-1 px-1.5 py-0.5 bg-amber-500 rounded-md flex items-center gap-0.5 shadow-lg">
+                          <Timer className="w-2.5 h-2.5 text-white" />
+                          <span className="text-[9px] font-bold text-white">{waitingTime}</span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Content */}
@@ -911,9 +905,9 @@ const Chat = () => {
                         })()}
                       </div>
                       
-                      <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-start justify-between gap-2">
                         <p className={cn(
-                          'text-xs truncate flex-1',
+                          'text-xs flex-1 line-clamp-2',
                           hasUnread ? 'text-slate-200' : 'text-slate-500'
                         )}>
                           {conv.last_message || 'Sem mensagens'}
