@@ -1073,9 +1073,15 @@ serve(async (req) => {
       // Remover ":" sozinho no final (resto de lista)
       cleanedForCards = cleanedForCards.replace(/:\s*$/, '');
       
-      // Se a limpeza removeu tudo ou ficou muito curto, usar frase padrão
+      // Se a limpeza removeu tudo ou ficou muito curto, usar frase padrão COM PERGUNTA
       if (!cleanedForCards || cleanedForCards.length < 15) {
-        cleanedForCards = "Aqui estão algumas opções incríveis que separei para você! 💍✨";
+        cleanedForCards = "Aqui estão algumas opções incríveis que separei para você! 💍✨\nGostou de alguma? Me conta qual chamou mais sua atenção! 😊";
+      }
+      
+      // GARANTIR PERGUNTA DE ENGAJAMENTO se não tiver
+      const hasCatalogQuestion = /\?|me (conta|diz|avisa|fala)|qual.*aten[çc][aã]o|gostou/i.test(cleanedForCards);
+      if (catalogProducts.length > 0 && !hasCatalogQuestion) {
+        cleanedForCards += "\n\nGostou de alguma? Me conta qual chamou mais sua atenção! 😊";
       }
       
       console.log(`[ALINE-REPLY] Texto original: ${cleanMessage.length} chars → Limpo: ${cleanedForCards.length} chars`);
