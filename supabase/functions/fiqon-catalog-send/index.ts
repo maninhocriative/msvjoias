@@ -49,8 +49,45 @@ function cleanValue(val: any): string | null {
   return String(val);
 }
 
-// Helper function to send via Z-API
-async function sendToZAPI(
+// Helper function to send text via Z-API
+async function sendTextToZAPI(
+  phone: string,
+  message: string,
+  instanceId: string,
+  token: string,
+  clientToken?: string
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  
+  const endpoint = `https://api.z-api.io/instances/${instanceId}/token/${token}/send-text`;
+  
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (clientToken) {
+    headers['Client-Token'] = clientToken;
+  }
+
+  console.log(`[FIQON-SEND] Enviando texto para ${phone}: "${message.substring(0, 50)}..."`);
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ phone, message }),
+    });
+
+    const result = await response.json();
+    
+    if (response.ok && (result.messageId || result.zaapId)) {
+      return { success: true, messageId: result.messageId || result.zaapId };
+    }
+    
+    return { success: false, error: JSON.stringify(result) };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Network error' };
+  }
+}
+
+// Helper function to send media via Z-API
+async function sendMediaToZAPI(
   phone: string,
   mediaType: 'image' | 'video',
   mediaUrl: string,
@@ -73,7 +110,7 @@ async function sendToZAPI(
     headers['Client-Token'] = clientToken;
   }
 
-  console.log(`[FIQON-CATALOG] Sending ${mediaType} to ${phone}: ${mediaUrl.substring(0, 50)}...`);
+  console.log(`[FIQON-SEND] Enviando ${mediaType} para ${phone}: ${mediaUrl.substring(0, 50)}...`);
 
   try {
     const response = await fetch(endpoint, {
@@ -109,7 +146,7 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
     if (!ZAPI_INSTANCE_ID || !ZAPI_TOKEN) {
-      console.error('[FIQON-CATALOG] Z-API not configured');
+      console.error('[FIQON-SEND] Z-API not configured');
       return new Response(
         JSON.stringify({ error: 'Z-API credentials not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -119,8 +156,8 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
     const payload = await req.json();
 
-    console.log('[FIQON-CATALOG] ====== NOVA REQUISIÇÃO ======');
-    console.log('[FIQON-CATALOG] Payload keys:', Object.keys(payload));
+    console.log('[FIQON-SEND] ====== NOVA REQUISIÇÃO ======');
+    console.log('[FIQON-SEND] Payload keys:', Object.keys(payload));
 
     // Extract phone - support multiple formats
     let phone = cleanValue(payload.phone) || cleanValue(payload.telefone) || cleanValue(payload.numero);
@@ -131,76 +168,142 @@ serve(async (req) => {
       );
     }
     phone = phone.replace(/\D/g, '');
-    console.log(`[FIQON-CATALOG] Phone: ${phone}`);
+    console.log(`[FIQON-SEND] Phone: ${phone}`);
 
-    // Extract products array - support multiple formats
-    let products: ProductItem[] = [];
-    
-    if (Array.isArray(payload.produtos)) {
-      products = payload.produtos;
-    } else if (Array.isArray(payload.products)) {
-      products = payload.products;
-    } else if (payload.produto || payload.product) {
-      // Single product
-      products = [payload.produto || payload.product];
-    }
-
-    if (products.length === 0) {
-      return new Response(
-        JSON.stringify({ error: 'No products provided. Use "produtos" or "products" array.' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log(`[FIQON-CATALOG] Produtos recebidos: ${products.length}`);
-
-    // Optional intro message
-    const introMessage = cleanValue(payload.mensagem) || cleanValue(payload.message) || cleanValue(payload.intro);
-    
-    // Send video priority
-    const sendVideoPriority = payload.send_video_priority !== false && payload.priorizar_video !== false;
+    // Extract message from user
+    const userMessage = cleanValue(payload.message) || cleanValue(payload.mensagem) || cleanValue(payload.text);
+    const contactName = cleanValue(payload.contact_name) || cleanValue(payload.nome_contato);
     
     // Delay between messages (ms)
     const delayMs = payload.delay_ms || payload.delay || 1500;
 
+    let alineResponse: any = null;
+    let products: ProductItem[] = [];
+    let textMessage: string | null = null;
+
+    // ========================================
+    // MODO 1: Processar mensagem do usuário com Aline
+    // ========================================
+    if (userMessage) {
+      console.log(`[FIQON-SEND] Modo: Processar mensagem do usuário com Aline`);
+      console.log(`[FIQON-SEND] Mensagem do usuário: "${userMessage}"`);
+      
+      // Chamar aline-reply internamente
+      const alineEndpoint = `${supabaseUrl}/functions/v1/aline-reply`;
+      
+      try {
+        const alineReq = await fetch(alineEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseKey}`,
+          },
+          body: JSON.stringify({
+            phone,
+            message: userMessage,
+            contact_name: contactName,
+          }),
+        });
+
+        if (!alineReq.ok) {
+          const errorText = await alineReq.text();
+          console.error('[FIQON-SEND] Erro ao chamar aline-reply:', errorText);
+          throw new Error(`aline-reply error: ${alineReq.status}`);
+        }
+
+        alineResponse = await alineReq.json();
+        console.log(`[FIQON-SEND] Aline respondeu: success=${alineResponse.success}`);
+        
+        // Verificar se foi pulado (human_takeover, loop, etc.)
+        if (alineResponse.skipped) {
+          console.log(`[FIQON-SEND] Aline pulou: ${alineResponse.reason}`);
+          return new Response(
+            JSON.stringify({
+              success: true,
+              skipped: true,
+              reason: alineResponse.reason,
+              message: alineResponse.message,
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Extrair mensagem de texto e produtos
+        textMessage = alineResponse.mensagem_whatsapp || alineResponse.response;
+        products = alineResponse.produtos || [];
+        
+        console.log(`[FIQON-SEND] Texto: "${textMessage?.substring(0, 50)}..."`);
+        console.log(`[FIQON-SEND] Produtos: ${products.length}`);
+
+      } catch (alineError) {
+        console.error('[FIQON-SEND] Erro na chamada aline-reply:', alineError);
+        throw alineError;
+      }
+    }
+    // ========================================
+    // MODO 2: Enviar mensagem e produtos já processados (legacy)
+    // ========================================
+    else {
+      console.log(`[FIQON-SEND] Modo: Legacy (mensagem e produtos já processados)`);
+      
+      // Get text message
+      textMessage = cleanValue(payload.mensagem) || cleanValue(payload.mensagem_whatsapp) || cleanValue(payload.texto);
+      
+      // Get products array
+      if (Array.isArray(payload.produtos)) {
+        products = payload.produtos;
+      } else if (Array.isArray(payload.products)) {
+        products = payload.products;
+      } else if (payload.produto || payload.product) {
+        products = [payload.produto || payload.product];
+      }
+    }
+
+    // Validar que temos algo para enviar
+    if (!textMessage && products.length === 0) {
+      return new Response(
+        JSON.stringify({ error: 'No message or products to send. Provide "message" or "produtos" array.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const results: SendResult[] = [];
     let successCount = 0;
     let errorCount = 0;
+    let textSent = false;
 
     // ========================================
-    // SEND INTRO MESSAGE (if provided)
+    // ENVIAR MENSAGEM DE TEXTO (fala da Aline)
     // ========================================
-    if (introMessage) {
-      console.log(`[FIQON-CATALOG] Enviando mensagem introdutória...`);
+    if (textMessage) {
+      console.log(`[FIQON-SEND] Enviando mensagem de texto...`);
       
-      const introEndpoint = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-text`;
-      const introHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (ZAPI_CLIENT_TOKEN) introHeaders['Client-Token'] = ZAPI_CLIENT_TOKEN;
+      const textResult = await sendTextToZAPI(
+        phone,
+        textMessage,
+        ZAPI_INSTANCE_ID!,
+        ZAPI_TOKEN!,
+        ZAPI_CLIENT_TOKEN
+      );
 
-      try {
-        const introResponse = await fetch(introEndpoint, {
-          method: 'POST',
-          headers: introHeaders,
-          body: JSON.stringify({ phone, message: introMessage }),
-        });
-        const introResult = await introResponse.json();
-        
-        if (introResponse.ok && (introResult.messageId || introResult.zaapId)) {
-          console.log(`[FIQON-CATALOG] Intro enviada: ${introResult.messageId || introResult.zaapId}`);
-        } else {
-          console.error(`[FIQON-CATALOG] Erro na intro:`, introResult);
-        }
-      } catch (err) {
-        console.error(`[FIQON-CATALOG] Erro ao enviar intro:`, err);
+      if (textResult.success) {
+        console.log(`[FIQON-SEND] ✅ Texto enviado: ${textResult.messageId}`);
+        textSent = true;
+      } else {
+        console.error(`[FIQON-SEND] ❌ Texto falhou: ${textResult.error}`);
       }
 
-      // Wait before sending products
-      await new Promise(resolve => setTimeout(resolve, delayMs));
+      // Aguardar antes de enviar produtos
+      if (products.length > 0) {
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
     }
 
     // ========================================
-    // SEND EACH PRODUCT (with proper iteration)
+    // ENVIAR CADA PRODUTO (com iteração correta)
     // ========================================
+    const sendVideoPriority = payload.send_video_priority !== false && payload.priorizar_video !== false;
+
     for (let i = 0; i < products.length; i++) {
       const product = products[i];
       const productIndex = i + 1;
@@ -231,15 +334,13 @@ serve(async (req) => {
         finalMediaUrl = videoUrl;
         finalMediaType = 'video';
       } else if (mediaUrlGeneric) {
-        // Try to determine type from URL or fallback to image
         const isVideo = /\.(mp4|webm|mov|avi)/i.test(mediaUrlGeneric) || 
                         mediaUrlGeneric.includes('video') ||
                         (product.media_type === 'video' || product.tipo_midia === 'video');
         finalMediaUrl = mediaUrlGeneric;
         finalMediaType = isVideo ? 'video' : 'image';
       } else {
-        // No media found
-        console.warn(`[FIQON-CATALOG] Produto ${productIndex} (${sku}) sem mídia, pulando...`);
+        console.warn(`[FIQON-SEND] Produto ${productIndex} (${sku}) sem mídia, pulando...`);
         results.push({
           index: productIndex,
           sku,
@@ -255,13 +356,13 @@ serve(async (req) => {
       // Get caption
       const caption = cleanValue(product.caption) || `*${name}*\n📦 Cód: ${sku}`;
 
-      console.log(`[FIQON-CATALOG] Produto ${productIndex}/${products.length}: ${name}`);
-      console.log(`[FIQON-CATALOG]   SKU: ${sku}`);
-      console.log(`[FIQON-CATALOG]   Tipo: ${finalMediaType}`);
-      console.log(`[FIQON-CATALOG]   URL: ${finalMediaUrl.substring(0, 80)}...`);
+      console.log(`[FIQON-SEND] Produto ${productIndex}/${products.length}: ${name}`);
+      console.log(`[FIQON-SEND]   SKU: ${sku}`);
+      console.log(`[FIQON-SEND]   Tipo: ${finalMediaType}`);
+      console.log(`[FIQON-SEND]   URL: ${finalMediaUrl.substring(0, 80)}...`);
 
       // Send to Z-API
-      const sendResult = await sendToZAPI(
+      const sendResult = await sendMediaToZAPI(
         phone,
         finalMediaType,
         finalMediaUrl,
@@ -283,10 +384,10 @@ serve(async (req) => {
 
       if (sendResult.success) {
         successCount++;
-        console.log(`[FIQON-CATALOG] ✅ Produto ${productIndex} enviado: ${sendResult.messageId}`);
+        console.log(`[FIQON-SEND] ✅ Produto ${productIndex} enviado: ${sendResult.messageId}`);
       } else {
         errorCount++;
-        console.error(`[FIQON-CATALOG] ❌ Produto ${productIndex} falhou: ${sendResult.error}`);
+        console.error(`[FIQON-SEND] ❌ Produto ${productIndex} falhou: ${sendResult.error}`);
       }
 
       // Delay between products (except for last one)
@@ -296,11 +397,10 @@ serve(async (req) => {
     }
 
     // ========================================
-    // SAVE TO CRM (optional)
+    // SALVAR NO CRM (opcional)
     // ========================================
-    if (payload.save_to_crm !== false) {
+    if (payload.save_to_crm !== false && products.length > 0) {
       try {
-        // Find or create conversation
         const { data: conv } = await supabase
           .from('conversations')
           .select('id')
@@ -312,7 +412,6 @@ serve(async (req) => {
         const conversationId = conv?.id;
         
         if (conversationId) {
-          // Save a summary message
           await supabase.from('messages').insert({
             conversation_id: conversationId,
             content: `[Catálogo enviado: ${successCount}/${products.length} produtos]`,
@@ -326,29 +425,51 @@ serve(async (req) => {
           }).eq('id', conversationId);
         }
       } catch (crmError) {
-        console.warn('[FIQON-CATALOG] Erro ao salvar no CRM:', crmError);
+        console.warn('[FIQON-SEND] Erro ao salvar no CRM:', crmError);
       }
     }
 
     const duration = Date.now() - startTime;
-    console.log(`[FIQON-CATALOG] ====== CONCLUÍDO ======`);
-    console.log(`[FIQON-CATALOG] Sucesso: ${successCount}/${products.length}, Duração: ${duration}ms`);
+    console.log(`[FIQON-SEND] ====== CONCLUÍDO ======`);
+    console.log(`[FIQON-SEND] Texto: ${textSent ? 'OK' : 'N/A'}, Produtos: ${successCount}/${products.length}, Duração: ${duration}ms`);
 
+    // ========================================
+    // RESPOSTA FINAL (inclui dados da Aline se processou)
+    // ========================================
     return new Response(
       JSON.stringify({
         success: true,
         phone,
+        
+        // Envio de texto
+        text_sent: textSent,
+        text_message: textMessage,
+        
+        // Envio de produtos
         total_products: products.length,
-        sent: successCount,
-        failed: errorCount,
-        duration_ms: duration,
+        products_sent: successCount,
+        products_failed: errorCount,
         results,
+        
+        // Dados da Aline (se processou)
+        aline: alineResponse ? {
+          node: alineResponse.node_tecnico,
+          action: alineResponse.acao_nome,
+          has_action: alineResponse.tem_acao,
+          categoria: alineResponse.categoria_crm,
+          cor: alineResponse.cor_crm,
+          memoria: alineResponse.memoria,
+          tamanhos: alineResponse.tamanhos,
+        } : null,
+        
+        // Tempo de execução
+        duration_ms: duration,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
-    console.error('[FIQON-CATALOG] Erro geral:', error);
+    console.error('[FIQON-SEND] Erro geral:', error);
     return new Response(
       JSON.stringify({ 
         error: error instanceof Error ? error.message : 'Unknown error',
