@@ -955,6 +955,60 @@ serve(async (req) => {
       }
     }
     cleanMessage = uniqueLines.join('\n').trim();
+    
+    // ========================================
+    // LIMPEZA ESPECIAL: Remover detalhes dos produtos do texto
+    // Quando há catálogo, o Fiqon envia os cards separadamente
+    // Então o texto deve conter apenas a frase introdutória
+    // ========================================
+    if (catalogProducts.length > 0) {
+      console.log(`[ALINE-REPLY] Limpando texto - produtos serão enviados como cards pelo Fiqon`);
+      
+      // Padrões para remover lista de produtos do texto
+      // 1. Remover linhas que começam com números seguidos de ponto (1. 2. 3.)
+      // 2. Remover linhas que contêm **Nome do Produto**
+      // 3. Remover linhas com SKU/código
+      // 4. Remover linhas com preço (R$)
+      // 5. Remover linhas com emojis de produto (💰📏🎨✅📦)
+      // 6. Remover linhas de link/URL de imagem
+      
+      const productTextPatterns = [
+        /^\d+[\.\)]\s*.*/gm,                     // "1. Aliança..." ou "1) Aliança..."
+        /^\*\*[^*]+\*\*$/gm,                      // "**Nome do Produto**"
+        /^💰\s*R\$\s*[\d.,]+/gm,                  // "💰 R$ 829,00"
+        /^📏\s*Tamanhos?:.*/gm,                   // "📏 Tamanhos: 18, 20, 22"
+        /^🎨\s*Cor:.*/gm,                        // "🎨 Cor: Dourada"
+        /^✅\s*Em estoque/gm,                     // "✅ Em estoque"
+        /^⚠️\s*Sob consulta/gm,                  // "⚠️ Sob consulta"
+        /^📦\s*C[óo]d:.*/gm,                     // "📦 Cód: AC-015"
+        /^Preço:\s*R\$[\d.,]+/gm,                 // "Preço: R$ 829,00"
+        /^\[?Imagem\]?\s*\(https?:\/\/.*\)/gm,    // "[Imagem](https://...)"
+        /^!\[.*\]\(https?:\/\/.*\)/gm,            // "![alt](https://...)"
+        /^https?:\/\/\S+\.(?:png|jpg|jpeg|webp|gif|mp4)/gim, // URLs de mídia
+        /^-\s*\*\*[^*]+\*\*/gm,                   // "- **Produto**"
+      ];
+      
+      let cleanedForCards = cleanMessage;
+      
+      for (const pattern of productTextPatterns) {
+        cleanedForCards = cleanedForCards.replace(pattern, '');
+      }
+      
+      // Limpar linhas vazias extras resultantes
+      cleanedForCards = cleanedForCards
+        .split('\n')
+        .filter((line: string) => line.trim() !== '')
+        .join('\n')
+        .trim();
+      
+      // Se a limpeza removeu tudo, usar uma frase padrão
+      if (!cleanedForCards || cleanedForCards.length < 10) {
+        cleanedForCards = "Aqui estão algumas opções lindas para você! 💍✨";
+      }
+      
+      console.log(`[ALINE-REPLY] Texto original: ${cleanMessage.length} chars → Limpo: ${cleanedForCards.length} chars`);
+      cleanMessage = cleanedForCards;
+    }
 
     // ========================================
     // PASSO 9: DETECÇÃO INTELIGENTE DE PRODUTO (SKU, NÚMERO, POSIÇÃO)
