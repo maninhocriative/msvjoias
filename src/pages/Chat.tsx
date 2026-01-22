@@ -31,7 +31,7 @@ interface AlineConversation {
 interface CustomerProfile {
   whatsapp: string;
   name?: string;
-  avatar_url?: string;
+  profile_pic_url?: string;
 }
 
 const Chat = () => {
@@ -249,7 +249,7 @@ const Chat = () => {
         // Buscar dados de clientes para fotos
         const { data: customersData } = await supabase
           .from('customers')
-          .select('whatsapp, name')
+          .select('whatsapp, name, profile_pic_url')
           .in('whatsapp', phones);
         
         if (alineData) {
@@ -264,9 +264,40 @@ const Chat = () => {
         if (customersData) {
           const profilesMap: Record<string, CustomerProfile> = {};
           customersData.forEach(c => {
-            profilesMap[c.whatsapp] = { whatsapp: c.whatsapp, name: c.name };
+            profilesMap[c.whatsapp] = { 
+              whatsapp: c.whatsapp, 
+              name: c.name,
+              profile_pic_url: c.profile_pic_url 
+            };
           });
           setCustomerProfiles(profilesMap);
+          
+          // Buscar fotos de perfil para telefones que não têm foto
+          const phonesWithoutPic = phones.filter(p => 
+            !customersData.find(c => c.whatsapp === p && c.profile_pic_url)
+          );
+          
+          if (phonesWithoutPic.length > 0 && phonesWithoutPic.length <= 20) {
+            // Buscar fotos em background (não bloquear a UI)
+            supabase.functions.invoke('zapi-profile-picture', {
+              body: { phones: phonesWithoutPic.slice(0, 10) }
+            }).then(({ data }) => {
+              if (data?.results) {
+                const newProfiles: Record<string, CustomerProfile> = {};
+                data.results.forEach((r: { phone: string; profilePicUrl: string | null }) => {
+                  if (r.profilePicUrl) {
+                    newProfiles[r.phone] = {
+                      whatsapp: r.phone,
+                      profile_pic_url: r.profilePicUrl
+                    };
+                  }
+                });
+                if (Object.keys(newProfiles).length > 0) {
+                  setCustomerProfiles(prev => ({ ...prev, ...newProfiles }));
+                }
+              }
+            }).catch(err => console.log('Profile pic fetch error:', err));
+          }
         }
       }
       
@@ -823,9 +854,9 @@ const Chat = () => {
                   >
                     {/* Avatar com foto de perfil */}
                     <div className="relative shrink-0">
-                      {customerProfile?.avatar_url ? (
+                      {customerProfile?.profile_pic_url ? (
                         <img
-                          src={customerProfile.avatar_url}
+                          src={customerProfile.profile_pic_url}
                           alt={conv.contact_name || 'Cliente'}
                           className="w-12 h-12 rounded-2xl object-cover shadow-lg"
                         />

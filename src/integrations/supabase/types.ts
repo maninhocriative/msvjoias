@@ -468,6 +468,7 @@ export type Database = {
           created_at: string
           id: string
           name: string
+          profile_pic_url: string | null
           total_orders: number
           total_purchases: number
           updated_at: string
@@ -479,6 +480,7 @@ export type Database = {
           created_at?: string
           id?: string
           name: string
+          profile_pic_url?: string | null
           total_orders?: number
           total_purchases?: number
           updated_at?: string
@@ -490,6 +492,7 @@ export type Database = {
           created_at?: string
           id?: string
           name?: string
+          profile_pic_url?: string | null
           total_orders?: number
           total_purchases?: number
           updated_at?: string
