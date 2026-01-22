@@ -3,7 +3,7 @@ import { supabase, Conversation, Message, LeadStatus } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, Paperclip, Search, MessageSquare, FileText, Mic, Check, CheckCheck, Instagram, Bot, User, Phone, ArrowLeft, MoreVertical, UserCheck, RefreshCw, Clock, MessageCircle, Sparkles, X, Volume2, Loader2, Users, UserPlus } from 'lucide-react';
+import { Send, Paperclip, Search, MessageSquare, FileText, Mic, Check, CheckCheck, Instagram, Bot, User, Phone, ArrowLeft, MoreVertical, UserCheck, RefreshCw, Clock, MessageCircle, Sparkles, X, Volume2, Loader2, Users, UserPlus, BarChart3 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { LeadStatusSelect, LeadStatusBadge } from '@/components/chat/LeadStatusSelect';
@@ -11,10 +11,12 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import TypingIndicator from '@/components/chat/TypingIndicator';
 import SellerToolsPanel from '@/components/chat/SellerToolsPanel';
 import AssignSellerDialog from '@/components/chat/AssignSellerDialog';
+import SellerStatsPanel from '@/components/chat/SellerStatsPanel';
 import { useSellerPresence, assignConversationToSeller } from '@/hooks/useSellerPresence';
 import { useUserRole } from '@/hooks/useUserRole';
 import { Badge } from '@/components/ui/badge';
 import { useAssignmentNotification } from '@/hooks/useAssignmentNotification';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 interface AlineConversation {
   id: string;
@@ -44,6 +46,7 @@ const Chat = () => {
   const [alineStatus, setAlineStatus] = useState<string | null>(null);
   const [alineStatusMap, setAlineStatusMap] = useState<Record<string, AlineConversation>>({});
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [statsExpanded, setStatsExpanded] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -618,6 +621,29 @@ const Chat = () => {
               </div>
             )}
           </div>
+
+          {/* Estatísticas - Collapsible (só para admin/gerente) */}
+          {(isAdmin || isGerente) && (
+            <Collapsible open={statsExpanded} onOpenChange={setStatsExpanded}>
+              <CollapsibleTrigger asChild>
+                <button className="w-full flex items-center justify-between p-2.5 bg-slate-800/30 rounded-xl border border-white/5 hover:bg-slate-800/50 transition-colors mb-3">
+                  <div className="flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 text-purple-400" />
+                    <span className="text-sm font-medium text-white">Estatísticas</span>
+                  </div>
+                  <span className={cn(
+                    'text-xs text-slate-400 transition-transform',
+                    statsExpanded && 'rotate-180'
+                  )}>
+                    ▼
+                  </span>
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <SellerStatsPanel className="mb-3 border-0" />
+              </CollapsibleContent>
+            </Collapsible>
+          )}
 
           {/* Search */}
           <div className="relative">
