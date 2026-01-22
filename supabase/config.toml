@@ -77,3 +77,9 @@ verify_jwt = true
 
 [functions.aline-followup]
 verify_jwt = false
+
+[functions.waiting-customers-report]
+verify_jwt = false
+
+[functions.seller-offline-alert]
+verify_jwt = false
