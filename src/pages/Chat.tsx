@@ -689,74 +689,53 @@ const Chat = () => {
             </Button>
           </div>
 
-          {/* Vendedores Online - Painel Destacado */}
-          <div className="mb-3 p-3 bg-gradient-to-r from-emerald-500/10 via-cyan-500/10 to-emerald-500/10 rounded-xl border border-emerald-500/20">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
+          {/* Vendedores Online - Compacto */}
+          <div className="mb-3 px-3 py-2 bg-gradient-to-r from-emerald-500/10 to-cyan-500/10 rounded-lg border border-emerald-500/20">
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 shrink-0">
                 <div className="relative">
-                  <Users className="w-5 h-5 text-emerald-400" />
-                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                  <Users className="w-4 h-4 text-emerald-400" />
+                  <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
                 </div>
-                <span className="text-sm font-semibold text-white">Vendedores Online</span>
+                <span className="text-xs font-medium text-emerald-300">
+                  {onlineSellers.length > 0 ? `${onlineSellers.length} online` : 'Offline'}
+                </span>
               </div>
-              <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30">
-                {onlineSellers.length} {onlineSellers.length === 1 ? 'ativo' : 'ativos'}
-              </Badge>
-            </div>
-            
-            {onlineSellers.length > 0 ? (
-              <div className="space-y-2">
-                {onlineSellers.map((seller) => (
-                  <button 
-                    key={seller.user_id} 
-                    onClick={() => {
-                      if (selectedConversation) {
-                        // Atribuir conversa selecionada ao vendedor
-                        handleAssignToSeller(seller.user_id, seller.full_name || 'Vendedor');
-                      } else {
-                        toast({
-                          title: 'Selecione uma conversa',
-                          description: `Para atribuir a ${seller.full_name || 'Vendedor'}, selecione uma conversa primeiro.`,
-                        });
-                      }
-                    }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 bg-slate-800/50 rounded-lg border border-white/5 hover:bg-emerald-500/10 hover:border-emerald-500/30 transition-all group"
-                  >
-                    <div className="relative shrink-0">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center text-white text-sm font-bold shadow-lg">
-                        {(seller.full_name || 'V').charAt(0).toUpperCase()}
-                      </div>
-                      <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-slate-800 rounded-full" />
-                    </div>
-                    <div className="flex-1 min-w-0 text-left">
-                      <p className="text-sm font-semibold text-white truncate group-hover:text-emerald-300 transition-colors">
-                        {seller.full_name || 'Vendedor'}
-                      </p>
-                      <p className="text-[10px] text-emerald-400">
-                        Disponível agora
-                      </p>
-                    </div>
-                    {selectedConversation && (
-                      <div className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <div className="px-2 py-1 bg-emerald-500/20 rounded text-[10px] text-emerald-300 font-medium">
-                          Atribuir
+              
+              {onlineSellers.length > 0 ? (
+                <div className="flex items-center gap-1 flex-1 overflow-x-auto scrollbar-hide">
+                  {onlineSellers.map((seller) => (
+                    <button 
+                      key={seller.user_id} 
+                      onClick={() => {
+                        if (selectedConversation) {
+                          handleAssignToSeller(seller.user_id, seller.full_name || 'Vendedor');
+                        } else {
+                          toast({
+                            title: 'Selecione uma conversa',
+                            description: `Para atribuir a ${seller.full_name || 'Vendedor'}, selecione primeiro.`,
+                          });
+                        }
+                      }}
+                      className="flex items-center gap-1.5 px-2 py-1 bg-slate-800/60 rounded-full border border-white/5 hover:bg-emerald-500/20 hover:border-emerald-500/40 transition-all group shrink-0"
+                      title={`Atribuir para ${seller.full_name || 'Vendedor'}`}
+                    >
+                      <div className="relative">
+                        <div className="w-5 h-5 rounded-full bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center text-white text-[10px] font-bold">
+                          {(seller.full_name || 'V').charAt(0).toUpperCase()}
                         </div>
+                        <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-emerald-500 border border-slate-800 rounded-full" />
                       </div>
-                    )}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 px-3 py-2 bg-slate-800/50 rounded-lg border border-white/5">
-                <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center">
-                  <User className="w-4 h-4 text-slate-500" />
+                      <span className="text-[10px] text-slate-300 group-hover:text-emerald-300 transition-colors max-w-[60px] truncate">
+                        {(seller.full_name || 'Vendedor').split(' ')[0]}
+                      </span>
+                    </button>
+                  ))}
                 </div>
-                <div className="flex-1">
-                  <p className="text-sm text-slate-400">Nenhum vendedor online</p>
-                  <p className="text-[10px] text-slate-500">Aline está atendendo</p>
-                </div>
-              </div>
-            )}
+              ) : (
+                <span className="text-[10px] text-slate-500">Aline atendendo</span>
+              )}
+            </div>
           </div>
 
           {/* Search */}
