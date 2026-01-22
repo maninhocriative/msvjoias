@@ -670,7 +670,7 @@ serve(async (req) => {
 
     // Usar prompt do banco se disponível, senão usar o padrão
     const systemPrompt = aiConfig?.system_prompt || ALINE_SYSTEM_PROMPT;
-    const model = "gpt-4.1-mini"; // Modelo GPT-4.1 Mini
+    const model = "gpt-4o-mini"; // Modelo GPT-4o Mini (corrigido)
     const fullSystemPrompt = systemPrompt + contextInfo;
 
     console.log(`[ALINE-REPLY] Usando modelo: ${model}`);
