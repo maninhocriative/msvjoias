@@ -743,12 +743,39 @@ serve(async (req) => {
     // NLU AVANÇADO: EXTRAIR TODOS OS DADOS DE UMA VEZ
     // ========================================
     
-    // Detectar CATEGORIA em qualquer mensagem
-    if (!hasCategoria) {
-      if (/aliança|alianca|alianças|aliancas|par de aliança|par de alianças/i.test(normalizedMsg)) {
+    // CRÍTICO: Detectar MUDANÇA de categoria (cliente pergunta sobre outro produto)
+    const isPerguntandoPingente = /pingente|pingentes|colar|colares|tem\s*pingente|vc\s*tem\s*pingente|vocês\s*tem\s*pingente|você\s*tem\s*pingente/i.test(normalizedMsg);
+    const isPerguntandoAlianca = /aliança|alianca|alianças|aliancas|tem\s*aliança|vc\s*tem\s*aliança|vocês\s*tem\s*aliança/i.test(normalizedMsg);
+    
+    // Se cliente perguntou sobre OUTRA categoria, resetar dados e iniciar novo fluxo
+    if (isPerguntandoPingente && hasCategoria && newCollectedData.categoria !== 'pingente') {
+      console.log(`[ALINE-REPLY] [NLU] MUDANÇA DE CATEGORIA: cliente perguntou sobre PINGENTES (estava em ${newCollectedData.categoria})`);
+      newCollectedData.categoria = 'pingente';
+      // Resetar dados anteriores
+      delete newCollectedData.finalidade;
+      delete newCollectedData.cor;
+      delete newCollectedData.cores_mostradas;
+      delete newCollectedData.selected_sku;
+      delete newCollectedData.selected_name;
+      delete newCollectedData.selected_product;
+      newCollectedData.mudou_categoria = true;
+    } else if (isPerguntandoAlianca && hasCategoria && newCollectedData.categoria !== 'aliancas') {
+      console.log(`[ALINE-REPLY] [NLU] MUDANÇA DE CATEGORIA: cliente perguntou sobre ALIANÇAS (estava em ${newCollectedData.categoria})`);
+      newCollectedData.categoria = 'aliancas';
+      delete newCollectedData.cor;
+      delete newCollectedData.cores_mostradas;
+      delete newCollectedData.selected_sku;
+      delete newCollectedData.selected_name;
+      delete newCollectedData.selected_product;
+      newCollectedData.mudou_categoria = true;
+    }
+    
+    // Detectar CATEGORIA em qualquer mensagem (se ainda não tem)
+    if (!hasCategoria || newCollectedData.mudou_categoria) {
+      if (isPerguntandoAlianca && !isPerguntandoPingente) {
         newCollectedData.categoria = 'aliancas';
         console.log(`[ALINE-REPLY] [NLU] Categoria: aliancas`);
-      } else if (/pingente|pingentes|colar|colares/i.test(normalizedMsg)) {
+      } else if (isPerguntandoPingente) {
         newCollectedData.categoria = 'pingente';
         console.log(`[ALINE-REPLY] [NLU] Categoria: pingente`);
       }
@@ -795,6 +822,13 @@ serve(async (req) => {
       newCollectedData.quer_outras_cores = true;
       console.log(`[ALINE-REPLY] [NLU] Cliente quer ver OUTRAS cores (excluir já mostradas)`);
     }
+    
+    // Detectar resposta afirmativa ("sim", "quero", "pode ser") como intenção de ver catálogo
+    const isAfirmativo = /^(sim|quero|pode|claro|ok|s|bora|show|isso|exato|perfeito|legal|boa|blz|beleza|pode ser|manda|mostra|ver)$/i.test(normalizedMsg.trim());
+    if (isAfirmativo && detectedCategoria && !newCollectedData.selected_sku) {
+      console.log(`[ALINE-REPLY] [NLU] Resposta AFIRMATIVA detectada para ${detectedCategoria} - forçar catálogo`);
+      newCollectedData.quer_ver_catalogo = true;
+    }
 
     // Calcular próximo passo ANTES de chamar a IA
     const finalCategoria = newCollectedData.categoria as string | undefined;
@@ -807,11 +841,30 @@ serve(async (req) => {
     let nextStep: string;
     let nextStepInstruction: string;
     
+    // CRÍTICO: Se mudou de categoria ou quer ver catálogo com resposta afirmativa
+    const querVerCatalogo = newCollectedData.quer_ver_catalogo === true;
+    const mudouCategoria = newCollectedData.mudou_categoria === true;
+    
     // NOVA LÓGICA: Se quer outras cores, instrução especial
     if (wantsOtherColors && coresMostradas.length > 0) {
       nextStep = 'catalogo_outras_cores';
       const coresExcluir = coresMostradas.join(', ');
       nextStepInstruction = `O cliente PEDIU OUTRAS CORES! Cores já mostradas: ${coresExcluir}. Use search_catalog com exclude_shown_colors=true para mostrar produtos de OUTRAS cores. NÃO mostre novamente ${coresExcluir}. Diga algo como "Claro! Deixa eu te mostrar outras opções de cores! 💍"`;
+    } else if (mudouCategoria && finalCategoria === 'pingente') {
+      // NOVO: Cliente mudou para pingentes - mostrar catálogo direto
+      nextStep = 'catalogo_pingentes';
+      nextStepInstruction = `IMPORTANTE: O cliente PERGUNTOU sobre PINGENTES! Use search_catalog com category="pingente" IMEDIATAMENTE para mostrar os pingentes disponíveis. Diga algo como "Claro! Temos pingentes lindos, vou te mostrar! 💫"`;
+    } else if (mudouCategoria && finalCategoria === 'aliancas') {
+      // NOVO: Cliente mudou para alianças
+      nextStep = 'escolha_finalidade';
+      nextStepInstruction = `O cliente perguntou sobre ALIANÇAS. Pergunte a finalidade: "Que legal! Vocês estão celebrando namoro/compromisso ou casamento?"`;
+    } else if (querVerCatalogo && finalCategoria === 'pingente') {
+      // Cliente disse "sim" para pingentes
+      nextStep = 'catalogo_pingentes';
+      nextStepInstruction = `O cliente quer ver pingentes! Use search_catalog com category="pingente" AGORA para mostrar os produtos. Diga algo como "Ótimo! Vou te mostrar nossos pingentes! 💫"`;
+    } else if (querVerCatalogo && finalCategoria === 'aliancas' && finalFinalidade) {
+      nextStep = 'catalogo';
+      nextStepInstruction = `O cliente quer ver o catálogo! Use search_catalog AGORA com category="aliancas". Diga algo como "Perfeito! Separei algumas opções para você! 💍"`;
     } else if (finalCor) {
       nextStep = 'catalogo';
       nextStepInstruction = `O cliente já informou tudo: categoria "${finalCategoria}", finalidade "${finalFinalidade || 'N/A'}", cor "${finalCor}". Use search_catalog AGORA para mostrar os produtos. Diga algo como "Vou te mostrar algumas opções incríveis!"`;
@@ -889,15 +942,23 @@ serve(async (req) => {
     const hasColorKeyword = /dourada|dourado|prata|aço|aco|preta|preto|azul/i.test(lastUserMessage);
     const hasActionKeyword = /quero|ver|mostrar|mostra|catálogo|catalogo|opções|opcoes/i.test(lastUserMessage);
     const hasOtherColorsKeyword = /outra(s)?\s*cor(es)?|tem\s*outras?|mais\s*op[çc][õo]es|outras\s*op[çc][õo]es/i.test(lastUserMessage);
+    const isAffirmativeResponse = /^(sim|quero|pode|claro|ok|s|bora|show|isso|exato|perfeito|legal|boa|blz|beleza|pode ser|manda|mostra)$/i.test(lastUserMessage.trim());
+    const hasPingente = /pingente|pingentes|vc\s*tem\s*pingente|você\s*tem\s*pingente|vocês\s*tem\s*pingente/i.test(lastUserMessage);
     
-    const shouldForceCatalog = (hasCategoryKeyword && hasColorKeyword) || 
-                               (hasActionKeyword && hasCategoryKeyword) ||
-                               (collectedData.cor && hasColorKeyword) ||
-                               hasOtherColorsKeyword; // NOVO: forçar catálogo se pedir outras cores
+    // NOVA LÓGICA: Forçar catálogo em mais cenários
+    const shouldForceCatalog = 
+      (hasCategoryKeyword && hasColorKeyword) || 
+      (hasActionKeyword && hasCategoryKeyword) ||
+      (collectedData.cor && hasColorKeyword) ||
+      hasOtherColorsKeyword ||
+      (hasPingente) || // NOVO: forçar se perguntar sobre pingentes
+      (isAffirmativeResponse && detectedCategoria && !newCollectedData.selected_sku) || // NOVO: "sim" com categoria
+      mudouCategoria || // NOVO: mudou de categoria
+      querVerCatalogo; // NOVO: flag de querer ver catálogo
     
     let toolChoice: any = "auto";
     if (shouldForceCatalog) {
-      console.log("[ALINE-REPLY] Forçando busca de catálogo - keywords detectadas");
+      console.log("[ALINE-REPLY] Forçando busca de catálogo - cenário detectado");
       toolChoice = { type: "function", function: { name: "search_catalog" } };
     }
 
@@ -1000,9 +1061,15 @@ serve(async (req) => {
             
             console.log(`[ALINE-REPLY] Catálogo: ${catalogProducts.length} produtos`);
             
-            // Resetar flag de "quer outras cores" após buscar
+            // Resetar flags após buscar catálogo
             if (newCollectedData.quer_outras_cores) {
               delete newCollectedData.quer_outras_cores;
+            }
+            if (newCollectedData.mudou_categoria) {
+              delete newCollectedData.mudou_categoria;
+            }
+            if (newCollectedData.quer_ver_catalogo) {
+              delete newCollectedData.quer_ver_catalogo;
             }
           }
         } else if (functionName === "get_product_details") {
