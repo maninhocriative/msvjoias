@@ -284,6 +284,22 @@ async function searchCatalog(
   console.log(`[ALINE-REPLY] Buscando catálogo:`, params);
   console.log(`[ALINE-REPLY] Dados coletados:`, collectedData);
   
+  // LÓGICA CRÍTICA: Determinar material baseado na finalidade
+  const finalidade = collectedData?.finalidade || params.finalidade;
+  let materialFilter: string | null = null;
+  
+  if (params.category === 'aliancas' || params.category?.includes('alianca')) {
+    if (finalidade === 'casamento') {
+      materialFilter = 'tungstenio';
+      console.log(`[ALINE-REPLY] CASAMENTO → Buscando TUNGSTÊNIO`);
+    } else if (finalidade === 'namoro') {
+      materialFilter = 'aco';
+      console.log(`[ALINE-REPLY] NAMORO → Buscando AÇO`);
+    }
+  }
+  
+  // Buscar todos os produtos ativos, depois filtrar em memória
+  // Isso resolve problemas com .or() complexos no Supabase client
   let query = supabase
     .from('products')
     .select(`
@@ -291,36 +307,11 @@ async function searchCatalog(
       product_variants(size, stock)
     `)
     .eq('active', true)
-    .order('created_at', { ascending: false })
-    .limit(params.limit || 10);
+    .order('created_at', { ascending: false });
   
-  if (params.category) {
-    query = query.ilike('category', `%${params.category}%`);
-  }
-  
+  // Filtrar por cor se especificada
   if (params.color) {
     query = query.ilike('color', `%${params.color}%`);
-  }
-  
-  // LÓGICA CRÍTICA: Filtrar por material baseado na finalidade
-  // CASAMENTO = Tungstênio, NAMORO = Aço
-  const finalidade = collectedData?.finalidade || params.finalidade;
-  let searchTerm = params.search || '';
-  
-  if (params.category === 'aliancas' || params.category?.includes('alianca')) {
-    if (finalidade === 'casamento') {
-      // Casamento SEMPRE busca tungstênio
-      searchTerm = searchTerm ? `${searchTerm} tungstenio` : 'tungstenio';
-      console.log(`[ALINE-REPLY] CASAMENTO → Buscando TUNGSTÊNIO`);
-    } else if (finalidade === 'namoro') {
-      // Namoro/compromisso busca aço
-      searchTerm = searchTerm ? `${searchTerm} aco` : 'aco';
-      console.log(`[ALINE-REPLY] NAMORO → Buscando AÇO`);
-    }
-  }
-  
-  if (searchTerm) {
-    query = query.or(`name.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
   }
   
   if (params.min_price) {
@@ -331,17 +322,79 @@ async function searchCatalog(
     query = query.lte('price', params.max_price);
   }
   
-  const { data: products, error } = await query;
+  const { data: allProducts, error } = await query;
   
   if (error) {
     console.error(`[ALINE-REPLY] Erro ao buscar produtos:`, error);
     return { success: false, error: error.message, products: [] };
   }
   
-  // Processar produtos
-  const processedProducts = (products || []).map((p: any, index: number) => {
-    const sizes = (p.product_variants || []).map((v: any) => v.size);
+  console.log(`[ALINE-REPLY] Query inicial retornou ${allProducts?.length || 0} produtos`);
+  
+  // Filtrar por categoria/material em memória (mais flexível)
+  let filteredProducts = allProducts || [];
+  
+  if (params.category === 'aliancas') {
+    if (materialFilter === 'tungstenio') {
+      // Para CASAMENTO: buscar produtos cuja categoria contém "tungstenio" (com ou sem acento)
+      filteredProducts = filteredProducts.filter((p: any) => {
+        const cat = (p.category || '').toLowerCase();
+        return cat.includes('tungstenio') || cat.includes('tungstênio') || cat.includes('tungsten');
+      });
+      console.log(`[ALINE-REPLY] Filtro TUNGSTÊNIO: ${filteredProducts.length} produtos`);
+    } else if (materialFilter === 'aco') {
+      // Para NAMORO: buscar alianças de aço (categoria exata "aliancas" sem tungstênio)
+      filteredProducts = filteredProducts.filter((p: any) => {
+        const cat = (p.category || '').toLowerCase();
+        return cat === 'aliancas' && !cat.includes('tungstenio') && !cat.includes('tungstênio');
+      });
+      console.log(`[ALINE-REPLY] Filtro AÇO: ${filteredProducts.length} produtos`);
+    } else {
+      // Sem finalidade definida: todas as alianças (ambos os tipos)
+      filteredProducts = filteredProducts.filter((p: any) => {
+        const cat = (p.category || '').toLowerCase();
+        return cat.includes('alianca') || cat.includes('aliança') || cat.includes('tungstenio') || cat.includes('tungstênio');
+      });
+    }
+  } else if (params.category === 'pingente') {
+    filteredProducts = filteredProducts.filter((p: any) => {
+      const cat = (p.category || '').toLowerCase();
+      return cat.includes('pingente');
+    });
+  } else if (params.category) {
+    filteredProducts = filteredProducts.filter((p: any) => {
+      const cat = (p.category || '').toLowerCase();
+      return cat.includes(params.category.toLowerCase());
+    });
+  }
+  
+  // Busca de texto no nome/descrição (se fornecido)
+  if (params.search) {
+    const searchTerm = params.search.toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, ""); // Remove acentos
+    filteredProducts = filteredProducts.filter((p: any) => {
+      const name = (p.name || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const desc = (p.description || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      return name.includes(searchTerm) || desc.includes(searchTerm);
+    });
+  }
+  
+  // Limitar resultados
+  const limitedProducts = filteredProducts.slice(0, params.limit || 10);
+  
+  // Processar produtos e adicionar caption formatado
+  const processedProducts = limitedProducts.map((p: any, index: number) => {
+    const sizes = (p.product_variants || [])
+      .filter((v: any) => v.stock > 0)
+      .map((v: any) => v.size);
     const totalStock = (p.product_variants || []).reduce((sum: number, v: any) => sum + (v.stock || 0), 0);
+    
+    // Gerar caption formatado para WhatsApp
+    const caption = formatProductCaption(p, { 
+      includePrice: true, 
+      includeSizes: sizes.length > 0, 
+      includeStock: true 
+    });
     
     return {
       index: index + 1,
@@ -362,16 +415,17 @@ async function searchCatalog(
       sizes_formatted: sizes.join(', '),
       stock: totalStock,
       in_stock: totalStock > 0,
+      caption, // Caption formatado para Fiqon enviar
     };
   });
   
-  console.log(`[ALINE-REPLY] Encontrados ${processedProducts.length} produtos (finalidade: ${finalidade || 'N/A'})`);
+  console.log(`[ALINE-REPLY] Encontrados ${processedProducts.length} produtos (finalidade: ${finalidade || 'N/A'}, material: ${materialFilter || 'todos'})`);
   
   return {
     success: true,
     products: processedProducts,
     total: processedProducts.length,
-    material: finalidade === 'casamento' ? 'tungstenio' : (finalidade === 'namoro' ? 'aco' : null),
+    material: materialFilter,
   };
 }
 
