@@ -748,30 +748,34 @@ serve(async (req) => {
     const isPerguntandoAlianca = /aliança|alianca|alianças|aliancas|tem\s*aliança|vc\s*tem\s*aliança|vocês\s*tem\s*aliança/i.test(normalizedMsg);
     
     // Se cliente perguntou sobre OUTRA categoria, resetar dados e iniciar novo fluxo
-    if (isPerguntandoPingente && hasCategoria && newCollectedData.categoria !== 'pingente') {
-      console.log(`[ALINE-REPLY] [NLU] MUDANÇA DE CATEGORIA: cliente perguntou sobre PINGENTES (estava em ${newCollectedData.categoria})`);
+    if (isPerguntandoPingente && newCollectedData.categoria !== 'pingente') {
+      console.log(`[ALINE-REPLY] [NLU] MUDANÇA DE CATEGORIA: cliente perguntou sobre PINGENTES (estava em ${newCollectedData.categoria || 'nenhuma'})`);
       newCollectedData.categoria = 'pingente';
-      // Resetar dados anteriores
+      // Resetar TODOS os dados anteriores
       delete newCollectedData.finalidade;
       delete newCollectedData.cor;
       delete newCollectedData.cores_mostradas;
       delete newCollectedData.selected_sku;
       delete newCollectedData.selected_name;
       delete newCollectedData.selected_product;
+      delete newCollectedData.selected_price;
+      delete newCollectedData.last_catalog; // CRÍTICO: Limpar catálogo anterior!
       newCollectedData.mudou_categoria = true;
-    } else if (isPerguntandoAlianca && hasCategoria && newCollectedData.categoria !== 'aliancas') {
-      console.log(`[ALINE-REPLY] [NLU] MUDANÇA DE CATEGORIA: cliente perguntou sobre ALIANÇAS (estava em ${newCollectedData.categoria})`);
+    } else if (isPerguntandoAlianca && newCollectedData.categoria !== 'aliancas') {
+      console.log(`[ALINE-REPLY] [NLU] MUDANÇA DE CATEGORIA: cliente perguntou sobre ALIANÇAS (estava em ${newCollectedData.categoria || 'nenhuma'})`);
       newCollectedData.categoria = 'aliancas';
       delete newCollectedData.cor;
       delete newCollectedData.cores_mostradas;
       delete newCollectedData.selected_sku;
       delete newCollectedData.selected_name;
       delete newCollectedData.selected_product;
+      delete newCollectedData.selected_price;
+      delete newCollectedData.last_catalog; // CRÍTICO: Limpar catálogo anterior!
       newCollectedData.mudou_categoria = true;
     }
     
     // Detectar CATEGORIA em qualquer mensagem (se ainda não tem)
-    if (!hasCategoria || newCollectedData.mudou_categoria) {
+    if (!newCollectedData.categoria) {
       if (isPerguntandoAlianca && !isPerguntandoPingente) {
         newCollectedData.categoria = 'aliancas';
         console.log(`[ALINE-REPLY] [NLU] Categoria: aliancas`);
@@ -865,9 +869,13 @@ serve(async (req) => {
     } else if (querVerCatalogo && finalCategoria === 'aliancas' && finalFinalidade) {
       nextStep = 'catalogo';
       nextStepInstruction = `O cliente quer ver o catálogo! Use search_catalog AGORA com category="aliancas". Diga algo como "Perfeito! Separei algumas opções para você! 💍"`;
-    } else if (finalCor) {
+    } else if (finalCategoria === 'pingente' && finalCor) {
+      // PINGENTE + COR = Mostrar catálogo de pingentes!
+      nextStep = 'catalogo_pingentes';
+      nextStepInstruction = `IMPORTANTE: O cliente quer PINGENTES na cor ${finalCor}! Use search_catalog com category="pingente" e color="${finalCor}" AGORA. NÃO mostre alianças! Diga algo como "Separei algumas opções incríveis de pingentes para você! 💫"`;
+    } else if (finalCategoria === 'aliancas' && finalCor && finalFinalidade) {
       nextStep = 'catalogo';
-      nextStepInstruction = `O cliente já informou tudo: categoria "${finalCategoria}", finalidade "${finalFinalidade || 'N/A'}", cor "${finalCor}". Use search_catalog AGORA para mostrar os produtos. Diga algo como "Vou te mostrar algumas opções incríveis!"`;
+      nextStepInstruction = `O cliente quer alianças de ${finalFinalidade} na cor ${finalCor}. Use search_catalog com category="aliancas" e color="${finalCor}". Diga algo como "Vou te mostrar algumas opções incríveis!"`;
     } else if (finalCategoria === 'aliancas' && finalFinalidade) {
       nextStep = 'escolha_cor';
       nextStepInstruction = `O cliente escolheu alianças de ${finalFinalidade}. Pergunte a cor de forma NATURAL: "E qual cor vocês preferem? Temos em dourada, prata (aço), preta e azul." NUNCA use números.`;
@@ -946,19 +954,24 @@ serve(async (req) => {
     const hasPingente = /pingente|pingentes|vc\s*tem\s*pingente|você\s*tem\s*pingente|vocês\s*tem\s*pingente/i.test(lastUserMessage);
     
     // NOVA LÓGICA: Forçar catálogo em mais cenários
+    const isPingenteFlow = newCollectedData.categoria === 'pingente';
+    const hasColorForPingente = isPingenteFlow && hasColorKeyword;
+    
     const shouldForceCatalog = 
       (hasCategoryKeyword && hasColorKeyword) || 
       (hasActionKeyword && hasCategoryKeyword) ||
       (collectedData.cor && hasColorKeyword) ||
       hasOtherColorsKeyword ||
-      (hasPingente) || // NOVO: forçar se perguntar sobre pingentes
-      (isAffirmativeResponse && detectedCategoria && !newCollectedData.selected_sku) || // NOVO: "sim" com categoria
-      mudouCategoria || // NOVO: mudou de categoria
-      querVerCatalogo; // NOVO: flag de querer ver catálogo
+      hasPingente || // forçar se perguntar sobre pingentes
+      hasColorForPingente || // NOVO: cor + pingente = mostrar catálogo
+      (isAffirmativeResponse && detectedCategoria && !newCollectedData.selected_sku) || // "sim" com categoria
+      mudouCategoria || // mudou de categoria
+      querVerCatalogo || // flag de querer ver catálogo
+      (isPingenteFlow && finalCor); // NOVO: pingente + cor detectada
     
     let toolChoice: any = "auto";
     if (shouldForceCatalog) {
-      console.log("[ALINE-REPLY] Forçando busca de catálogo - cenário detectado");
+      console.log(`[ALINE-REPLY] Forçando busca de catálogo - cenário: pingente=${isPingenteFlow}, cor=${finalCor}, mudou=${mudouCategoria}`);
       toolChoice = { type: "function", function: { name: "search_catalog" } };
     }
 
