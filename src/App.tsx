@@ -30,6 +30,7 @@ import AI from "./pages/AI";
 import AIConfig from "./pages/AIConfig";
 import PendingOrders from "./pages/PendingOrders";
 import FollowupMonitor from "./pages/FollowupMonitor";
+import SellerMonitor from "./pages/SellerMonitor";
 import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
@@ -67,6 +68,7 @@ const App = () => (
                   <Route path="/ai" element={<AI />} />
                   <Route path="/ai/config" element={<AIConfig />} />
                   <Route path="/ai/followups" element={<FollowupMonitor />} />
+                  <Route path="/seller-monitor" element={<SellerMonitor />} />
                   <Route path="/pedidos/pendentes" element={<PendingOrders />} />
                 </Route>
               </Route>
