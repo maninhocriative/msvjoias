@@ -873,33 +873,124 @@ serve(async (req) => {
     cleanMessage = uniqueLines.join('\n').trim();
 
     // ========================================
-    // PASSO 9: COLETAR DADOS ADICIONAIS (PRODUTO, ENTREGA, PAGAMENTO)
+    // PASSO 9: DETECÇÃO INTELIGENTE DE PRODUTO (SKU, NÚMERO, POSIÇÃO)
     // ========================================
-    // Coletar seleção de produto (apenas se catálogo foi enviado)
-    const numberMatch = normalizedMsg.match(/^(\d)$|quero\s*o?\s*(\d)|escolho\s*o?\s*(\d)/);
-    if (numberMatch && catalogProducts.length > 0) {
-      const productIndex = parseInt(numberMatch[1] || numberMatch[2] || numberMatch[3]) - 1;
-      if (productIndex >= 0 && productIndex < catalogProducts.length) {
-        const selectedProduct = catalogProducts[productIndex];
-        newCollectedData.selected_product = selectedProduct;
-        newCollectedData.selected_sku = selectedProduct.sku;
-        newCollectedData.selected_name = selectedProduct.name;
-        newCollectedData.selected_price = selectedProduct.price;
-        console.log(`[ALINE-REPLY] Produto selecionado: ${selectedProduct.name}`);
+    
+    // 1. Detectar SKU diretamente (ex: "quero o AC-015", "AC015", "pg-002")
+    const skuPatterns = [
+      /\b([A-Z]{2,3}[-\s]?\d{2,4})\b/i,  // AC-015, PG-002, AC 015
+      /código\s*:?\s*([A-Z]{2,3}[-\s]?\d{2,4})/i,  // código: AC-015
+      /cod\.?\s*:?\s*([A-Z]{2,3}[-\s]?\d{2,4})/i,  // cod: AC-015
+    ];
+    
+    let detectedSku: string | null = null;
+    for (const pattern of skuPatterns) {
+      const match = normalizedMsg.match(pattern);
+      if (match) {
+        // Normalizar SKU (remover espaços, adicionar hífen)
+        detectedSku = match[1].toUpperCase().replace(/\s+/g, '-').replace(/([A-Z]+)(\d+)/, '$1-$2');
+        console.log(`[ALINE-REPLY] [NLU] SKU detectado: ${detectedSku}`);
+        break;
+      }
+    }
+    
+    // Se detectou SKU, buscar produto no banco
+    if (detectedSku && !newCollectedData.selected_sku) {
+      const skuResult = await getProductDetails(detectedSku, supabase);
+      if (skuResult.success && skuResult.product) {
+        const p = skuResult.product;
+        newCollectedData.selected_product = p;
+        newCollectedData.selected_sku = p.sku;
+        newCollectedData.selected_name = p.name;
+        newCollectedData.selected_price = p.price;
+        console.log(`[ALINE-REPLY] Produto por SKU: ${p.name} (${p.sku})`);
+      } else {
+        console.log(`[ALINE-REPLY] SKU não encontrado: ${detectedSku}`);
+      }
+    }
+    
+    // 2. Detectar seleção por número/posição do catálogo
+    if (!newCollectedData.selected_sku) {
+      // Padrões de seleção por número
+      const numberPatterns = [
+        /^(\d)$/,  // Só o número: "1", "2"
+        /quero\s*o?\s*(\d)/i,  // "quero o 1", "quero 2"
+        /escolho\s*o?\s*(\d)/i,  // "escolho o 3"
+        /gostei\s*d[oa]?\s*(\d)/i,  // "gostei do 2"
+        /prefiro\s*o?\s*(\d)/i,  // "prefiro o 1"
+        /pode\s*ser\s*o?\s*(\d)/i,  // "pode ser o 2"
+        /vou\s*de\s*(\d)/i,  // "vou de 1"
+        /manda\s*o?\s*(\d)/i,  // "manda o 3"
+        /esse\s*(\d)/i,  // "esse 2"
+        /número\s*(\d)/i,  // "número 3"
+      ];
+      
+      // Padrões ordinais
+      const ordinalMap: Record<string, number> = {
+        'primeiro': 1, 'primeira': 1,
+        'segundo': 2, 'segunda': 2,
+        'terceiro': 3, 'terceira': 3,
+        'quarto': 4, 'quarta': 4,
+        'quinto': 5, 'quinta': 5,
+        'ultimo': 10, 'última': 10,
+      };
+      
+      let productIndex: number | null = null;
+      
+      // Tentar padrões numéricos
+      for (const pattern of numberPatterns) {
+        const match = normalizedMsg.match(pattern);
+        if (match) {
+          productIndex = parseInt(match[1]) - 1;
+          console.log(`[ALINE-REPLY] [NLU] Número detectado: ${productIndex + 1}`);
+          break;
+        }
+      }
+      
+      // Tentar ordinais
+      if (productIndex === null) {
+        for (const [word, idx] of Object.entries(ordinalMap)) {
+          if (normalizedMsg.includes(word)) {
+            productIndex = idx - 1;
+            console.log(`[ALINE-REPLY] [NLU] Ordinal detectado: ${word} → ${idx}`);
+            break;
+          }
+        }
+      }
+      
+      // Buscar do catálogo atual ou do último catálogo salvo
+      const catalogSource = catalogProducts.length > 0 
+        ? catalogProducts 
+        : (collectedData.last_catalog || []);
+      
+      if (productIndex !== null && catalogSource.length > 0) {
+        // Ajustar "último" para o último item real
+        if (productIndex >= catalogSource.length) {
+          productIndex = catalogSource.length - 1;
+        }
+        
+        if (productIndex >= 0 && productIndex < catalogSource.length) {
+          const selectedProduct = catalogSource[productIndex];
+          newCollectedData.selected_product = selectedProduct;
+          newCollectedData.selected_sku = selectedProduct.sku;
+          newCollectedData.selected_name = selectedProduct.name;
+          newCollectedData.selected_price = selectedProduct.price;
+          console.log(`[ALINE-REPLY] Produto por posição #${productIndex + 1}: ${selectedProduct.name}`);
+        }
       }
     }
 
     // Coletar entrega
-    if (/retirada|retirar|loja|buscar/.test(normalizedMsg)) {
+    if (/retirada|retirar|loja|buscar|shopping|sumaúma|sumáuma/.test(normalizedMsg)) {
       newCollectedData.delivery_method = 'retirada';
-    } else if (/entrega|envio|delivery|enviar|casa/.test(normalizedMsg)) {
+    } else if (/entrega|envio|delivery|enviar|casa|endereço|endereco|receber/.test(normalizedMsg)) {
       newCollectedData.delivery_method = 'entrega';
     }
 
     // Coletar pagamento
-    if (/pix/.test(normalizedMsg)) {
+    if (/\bpix\b/.test(normalizedMsg)) {
       newCollectedData.payment_method = 'pix';
-    } else if (/cartão|cartao|credito|crédito/.test(normalizedMsg)) {
+    } else if (/cartão|cartao|credito|crédito|debito|débito/.test(normalizedMsg)) {
       newCollectedData.payment_method = 'cartao';
     }
 
