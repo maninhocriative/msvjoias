@@ -352,13 +352,59 @@ const AIConfig = () => {
           <TabsContent value="prompt" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="w-5 h-5" />
-                  Prompt Completo (Texto Livre)
-                </CardTitle>
-                <CardDescription>
-                  Escreva o prompt completo da {config.name}. Este texto será enviado como system prompt para a IA.
-                </CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <FileText className="w-5 h-5" />
+                      Prompt Completo (Texto Livre)
+                    </CardTitle>
+                    <CardDescription>
+                      Escreva o prompt completo da {config.name}. Este texto será enviado como system prompt para a IA.
+                    </CardDescription>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="gap-2"
+                    onClick={async () => {
+                      setIsSyncing(true);
+                      try {
+                        const { data, error } = await supabase.functions.invoke('ai-chat', {
+                          body: { action: 'get_default_prompt' },
+                        });
+                        
+                        if (error) throw error;
+                        
+                        if (data?.default_prompt) {
+                          setConfig({ ...config, system_prompt: data.default_prompt });
+                          toast({
+                            title: 'Prompt carregado!',
+                            description: 'Prompt padrão do sistema aplicado. Salve para confirmar.',
+                          });
+                        } else {
+                          throw new Error('Prompt não encontrado');
+                        }
+                      } catch (error) {
+                        console.error('Error loading default prompt:', error);
+                        toast({
+                          title: 'Erro',
+                          description: 'Não foi possível carregar o prompt padrão.',
+                          variant: 'destructive',
+                        });
+                      } finally {
+                        setIsSyncing(false);
+                      }
+                    }}
+                    disabled={isSyncing}
+                  >
+                    {isSyncing ? (
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Wand2 className="w-4 h-4" />
+                    )}
+                    Carregar Prompt Padrão
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <Textarea
