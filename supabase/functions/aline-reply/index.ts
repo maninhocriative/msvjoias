@@ -109,15 +109,21 @@ Faça perguntas ABERTAS e entenda o que o cliente quer.
 
 ### ALIANÇAS DE CASAMENTO = TUNGSTÊNIO
 - Material: Tungstênio (resistente, premium)
-- Cores: Dourada, Prata, Preta, Azul
+- Cores disponíveis: Dourada, Prata, Preta, Azul, Preta com Dourada, Preta com Azul, Preta com Rosé, Prata Rosé, Dourada com Prata
 
 ### ALIANÇAS DE NAMORO/COMPROMISSO = AÇO
 - Material: Aço inoxidável
-- Cores: Dourada, Prata, Preta, Azul
+- Cores disponíveis: Dourada, Prata
 
 ### PINGENTES
 - Opção de fotogravação GRATUITA (1 lado)
 - Cores: Dourada, Prata
+
+### IMPORTANTE - CORES
+Quando o cliente perguntar "tem outras cores?" ou "quero ver mais opções":
+1. Use search_catalog com exclude_shown_colors=true
+2. Se houver produtos, mostre-os
+3. Se NÃO houver mais produtos, informe QUAIS cores você já mostrou e diga que essas são todas as opções disponíveis
 
 ---
 
@@ -291,7 +297,7 @@ function formatProductCaption(
   return lines.join('\n');
 }
 
-// Função para buscar catálogo - COM LÓGICA CASAMENTO=TUNGSTÊNIO, NAMORO=AÇO + EXCLUSÃO DE CORES JÁ MOSTRADAS
+// Função para buscar catálogo - COM VERIFICAÇÃO DE ESTOQUE E CORES DISPONÍVEIS
 async function searchCatalog(
   params: Record<string, any>,
   supabase: any,
@@ -314,12 +320,11 @@ async function searchCatalog(
     }
   }
   
-  // NOVO: Verificar cores a excluir (já mostradas anteriormente)
+  // Cores já mostradas anteriormente
   const coresMostradas = collectedData?.cores_mostradas || [];
-  const excluirCores = params.exclude_colors || coresMostradas;
-  console.log(`[ALINE-REPLY] Cores já mostradas para excluir: ${JSON.stringify(excluirCores)}`);
+  console.log(`[ALINE-REPLY] Cores já mostradas: ${JSON.stringify(coresMostradas)}`);
   
-  // Buscar todos os produtos ativos, depois filtrar em memória
+  // SEMPRE buscar todos os produtos primeiro para ter visão completa do catálogo
   let query = supabase
     .from('products')
     .select(`
@@ -329,7 +334,7 @@ async function searchCatalog(
     .eq('active', true)
     .order('created_at', { ascending: false });
   
-  // Filtrar por cor se especificada (e NÃO estiver pedindo outras cores)
+  // Filtrar por cor se especificada E não estiver pedindo outras cores
   if (params.color && !params.exclude_shown_colors) {
     query = query.ilike('color', `%${params.color}%`);
   }
@@ -346,12 +351,12 @@ async function searchCatalog(
   
   if (error) {
     console.error(`[ALINE-REPLY] Erro ao buscar produtos:`, error);
-    return { success: false, error: error.message, products: [] };
+    return { success: false, error: error.message, products: [], available_colors: [] };
   }
   
   console.log(`[ALINE-REPLY] Query inicial retornou ${allProducts?.length || 0} produtos`);
   
-  // Filtrar por categoria/material em memória (mais flexível)
+  // Filtrar por categoria/material em memória
   let filteredProducts = allProducts || [];
   
   if (params.category === 'aliancas') {
@@ -385,6 +390,14 @@ async function searchCatalog(
     });
   }
   
+  // NOVO: Listar TODAS as cores disponíveis no catálogo filtrado ANTES de excluir
+  const todasCoresDisponiveis = [...new Set(
+    filteredProducts
+      .map((p: any) => (p.color || '').toLowerCase().trim())
+      .filter((c: string) => c.length > 0)
+  )];
+  console.log(`[ALINE-REPLY] TODAS as cores disponíveis na categoria: ${todasCoresDisponiveis.join(', ')}`);
+  
   // Busca de texto no nome/descrição (se fornecido)
   if (params.search) {
     const searchTerm = params.search.toLowerCase()
@@ -396,22 +409,50 @@ async function searchCatalog(
     });
   }
   
-  // NOVO: Excluir cores já mostradas se solicitado
-  if (params.exclude_shown_colors && excluirCores.length > 0) {
-    console.log(`[ALINE-REPLY] Excluindo cores: ${excluirCores.join(', ')}`);
+  // NOVO: Filtrar produtos em estoque se solicitado
+  if (params.only_available) {
     filteredProducts = filteredProducts.filter((p: any) => {
-      const productColor = (p.color || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      // Verificar se a cor do produto NÃO está nas cores já mostradas
-      return !excluirCores.some((corMostrada: string) => {
-        const corNormalizada = corMostrada.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        return productColor.includes(corNormalizada) || corNormalizada.includes(productColor);
-      });
+      const totalStock = (p.product_variants || []).reduce((sum: number, v: any) => sum + (v.stock || 0), 0);
+      return totalStock > 0;
     });
-    console.log(`[ALINE-REPLY] Após excluir cores mostradas: ${filteredProducts.length} produtos`);
+    console.log(`[ALINE-REPLY] Após filtro de estoque: ${filteredProducts.length} produtos`);
   }
   
+  // Cores ainda disponíveis após filtros (antes de excluir mostradas)
+  const coresAindaDisponiveis: string[] = [...new Set(
+    filteredProducts
+      .map((p: any) => (p.color || '').toLowerCase().trim())
+      .filter((c: string) => c.length > 0)
+  )] as string[];
+  
+  // Excluir cores já mostradas se solicitado
+  let produtosParaExibir = filteredProducts;
+  if (params.exclude_shown_colors && coresMostradas.length > 0) {
+    console.log(`[ALINE-REPLY] Excluindo cores já mostradas: ${coresMostradas.join(', ')}`);
+    produtosParaExibir = filteredProducts.filter((p: any) => {
+      const productColor = (p.color || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+      // Verificar se a cor do produto NÃO está nas cores já mostradas
+      return !coresMostradas.some((corMostrada: string) => {
+        const corNormalizada = corMostrada.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+        return productColor === corNormalizada || productColor.includes(corNormalizada) || corNormalizada.includes(productColor);
+      });
+    });
+    console.log(`[ALINE-REPLY] Após excluir cores mostradas: ${produtosParaExibir.length} produtos`);
+  }
+  
+  // Calcular cores não mostradas ainda
+  const coresNaoMostradas: string[] = coresAindaDisponiveis.filter((cor) => {
+    const corNorm = cor.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    return !coresMostradas.some((cm: string) => {
+      const cmNorm = cm.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+      return corNorm === cmNorm || corNorm.includes(cmNorm) || cmNorm.includes(corNorm);
+    });
+  });
+  
+  console.log(`[ALINE-REPLY] Cores NÃO mostradas ainda: ${coresNaoMostradas.join(', ')}`);
+  
   // Limitar resultados
-  const limitedProducts = filteredProducts.slice(0, params.limit || 10);
+  const limitedProducts = produtosParaExibir.slice(0, params.limit || 10);
   
   // Processar produtos e adicionar caption formatado
   const processedProducts = limitedProducts.map((p: any, index: number) => {
@@ -460,7 +501,9 @@ async function searchCatalog(
     products: processedProducts,
     total: processedProducts.length,
     material: materialFilter,
-    colors_shown: coresNestaBusca, // NOVO: retornar cores mostradas para tracking
+    colors_shown: coresNestaBusca,
+    available_colors: todasCoresDisponiveis, // NOVO: todas as cores do catálogo
+    remaining_colors: coresNaoMostradas, // NOVO: cores que ainda não foram mostradas
   };
 }
 
