@@ -124,6 +124,7 @@ Faça perguntas ABERTAS e entenda o que o cliente quer.
 5. **CASAMENTO = TUNGSTÊNIO** (sempre!)
 6. **NAMORO = AÇO** (sempre!)
 7. Use a memória da conversa
+8. **CATÁLOGO** → Após chamar search_catalog, responda SOMENTE com UMA frase curta (ex: "Separei algumas opções para você! 💍"). NUNCA liste os produtos - as imagens/vídeos são enviados automaticamente pelo sistema.
 
 ---
 
@@ -156,8 +157,17 @@ CHAME search_catalog quando tiver:
 - **Alianças de NAMORO:** category="aliancas", search="aco", color=cor
 - **Pingentes:** category="pingente", color=cor
 
-Após buscar, diga naturalmente:
-"Encontrei algumas opções maravilhosas! Veja com calma e me diz qual chamou sua atenção 💍"
+**IMPORTANTE - NÃO DESCREVER OS PRODUTOS:**
+Após buscar, responda APENAS com uma frase introdutória curta e aguarde.
+NÃO liste nomes, preços, códigos ou descrições dos produtos.
+Os produtos serão enviados AUTOMATICAMENTE como cards de mídia pelo sistema.
+
+Exemplo CORRETO:
+"Que momento especial! 💍 Separei algumas opções incríveis para você! Veja com calma e me diz qual chamou sua atenção 😊"
+
+Exemplo ERRADO (NÃO FAZER):
+"1. Aliança tungstênio... R$ 829,00
+ 2. Aliança dourada... R$ 319,00"
 
 ---
 
@@ -963,50 +973,95 @@ serve(async (req) => {
     // ========================================
     if (catalogProducts.length > 0) {
       console.log(`[ALINE-REPLY] Limpando texto - produtos serão enviados como cards pelo Fiqon`);
+      console.log(`[ALINE-REPLY] Texto antes da limpeza: "${cleanMessage.substring(0, 200)}..."`);
       
-      // Padrões para remover lista de produtos do texto
-      // 1. Remover linhas que começam com números seguidos de ponto (1. 2. 3.)
-      // 2. Remover linhas que contêm **Nome do Produto**
-      // 3. Remover linhas com SKU/código
-      // 4. Remover linhas com preço (R$)
-      // 5. Remover linhas com emojis de produto (💰📏🎨✅📦)
-      // 6. Remover linhas de link/URL de imagem
+      // Processar linha por linha para melhor controle
+      const linesToKeep: string[] = [];
+      const lines = cleanMessage.split('\n');
       
-      const productTextPatterns = [
-        /^\d+[\.\)]\s*.*/gm,                     // "1. Aliança..." ou "1) Aliança..."
-        /^\*\*[^*]+\*\*$/gm,                      // "**Nome do Produto**"
-        /^💰\s*R\$\s*[\d.,]+/gm,                  // "💰 R$ 829,00"
-        /^📏\s*Tamanhos?:.*/gm,                   // "📏 Tamanhos: 18, 20, 22"
-        /^🎨\s*Cor:.*/gm,                        // "🎨 Cor: Dourada"
-        /^✅\s*Em estoque/gm,                     // "✅ Em estoque"
-        /^⚠️\s*Sob consulta/gm,                  // "⚠️ Sob consulta"
-        /^📦\s*C[óo]d:.*/gm,                     // "📦 Cód: AC-015"
-        /^Preço:\s*R\$[\d.,]+/gm,                 // "Preço: R$ 829,00"
-        /^\[?Imagem\]?\s*\(https?:\/\/.*\)/gm,    // "[Imagem](https://...)"
-        /^!\[.*\]\(https?:\/\/.*\)/gm,            // "![alt](https://...)"
-        /^https?:\/\/\S+\.(?:png|jpg|jpeg|webp|gif|mp4)/gim, // URLs de mídia
-        /^-\s*\*\*[^*]+\*\*/gm,                   // "- **Produto**"
-      ];
-      
-      let cleanedForCards = cleanMessage;
-      
-      for (const pattern of productTextPatterns) {
-        cleanedForCards = cleanedForCards.replace(pattern, '');
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+        
+        // Pular linhas vazias
+        if (!trimmedLine) continue;
+        
+        // Pular linhas que contêm informações de produto
+        const isProductLine = 
+          // Linhas numeradas (1. 2. 3. ou 1) 2) 3))
+          /^\d+[\.\)]\s+/.test(trimmedLine) ||
+          
+          // Linhas que são nomes de produtos em negrito
+          /^\*\*[^*]+\*\*\s*$/.test(trimmedLine) ||
+          /^\*\*Aliança/.test(trimmedLine) ||
+          /^\*\*aliança/.test(trimmedLine) ||
+          /^\*\*Pingente/.test(trimmedLine) ||
+          
+          // Linhas com preço
+          /💰/.test(trimmedLine) ||
+          /R\$\s*[\d.,]+/.test(trimmedLine) ||
+          /\*\*Preço\*\*/.test(trimmedLine) ||
+          
+          // Linhas com cor
+          /🎨/.test(trimmedLine) ||
+          /\*\*Cor\*\*/.test(trimmedLine) ||
+          /^-?\s*🖤\s*Cor:/i.test(trimmedLine) ||
+          /^-?\s*💛\s*Cor:/i.test(trimmedLine) ||
+          /^-?\s*🤍\s*Cor:/i.test(trimmedLine) ||
+          /^-?\s*💙\s*Cor:/i.test(trimmedLine) ||
+          /Cor:\s*(dourada|prata|preta|azul|rose)/i.test(trimmedLine) ||
+          
+          // Linhas com tamanho
+          /📏/.test(trimmedLine) ||
+          /Tamanhos?:/.test(trimmedLine) ||
+          
+          // Linhas com estoque
+          /✅\s*(Em )?estoque/i.test(trimmedLine) ||
+          /⚠️/.test(trimmedLine) ||
+          /Sob consulta/i.test(trimmedLine) ||
+          /\*Produto indisponível\*/i.test(trimmedLine) ||
+          /\*Este modelo/.test(trimmedLine) ||
+          
+          // Linhas com código/SKU
+          /📦/.test(trimmedLine) ||
+          /C[óo]d:/.test(trimmedLine) ||
+          /SKU:/i.test(trimmedLine) ||
+          
+          // Links e imagens markdown
+          /!\[.*\]\(https?:\/\//.test(trimmedLine) ||
+          /\[Imagem.*\]\(https?:\/\//.test(trimmedLine) ||
+          /\[Veja o vídeo.*\]\(https?:\/\//.test(trimmedLine) ||
+          /\[Vídeo.*\]\(https?:\/\//.test(trimmedLine) ||
+          /🎥/.test(trimmedLine) ||
+          
+          // URLs diretas de mídia
+          /^https?:\/\/\S+\.(png|jpg|jpeg|gif|webp|mp4)/i.test(trimmedLine) ||
+          /drive\.google\.com/.test(trimmedLine) ||
+          
+          // Linhas que começam com - seguido de emoji ou **
+          /^-\s*(💰|📏|🎨|✅|⚠️|📦|🎥|\*\*)/.test(trimmedLine) ||
+          /^-\s*\*Este modelo/.test(trimmedLine) ||
+          /^-\s*\[Vídeo/.test(trimmedLine) ||
+          
+          // Linhas que são apenas um item de lista com hífen
+          /^-\s*$/.test(trimmedLine);
+        
+        if (!isProductLine) {
+          linesToKeep.push(line);
+        }
       }
       
-      // Limpar linhas vazias extras resultantes
-      cleanedForCards = cleanedForCards
-        .split('\n')
-        .filter((line: string) => line.trim() !== '')
-        .join('\n')
-        .trim();
+      let cleanedForCards = linesToKeep.join('\n').trim();
       
-      // Se a limpeza removeu tudo, usar uma frase padrão
-      if (!cleanedForCards || cleanedForCards.length < 10) {
-        cleanedForCards = "Aqui estão algumas opções lindas para você! 💍✨";
+      // Remover ":" sozinho no final (resto de lista)
+      cleanedForCards = cleanedForCards.replace(/:\s*$/, '');
+      
+      // Se a limpeza removeu tudo ou ficou muito curto, usar frase padrão
+      if (!cleanedForCards || cleanedForCards.length < 15) {
+        cleanedForCards = "Aqui estão algumas opções incríveis que separei para você! 💍✨";
       }
       
       console.log(`[ALINE-REPLY] Texto original: ${cleanMessage.length} chars → Limpo: ${cleanedForCards.length} chars`);
+      console.log(`[ALINE-REPLY] Texto após limpeza: "${cleanedForCards}"`);
       cleanMessage = cleanedForCards;
     }
 
