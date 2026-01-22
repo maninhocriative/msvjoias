@@ -771,21 +771,37 @@ const Chat = () => {
                         </span>
                       </div>
                       
-                      <div className="flex items-center gap-1.5 mb-1.5">
+                      <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
                         <LeadStatusBadge status={(conv.lead_status as LeadStatus) || 'novo'} />
-                        {/* Mostrar atendente e vendedor atribuído */}
-                        {alineStatusMap[conv.contact_number]?.status === 'human_takeover' && (
-                          <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded text-[9px] font-medium flex items-center gap-0.5">
-                            <User className="w-2.5 h-2.5" />
-                            {alineStatusMap[conv.contact_number]?.assigned_seller_name?.split(' ')[0] || 'Vendedor'}
-                          </span>
-                        )}
-                        {alineStatusMap[conv.contact_number]?.status === 'active' && (
-                          <span className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded text-[9px] font-medium flex items-center gap-0.5">
-                            <Bot className="w-2.5 h-2.5" />
-                            Aline
-                          </span>
-                        )}
+                        {/* Indicador de atendente */}
+                        {(() => {
+                          const convAlineData = alineStatusMap[conv.contact_number];
+                          const isHumanTakeover = convAlineData?.status === 'human_takeover';
+                          const sellerName = convAlineData?.assigned_seller_name;
+                          
+                          if (isHumanTakeover && sellerName) {
+                            return (
+                              <span className="px-1.5 py-0.5 bg-gradient-to-r from-amber-500/20 to-orange-500/20 text-amber-300 border border-amber-500/30 rounded text-[9px] font-medium flex items-center gap-1">
+                                <UserCheck className="w-2.5 h-2.5" />
+                                {sellerName.split(' ')[0]}
+                              </span>
+                            );
+                          } else if (isHumanTakeover) {
+                            return (
+                              <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded text-[9px] font-medium flex items-center gap-1">
+                                <User className="w-2.5 h-2.5" />
+                                Vendedor
+                              </span>
+                            );
+                          } else {
+                            return (
+                              <span className="px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400/70 border border-emerald-500/20 rounded text-[9px] font-medium flex items-center gap-1">
+                                <Bot className="w-2.5 h-2.5" />
+                                Aline
+                              </span>
+                            );
+                          }
+                        })()}
                       </div>
                       
                       <div className="flex items-center justify-between gap-2">
