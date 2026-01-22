@@ -876,13 +876,31 @@ serve(async (req) => {
             const includeStock = aiConfig?.include_stock ?? true;
             const includePrice = aiConfig?.include_price ?? true;
             
-            catalogProducts = result.products.map((p: any, index: number) => ({
-              ...p,
-              index: index + 1,
-              media_url: sendVideoPriority && p.video_url ? p.video_url : p.image_url,
-              media_type: sendVideoPriority && p.video_url ? 'video' : 'image',
-              caption: formatProductCaption(p, { includePrice, includeSizes, includeStock }),
-            }));
+            catalogProducts = result.products.map((p: any, index: number) => {
+              const hasVideo = sendVideoPriority && p.video_url;
+              const mediaUrl = hasVideo ? p.video_url : p.image_url;
+              const mediaType = hasVideo ? 'video' : 'image';
+              
+              return {
+                ...p,
+                index: index + 1,
+                // Nomes padrão
+                media_url: mediaUrl,
+                media_type: mediaType,
+                has_video: !!p.video_url,
+                caption: formatProductCaption(p, { includePrice, includeSizes, includeStock }),
+                // Nomes alternativos para compatibilidade com Fiqon
+                url_midia: mediaUrl,
+                tipo_midia: mediaType,
+                tem_video: !!p.video_url,
+                url_video: p.video_url || null,
+                url_imagem: p.image_url,
+                posicao: index + 1,
+                tamanhos: p.sizes_formatted || '',
+                nome: p.name,
+                preco: p.price_formatted || `R$ ${(p.price || 0).toFixed(2).replace('.', ',')}`,
+              };
+            });
             
             console.log(`[ALINE-REPLY] Catálogo: ${catalogProducts.length} produtos`);
           }
