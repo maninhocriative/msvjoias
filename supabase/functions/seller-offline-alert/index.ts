@@ -10,6 +10,13 @@ const corsHeaders = {
 const ALERT_NUMBERS = [
   '5592984081434',
   '5592991148946',
+  '5592984078295',
+];
+
+// Vendedoras específicas para monitorar
+const MONITORED_SELLERS = [
+  'Kelryanne Moraes',
+  'Tatiane Napoles',
 ];
 
 serve(async (req) => {
@@ -30,17 +37,28 @@ serve(async (req) => {
       throw new Error('ZAPI credentials not configured');
     }
 
-    // Buscar vendedores com role vendedor/gerente/admin
-    const { data: userRoles, error: rolesError } = await supabase
-      .from('user_roles')
-      .select('user_id, role')
-      .in('role', ['vendedor', 'gerente', 'admin']);
+    // Buscar perfis das vendedoras monitoradas
+    const { data: profiles, error: profilesError } = await supabase
+      .from('profiles')
+      .select('id, full_name')
+      .in('full_name', MONITORED_SELLERS);
 
-    if (rolesError) throw rolesError;
+    if (profilesError) throw profilesError;
 
-    const userIds = userRoles?.map(r => r.user_id) || [];
+    if (!profiles || profiles.length === 0) {
+      console.log('[SELLER-OFFLINE-ALERT] Nenhuma vendedora monitorada encontrada');
+      return new Response(JSON.stringify({
+        success: true,
+        message: 'Nenhuma vendedora monitorada encontrada no sistema',
+        monitored: MONITORED_SELLERS,
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
-    // Buscar presença dos vendedores
+    const userIds = profiles.map(p => p.id);
+
+    // Buscar presença das vendedoras monitoradas
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     
     const { data: onlineSellers, error: presenceError } = await supabase
@@ -52,24 +70,16 @@ serve(async (req) => {
 
     if (presenceError) throw presenceError;
 
-    // Buscar perfis de todos os vendedores para comparar
-    const { data: profiles, error: profilesError } = await supabase
-      .from('profiles')
-      .select('id, full_name')
-      .in('id', userIds);
-
-    if (profilesError) throw profilesError;
-
     const onlineUserIds = new Set(onlineSellers?.map(s => s.user_id) || []);
-    const offlineSellers = profiles?.filter(p => !onlineUserIds.has(p.id)) || [];
+    const offlineSellers = profiles.filter(p => !onlineUserIds.has(p.id));
 
-    console.log(`[SELLER-OFFLINE-ALERT] ${onlineSellers?.length || 0} online, ${offlineSellers.length} offline`);
+    console.log(`[SELLER-OFFLINE-ALERT] Monitoradas: ${profiles.length}, Online: ${onlineSellers?.length || 0}, Offline: ${offlineSellers.length}`);
 
-    // Se todos estão online, não enviar alerta
+    // Se todas estão online, não enviar alerta
     if (offlineSellers.length === 0) {
       return new Response(JSON.stringify({
         success: true,
-        message: 'Todos os vendedores estão online',
+        message: 'Todas as vendedoras monitoradas estão online',
         online: onlineSellers?.length || 0,
         offline: 0,
       }), {
@@ -77,27 +87,19 @@ serve(async (req) => {
       });
     }
 
-    // Montar mensagem de alerta
+    // Montar mensagem de alerta - apenas vendedoras ausentes
     const now = new Date();
     const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const dateStr = now.toLocaleDateString('pt-BR');
 
-    const offlineNames = offlineSellers.map(s => s.full_name || 'Sem nome').join(', ');
-    const onlineNames = onlineSellers?.map(s => s.full_name || 'Sem nome').join(', ') || 'Nenhum';
-
-    const message = `🚨 *ALERTA DE VENDEDORES OFFLINE*
+    const message = `🚨 *ALERTA DE VENDEDORA AUSENTE*
 
 📅 ${dateStr} às ${timeStr}
 
-❌ *Offline (${offlineSellers.length}):*
-${offlineSellers.map(s => `• ${s.full_name || 'Sem nome'}`).join('\n')}
+❌ *Vendedora(s) offline:*
+${offlineSellers.map(s => `• ${s.full_name}`).join('\n')}
 
-✅ *Online (${onlineSellers?.length || 0}):*
-${onlineSellers && onlineSellers.length > 0 
-  ? onlineSellers.map(s => `• ${s.full_name || 'Sem nome'}`).join('\n')
-  : '• Nenhum vendedor online'}
-
-⚠️ Por favor, solicite que os vendedores acessem o sistema!`;
+⚠️ Por favor, solicite que acessem o sistema!`;
 
     // Enviar para cada número de alerta
     const results = [];
