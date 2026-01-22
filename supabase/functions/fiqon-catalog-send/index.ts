@@ -397,9 +397,9 @@ serve(async (req) => {
     }
 
     // ========================================
-    // SALVAR NO CRM (opcional)
+    // SALVAR NO CRM (cada produto individualmente)
     // ========================================
-    if (payload.save_to_crm !== false && products.length > 0) {
+    if (payload.save_to_crm !== false) {
       try {
         const { data: conv } = await supabase
           .from('conversations')
@@ -412,17 +412,41 @@ serve(async (req) => {
         const conversationId = conv?.id;
         
         if (conversationId) {
-          await supabase.from('messages').insert({
-            conversation_id: conversationId,
-            content: `[Catálogo enviado: ${successCount}/${products.length} produtos]`,
-            message_type: 'text',
-            is_from_me: true,
-            status: 'sent',
-          });
+          // Salvar mensagem de texto da Aline
+          if (textMessage && textSent) {
+            await supabase.from('messages').insert({
+              conversation_id: conversationId,
+              content: textMessage,
+              message_type: 'text',
+              is_from_me: true,
+              status: 'sent',
+            });
+          }
 
-          await supabase.from('conversations').update({
-            last_message: `[Catálogo: ${products.length} produtos]`,
-          }).eq('id', conversationId);
+          // Salvar CADA produto como mensagem separada com media_url
+          for (const result of results) {
+            if (result.success && result.mediaUrl) {
+              const product = products[result.index - 1];
+              const productName = cleanValue(product?.name) || cleanValue(product?.nome) || 'Produto';
+              const sku = result.sku;
+              
+              await supabase.from('messages').insert({
+                conversation_id: conversationId,
+                content: `*${productName}*\n📦 Cód: ${sku}`,
+                message_type: result.mediaType === 'video' ? 'video' : 'image',
+                media_url: result.mediaUrl,
+                is_from_me: true,
+                status: 'sent',
+              });
+            }
+          }
+
+          // Atualizar última mensagem da conversa
+          if (products.length > 0) {
+            await supabase.from('conversations').update({
+              last_message: `[Catálogo: ${successCount} produtos enviados]`,
+            }).eq('id', conversationId);
+          }
         }
       } catch (crmError) {
         console.warn('[FIQON-SEND] Erro ao salvar no CRM:', crmError);
