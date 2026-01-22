@@ -14,6 +14,7 @@ import AssignSellerDialog from '@/components/chat/AssignSellerDialog';
 import { useSellerPresence, assignConversationToSeller } from '@/hooks/useSellerPresence';
 import { useUserRole } from '@/hooks/useUserRole';
 import { Badge } from '@/components/ui/badge';
+import { useAssignmentNotification } from '@/hooks/useAssignmentNotification';
 
 interface AlineConversation {
   id: string;
@@ -49,6 +50,9 @@ const Chat = () => {
   const { toast } = useToast();
   const { onlineSellers, getRandomOnlineSeller } = useSellerPresence();
   const { isAdmin, isGerente } = useUserRole();
+  
+  // Hook para notificações de atribuição de conversa
+  useAssignmentNotification();
 
   const updateLeadStatus = async (conversationId: string, status: LeadStatus) => {
     setUpdatingLeadStatus(true);
