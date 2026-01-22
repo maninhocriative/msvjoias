@@ -1254,19 +1254,28 @@ serve(async (req) => {
       // Remover ":" sozinho no final (resto de lista)
       cleanedForCards = cleanedForCards.replace(/:\s*$/, '');
       
-      // Se a limpeza removeu tudo ou ficou muito curto, usar frase padrão COM PERGUNTA
+      // IMPORTANTE: Quando há produtos, NÃO fazer pergunta na mensagem inicial!
+      // O Fiqon vai enviar as fotos DEPOIS dessa mensagem, então a pergunta
+      // ficaria antes das fotos. A pergunta será enviada APÓS as fotos pelo Fiqon.
+      
+      // Remover qualquer pergunta sobre os produtos da mensagem inicial
+      cleanedForCards = cleanedForCards
+        .replace(/\?[^\n]*/g, '') // Remove frases com interrogação
+        .replace(/me (conta|diz|avisa|fala)[^.!?\n]*/gi, '') // Remove "me conta..."
+        .replace(/qual.*aten[çc][aã]o[^.!?\n]*/gi, '') // Remove "qual chamou sua atenção"
+        .replace(/gostou[^.!?\n]*/gi, '') // Remove "gostou de alguma"
+        .replace(/\n{2,}/g, '\n') // Remove linhas vazias extras
+        .trim();
+      
+      // Se a limpeza removeu tudo ou ficou muito curto, usar frase introdutória SIMPLES
       if (!cleanedForCards || cleanedForCards.length < 15) {
-        cleanedForCards = "Aqui estão algumas opções incríveis que separei para você! 💍✨\nGostou de alguma? Me conta qual chamou mais sua atenção! 😊";
+        cleanedForCards = "Separei algumas opções incríveis para você! 💍✨";
       }
       
-      // GARANTIR PERGUNTA DE ENGAJAMENTO se não tiver
-      const hasCatalogQuestion = /\?|me (conta|diz|avisa|fala)|qual.*aten[çc][aã]o|gostou/i.test(cleanedForCards);
-      if (catalogProducts.length > 0 && !hasCatalogQuestion) {
-        cleanedForCards += "\n\nGostou de alguma? Me conta qual chamou mais sua atenção! 😊";
-      }
+      // NÃO adicionar pergunta aqui - ela será enviada APÓS as fotos pelo Fiqon
       
       console.log(`[ALINE-REPLY] Texto original: ${cleanMessage.length} chars → Limpo: ${cleanedForCards.length} chars`);
-      console.log(`[ALINE-REPLY] Texto após limpeza: "${cleanedForCards}"`);
+      console.log(`[ALINE-REPLY] Texto após limpeza (SEM pergunta - fotos vêm depois): "${cleanedForCards}"`);
       cleanMessage = cleanedForCards;
     }
 
@@ -1649,6 +1658,13 @@ serve(async (req) => {
         produtos: catalogProducts,
         total_produtos: catalogProducts.length,
         tem_produtos: catalogProducts.length > 0,
+        
+        // NOVO: Mensagem de engajamento para enviar APÓS as fotos
+        // O Fiqon deve enviar esta mensagem DEPOIS de enviar todos os produtos
+        mensagem_pos_catalogo: catalogProducts.length > 0 
+          ? "Gostou de alguma? Me conta qual chamou mais sua atenção! 😊"
+          : null,
+        enviar_mensagem_pos_catalogo: catalogProducts.length > 0,
         
         // Produto selecionado
         produto_selecionado: newCollectedData.selected_product || null,
