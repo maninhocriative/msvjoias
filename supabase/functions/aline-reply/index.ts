@@ -850,38 +850,82 @@ serve(async (req) => {
     console.log(`[ALINE-REPLY] Node: ${nodeValue}, Action: ${actionValue}`);
 
     // ========================================
-    // PASSO 9: COLETAR DADOS DO USUÁRIO
+    // PASSO 9: COLETAR DADOS DO USUÁRIO (BASEADO NO NODE ATUAL)
     // ========================================
     const newCollectedData: Record<string, unknown> = { ...collectedData };
     const normalizedMsg = message.toLowerCase().trim();
+    const currentNode = conversation.current_node;
 
-    // Coletar categoria
-    if (normalizedMsg === '1' || /aliança|alianca|alianças|aliancas/.test(normalizedMsg)) {
-      newCollectedData.categoria = 'aliancas';
-    } else if (normalizedMsg === '2' || /pingente|pingentes/.test(normalizedMsg)) {
-      newCollectedData.categoria = 'pingente';
+    console.log(`[ALINE-REPLY] Coletando dados - Node atual: ${currentNode}, Msg: "${normalizedMsg}"`);
+
+    // Coletar CATEGORIA (apenas se ainda não tem categoria OU se está na abertura)
+    if (!newCollectedData.categoria || currentNode === 'abertura') {
+      if (/aliança|alianca|alianças|aliancas/i.test(normalizedMsg)) {
+        newCollectedData.categoria = 'aliancas';
+        console.log(`[ALINE-REPLY] Categoria detectada via texto: aliancas`);
+      } else if (/pingente|pingentes/i.test(normalizedMsg)) {
+        newCollectedData.categoria = 'pingente';
+        console.log(`[ALINE-REPLY] Categoria detectada via texto: pingente`);
+      } else if (currentNode === 'abertura' && normalizedMsg === '1') {
+        newCollectedData.categoria = 'aliancas';
+        console.log(`[ALINE-REPLY] Categoria detectada via número (abertura): aliancas`);
+      } else if (currentNode === 'abertura' && normalizedMsg === '2') {
+        newCollectedData.categoria = 'pingente';
+        console.log(`[ALINE-REPLY] Categoria detectada via número (abertura): pingente`);
+      }
     }
 
-    // Coletar finalidade
-    if (/^1$|namoro|compromisso/.test(normalizedMsg)) {
-      newCollectedData.finalidade = 'namoro';
-    } else if (/^2$|casamento/.test(normalizedMsg) && !newCollectedData.finalidade) {
-      newCollectedData.finalidade = 'casamento';
+    // Coletar FINALIDADE (apenas se já tem categoria de alianças e ainda não tem finalidade)
+    if (newCollectedData.categoria === 'aliancas' && !newCollectedData.finalidade) {
+      if (/namoro|compromisso/i.test(normalizedMsg)) {
+        newCollectedData.finalidade = 'namoro';
+        console.log(`[ALINE-REPLY] Finalidade detectada via texto: namoro`);
+      } else if (/casamento/i.test(normalizedMsg)) {
+        newCollectedData.finalidade = 'casamento';
+        console.log(`[ALINE-REPLY] Finalidade detectada via texto: casamento`);
+      } else if ((currentNode === 'escolha_tipo' || currentNode === 'escolha_finalidade') && normalizedMsg === '1') {
+        newCollectedData.finalidade = 'namoro';
+        console.log(`[ALINE-REPLY] Finalidade detectada via número: namoro`);
+      } else if ((currentNode === 'escolha_tipo' || currentNode === 'escolha_finalidade') && normalizedMsg === '2') {
+        newCollectedData.finalidade = 'casamento';
+        console.log(`[ALINE-REPLY] Finalidade detectada via número: casamento`);
+      }
     }
 
-    // Coletar cor
-    const colorMap: Record<string, string> = {
-      '1': 'dourada', 'dourada': 'dourada', 'dourado': 'dourada',
-      '2': 'prata', 'prata': 'prata', 'aço': 'prata', 'aco': 'prata',
-      '3': 'preta', 'preta': 'preta', 'preto': 'preta',
-      '4': 'azul', 'azul': 'azul',
-    };
-    const colorKey = Object.keys(colorMap).find(key => normalizedMsg.includes(key) || normalizedMsg === key);
-    if (colorKey) {
-      newCollectedData.cor = colorMap[colorKey];
+    // Coletar COR (apenas se já passou pelas etapas anteriores e ainda não tem cor)
+    if (!newCollectedData.cor || currentNode === 'escolha_cor') {
+      // Detecção por texto (qualquer momento)
+      if (/dourada|dourado|ouro/i.test(normalizedMsg)) {
+        newCollectedData.cor = 'dourada';
+        console.log(`[ALINE-REPLY] Cor detectada via texto: dourada`);
+      } else if (/prata|aço|aco|prateada/i.test(normalizedMsg)) {
+        newCollectedData.cor = 'prata';
+        console.log(`[ALINE-REPLY] Cor detectada via texto: prata`);
+      } else if (/preta|preto/i.test(normalizedMsg)) {
+        newCollectedData.cor = 'preta';
+        console.log(`[ALINE-REPLY] Cor detectada via texto: preta`);
+      } else if (/azul/i.test(normalizedMsg)) {
+        newCollectedData.cor = 'azul';
+        console.log(`[ALINE-REPLY] Cor detectada via texto: azul`);
+      } else if (currentNode === 'escolha_cor') {
+        // Detecção por número (apenas no node de cor)
+        if (normalizedMsg === '1') {
+          newCollectedData.cor = 'dourada';
+          console.log(`[ALINE-REPLY] Cor detectada via número: dourada`);
+        } else if (normalizedMsg === '2') {
+          newCollectedData.cor = 'prata';
+          console.log(`[ALINE-REPLY] Cor detectada via número: prata`);
+        } else if (normalizedMsg === '3') {
+          newCollectedData.cor = 'preta';
+          console.log(`[ALINE-REPLY] Cor detectada via número: preta`);
+        } else if (normalizedMsg === '4') {
+          newCollectedData.cor = 'azul';
+          console.log(`[ALINE-REPLY] Cor detectada via número: azul`);
+        }
+      }
     }
 
-    // Coletar seleção de produto
+    // Coletar seleção de produto (apenas se catálogo foi enviado)
     const numberMatch = normalizedMsg.match(/^(\d)$|quero\s*o?\s*(\d)|escolho\s*o?\s*(\d)/);
     if (numberMatch && catalogProducts.length > 0) {
       const productIndex = parseInt(numberMatch[1] || numberMatch[2] || numberMatch[3]) - 1;
@@ -908,6 +952,8 @@ serve(async (req) => {
     } else if (/cartão|cartao|credito|crédito/.test(normalizedMsg)) {
       newCollectedData.payment_method = 'cartao';
     }
+
+    console.log(`[ALINE-REPLY] Dados coletados:`, JSON.stringify(newCollectedData));
 
     // Salvar catálogo no collected_data
     if (catalogProducts.length > 0) {
