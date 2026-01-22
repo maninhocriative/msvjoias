@@ -403,11 +403,23 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    const body = await req.json();
+    
+    // Ação especial: retornar o prompt padrão do sistema
+    if (body.action === 'get_default_prompt') {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          default_prompt: ALINE_SYSTEM_PROMPT,
+          prompt_length: ALINE_SYSTEM_PROMPT.length,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     if (!openAIApiKey) {
       throw new Error("OPENAI_API_KEY is not configured");
     }
-
-    const body = await req.json();
     
     // Suporta dois formatos:
     // 1. { messages: [...], contact_name } - formato original
