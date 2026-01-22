@@ -956,31 +956,110 @@ serve(async (req) => {
     const isAliancaSelecionada = jaSelecionouProduto && finalCategoria === 'aliancas';
     const isPingenteSelecionado = jaSelecionouProduto && finalCategoria === 'pingente';
     
-    console.log(`[ALINE-REPLY] Estado seleção: produto=${jaSelecionouProduto}, tamanho=${jaTemTamanho}, entrega=${jaTemEntrega}, pagamento=${jaTemPagamento}, foto=${jaTemFoto}`);
+    console.log(`[ALINE-REPLY] Estado seleção: produto=${jaSelecionouProduto}, sku=${newCollectedData.selected_sku}, tamanho=${jaTemTamanho}, entrega=${jaTemEntrega}, pagamento=${jaTemPagamento}, foto=${jaTemFoto}`);
+    console.log(`[ALINE-REPLY] Categoria: ${finalCategoria}, isAlianca=${isAliancaSelecionada}, isPingente=${isPingenteSelecionado}`);
     
-    // PRIORIDADE: Se cliente selecionou produto, seguir para coleta de dados!
-    if (jaSelecionouProduto && jaTemTamanho && jaTemEntrega && jaTemPagamento) {
-      // FINALIZAR!
+    // ========================================
+    // PRIORIDADE MÁXIMA: FLUXO DE COLETA APÓS SELEÇÃO
+    // Se cliente selecionou produto, seguir para coleta de dados!
+    // ========================================
+    
+    // ALIANÇAS: Produto → Tamanhos → Entrega → Pagamento → Finalizar
+    // PINGENTES: Produto → Foto → Entrega → Pagamento → Finalizar
+    
+    if (isAliancaSelecionada && jaTemTamanho && jaTemEntrega && jaTemPagamento) {
+      // ALIANÇA COM TODOS OS DADOS → FINALIZAR!
       nextStep = 'finalizado';
-      nextStepInstruction = `✅ PERFEITO! Temos TODOS os dados! Produto: ${newCollectedData.selected_name}. Diga: "Perfeito! Já tenho tudo anotado! 🎉 Vou passar para nosso vendedor finalizar o pedido. Ele te chama em instantes!" [SYSTEM_ACTION action:"register_lead_crm"]`;
-    } else if (jaSelecionouProduto && jaTemTamanho && jaTemEntrega && !jaTemPagamento) {
+      nextStepInstruction = `✅ TODOS OS DADOS COLETADOS PARA ALIANÇAS!
+      - Produto: ${newCollectedData.selected_name} (${newCollectedData.selected_sku})
+      - Tamanhos: ${newCollectedData.tamanho_1}${newCollectedData.tamanho_2 ? ' e ' + newCollectedData.tamanho_2 : ''}
+      - Entrega: ${newCollectedData.delivery_method}
+      - Pagamento: ${newCollectedData.payment_method}
+      
+      AGORA ENCERRE O ATENDIMENTO! Diga EXATAMENTE:
+      "Perfeito! Já tenho tudo anotado! 🎉
+      Vou passar para nosso vendedor finalizar o pedido. Ele te chama em instantes!
+      Foi um prazer te atender! 💍"
+      
+      [SYSTEM_ACTION action:"register_lead_crm"]`;
+      
+    } else if (isPingenteSelecionado && jaTemFoto && jaTemEntrega && jaTemPagamento) {
+      // PINGENTE COM TODOS OS DADOS → FINALIZAR!
+      nextStep = 'finalizado';
+      nextStepInstruction = `✅ TODOS OS DADOS COLETADOS PARA PINGENTE!
+      - Produto: ${newCollectedData.selected_name} (${newCollectedData.selected_sku})
+      - Foto: Recebida
+      - Entrega: ${newCollectedData.delivery_method}
+      - Pagamento: ${newCollectedData.payment_method}
+      
+      AGORA ENCERRE O ATENDIMENTO! Diga EXATAMENTE:
+      "Perfeito! Já tenho tudo anotado! 🎉
+      Vou passar para nosso vendedor finalizar o pedido. Ele te chama em instantes!
+      Foi um prazer te atender! 💍"
+      
+      [SYSTEM_ACTION action:"register_lead_crm"]`;
+      
+    } else if (isAliancaSelecionada && jaTemTamanho && jaTemEntrega && !jaTemPagamento) {
+      // ALIANÇA: Falta apenas PAGAMENTO
       nextStep = 'coleta_pagamento';
-      nextStepInstruction = `O cliente escolheu ${newCollectedData.selected_name}. Pergunte a forma de PAGAMENTO: "E vai ser Pix ou cartão?"`;
-    } else if (jaSelecionouProduto && jaTemTamanho && !jaTemEntrega) {
+      nextStepInstruction = `🎯 PASSO ATUAL: COLETAR PAGAMENTO
+      Produto: ${newCollectedData.selected_name}
+      Tamanhos: ${newCollectedData.tamanho_1}${newCollectedData.tamanho_2 ? ' e ' + newCollectedData.tamanho_2 : ''}
+      Entrega: ${newCollectedData.delivery_method}
+      
+      Pergunte APENAS: "E vai ser Pix ou cartão?" NÃO faça outras perguntas.`;
+      
+    } else if (isPingenteSelecionado && jaTemFoto && jaTemEntrega && !jaTemPagamento) {
+      // PINGENTE: Falta apenas PAGAMENTO
+      nextStep = 'coleta_pagamento';
+      nextStepInstruction = `🎯 PASSO ATUAL: COLETAR PAGAMENTO
+      Produto: ${newCollectedData.selected_name}
+      Foto: Recebida
+      Entrega: ${newCollectedData.delivery_method}
+      
+      Pergunte APENAS: "E vai ser Pix ou cartão?" NÃO faça outras perguntas.`;
+      
+    } else if (isAliancaSelecionada && jaTemTamanho && !jaTemEntrega) {
+      // ALIANÇA: Falta ENTREGA
       nextStep = 'coleta_entrega';
-      nextStepInstruction = `O cliente escolheu ${newCollectedData.selected_name} com tamanho(s). Pergunte a forma de ENTREGA: "Vocês preferem retirar na nossa loja no Shopping Sumaúma ou receber em casa?"`;
-    } else if (isAliancaSelecionada && !jaTemTamanho) {
-      // ALIANÇA selecionada → Perguntar tamanhos
-      nextStep = 'coleta_tamanhos';
-      nextStepInstruction = `✅ O cliente ESCOLHEU a aliança "${newCollectedData.selected_name}" (${newCollectedData.selected_sku})! Agora pergunte os TAMANHOS de forma natural: "Excelente escolha! 💍 Me diz, qual o tamanho de cada um de vocês? Geralmente fica entre 14 e 28."`;
-    } else if (isPingenteSelecionado && !jaTemFoto) {
-      // PINGENTE selecionado → Perguntar sobre fotogravação
-      nextStep = 'coleta_foto';
-      nextStepInstruction = `✅ O cliente ESCOLHEU o pingente "${newCollectedData.selected_name}" (${newCollectedData.selected_sku})! Este pingente permite FOTOGRAVAÇÃO personalizada. Pergunte: "Excelente escolha! 💫 Esse pingente permite fotogravação personalizada - a gravação de um lado é GRATUITA! Me manda a foto que você quer gravar! 📸"`;
+      nextStepInstruction = `🎯 PASSO ATUAL: COLETAR ENTREGA
+      Produto: ${newCollectedData.selected_name}
+      Tamanhos: ${newCollectedData.tamanho_1}${newCollectedData.tamanho_2 ? ' e ' + newCollectedData.tamanho_2 : ''}
+      
+      Pergunte: "Vocês preferem retirar na nossa loja no Shopping Sumaúma ou receber em casa?" NÃO faça outras perguntas.`;
+      
     } else if (isPingenteSelecionado && jaTemFoto && !jaTemEntrega) {
-      // Pingente com foto → Perguntar entrega
+      // PINGENTE com foto: Falta ENTREGA
       nextStep = 'coleta_entrega';
-      nextStepInstruction = `O cliente escolheu ${newCollectedData.selected_name} com fotogravação. Pergunte a forma de ENTREGA: "Perfeito! Vocês preferem retirar na nossa loja no Shopping Sumaúma ou receber em casa?"`;
+      nextStepInstruction = `🎯 PASSO ATUAL: COLETAR ENTREGA
+      Produto: ${newCollectedData.selected_name}
+      Foto: Recebida
+      
+      Pergunte: "Você prefere retirar na nossa loja no Shopping Sumaúma ou receber em casa?" NÃO faça outras perguntas.`;
+      
+    } else if (isAliancaSelecionada && !jaTemTamanho) {
+      // ALIANÇA: Falta TAMANHOS
+      nextStep = 'coleta_tamanhos';
+      nextStepInstruction = `🎯 PASSO ATUAL: COLETAR TAMANHOS DE ALIANÇA
+      ✅ O cliente ESCOLHEU a aliança "${newCollectedData.selected_name}" (${newCollectedData.selected_sku})!
+      
+      VOCÊ DEVE perguntar os TAMANHOS agora! Diga:
+      "Excelente escolha! 💍 Me conta os tamanhos de vocês? Geralmente fica entre 14 e 28."
+      
+      NÃO pergunte sobre cor, categoria ou qualquer outra coisa. Apenas tamanhos!`;
+      
+    } else if (isPingenteSelecionado && !jaTemFoto) {
+      // PINGENTE: Falta FOTO
+      nextStep = 'coleta_foto';
+      nextStepInstruction = `🎯 PASSO ATUAL: COLETAR FOTO PARA GRAVAÇÃO
+      ✅ O cliente ESCOLHEU o pingente "${newCollectedData.selected_name}" (${newCollectedData.selected_sku})!
+      
+      Este pingente permite FOTOGRAVAÇÃO personalizada (1 lado GRÁTIS)!
+      
+      Diga: "Excelente escolha! 💫 Esse pingente permite fotogravação personalizada - a gravação de um lado é GRATUITA! Me manda a foto que você quer gravar! 📸"
+      
+      NÃO pergunte sobre cor ou categoria. Apenas peça a foto!`;
+      
     } else if (wantsOtherColors && coresMostradas.length > 0) {
       // Cliente pediu outras cores
       nextStep = 'catalogo_outras_cores';
@@ -1631,26 +1710,30 @@ serve(async (req) => {
     
     const podeFinalizarAtendimento = temProduto && temTamanho && temEntrega && temPagamento && temFoto;
 
+    // Calcular node baseado nos dados coletados
     let nodeValue: string;
+    
     if (podeFinalizarAtendimento) {
       nodeValue = 'finalizado';
-    } else if (finalProduto && finalTamanho && finalEntrega) {
+    } else if (temProduto && temTamanho && temEntrega && !temPagamento) {
       nodeValue = 'coleta_pagamento';
-    } else if (finalProduto && finalTamanho) {
+    } else if (temProduto && temTamanho && !temEntrega) {
       nodeValue = 'coleta_entrega';
-    } else if (finalProduto && isAliancaCategoria) {
+    } else if (temProduto && isAliancaCategoria && !temTamanho) {
       nodeValue = 'coleta_tamanhos';
-    } else if (finalProduto && isPingenteCategoria) {
+    } else if (temProduto && isPingenteCategoria && !temFoto) {
       nodeValue = 'coleta_foto';
+    } else if (temProduto && isPingenteCategoria && temFoto && !temEntrega) {
+      nodeValue = 'coleta_entrega';
     } else if (catalogProducts.length > 0) {
       nodeValue = 'catalogo';
     } else {
-      nodeValue = nextStep; // Usar o próximo passo calculado no PASSO 4
+      nodeValue = nextStep; // Usar o próximo passo calculado anteriormente
     }
 
     console.log(`[ALINE-REPLY] Node final: ${nodeValue}`);
-    console.log(`[ALINE-REPLY] Dados: produto=${temProduto}, tamanho=${temTamanho}, entrega=${temEntrega}, pagamento=${temPagamento}, foto=${temFoto}`);
-    console.log(`[ALINE-REPLY] Pode finalizar? ${podeFinalizarAtendimento}`);
+    console.log(`[ALINE-REPLY] Verificação: produto=${temProduto} (${finalProduto}), tamanho=${temTamanho} (${finalTamanho}), entrega=${temEntrega} (${finalEntrega}), pagamento=${temPagamento} (${finalPagamento}), foto=${temFoto} (${finalFoto})`);
+    console.log(`[ALINE-REPLY] Pode finalizar atendimento? ${podeFinalizarAtendimento}`);
 
     // ========================================
     // PASSO 11: PROTEÇÃO ANTI-LOOP
@@ -1732,7 +1815,7 @@ serve(async (req) => {
     }
 
     // ========================================
-    // PASSO 11: ENCAMINHAR AO VENDEDOR (SOMENTE SE TIVER TODOS OS DADOS)
+    // PASSO 13: ENCAMINHAR AO VENDEDOR (SOMENTE SE TIVER TODOS OS DADOS)
     // ========================================
     // Só encaminha se: produto + tamanho (alianças) + entrega + pagamento + foto (pingentes)
     if (podeFinalizarAtendimento && (actionValue === 'register_lead_crm' || nodeValue === 'finalizado')) {
@@ -1742,7 +1825,10 @@ serve(async (req) => {
       // Atualizar status da conversa para human_takeover
       await supabase
         .from('aline_conversations')
-        .update({ status: 'human_takeover' })
+        .update({ 
+          status: 'human_takeover',
+          assignment_reason: 'Pedido completo - todos os dados coletados'
+        })
         .eq('id', conversation.id);
 
       // Atualizar lead_status no CRM
@@ -1752,9 +1838,48 @@ serve(async (req) => {
           .update({ lead_status: 'comprador' })
           .eq('id', crmConversationId);
       }
+      
+      // Chamar aline-takeover para encaminhar automaticamente para um vendedor online
+      try {
+        console.log(`[ALINE-REPLY] Chamando aline-takeover para atribuir vendedor...`);
+        const takeoverResponse = await fetch(`${supabaseUrl}/functions/v1/aline-takeover`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({
+            phone,
+            action: 'auto_forward',
+            reason: `Pedido completo: ${newCollectedData.selected_name || finalProduto} - ${finalEntrega} - ${finalPagamento}`,
+            send_intro: true,
+          }),
+        });
+        
+        if (takeoverResponse.ok) {
+          const takeoverResult = await takeoverResponse.json();
+          console.log(`[ALINE-REPLY] Takeover result:`, takeoverResult);
+        } else {
+          console.error(`[ALINE-REPLY] Erro ao chamar aline-takeover:`, await takeoverResponse.text());
+        }
+      } catch (takeoverError) {
+        console.error(`[ALINE-REPLY] Erro ao encaminhar para vendedor:`, takeoverError);
+      }
     } else if (nodeValue === 'finalizado' && !podeFinalizarAtendimento) {
       // Corrigir node se ainda faltam dados
       console.log(`[ALINE-REPLY] ⚠️ Tentou finalizar mas faltam dados. Corrigindo node...`);
+      // Recalcular o node correto
+      if (!temProduto) {
+        nodeValue = 'catalogo';
+      } else if (!temTamanho && isAliancaCategoria) {
+        nodeValue = 'coleta_tamanhos';
+      } else if (!temFoto && isPingenteCategoria) {
+        nodeValue = 'coleta_foto';
+      } else if (!temEntrega) {
+        nodeValue = 'coleta_entrega';
+      } else if (!temPagamento) {
+        nodeValue = 'coleta_pagamento';
+      }
     }
 
     // ========================================
