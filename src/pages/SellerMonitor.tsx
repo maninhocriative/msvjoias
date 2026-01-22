@@ -56,6 +56,7 @@ const SellerMonitor = () => {
   const [sellers, setSellers] = useState<SellerPresence[]>([]);
   const [stats, setStats] = useState<SellerStats[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [sendingAlert, setSendingAlert] = useState(false);
   const [period, setPeriod] = useState<'today' | 'week' | 'month'>('week');
   const [lastAlertSent, setLastAlertSent] = useState<Date | null>(null);
@@ -309,11 +310,22 @@ const SellerMonitor = () => {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => { fetchSellers(); fetchStats(); }}
+              onClick={async () => {
+                setRefreshing(true);
+                try {
+                  await Promise.all([fetchSellers(), fetchStats()]);
+                  toast.success('Dados atualizados!');
+                } catch (error) {
+                  toast.error('Erro ao atualizar dados');
+                } finally {
+                  setRefreshing(false);
+                }
+              }}
+              disabled={refreshing}
               className="border-white/10 text-white hover:bg-white/10"
             >
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Atualizar
+              <RefreshCw className={cn("w-4 h-4 mr-2", refreshing && "animate-spin")} />
+              {refreshing ? 'Atualizando...' : 'Atualizar'}
             </Button>
             
             <Button
