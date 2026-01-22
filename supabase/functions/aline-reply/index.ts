@@ -19,12 +19,14 @@ const tools = [
       - Cliente escolheu categoria (alianças ou pingentes) E cor
       - Cliente pediu para "ver", "mostrar", "quero ver" produtos
       - Cliente mencionou tipo específico (casamento, namoro, compromisso)
+      - Cliente perguntou "outras cores?", "tem outras?", "mais opções?" → use exclude_shown_colors=true
       
       PARÂMETROS IMPORTANTES:
       - category: "aliancas" para todas as alianças, "pingente" para pingentes
       - color: cor normalizada (dourada, aco, prata, preta, azul)
       - search: use para buscar por nome ou descrição específica
-      - only_available: sempre use true para mostrar apenas produtos em estoque`,
+      - only_available: sempre use true para mostrar apenas produtos em estoque
+      - exclude_shown_colors: use TRUE quando cliente pedir "outras cores" ou "mais opções" para excluir cores já mostradas`,
       parameters: {
         type: "object",
         properties: {
@@ -40,7 +42,7 @@ const tools = [
           color: {
             type: "string",
             enum: ["dourada", "aco", "preta", "azul", "prata", "rose"],
-            description: "Cor do produto. Use quando o cliente especificar preferência de cor."
+            description: "Cor do produto. Use quando o cliente especificar preferência de cor. NÃO use junto com exclude_shown_colors."
           },
           min_price: {
             type: "number",
@@ -53,6 +55,10 @@ const tools = [
           only_available: {
             type: "boolean",
             description: "Mostrar apenas produtos com estoque. Use sempre true."
+          },
+          exclude_shown_colors: {
+            type: "boolean",
+            description: "Use TRUE quando cliente pedir 'outras cores', 'tem outras?', 'mais opções?'. Isso exclui automaticamente as cores já mostradas na conversa."
           }
         },
         required: ["category"]
@@ -285,7 +291,7 @@ function formatProductCaption(
   return lines.join('\n');
 }
 
-// Função para buscar catálogo - COM LÓGICA CASAMENTO=TUNGSTÊNIO, NAMORO=AÇO
+// Função para buscar catálogo - COM LÓGICA CASAMENTO=TUNGSTÊNIO, NAMORO=AÇO + EXCLUSÃO DE CORES JÁ MOSTRADAS
 async function searchCatalog(
   params: Record<string, any>,
   supabase: any,
@@ -308,8 +314,12 @@ async function searchCatalog(
     }
   }
   
+  // NOVO: Verificar cores a excluir (já mostradas anteriormente)
+  const coresMostradas = collectedData?.cores_mostradas || [];
+  const excluirCores = params.exclude_colors || coresMostradas;
+  console.log(`[ALINE-REPLY] Cores já mostradas para excluir: ${JSON.stringify(excluirCores)}`);
+  
   // Buscar todos os produtos ativos, depois filtrar em memória
-  // Isso resolve problemas com .or() complexos no Supabase client
   let query = supabase
     .from('products')
     .select(`
@@ -319,8 +329,8 @@ async function searchCatalog(
     .eq('active', true)
     .order('created_at', { ascending: false });
   
-  // Filtrar por cor se especificada
-  if (params.color) {
+  // Filtrar por cor se especificada (e NÃO estiver pedindo outras cores)
+  if (params.color && !params.exclude_shown_colors) {
     query = query.ilike('color', `%${params.color}%`);
   }
   
@@ -346,21 +356,18 @@ async function searchCatalog(
   
   if (params.category === 'aliancas') {
     if (materialFilter === 'tungstenio') {
-      // Para CASAMENTO: buscar produtos cuja categoria contém "tungstenio" (com ou sem acento)
       filteredProducts = filteredProducts.filter((p: any) => {
         const cat = (p.category || '').toLowerCase();
         return cat.includes('tungstenio') || cat.includes('tungstênio') || cat.includes('tungsten');
       });
       console.log(`[ALINE-REPLY] Filtro TUNGSTÊNIO: ${filteredProducts.length} produtos`);
     } else if (materialFilter === 'aco') {
-      // Para NAMORO: buscar alianças de aço (categoria exata "aliancas" sem tungstênio)
       filteredProducts = filteredProducts.filter((p: any) => {
         const cat = (p.category || '').toLowerCase();
         return cat === 'aliancas' && !cat.includes('tungstenio') && !cat.includes('tungstênio');
       });
       console.log(`[ALINE-REPLY] Filtro AÇO: ${filteredProducts.length} produtos`);
     } else {
-      // Sem finalidade definida: todas as alianças (ambos os tipos)
       filteredProducts = filteredProducts.filter((p: any) => {
         const cat = (p.category || '').toLowerCase();
         return cat.includes('alianca') || cat.includes('aliança') || cat.includes('tungstenio') || cat.includes('tungstênio');
@@ -381,12 +388,26 @@ async function searchCatalog(
   // Busca de texto no nome/descrição (se fornecido)
   if (params.search) {
     const searchTerm = params.search.toLowerCase()
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, ""); // Remove acentos
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     filteredProducts = filteredProducts.filter((p: any) => {
       const name = (p.name || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       const desc = (p.description || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       return name.includes(searchTerm) || desc.includes(searchTerm);
     });
+  }
+  
+  // NOVO: Excluir cores já mostradas se solicitado
+  if (params.exclude_shown_colors && excluirCores.length > 0) {
+    console.log(`[ALINE-REPLY] Excluindo cores: ${excluirCores.join(', ')}`);
+    filteredProducts = filteredProducts.filter((p: any) => {
+      const productColor = (p.color || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      // Verificar se a cor do produto NÃO está nas cores já mostradas
+      return !excluirCores.some((corMostrada: string) => {
+        const corNormalizada = corMostrada.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        return productColor.includes(corNormalizada) || corNormalizada.includes(productColor);
+      });
+    });
+    console.log(`[ALINE-REPLY] Após excluir cores mostradas: ${filteredProducts.length} produtos`);
   }
   
   // Limitar resultados
@@ -399,7 +420,6 @@ async function searchCatalog(
       .map((v: any) => v.size);
     const totalStock = (p.product_variants || []).reduce((sum: number, v: any) => sum + (v.stock || 0), 0);
     
-    // Gerar caption formatado para WhatsApp
     const caption = formatProductCaption(p, { 
       includePrice: true, 
       includeSizes: sizes.length > 0, 
@@ -425,17 +445,22 @@ async function searchCatalog(
       sizes_formatted: sizes.join(', '),
       stock: totalStock,
       in_stock: totalStock > 0,
-      caption, // Caption formatado para Fiqon enviar
+      caption,
     };
   });
   
+  // Extrair cores mostradas nesta busca para tracking
+  const coresNestaBusca = [...new Set(processedProducts.map((p: any) => p.color?.toLowerCase()).filter(Boolean))];
+  
   console.log(`[ALINE-REPLY] Encontrados ${processedProducts.length} produtos (finalidade: ${finalidade || 'N/A'}, material: ${materialFilter || 'todos'})`);
+  console.log(`[ALINE-REPLY] Cores nesta busca: ${coresNestaBusca.join(', ')}`);
   
   return {
     success: true,
     products: processedProducts,
     total: processedProducts.length,
     material: materialFilter,
+    colors_shown: coresNestaBusca, // NOVO: retornar cores mostradas para tracking
   };
 }
 
@@ -720,17 +745,31 @@ serve(async (req) => {
         console.log(`[ALINE-REPLY] [NLU] Cor: rose`);
       }
     }
+    
+    // NOVO: Detectar pedido de "outras cores" ou "mais opções"
+    const wantsOtherColors = /outra(s)?\s*cor(es)?|tem\s*outras?|mais\s*op[çc][õo]es|outras\s*op[çc][õo]es|diferentes|ver\s*outras/i.test(normalizedMsg);
+    if (wantsOtherColors) {
+      newCollectedData.quer_outras_cores = true;
+      console.log(`[ALINE-REPLY] [NLU] Cliente quer ver OUTRAS cores (excluir já mostradas)`);
+    }
 
     // Calcular próximo passo ANTES de chamar a IA
     const finalCategoria = newCollectedData.categoria as string | undefined;
     const finalFinalidade = newCollectedData.finalidade as string | undefined;
     const finalCor = newCollectedData.cor as string | undefined;
+    const coresMostradas = Array.isArray(newCollectedData.cores_mostradas) 
+      ? newCollectedData.cores_mostradas as string[] 
+      : [];
     
     let nextStep: string;
     let nextStepInstruction: string;
     
-    // Instruções NATURAIS (sem menus numerados)
-    if (finalCor) {
+    // NOVA LÓGICA: Se quer outras cores, instrução especial
+    if (wantsOtherColors && coresMostradas.length > 0) {
+      nextStep = 'catalogo_outras_cores';
+      const coresExcluir = coresMostradas.join(', ');
+      nextStepInstruction = `O cliente PEDIU OUTRAS CORES! Cores já mostradas: ${coresExcluir}. Use search_catalog com exclude_shown_colors=true para mostrar produtos de OUTRAS cores. NÃO mostre novamente ${coresExcluir}. Diga algo como "Claro! Deixa eu te mostrar outras opções de cores! 💍"`;
+    } else if (finalCor) {
       nextStep = 'catalogo';
       nextStepInstruction = `O cliente já informou tudo: categoria "${finalCategoria}", finalidade "${finalFinalidade || 'N/A'}", cor "${finalCor}". Use search_catalog AGORA para mostrar os produtos. Diga algo como "Vou te mostrar algumas opções incríveis!"`;
     } else if (finalCategoria === 'aliancas' && finalFinalidade) {
@@ -762,6 +801,8 @@ serve(async (req) => {
     if (newCollectedData.categoria) contextInfo += `\n- Categoria: ${newCollectedData.categoria}`;
     if (newCollectedData.finalidade) contextInfo += `\n- Finalidade: ${newCollectedData.finalidade}`;
     if (newCollectedData.cor) contextInfo += `\n- Cor: ${newCollectedData.cor}`;
+    if (coresMostradas.length > 0) contextInfo += `\n- CORES JÁ MOSTRADAS (não repetir): ${coresMostradas.join(', ')}`;
+    if (newCollectedData.quer_outras_cores) contextInfo += `\n- ⚠️ CLIENTE QUER VER OUTRAS CORES - use exclude_shown_colors=true`;
     if (newCollectedData.selected_sku) contextInfo += `\n- Produto selecionado: ${newCollectedData.selected_sku} (${newCollectedData.selected_name})`;
     if (newCollectedData.tamanho_1) {
       contextInfo += `\n- Tamanho(s): ${newCollectedData.tamanho_1}`;
@@ -804,10 +845,12 @@ serve(async (req) => {
     const hasCategoryKeyword = /aliança|alianca|pingente|anel|aneis/i.test(lastUserMessage);
     const hasColorKeyword = /dourada|dourado|prata|aço|aco|preta|preto|azul/i.test(lastUserMessage);
     const hasActionKeyword = /quero|ver|mostrar|mostra|catálogo|catalogo|opções|opcoes/i.test(lastUserMessage);
+    const hasOtherColorsKeyword = /outra(s)?\s*cor(es)?|tem\s*outras?|mais\s*op[çc][õo]es|outras\s*op[çc][õo]es/i.test(lastUserMessage);
     
     const shouldForceCatalog = (hasCategoryKeyword && hasColorKeyword) || 
                                (hasActionKeyword && hasCategoryKeyword) ||
-                               (collectedData.cor && hasColorKeyword);
+                               (collectedData.cor && hasColorKeyword) ||
+                               hasOtherColorsKeyword; // NOVO: forçar catálogo se pedir outras cores
     
     let toolChoice: any = "auto";
     if (shouldForceCatalog) {
@@ -870,6 +913,16 @@ serve(async (req) => {
           result = await searchCatalog(functionArgs, supabase, newCollectedData);
           
           if (result.success && result.products) {
+            // NOVO: Salvar cores mostradas para futuras exclusões
+            if (result.colors_shown && result.colors_shown.length > 0) {
+              const coresAnteriores: string[] = Array.isArray(newCollectedData.cores_mostradas) 
+                ? newCollectedData.cores_mostradas as string[]
+                : [];
+              const novasCores = [...coresAnteriores, ...result.colors_shown];
+              newCollectedData.cores_mostradas = [...new Set(novasCores)];
+              console.log(`[ALINE-REPLY] Cores acumuladas: ${(newCollectedData.cores_mostradas as string[]).join(', ')}`);
+            }
+            
             // Buscar configurações de exibição
             const sendVideoPriority = aiConfig?.send_video_priority ?? true;
             const includeSizes = aiConfig?.include_sizes ?? true;
@@ -903,6 +956,11 @@ serve(async (req) => {
             });
             
             console.log(`[ALINE-REPLY] Catálogo: ${catalogProducts.length} produtos`);
+            
+            // Resetar flag de "quer outras cores" após buscar
+            if (newCollectedData.quer_outras_cores) {
+              delete newCollectedData.quer_outras_cores;
+            }
           }
         } else if (functionName === "get_product_details") {
           result = await getProductDetails(functionArgs.sku, supabase);
