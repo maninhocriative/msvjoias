@@ -8,6 +8,9 @@ interface SellerPresence {
   full_name: string | null;
   is_online: boolean;
   last_seen_at: string;
+  is_chatting?: boolean;
+  current_chat_phone?: string | null;
+  chat_started_at?: string | null;
 }
 
 export const useSellerPresence = () => {
@@ -62,12 +65,59 @@ export const useSellerPresence = () => {
     try {
       const { error } = await supabase
         .from('seller_presence')
-        .update({ is_online: false })
+        .update({ 
+          is_online: false,
+          is_chatting: false,
+          current_chat_phone: null,
+          chat_started_at: null
+        })
         .eq('user_id', user.id);
 
       if (error) throw error;
     } catch (error) {
       console.error('Error setting offline status:', error);
+    }
+  }, [user]);
+
+  // Marcar que está atendendo uma conversa
+  const startChatting = useCallback(async (phone: string) => {
+    if (!user) return;
+    
+    try {
+      const { error } = await supabase
+        .from('seller_presence')
+        .update({ 
+          is_chatting: true,
+          current_chat_phone: phone,
+          chat_started_at: new Date().toISOString(),
+          last_seen_at: new Date().toISOString()
+        })
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error setting chatting status:', error);
+    }
+  }, [user]);
+
+  // Marcar que parou de atender
+  const stopChatting = useCallback(async () => {
+    if (!user) return;
+    
+    try {
+      const { error } = await supabase
+        .from('seller_presence')
+        .update({ 
+          is_chatting: false,
+          current_chat_phone: null,
+          chat_started_at: null,
+          last_seen_at: new Date().toISOString()
+        })
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error stopping chatting status:', error);
     }
   }, [user]);
 
@@ -129,6 +179,8 @@ export const useSellerPresence = () => {
     loading,
     setOnline,
     setOffline,
+    startChatting,
+    stopChatting,
     getRandomOnlineSeller,
     refetch: fetchOnlineSellers,
   };

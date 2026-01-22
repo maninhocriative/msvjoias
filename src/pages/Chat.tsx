@@ -58,7 +58,7 @@ const Chat = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
-  const { onlineSellers, getRandomOnlineSeller } = useSellerPresence();
+  const { onlineSellers, getRandomOnlineSeller, startChatting, stopChatting } = useSellerPresence();
   const { isAdmin, isGerente } = useUserRole();
   
   // Hook para notificações de atribuição de conversa
@@ -193,6 +193,9 @@ const Chat = () => {
       setIsContactTyping(false);
       fetchAlineStatus(selectedConversation.contact_number);
       
+      // Marcar que está atendendo esta conversa
+      startChatting(selectedConversation.contact_number);
+      
       const channel = supabase
         .channel(`messages-${selectedConversation.id}`)
         .on(
@@ -219,9 +222,14 @@ const Chat = () => {
 
       return () => {
         supabase.removeChannel(channel);
+        // Marcar que parou de atender quando sair da conversa
+        stopChatting();
       };
+    } else {
+      // Se não tem conversa selecionada, garantir que não está marcado como atendendo
+      stopChatting();
     }
-  }, [selectedConversation?.id]);
+  }, [selectedConversation?.id, startChatting, stopChatting]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

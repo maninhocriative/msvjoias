@@ -887,27 +887,36 @@ export type Database = {
       }
       seller_presence: {
         Row: {
+          chat_started_at: string | null
           created_at: string | null
+          current_chat_phone: string | null
           full_name: string | null
           id: string
+          is_chatting: boolean | null
           is_online: boolean | null
           last_seen_at: string | null
           updated_at: string | null
           user_id: string
         }
         Insert: {
+          chat_started_at?: string | null
           created_at?: string | null
+          current_chat_phone?: string | null
           full_name?: string | null
           id?: string
+          is_chatting?: boolean | null
           is_online?: boolean | null
           last_seen_at?: string | null
           updated_at?: string | null
           user_id: string
         }
         Update: {
+          chat_started_at?: string | null
           created_at?: string | null
+          current_chat_phone?: string | null
           full_name?: string | null
           id?: string
+          is_chatting?: boolean | null
           is_online?: boolean | null
           last_seen_at?: string | null
           updated_at?: string | null
