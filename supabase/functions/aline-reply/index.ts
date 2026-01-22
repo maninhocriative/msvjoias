@@ -682,11 +682,24 @@ serve(async (req) => {
     if (newCollectedData.categoria) contextInfo += `\n- Categoria: ${newCollectedData.categoria}`;
     if (newCollectedData.finalidade) contextInfo += `\n- Finalidade: ${newCollectedData.finalidade}`;
     if (newCollectedData.cor) contextInfo += `\n- Cor: ${newCollectedData.cor}`;
-    if (newCollectedData.selected_sku) contextInfo += `\n- Produto selecionado: ${newCollectedData.selected_sku}`;
+    if (newCollectedData.selected_sku) contextInfo += `\n- Produto selecionado: ${newCollectedData.selected_sku} (${newCollectedData.selected_name})`;
+    if (newCollectedData.tamanho_1) {
+      contextInfo += `\n- Tamanho(s): ${newCollectedData.tamanho_1}`;
+      if (newCollectedData.tamanho_2) contextInfo += ` e ${newCollectedData.tamanho_2}`;
+    }
+    if (newCollectedData.quantidade_tipo) contextInfo += `\n- Tipo: ${newCollectedData.quantidade_tipo}`;
     if (newCollectedData.delivery_method) contextInfo += `\n- Entrega: ${newCollectedData.delivery_method}`;
     if (newCollectedData.payment_method) contextInfo += `\n- Pagamento: ${newCollectedData.payment_method}`;
     
-    contextInfo += `\n\n=== ${nextStepInstruction} ===`;
+    // Instrução especial se produto selecionado mas sem tamanhos
+    let additionalInstruction = '';
+    if (newCollectedData.selected_sku && newCollectedData.categoria === 'aliancas' && !newCollectedData.tamanho_1) {
+      additionalInstruction = `\n\nO cliente escolheu o produto ${newCollectedData.selected_name}. Pergunte os TAMANHOS de cada pessoa de forma natural: "Excelente escolha! Me diz, qual o tamanho de cada um?" Dica: mencione que geralmente fica entre 14 e 28.`;
+    } else if (newCollectedData.selected_sku && newCollectedData.tamanho_1 && !newCollectedData.delivery_method) {
+      additionalInstruction = `\n\nJá temos produto e tamanhos! Pergunte sobre entrega e pagamento: "Perfeito! Vocês preferem retirar na loja (Shopping Sumaúma) ou receber em casa? E vai ser Pix ou cartão?"`;
+    }
+    
+    contextInfo += `\n\n=== ${nextStepInstruction}${additionalInstruction} ===`;
 
     // Buscar configuração da IA do banco de dados
     const { data: aiConfig } = await supabase
@@ -979,6 +992,79 @@ serve(async (req) => {
         }
       }
     }
+    
+    // ========================================
+    // PASSO 9.5: DETECTAR TAMANHOS DE ALIANÇA
+    // ========================================
+    // Padrões para detectar tamanhos (números entre 10-30 geralmente)
+    const sizePatterns = [
+      /tamanho[s]?\s*:?\s*(\d{1,2})\s*(?:e|,|\/|\s)\s*(\d{1,2})/i,  // "tamanho 18 e 22", "tamanhos: 18, 22"
+      /tamanho[s]?\s*:?\s*(\d{1,2})/i,  // "tamanho 18" (só um)
+      /tam\.?\s*:?\s*(\d{1,2})\s*(?:e|,|\/|\s)\s*(\d{1,2})/i,  // "tam 18 e 22"
+      /tam\.?\s*:?\s*(\d{1,2})/i,  // "tam 18"
+      /número[s]?\s*:?\s*(\d{1,2})\s*(?:e|,|\/|\s)\s*(\d{1,2})/i,  // "número 18 e 22"
+      /n[úu]mero[s]?\s*(\d{1,2})/i,  // "número 18"
+      /aro\s*:?\s*(\d{1,2})\s*(?:e|,|\/|\s)\s*(\d{1,2})/i,  // "aro 18 e 22"
+      /aro\s*:?\s*(\d{1,2})/i,  // "aro 18"
+      /medida[s]?\s*:?\s*(\d{1,2})\s*(?:e|,|\/|\s)\s*(\d{1,2})/i,  // "medida 18 e 22"
+      /(\d{1,2})\s*(?:e|,|\/)\s*(\d{1,2})\s*(?:tamanho|tam|aro)?/i,  // "18 e 22", "18/22"
+    ];
+    
+    // Padrões para contexto de "dele/dela"
+    const contextPatterns = [
+      /(?:o?\s*(?:dele|meu|homem|noivo|marido))\s*(?:é|:)?\s*(\d{1,2}).*?(?:o?\s*(?:dela|minha|mulher|noiva|esposa))\s*(?:é|:)?\s*(\d{1,2})/i,
+      /(?:o?\s*(?:dela|minha|mulher|noiva|esposa))\s*(?:é|:)?\s*(\d{1,2}).*?(?:o?\s*(?:dele|meu|homem|noivo|marido))\s*(?:é|:)?\s*(\d{1,2})/i,
+      /(?:eu|meu)\s*(?:uso|é|:)?\s*(\d{1,2}).*?(?:ele|ela|parceiro|namorad[oa])\s*(?:usa|é|:)?\s*(\d{1,2})/i,
+    ];
+    
+    let size1: string | null = null;
+    let size2: string | null = null;
+    
+    // Tentar padrões de contexto primeiro (mais específicos)
+    for (const pattern of contextPatterns) {
+      const match = message.match(pattern);
+      if (match) {
+        size1 = match[1];
+        size2 = match[2];
+        console.log(`[ALINE-REPLY] [NLU] Tamanhos por contexto: ${size1} e ${size2}`);
+        break;
+      }
+    }
+    
+    // Se não encontrou, tentar padrões gerais
+    if (!size1) {
+      for (const pattern of sizePatterns) {
+        const match = message.match(pattern);
+        if (match) {
+          size1 = match[1];
+          size2 = match[2] || null;
+          console.log(`[ALINE-REPLY] [NLU] Tamanhos detectados: ${size1}${size2 ? ' e ' + size2 : ''}`);
+          break;
+        }
+      }
+    }
+    
+    // Validar tamanhos (geralmente entre 10-30 para alianças)
+    const isValidSize = (s: string | null): boolean => {
+      if (!s) return false;
+      const num = parseInt(s);
+      return num >= 8 && num <= 35;
+    };
+    
+    if (isValidSize(size1)) {
+      newCollectedData.tamanho_1 = size1;
+      if (isValidSize(size2)) {
+        newCollectedData.tamanho_2 = size2;
+      }
+      console.log(`[ALINE-REPLY] Tamanhos salvos: ${size1}${size2 ? ' e ' + size2 : ''}`);
+    }
+    
+    // Detectar se é PAR ou UNIDADE
+    if (/\bpar\b|dois|duas|casal|ambos/i.test(normalizedMsg)) {
+      newCollectedData.quantidade_tipo = 'par';
+    } else if (/\bunidade\b|uma|só uma|apenas uma|avulsa/i.test(normalizedMsg)) {
+      newCollectedData.quantidade_tipo = 'unidade';
+    }
 
     // Coletar entrega
     if (/retirada|retirar|loja|buscar|shopping|sumaúma|sumáuma/.test(normalizedMsg)) {
@@ -1158,8 +1244,21 @@ serve(async (req) => {
           finalidade: newCollectedData.finalidade,
           cor: newCollectedData.cor,
           produto_sku: newCollectedData.selected_sku,
+          produto_nome: newCollectedData.selected_name,
+          produto_preco: newCollectedData.selected_price,
+          tamanho_1: newCollectedData.tamanho_1 || null,
+          tamanho_2: newCollectedData.tamanho_2 || null,
+          quantidade_tipo: newCollectedData.quantidade_tipo || null,
           entrega: newCollectedData.delivery_method,
           pagamento: newCollectedData.payment_method,
+        },
+        
+        // Tamanhos detectados (para Fiqon)
+        tamanhos: {
+          tamanho_1: newCollectedData.tamanho_1 || null,
+          tamanho_2: newCollectedData.tamanho_2 || null,
+          tem_tamanhos: !!(newCollectedData.tamanho_1 || newCollectedData.tamanho_2),
+          quantidade_tipo: newCollectedData.quantidade_tipo || 'par',
         },
         
         // Debug
