@@ -706,13 +706,28 @@ serve(async (req) => {
     // NLU AVANÇADO: EXTRAIR TODOS OS DADOS DE UMA VEZ
     // ========================================
     
-    // CRÍTICO: Detectar categoria - MEDALHA = PINGENTE!
-    // Padrões ampliados para detectar pingentes/medalhas
-    const isPerguntandoPingente = /pingente|pingentes|colar|colares|medalha|medalhas|medalhinha|medalhão|personalizada|personalizado|com\s*foto|fotogravação|tem\s*pingente|vc\s*tem\s*pingente|vocês\s*tem\s*pingente|você\s*tem\s*pingente|tem\s*medalha|vc\s*tem\s*medalha|vocês\s*tem\s*medalha/i.test(normalizedMsg);
-    const isPerguntandoAlianca = /aliança|alianca|alianças|aliancas|tem\s*aliança|vc\s*tem\s*aliança|vocês\s*tem\s*aliança/i.test(normalizedMsg);
+    // CRÍTICO: Detectar TODAS as categorias com padrões ampliados
+    
+    // PINGENTES/MEDALHAS - Padrões ampliados
+    const isPerguntandoPingente = /pingente|pingentes|colar|colares|medalha|medalhas|medalhinha|medalhão|personalizada|personalizado|com\s*foto|fotogravação|foto.*grav|grav.*foto|tem\s*(pingente|medalha)|vc\s*tem\s*(pingente|medalha)|vocês\s*tem\s*(pingente|medalha)|você\s*tem\s*(pingente|medalha)|quero\s*(ver|uma?|medalha|pingente)|mostra.*medalha|mostra.*pingente/i.test(normalizedMsg);
+    
+    // ALIANÇAS - Padrões ampliados incluindo casamento/namoro explícito
+    const isPerguntandoAlianca = /aliança|alianca|alianças|aliancas|tem\s*aliança|vc\s*tem\s*aliança|vocês\s*tem\s*aliança|aliança.*casamento|aliança.*namoro|casamento|compromisso|noivado|casar/i.test(normalizedMsg);
+    
+    // ALIANÇAS CASAMENTO - Padrões específicos
+    const isPerguntandoAliancaCasamento = /aliança.*casamento|casamento|casar|tungst[eê]nio|matrimônio|matrimonio|noivo|noiva|bodas|lua de mel/i.test(normalizedMsg);
+    
+    // ALIANÇAS NAMORO - Padrões específicos
+    const isPerguntandoAliancaNamoro = /aliança.*namoro|aliança.*compromisso|namoro|compromisso|namorar|namorado|namorada|noivar|noivado|aco|aço.*aliança/i.test(normalizedMsg);
+    
+    // ANÉIS - Padrões
+    const isPerguntandoAnel = /anel|anéis|aneis|solitário|solitario/i.test(normalizedMsg);
     
     // NOVO: Detectar intenção direta de ver/comprar (forçar catálogo)
-    const querVerProdutos = /quero\s*(ver|saber|conhecer)|mostra|mostrar|ver\s*(as?|os?)?|tem\s*(algum|alguma)?|quer[io]a\s*(saber|ver)|valores?/i.test(normalizedMsg);
+    const querVerProdutos = /quero\s*(ver|saber|conhecer|comprar)|mostra|mostrar|ver\s*(as?|os?)?|tem\s*(algum|alguma)?|quer[io]a\s*(saber|ver|comprar)|valores?|quanto\s*custa|preço|preco/i.test(normalizedMsg);
+    
+    // NOVO: Detectar cor na mensagem (para ir direto ao catálogo)
+    const temCorNaMensagem = /dourada|dourado|ouro|gold|prata|prateada|aço|aco|preta|preto|azul|rose|rosé/i.test(normalizedMsg);
     
     // Se cliente perguntou sobre pingentes/medalhas, definir categoria imediatamente
     if (isPerguntandoPingente && newCollectedData.categoria !== 'pingente') {
@@ -733,6 +748,28 @@ serve(async (req) => {
         newCollectedData.quer_ver_catalogo = true;
         console.log(`[ALINE-REPLY] [NLU] Mencionou "personalizada/foto" → FORÇAR CATÁLOGO!`);
       }
+      // NOVO: Se quer ver, forçar catálogo IMEDIATO
+      if (querVerProdutos) {
+        newCollectedData.quer_ver_catalogo = true;
+        console.log(`[ALINE-REPLY] [NLU] Quer ver pingentes → FORÇAR CATÁLOGO!`);
+      }
+    } else if (isPerguntandoAnel && newCollectedData.categoria !== 'aneis') {
+      console.log(`[ALINE-REPLY] [NLU] DETECTADO: ANÉIS (categoria anterior: ${newCollectedData.categoria || 'nenhuma'})`);
+      newCollectedData.categoria = 'aneis';
+      delete newCollectedData.finalidade;
+      delete newCollectedData.cor;
+      delete newCollectedData.cores_mostradas;
+      delete newCollectedData.selected_sku;
+      delete newCollectedData.selected_name;
+      delete newCollectedData.selected_product;
+      delete newCollectedData.selected_price;
+      delete newCollectedData.last_catalog;
+      newCollectedData.mudou_categoria = true;
+      // Se quer ver, forçar catálogo IMEDIATO
+      if (querVerProdutos || temCorNaMensagem) {
+        newCollectedData.quer_ver_catalogo = true;
+        console.log(`[ALINE-REPLY] [NLU] Quer ver anéis → FORÇAR CATÁLOGO!`);
+      }
     } else if (isPerguntandoAlianca && newCollectedData.categoria !== 'aliancas') {
       console.log(`[ALINE-REPLY] [NLU] DETECTADO: ALIANÇAS (categoria anterior: ${newCollectedData.categoria || 'nenhuma'})`);
       newCollectedData.categoria = 'aliancas';
@@ -744,6 +781,25 @@ serve(async (req) => {
       delete newCollectedData.selected_price;
       delete newCollectedData.last_catalog;
       newCollectedData.mudou_categoria = true;
+      
+      // Detectar finalidade JÁ NA PRIMEIRA MENSAGEM
+      if (isPerguntandoAliancaCasamento) {
+        newCollectedData.finalidade = 'casamento';
+        console.log(`[ALINE-REPLY] [NLU] Finalidade detectada: CASAMENTO (tungstênio)`);
+        // Se também tem cor, forçar catálogo
+        if (temCorNaMensagem || querVerProdutos) {
+          newCollectedData.quer_ver_catalogo = true;
+          console.log(`[ALINE-REPLY] [NLU] Casamento + cor/ver → FORÇAR CATÁLOGO!`);
+        }
+      } else if (isPerguntandoAliancaNamoro) {
+        newCollectedData.finalidade = 'namoro';
+        console.log(`[ALINE-REPLY] [NLU] Finalidade detectada: NAMORO (aço)`);
+        // Se também tem cor, forçar catálogo
+        if (temCorNaMensagem || querVerProdutos) {
+          newCollectedData.quer_ver_catalogo = true;
+          console.log(`[ALINE-REPLY] [NLU] Namoro + cor/ver → FORÇAR CATÁLOGO!`);
+        }
+      }
     }
     
     // NOVO: Se já tem categoria pingente e quer ver, forçar catálogo
@@ -753,49 +809,89 @@ serve(async (req) => {
       console.log(`[ALINE-REPLY] [NLU] Quer ver pingentes → FORÇAR CATÁLOGO!`);
     }
     
+    // NOVO: Se perguntou sobre anéis e quer ver
+    if (isPerguntandoAnel && querVerProdutos) {
+      newCollectedData.categoria = 'aneis';
+      newCollectedData.quer_ver_catalogo = true;
+      console.log(`[ALINE-REPLY] [NLU] Quer ver anéis → FORÇAR CATÁLOGO!`);
+    }
+    
     // Detectar CATEGORIA em qualquer mensagem (se ainda não tem)
     if (!newCollectedData.categoria) {
-      if (isPerguntandoAlianca && !isPerguntandoPingente) {
+      if (isPerguntandoAlianca && !isPerguntandoPingente && !isPerguntandoAnel) {
         newCollectedData.categoria = 'aliancas';
         console.log(`[ALINE-REPLY] [NLU] Categoria: aliancas`);
+        // Detectar finalidade também
+        if (isPerguntandoAliancaCasamento) {
+          newCollectedData.finalidade = 'casamento';
+        } else if (isPerguntandoAliancaNamoro) {
+          newCollectedData.finalidade = 'namoro';
+        }
       } else if (isPerguntandoPingente) {
         newCollectedData.categoria = 'pingente';
         console.log(`[ALINE-REPLY] [NLU] Categoria: pingente`);
+      } else if (isPerguntandoAnel) {
+        newCollectedData.categoria = 'aneis';
+        console.log(`[ALINE-REPLY] [NLU] Categoria: aneis`);
       }
     }
     
-    // Detectar FINALIDADE para alianças (pode vir na mesma mensagem)
+    // Detectar FINALIDADE para alianças (pode vir na mesma mensagem ou depois)
     const detectedCategoria = newCollectedData.categoria;
     if (detectedCategoria === 'aliancas' && !hasFinalidade) {
       if (/namoro|compromisso|namorada|namorado|noivado|noivar/i.test(normalizedMsg)) {
         newCollectedData.finalidade = 'namoro';
         console.log(`[ALINE-REPLY] [NLU] Finalidade: namoro`);
-      } else if (/casamento|casar|noiva|noivo|matrimonio|matrimônio/i.test(normalizedMsg)) {
+        // Se já tem cor, forçar catálogo
+        if (temCorNaMensagem || querVerProdutos) {
+          newCollectedData.quer_ver_catalogo = true;
+        }
+      } else if (/casamento|casar|noiva|noivo|matrimonio|matrimônio|tungst[eê]nio/i.test(normalizedMsg)) {
         newCollectedData.finalidade = 'casamento';
         console.log(`[ALINE-REPLY] [NLU] Finalidade: casamento`);
+        // Se já tem cor, forçar catálogo
+        if (temCorNaMensagem || querVerProdutos) {
+          newCollectedData.quer_ver_catalogo = true;
+        }
       }
     }
     
     // Detectar COR em qualquer mensagem
     const detectedFinalidade = newCollectedData.finalidade;
-    const canDetectColor = detectedCategoria === 'pingente' || (detectedCategoria === 'aliancas' && detectedFinalidade);
+    const canDetectColor = detectedCategoria === 'pingente' || detectedCategoria === 'aneis' || (detectedCategoria === 'aliancas' && detectedFinalidade);
     
     if (!hasCor && (canDetectColor || !detectedCategoria)) {
       if (/dourada|dourado|ouro|gold|amarela|amarelo/i.test(normalizedMsg)) {
         newCollectedData.cor = 'dourada';
         console.log(`[ALINE-REPLY] [NLU] Cor: dourada`);
+        // Se já tem categoria, forçar catálogo
+        if (detectedCategoria) {
+          newCollectedData.quer_ver_catalogo = true;
+        }
       } else if (/prata|prateada|prateado|aço|aco|silver|cinza/i.test(normalizedMsg)) {
         newCollectedData.cor = 'prata';
         console.log(`[ALINE-REPLY] [NLU] Cor: prata`);
+        if (detectedCategoria) {
+          newCollectedData.quer_ver_catalogo = true;
+        }
       } else if (/preta|preto|black|escura|escuro/i.test(normalizedMsg)) {
         newCollectedData.cor = 'preta';
         console.log(`[ALINE-REPLY] [NLU] Cor: preta`);
+        if (detectedCategoria) {
+          newCollectedData.quer_ver_catalogo = true;
+        }
       } else if (/azul|blue/i.test(normalizedMsg)) {
         newCollectedData.cor = 'azul';
         console.log(`[ALINE-REPLY] [NLU] Cor: azul`);
+        if (detectedCategoria) {
+          newCollectedData.quer_ver_catalogo = true;
+        }
       } else if (/rose|rosé|rosa/i.test(normalizedMsg)) {
         newCollectedData.cor = 'rose';
         console.log(`[ALINE-REPLY] [NLU] Cor: rose`);
+        if (detectedCategoria) {
+          newCollectedData.quer_ver_catalogo = true;
+        }
       }
     }
     
@@ -807,7 +903,7 @@ serve(async (req) => {
     }
     
     // Detectar resposta afirmativa ("sim", "quero", "pode ser") como intenção de ver catálogo
-    const isAfirmativo = /^(sim|quero|pode|claro|ok|s|bora|show|isso|exato|perfeito|legal|boa|blz|beleza|pode ser|manda|mostra|ver)$/i.test(normalizedMsg.trim());
+    const isAfirmativo = /^(sim|quero|pode|claro|ok|s|bora|show|isso|exato|perfeito|legal|boa|blz|beleza|pode ser|manda|mostra|ver|quero ver|quero saber)$/i.test(normalizedMsg.trim());
     if (isAfirmativo && detectedCategoria && !newCollectedData.selected_sku) {
       console.log(`[ALINE-REPLY] [NLU] Resposta AFIRMATIVA detectada para ${detectedCategoria} - forçar catálogo`);
       newCollectedData.quer_ver_catalogo = true;
@@ -1047,15 +1143,31 @@ serve(async (req) => {
     } else if (mudouCategoria && finalCategoria === 'pingente') {
       nextStep = 'catalogo_pingentes';
       nextStepInstruction = `IMPORTANTE: O cliente PERGUNTOU sobre PINGENTES/MEDALHAS! Use search_catalog com category="pingente" IMEDIATAMENTE para mostrar os pingentes disponíveis. NÃO pergunte cor antes! Diga algo como "Temos sim! Deixa eu te mostrar nossas opções! 💫"`;
+    } else if (mudouCategoria && finalCategoria === 'aneis') {
+      // NOVO: ANÉIS - ir direto ao catálogo
+      nextStep = 'catalogo_aneis';
+      nextStepInstruction = `IMPORTANTE: O cliente PERGUNTOU sobre ANÉIS! Use search_catalog com category="aneis" IMEDIATAMENTE para mostrar os anéis disponíveis. Diga algo como "Temos sim! Deixa eu te mostrar nossas opções de anéis! 💍"`;
+    } else if (mudouCategoria && finalCategoria === 'aliancas' && finalFinalidade) {
+      // NOVO: Se já tem finalidade na primeira mensagem, ir direto para cor ou catálogo
+      nextStep = 'escolha_cor';
+      nextStepInstruction = `O cliente quer alianças de ${finalFinalidade}! Pergunte a cor de forma NATURAL: "Que lindo! E qual cor vocês preferem? Temos em dourada, prata (aço), preta e azul." NUNCA use números.`;
     } else if (mudouCategoria && finalCategoria === 'aliancas') {
       nextStep = 'escolha_finalidade';
       nextStepInstruction = `O cliente perguntou sobre ALIANÇAS. Pergunte a finalidade: "Que legal! Vocês estão celebrando namoro/compromisso ou casamento?"`;
     } else if (querVerCatalogo && finalCategoria === 'pingente') {
       nextStep = 'catalogo_pingentes';
       nextStepInstruction = `O cliente quer ver pingentes/medalhas! Use search_catalog com category="pingente" AGORA! NÃO faça mais perguntas! Diga algo como "Vou te mostrar! 💫"`;
+    } else if (querVerCatalogo && finalCategoria === 'aneis') {
+      // NOVO: ANÉIS
+      nextStep = 'catalogo_aneis';
+      nextStepInstruction = `O cliente quer ver anéis! Use search_catalog com category="aneis" AGORA! NÃO faça mais perguntas! Diga algo como "Vou te mostrar nossos anéis! 💍"`;
     } else if (querVerCatalogo && finalCategoria === 'aliancas' && finalFinalidade) {
       nextStep = 'catalogo';
       nextStepInstruction = `O cliente quer ver o catálogo! Use search_catalog AGORA com category="aliancas". Diga algo como "Perfeito! Separei algumas opções para você! 💍"`;
+    } else if (querVerCatalogo && finalCategoria === 'aliancas') {
+      // NOVO: Se quer ver aliança mas não tem finalidade ainda
+      nextStep = 'escolha_finalidade';
+      nextStepInstruction = `O cliente quer ver alianças! Pergunte a finalidade: "Que lindo! Vocês estão celebrando namoro/compromisso ou casamento?"`;
     } else if (finalCategoria === 'pingente' && finalCor && !jaSelecionouProduto) {
       nextStep = 'catalogo_pingentes';
       nextStepInstruction = `IMPORTANTE: O cliente quer PINGENTES na cor ${finalCor}! Use search_catalog com category="pingente" e color="${finalCor}" AGORA. NÃO mostre alianças! Diga algo como "Separei algumas opções incríveis de pingentes para você! 💫"`;
@@ -1063,9 +1175,21 @@ serve(async (req) => {
       // NOVO: Se é pingente e ainda não selecionou, IR DIRETO PARA CATÁLOGO!
       nextStep = 'catalogo_pingentes';
       nextStepInstruction = `O cliente quer PINGENTES/MEDALHAS! Use search_catalog com category="pingente" AGORA! NÃO pergunte cor antes de mostrar! Diga: "Temos sim! Vou te mostrar nossas opções de pingentes! 💫"`;
+    } else if (finalCategoria === 'aneis' && finalCor && !jaSelecionouProduto) {
+      // NOVO: ANÉIS com cor
+      nextStep = 'catalogo_aneis';
+      nextStepInstruction = `O cliente quer ANÉIS na cor ${finalCor}! Use search_catalog com category="aneis" e color="${finalCor}" AGORA. Diga algo como "Separei algumas opções incríveis de anéis para você! 💍"`;
+    } else if (finalCategoria === 'aneis' && !jaSelecionouProduto) {
+      // NOVO: ANÉIS sem cor - ir direto ao catálogo
+      nextStep = 'catalogo_aneis';
+      nextStepInstruction = `O cliente quer ANÉIS! Use search_catalog com category="aneis" AGORA! NÃO pergunte cor antes de mostrar! Diga: "Temos sim! Vou te mostrar nossas opções de anéis! 💍"`;
     } else if (finalCategoria === 'aliancas' && finalCor && finalFinalidade && !jaSelecionouProduto) {
       nextStep = 'catalogo';
       nextStepInstruction = `O cliente quer alianças de ${finalFinalidade} na cor ${finalCor}. Use search_catalog com category="aliancas" e color="${finalCor}". Diga algo como "Vou te mostrar algumas opções incríveis!"`;
+    } else if (finalCategoria === 'aliancas' && finalFinalidade && !jaSelecionouProduto) {
+      // NOVO: Alianças com finalidade mas sem cor - perguntar cor ou mostrar catálogo
+      nextStep = 'escolha_cor';
+      nextStepInstruction = `O cliente quer alianças de ${finalFinalidade}! Pergunte a cor de forma NATURAL: "E qual cor vocês preferem? Temos em dourada, prata (aço), preta e azul." NUNCA use números.`;
     } else if (finalCategoria === 'aliancas' && finalFinalidade) {
       nextStep = 'escolha_cor';
       nextStepInstruction = `O cliente escolheu alianças de ${finalFinalidade}. Pergunte a cor de forma NATURAL: "E qual cor vocês preferem? Temos em dourada, prata (aço), preta e azul." NUNCA use números.`;
@@ -1074,7 +1198,7 @@ serve(async (req) => {
       nextStepInstruction = `O cliente escolheu alianças. Pergunte a finalidade de forma NATURAL: "Que lindo! Vocês estão celebrando namoro/compromisso ou casamento?" NUNCA use números.`;
     } else {
       nextStep = 'abertura';
-      nextStepInstruction = `Apresente-se de forma acolhedora e pergunte NATURALMENTE o que o cliente procura: "O que você está procurando hoje? Alianças ou pingentes?" NUNCA use menus numerados.`;
+      nextStepInstruction = `Apresente-se de forma acolhedora e pergunte NATURALMENTE o que o cliente procura: "O que você está procurando hoje? Alianças, anéis ou pingentes?" NUNCA use menus numerados.`;
     }
 
     console.log(`[ALINE-REPLY] Próximo passo: ${nextStep}`);
@@ -1144,36 +1268,51 @@ serve(async (req) => {
     // ========================================
     const lastUserMessage = message.toLowerCase();
     
-    // AMPLIADO: Incluir "medalha" como sinônimo de pingente
-    const hasCategoryKeyword = /aliança|alianca|pingente|medalha|medalhinha|medalhas|anel|aneis/i.test(lastUserMessage);
-    const hasColorKeyword = /dourada|dourado|prata|aço|aco|preta|preto|azul/i.test(lastUserMessage);
-    const hasActionKeyword = /quero|ver|mostrar|mostra|catálogo|catalogo|opções|opcoes|valores?|saber/i.test(lastUserMessage);
+    // AMPLIADO: Incluir todos os produtos
+    const hasCategoryKeyword = /aliança|alianca|pingente|medalha|medalhinha|medalhas|anel|aneis|anéis/i.test(lastUserMessage);
+    const hasColorKeyword = /dourada|dourado|prata|aço|aco|preta|preto|azul|rose|rosé/i.test(lastUserMessage);
+    const hasActionKeyword = /quero|ver|mostrar|mostra|catálogo|catalogo|opções|opcoes|valores?|saber|comprar|quanto|preço|preco/i.test(lastUserMessage);
     const hasOtherColorsKeyword = /outra(s)?\s*cor(es)?|tem\s*outras?|mais\s*op[çc][õo]es|outras\s*op[çc][õo]es/i.test(lastUserMessage);
-    const isAffirmativeResponse = /^(sim|quero|pode|claro|ok|s|bora|show|isso|exato|perfeito|legal|boa|blz|beleza|pode ser|manda|mostra|opções)$/i.test(lastUserMessage.trim());
+    const isAffirmativeResponse = /^(sim|quero|pode|claro|ok|s|bora|show|isso|exato|perfeito|legal|boa|blz|beleza|pode ser|manda|mostra|opções|quero ver)$/i.test(lastUserMessage.trim());
     
     // AMPLIADO: "medalha" = "pingente"
     const hasPingenteOrMedalha = /pingente|pingentes|medalha|medalhas|medalhinha|personalizada|com\s*foto|fotogravação/i.test(lastUserMessage);
     
+    // NOVO: Detectar anéis
+    const hasAnel = /anel|anéis|aneis|solitário|solitario/i.test(lastUserMessage);
+    
+    // NOVO: Detectar alianças com finalidade na mesma mensagem
+    const hasAliancaCasamento = /aliança.*casamento|casamento.*aliança|alianca.*casamento|casamento|casar|tungst[eê]nio/i.test(lastUserMessage);
+    const hasAliancaNamoro = /aliança.*namoro|namoro.*aliança|alianca.*namoro|compromisso|namoro|noivado/i.test(lastUserMessage);
+    
     // NOVA LÓGICA: Forçar catálogo em mais cenários
     const isPingenteFlow = newCollectedData.categoria === 'pingente';
-    const hasColorForPingente = isPingenteFlow && hasColorKeyword;
+    const isAneisFlow = newCollectedData.categoria === 'aneis';
+    const isAliancasFlow = newCollectedData.categoria === 'aliancas';
+    const hasColorForCategory = (isPingenteFlow || isAneisFlow || isAliancasFlow) && hasColorKeyword;
     
     const shouldForceCatalog = 
       (hasCategoryKeyword && hasColorKeyword) || 
       (hasActionKeyword && hasCategoryKeyword) ||
       (collectedData.cor && hasColorKeyword) ||
       hasOtherColorsKeyword ||
-      hasPingenteOrMedalha || // AMPLIADO: forçar se perguntar sobre pingentes OU medalhas
-      hasColorForPingente ||
+      hasPingenteOrMedalha || // Forçar se perguntar sobre pingentes OU medalhas
+      hasAnel || // NOVO: Forçar se perguntar sobre anéis
+      hasColorForCategory ||
       (isAffirmativeResponse && detectedCategoria && !newCollectedData.selected_sku) ||
       mudouCategoria ||
       querVerCatalogo ||
-      (isPingenteFlow && !newCollectedData.selected_sku) || // NOVO: Se é pingente e não selecionou, mostrar catálogo
-      (isPingenteFlow && finalCor);
+      (isPingenteFlow && !newCollectedData.selected_sku) || // Se é pingente e não selecionou, mostrar catálogo
+      (isPingenteFlow && finalCor) ||
+      (isAneisFlow && !newCollectedData.selected_sku) || // NOVO: Se é anéis e não selecionou
+      (isAneisFlow && finalCor) ||
+      (isAliancasFlow && finalFinalidade && finalCor && !newCollectedData.selected_sku) || // Alianças com finalidade e cor
+      (hasAliancaCasamento && hasColorKeyword) || // NOVO: Aliança casamento + cor = catálogo
+      (hasAliancaNamoro && hasColorKeyword); // NOVO: Aliança namoro + cor = catálogo
     
     let toolChoice: any = "auto";
     if (shouldForceCatalog) {
-      console.log(`[ALINE-REPLY] Forçando busca de catálogo - cenário: pingente=${isPingenteFlow}, hasPingenteOrMedalha=${hasPingenteOrMedalha}, mudou=${mudouCategoria}`);
+      console.log(`[ALINE-REPLY] Forçando busca de catálogo - cenário: pingente=${isPingenteFlow}, aneis=${isAneisFlow}, aliancas=${isAliancasFlow}, mudou=${mudouCategoria}`);
       toolChoice = { type: "function", function: { name: "search_catalog" } };
     }
 
