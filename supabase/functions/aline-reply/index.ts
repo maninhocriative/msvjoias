@@ -170,37 +170,55 @@ Pergunte UMA coisa por vez, em frase CURTA:
 
 #node: abertura | escolha_finalidade | escolha_cor | catalogo | selecao | coleta_tamanhos | coleta_entrega | coleta_pagamento | coleta_foto | finalizado`;
 
-// Função para formatar legenda do produto para WhatsApp
+// Função para formatar legenda do produto para WhatsApp - SEMPRE com preço e descrição
 function formatProductCaption(
   product: any,
   options: { includePrice: boolean; includeSizes: boolean; includeStock: boolean }
 ): string {
   const lines: string[] = [];
   
-  lines.push(`*${product.name}*`);
+  // Nome do produto (obrigatório)
+  lines.push(`*${product.name || 'Produto'}*`);
   
-  if (product.description) {
-    lines.push(`${product.description}`);
+  // Descrição (sempre incluir se existir)
+  if (product.description && product.description.trim()) {
+    lines.push(`${product.description.trim()}`);
   }
   
-  if (options.includePrice && product.price) {
-    const priceFormatted = `R$ ${product.price.toFixed(2).replace('.', ',')}`;
-    lines.push(`💰 *${priceFormatted}*`);
+  // Preço - SEMPRE incluir se disponível
+  const price = product.price || product.preco;
+  if (price && options.includePrice !== false) {
+    const numPrice = typeof price === 'string' ? parseFloat(price.replace(',', '.')) : price;
+    if (!isNaN(numPrice) && numPrice > 0) {
+      const priceFormatted = `R$ ${numPrice.toFixed(2).replace('.', ',')}`;
+      lines.push(`💰 *${priceFormatted}*`);
+    }
+  } else if (product.price_formatted) {
+    lines.push(`💰 *${product.price_formatted}*`);
   }
   
-  if (options.includeSizes && product.sizes?.length > 0) {
-    lines.push(`📏 Tamanhos: ${product.sizes.join(', ')}`);
-  }
-  
+  // Cor
   if (product.color) {
     lines.push(`🎨 Cor: ${product.color}`);
   }
   
-  if (options.includeStock) {
+  // Tamanhos disponíveis
+  if (options.includeSizes !== false) {
+    const sizes = product.sizes || product.tamanhos;
+    if (Array.isArray(sizes) && sizes.length > 0) {
+      lines.push(`📏 Tamanhos: ${sizes.join(', ')}`);
+    } else if (typeof sizes === 'string' && sizes.trim()) {
+      lines.push(`📏 Tamanhos: ${sizes.trim()}`);
+    }
+  }
+  
+  // Estoque
+  if (options.includeStock !== false) {
     const stock = product.stock || 0;
     lines.push(stock > 0 ? `✅ Em estoque` : `⚠️ Sob consulta`);
   }
   
+  // Código/SKU (obrigatório para identificação)
   if (product.sku) {
     lines.push(`📦 Cód: ${product.sku}`);
   }

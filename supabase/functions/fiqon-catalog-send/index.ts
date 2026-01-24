@@ -10,8 +10,12 @@ interface ProductItem {
   sku?: string;
   name?: string;
   nome?: string;
+  description?: string;
+  descricao?: string;
   price?: number;
   preco?: string;
+  price_formatted?: string;
+  preco_formatado?: string;
   caption?: string;
   image_url?: string;
   url_imagem?: string;
@@ -24,7 +28,13 @@ interface ProductItem {
   has_video?: boolean;
   tem_video?: boolean;
   tamanhos?: string;
+  sizes?: string[];
   sizes_formatted?: string;
+  tamanhos_formatado?: string;
+  color?: string;
+  cor?: string;
+  stock?: number;
+  estoque?: number;
 }
 
 interface SendResult {
@@ -353,8 +363,51 @@ serve(async (req) => {
         continue;
       }
 
-      // Get caption
-      const caption = cleanValue(product.caption) || `*${name}*\n📦 Cód: ${sku}`;
+      // Get caption - priorizar caption formatado, senão montar manualmente
+      let caption = cleanValue(product.caption);
+      
+      // Se não tem caption formatado, montar um completo
+      if (!caption) {
+        const captionLines: string[] = [`*${name}*`];
+        
+        // Descrição
+        const desc = cleanValue(product.description) || cleanValue(product.descricao);
+        if (desc) captionLines.push(desc);
+        
+        // Preço
+        const price = product.price || product.preco;
+        const priceFormatted = cleanValue(product.price_formatted) || cleanValue(product.preco_formatado);
+        if (priceFormatted) {
+          captionLines.push(`💰 *${priceFormatted}*`);
+        } else if (price) {
+          const numPrice = typeof price === 'number' ? price : parseFloat(String(price).replace(',', '.'));
+          if (!isNaN(numPrice) && numPrice > 0) {
+            captionLines.push(`💰 *R$ ${numPrice.toFixed(2).replace('.', ',')}*`);
+          }
+        }
+        
+        // Cor
+        const color = cleanValue(product.color) || cleanValue(product.cor);
+        if (color) captionLines.push(`🎨 Cor: ${color}`);
+        
+        // Tamanhos
+        const sizes = product.sizes || product.tamanhos || product.sizes_formatted || product.tamanhos_formatado;
+        if (sizes) {
+          const sizesStr = Array.isArray(sizes) ? sizes.join(', ') : String(sizes);
+          if (sizesStr.trim()) captionLines.push(`📏 Tamanhos: ${sizesStr}`);
+        }
+        
+        // Estoque
+        const stock = product.stock || product.estoque;
+        if (stock !== undefined) {
+          captionLines.push(stock > 0 ? `✅ Em estoque` : `⚠️ Sob consulta`);
+        }
+        
+        // SKU
+        captionLines.push(`📦 Cód: ${sku}`);
+        
+        caption = captionLines.join('\n');
+      }
 
       console.log(`[FIQON-SEND] Produto ${productIndex}/${products.length}: ${name}`);
       console.log(`[FIQON-SEND]   SKU: ${sku}`);
