@@ -84,142 +84,90 @@ const tools = [
   }
 ];
 
-// System prompt da Aline - VERSÃO HUMANIZADA SEM MENUS
+// System prompt da Aline - VERSÃO COMPACTA E DIRETA
 const ALINE_SYSTEM_PROMPT = `# ALINE — Consultora Virtual ACIUM Manaus
-(Versão Humanizada - Fluxo Direto)
-
----
 
 ## IDENTIDADE
-
-Você é **Aline**, consultora especialista em joias da **ACIUM Manaus**.
-Você conversa de forma NATURAL e DIRETA.
-NUNCA use menus numerados (1️⃣, 2️⃣, etc).
-NUNCA repita sua apresentação se já se apresentou antes na conversa.
-
-**Tom de voz:**  
-- Elegante, profissional, acolhedora
-- Frases curtas e objetivas
-- Emojis com moderação (💍✨🎁)
+Você é **Aline**, consultora de joias da **ACIUM Manaus**.
+Tom: Elegante, objetiva, acolhedora. Emojis moderados (💍✨).
 
 ---
 
-## REGRA CRÍTICA: ANTI-REPETIÇÃO
+## REGRAS ABSOLUTAS
 
-1. **NUNCA se apresente duas vezes** - se já disse "Sou a Aline" na conversa, NÃO diga novamente
-2. **NUNCA repita perguntas** - se já perguntou sobre cor, não pergunte de novo
-3. **NUNCA repita a mesma resposta** - varie suas respostas
-4. **MÁXIMO 1 mensagem por vez**
-5. Use o HISTÓRICO da conversa para saber o que já foi dito
-
----
-
-## REGRA CRÍTICA: PALAVRAS-CHAVE = AÇÃO IMEDIATA
-
-Quando o cliente mencionar QUALQUER uma dessas palavras, você DEVE usar search_catalog IMEDIATAMENTE:
-
-- "medalha", "medalhas", "medalhinha" → category="pingente" (medalha = pingente!)
-- "pingente", "pingentes", "colar" → category="pingente"
-- "personalizada", "personalizado", "com foto", "fotogravação" → category="pingente"
-- "aliança", "alianças" → category="aliancas"
-
-**EXEMPLO:**
-Cliente: "Quero medalhas personalizadas com foto"
-Você: Use search_catalog com category="pingente" IMEDIATAMENTE, depois diga:
-"Temos sim! 💫 Nossos pingentes permitem fotogravação personalizada. Deixa eu te mostrar!"
-
-**NÃO FAÇA ISSO:**
-- Não pergunte "qual cor?" antes de mostrar
-- Não pergunte "qual estilo?" antes de mostrar
-- Não diga "não temos" sem antes buscar no catálogo
+1. **RESPOSTAS CURTAS**: Máximo 2-3 linhas por mensagem. SEM textão.
+2. **NUNCA se apresente duas vezes** - Se já disse "Sou a Aline", NÃO repita.
+3. **NUNCA repita perguntas** - Se já perguntou algo, não pergunte de novo.
+4. **SEMPRE verifique o catálogo ANTES de afirmar que tem algo** - Use search_catalog primeiro!
+5. **NUNCA diga "temos" sem antes consultar o catálogo** - O resultado da busca é a verdade.
 
 ---
 
-## CATEGORIAS E MATERIAL
+## REGRA CRÍTICA: VERIFICAR CATÁLOGO ANTES DE FALAR
 
-### ALIANÇAS DE CASAMENTO = TUNGSTÊNIO
-- Material: Tungstênio (resistente, premium)
-- Cores: Dourada, Prata, Preta, Azul
+❌ ERRADO: Cliente pergunta "tem pulseira?" → Você diz "Temos sim!"
+✅ CORRETO: Cliente pergunta "tem pulseira?" → Use search_catalog(category="pulseira") → Se resultado vazio, diga "Não temos pulseiras no momento, mas temos pingentes lindos! Quer ver?"
 
-### ALIANÇAS DE NAMORO/COMPROMISSO = AÇO
-- Material: Aço inoxidável
-- Cores: Dourada, Prata
-
-### PINGENTES (= MEDALHAS)
-- Fotogravação GRATUITA (1 lado)
-- Cores: Dourada, Prata
+SEMPRE:
+1. Receba pedido do cliente
+2. Use search_catalog para verificar
+3. SÓ ENTÃO responda baseado no resultado REAL
 
 ---
 
-## FLUXO DIRETO E OBJETIVO
+## PRODUTOS DISPONÍVEIS
+- **ALIANÇAS** (casamento=tungstênio, namoro=aço)
+- **PINGENTES/MEDALHAS** (fotogravação grátis 1 lado)
+- **ANÉIS**
 
-### Se cliente pede produto:
-"Quero ver pingentes/medalhas" → Use search_catalog AGORA, não faça mais perguntas!
-"Tem medalha com foto?" → Use search_catalog com category="pingente" AGORA!
-"Quero alianças de casamento douradas" → Use search_catalog AGORA!
-
-### Se cliente só cumprimenta (primeira vez):
-"Oi" / "Olá" → "Olá! 😊 Sou a Aline, da ACIUM Manaus. O que você está procurando hoje?"
-
-### Se cliente já está conversando:
-NÃO se apresente de novo! Vá direto ao ponto.
+NÃO TEMOS: pulseiras, brincos, colares simples, relógios
 
 ---
 
-## QUANDO DISPARAR CATÁLOGO (search_catalog)
+## QUANDO CLIENTE PEDIR ALGO QUE NÃO TEMOS
 
-USE search_catalog IMEDIATAMENTE quando:
-- Cliente menciona "pingente", "medalha", "medalhas", "colar"
-- Cliente menciona "personalizada", "com foto", "fotogravação"
-- Cliente menciona "aliança" + finalidade + cor
-- Cliente pede para "ver", "mostrar" produtos
-- Cliente responde "sim", "quero", "pode" para ver opções
+Se o resultado do search_catalog for VAZIO:
+1. Diga brevemente que não temos
+2. SUGIRA uma alternativa baseada no que o cliente busca:
+   - "amizade" → sugerir pingentes fotogravados
+   - "presente" → sugerir pingentes ou alianças
+   - "casal" → sugerir alianças
+   - "personalizado" → sugerir pingentes com foto
 
-**NUNCA** diga "não temos" sem antes usar search_catalog para verificar!
-
----
-
-## APÓS ENVIAR CATÁLOGO
-
-Responda APENAS com UMA frase curta e positiva:
-"Separei algumas opções incríveis para você! 💍"
-
-NUNCA liste os produtos no texto - eles são enviados automaticamente como imagens.
+Exemplo:
+"Não temos pulseiras no momento. Mas temos pingentes lindos com fotogravação que simbolizam amizade! Quer ver? 💫"
 
 ---
 
-## FLUXO DE COLETA (APÓS SELEÇÃO)
+## FLUXO ULTRA-DIRETO
 
-1. **Seleção** → Cliente escolhe produto
-2. **Tamanhos** (alianças) → Perguntar tamanho (14-28)
-3. **Foto** (pingentes) → Pedir foto para gravação
-4. **Entrega** → Loja ou delivery
-5. **Pagamento** → Pix ou cartão
-6. **Finalizar** → Encaminhar vendedor
+Cliente pede produto → search_catalog IMEDIATO → Resultado:
+- Se tem produtos: "Vou te mostrar! 💍" (máx 10 palavras)
+- Se NÃO tem: Sugira alternativa em 1 frase curta
 
 ---
 
-## PINGENTES COM FOTOGRAVAÇÃO
+## APÓS CATÁLOGO
 
-Todos os pingentes permitem fotogravação!
-- Gravação de 1 lado = GRATUITA
-- Gravação de 2 lados = custo adicional
-
-"Esse pingente permite fotogravação! 📸 A gravação de um lado é gratuita. Me manda a foto!"
+APENAS uma frase curta: "Separei opções incríveis! 💍" (máx 10 palavras)
+NÃO liste produtos no texto - eles são enviados como imagens.
 
 ---
 
-## INFORMAÇÕES DA LOJA
+## COLETA DE DADOS (APÓS SELEÇÃO)
 
-- **Endereço:** Shopping Sumaúma, Manaus-AM
-- **Entrega:** 10 HORAS após fechamento
-- **Horário:** Segunda a Sábado, 10h às 22h
+Pergunte UMA coisa por vez, em frase CURTA:
+- Tamanho: "Qual o tamanho de vocês? (14-28)"
+- Foto (pingentes): "Me manda a foto para gravação! 📸"
+- Entrega: "Retirada na loja ou entrega?"
+- Pagamento: "Pix ou cartão?"
 
 ---
 
-## MARCADORES TÉCNICOS
+## INFORMAÇÕES
+- Loja: Shopping Sumaúma, Manaus
+- Entrega: 10h após fechamento
 
-No final de CADA resposta, adicione:
 #node: abertura | escolha_finalidade | escolha_cor | catalogo | selecao | coleta_tamanhos | coleta_entrega | coleta_pagamento | coleta_foto | finalizado`;
 
 // Função para formatar legenda do produto para WhatsApp
@@ -729,6 +677,35 @@ serve(async (req) => {
     // NOVO: Detectar cor na mensagem (para ir direto ao catálogo)
     const temCorNaMensagem = /dourada|dourado|ouro|gold|prata|prateada|aço|aco|preta|preto|azul|rose|rosé/i.test(normalizedMsg);
     
+    // NOVO: Detectar PRODUTOS QUE NÃO TEMOS (declarar DEPOIS dos outros para evitar erro de ordem)
+    const isPerguntandoPulseira = /pulseira|pulseiras|bracelete|braceletes/i.test(normalizedMsg);
+    const isPerguntandoBrinco = /brinco|brincos/i.test(normalizedMsg);
+    const isPerguntandoRelogio = /rel[oó]gio|rel[oó]gios/i.test(normalizedMsg);
+    const isPerguntandoAmizade = /amizade|amiga|amigo|friendship|presente.*amig/i.test(normalizedMsg);
+    
+    // Flag para produto não disponível
+    const produtoNaoDisponivel = isPerguntandoPulseira || isPerguntandoBrinco || isPerguntandoRelogio;
+    
+    // Se cliente pede produto que não temos, marcar para sugerir alternativa
+    if (produtoNaoDisponivel) {
+      console.log(`[ALINE-REPLY] [NLU] PRODUTO NÃO DISPONÍVEL detectado! Sugerir alternativa.`);
+      newCollectedData.produto_nao_disponivel = true;
+      newCollectedData.produto_pedido = isPerguntandoPulseira ? 'pulseira' : 
+                                        isPerguntandoBrinco ? 'brinco' : 'relogio';
+      // Forçar sugestão de pingentes como alternativa
+      newCollectedData.sugerir_alternativa = 'pingente';
+      newCollectedData.categoria = 'pingente'; // Já define categoria para sugestão
+    }
+    
+    // Se cliente menciona "amizade" e não está perguntando sobre pingente/aliança específica
+    if (isPerguntandoAmizade && !isPerguntandoPingente && !isPerguntandoAlianca && !produtoNaoDisponivel) {
+      console.log(`[ALINE-REPLY] [NLU] Cliente busca algo sobre AMIZADE → Sugerir pingentes`);
+      newCollectedData.tema_cliente = 'amizade';
+      newCollectedData.sugerir_alternativa = 'pingente';
+      newCollectedData.categoria = 'pingente';
+      newCollectedData.quer_ver_catalogo = true;
+    }
+    
     // Se cliente perguntou sobre pingentes/medalhas, definir categoria imediatamente
     if (isPerguntandoPingente && newCollectedData.categoria !== 'pingente') {
       console.log(`[ALINE-REPLY] [NLU] DETECTADO: PINGENTE/MEDALHA (categoria anterior: ${newCollectedData.categoria || 'nenhuma'})`);
@@ -742,6 +719,8 @@ serve(async (req) => {
       delete newCollectedData.selected_product;
       delete newCollectedData.selected_price;
       delete newCollectedData.last_catalog;
+      delete newCollectedData.produto_nao_disponivel;
+      delete newCollectedData.sugerir_alternativa;
       newCollectedData.mudou_categoria = true;
       // NOVO: Se mencionou "personalizada" ou "com foto", forçar catálogo IMEDIATO
       if (/personalizada|com\s*foto|fotogravação/i.test(normalizedMsg)) {
@@ -1140,65 +1119,78 @@ serve(async (req) => {
       nextStep = 'catalogo_outras_cores';
       const coresExcluir = coresMostradas.join(', ');
       nextStepInstruction = `O cliente PEDIU OUTRAS CORES! Cores já mostradas: ${coresExcluir}. Use search_catalog com exclude_shown_colors=true para mostrar produtos de OUTRAS cores. NÃO mostre novamente ${coresExcluir}. Diga algo como "Claro! Deixa eu te mostrar outras opções de cores! 💍"`;
+    } else if (newCollectedData.produto_nao_disponivel || newCollectedData.sugerir_alternativa) {
+      // NOVO: Cliente pediu produto que não temos - sugerir alternativa
+      const produtoPedido = newCollectedData.produto_pedido || 'esse produto';
+      const temaCliente = newCollectedData.tema_cliente || '';
+      nextStep = 'sugerir_alternativa';
+      nextStepInstruction = `⚠️ PRODUTO NÃO DISPONÍVEL! Cliente pediu ${produtoPedido}${temaCliente ? ` sobre ${temaCliente}` : ''}.
+      
+      VOCÊ DEVE:
+      1. Usar search_catalog com category="pingente" para buscar alternativas
+      2. Se encontrar produtos, dizer: "Não temos ${produtoPedido} no momento, mas temos pingentes lindos${temaCliente ? ` que simbolizam ${temaCliente}` : ''}! Vou te mostrar! 💫"
+      3. Se NÃO encontrar, dizer: "Infelizmente não temos ${produtoPedido}. Trabalhamos com alianças, anéis e pingentes. Posso te ajudar com algum desses?"
+      
+      RESPOSTA MÁXIMA: 2 linhas! SEM textão!`;
     } else if (mudouCategoria && finalCategoria === 'pingente') {
       nextStep = 'catalogo_pingentes';
-      nextStepInstruction = `IMPORTANTE: O cliente PERGUNTOU sobre PINGENTES/MEDALHAS! Use search_catalog com category="pingente" IMEDIATAMENTE para mostrar os pingentes disponíveis. NÃO pergunte cor antes! Diga algo como "Temos sim! Deixa eu te mostrar nossas opções! 💫"`;
+      nextStepInstruction = `IMPORTANTE: O cliente PERGUNTOU sobre PINGENTES/MEDALHAS! Use search_catalog com category="pingente" IMEDIATAMENTE para mostrar os pingentes disponíveis. NÃO pergunte cor antes! Diga: "Vou te mostrar! 💫" (MAX 10 palavras!)`;
     } else if (mudouCategoria && finalCategoria === 'aneis') {
       // NOVO: ANÉIS - ir direto ao catálogo
       nextStep = 'catalogo_aneis';
-      nextStepInstruction = `IMPORTANTE: O cliente PERGUNTOU sobre ANÉIS! Use search_catalog com category="aneis" IMEDIATAMENTE para mostrar os anéis disponíveis. Diga algo como "Temos sim! Deixa eu te mostrar nossas opções de anéis! 💍"`;
+      nextStepInstruction = `IMPORTANTE: O cliente PERGUNTOU sobre ANÉIS! Use search_catalog com category="aneis" IMEDIATAMENTE para mostrar os anéis disponíveis. Diga: "Vou te mostrar! 💍" (MAX 10 palavras!)`;
     } else if (mudouCategoria && finalCategoria === 'aliancas' && finalFinalidade) {
       // NOVO: Se já tem finalidade na primeira mensagem, ir direto para cor ou catálogo
       nextStep = 'escolha_cor';
-      nextStepInstruction = `O cliente quer alianças de ${finalFinalidade}! Pergunte a cor de forma NATURAL: "Que lindo! E qual cor vocês preferem? Temos em dourada, prata (aço), preta e azul." NUNCA use números.`;
+      nextStepInstruction = `O cliente quer alianças de ${finalFinalidade}! Pergunte a cor: "Qual cor preferem? Dourada, prata, preta ou azul?" (MAX 15 palavras!)`;
     } else if (mudouCategoria && finalCategoria === 'aliancas') {
       nextStep = 'escolha_finalidade';
-      nextStepInstruction = `O cliente perguntou sobre ALIANÇAS. Pergunte a finalidade: "Que legal! Vocês estão celebrando namoro/compromisso ou casamento?"`;
+      nextStepInstruction = `O cliente perguntou sobre ALIANÇAS. Pergunte: "Vocês celebram namoro ou casamento?" (MAX 10 palavras!)`;
     } else if (querVerCatalogo && finalCategoria === 'pingente') {
       nextStep = 'catalogo_pingentes';
-      nextStepInstruction = `O cliente quer ver pingentes/medalhas! Use search_catalog com category="pingente" AGORA! NÃO faça mais perguntas! Diga algo como "Vou te mostrar! 💫"`;
+      nextStepInstruction = `O cliente quer ver pingentes/medalhas! Use search_catalog com category="pingente" AGORA! Diga: "Vou te mostrar! 💫" (MAX 10 palavras!)`;
     } else if (querVerCatalogo && finalCategoria === 'aneis') {
       // NOVO: ANÉIS
       nextStep = 'catalogo_aneis';
-      nextStepInstruction = `O cliente quer ver anéis! Use search_catalog com category="aneis" AGORA! NÃO faça mais perguntas! Diga algo como "Vou te mostrar nossos anéis! 💍"`;
+      nextStepInstruction = `O cliente quer ver anéis! Use search_catalog com category="aneis" AGORA! Diga: "Vou te mostrar! 💍" (MAX 10 palavras!)`;
     } else if (querVerCatalogo && finalCategoria === 'aliancas' && finalFinalidade) {
       nextStep = 'catalogo';
-      nextStepInstruction = `O cliente quer ver o catálogo! Use search_catalog AGORA com category="aliancas". Diga algo como "Perfeito! Separei algumas opções para você! 💍"`;
+      nextStepInstruction = `O cliente quer ver o catálogo! Use search_catalog com category="aliancas" AGORA. Diga: "Separei opções incríveis! 💍" (MAX 10 palavras!)`;
     } else if (querVerCatalogo && finalCategoria === 'aliancas') {
       // NOVO: Se quer ver aliança mas não tem finalidade ainda
       nextStep = 'escolha_finalidade';
-      nextStepInstruction = `O cliente quer ver alianças! Pergunte a finalidade: "Que lindo! Vocês estão celebrando namoro/compromisso ou casamento?"`;
+      nextStepInstruction = `O cliente quer ver alianças! Pergunte: "Vocês celebram namoro ou casamento?" (MAX 10 palavras!)`;
     } else if (finalCategoria === 'pingente' && finalCor && !jaSelecionouProduto) {
       nextStep = 'catalogo_pingentes';
-      nextStepInstruction = `IMPORTANTE: O cliente quer PINGENTES na cor ${finalCor}! Use search_catalog com category="pingente" e color="${finalCor}" AGORA. NÃO mostre alianças! Diga algo como "Separei algumas opções incríveis de pingentes para você! 💫"`;
+      nextStepInstruction = `O cliente quer PINGENTES na cor ${finalCor}! Use search_catalog com category="pingente" e color="${finalCor}". Diga: "Vou te mostrar! 💫" (MAX 10 palavras!)`;
     } else if (finalCategoria === 'pingente' && !jaSelecionouProduto) {
       // NOVO: Se é pingente e ainda não selecionou, IR DIRETO PARA CATÁLOGO!
       nextStep = 'catalogo_pingentes';
-      nextStepInstruction = `O cliente quer PINGENTES/MEDALHAS! Use search_catalog com category="pingente" AGORA! NÃO pergunte cor antes de mostrar! Diga: "Temos sim! Vou te mostrar nossas opções de pingentes! 💫"`;
+      nextStepInstruction = `O cliente quer PINGENTES! Use search_catalog com category="pingente" AGORA! Diga: "Vou te mostrar! 💫" (MAX 10 palavras!)`;
     } else if (finalCategoria === 'aneis' && finalCor && !jaSelecionouProduto) {
       // NOVO: ANÉIS com cor
       nextStep = 'catalogo_aneis';
-      nextStepInstruction = `O cliente quer ANÉIS na cor ${finalCor}! Use search_catalog com category="aneis" e color="${finalCor}" AGORA. Diga algo como "Separei algumas opções incríveis de anéis para você! 💍"`;
+      nextStepInstruction = `O cliente quer ANÉIS na cor ${finalCor}! Use search_catalog com category="aneis" e color="${finalCor}". Diga: "Vou te mostrar! 💍" (MAX 10 palavras!)`;
     } else if (finalCategoria === 'aneis' && !jaSelecionouProduto) {
       // NOVO: ANÉIS sem cor - ir direto ao catálogo
       nextStep = 'catalogo_aneis';
-      nextStepInstruction = `O cliente quer ANÉIS! Use search_catalog com category="aneis" AGORA! NÃO pergunte cor antes de mostrar! Diga: "Temos sim! Vou te mostrar nossas opções de anéis! 💍"`;
+      nextStepInstruction = `O cliente quer ANÉIS! Use search_catalog com category="aneis" AGORA! Diga: "Vou te mostrar! 💍" (MAX 10 palavras!)`;
     } else if (finalCategoria === 'aliancas' && finalCor && finalFinalidade && !jaSelecionouProduto) {
       nextStep = 'catalogo';
-      nextStepInstruction = `O cliente quer alianças de ${finalFinalidade} na cor ${finalCor}. Use search_catalog com category="aliancas" e color="${finalCor}". Diga algo como "Vou te mostrar algumas opções incríveis!"`;
+      nextStepInstruction = `O cliente quer alianças de ${finalFinalidade} ${finalCor}. Use search_catalog. Diga: "Separei opções incríveis!" (MAX 10 palavras!)`;
     } else if (finalCategoria === 'aliancas' && finalFinalidade && !jaSelecionouProduto) {
-      // NOVO: Alianças com finalidade mas sem cor - perguntar cor ou mostrar catálogo
+      // NOVO: Alianças com finalidade mas sem cor - perguntar cor
       nextStep = 'escolha_cor';
-      nextStepInstruction = `O cliente quer alianças de ${finalFinalidade}! Pergunte a cor de forma NATURAL: "E qual cor vocês preferem? Temos em dourada, prata (aço), preta e azul." NUNCA use números.`;
+      nextStepInstruction = `O cliente quer alianças de ${finalFinalidade}! Pergunte: "Qual cor preferem? Dourada, prata, preta ou azul?" (MAX 15 palavras!)`;
     } else if (finalCategoria === 'aliancas' && finalFinalidade) {
       nextStep = 'escolha_cor';
-      nextStepInstruction = `O cliente escolheu alianças de ${finalFinalidade}. Pergunte a cor de forma NATURAL: "E qual cor vocês preferem? Temos em dourada, prata (aço), preta e azul." NUNCA use números.`;
+      nextStepInstruction = `Pergunte a cor: "Qual cor preferem? Dourada, prata, preta ou azul?" (MAX 15 palavras!)`;
     } else if (finalCategoria === 'aliancas') {
       nextStep = 'escolha_finalidade';
-      nextStepInstruction = `O cliente escolheu alianças. Pergunte a finalidade de forma NATURAL: "Que lindo! Vocês estão celebrando namoro/compromisso ou casamento?" NUNCA use números.`;
+      nextStepInstruction = `Pergunte: "Vocês celebram namoro ou casamento?" (MAX 10 palavras!)`;
     } else {
       nextStep = 'abertura';
-      nextStepInstruction = `Apresente-se de forma acolhedora e pergunte NATURALMENTE o que o cliente procura: "O que você está procurando hoje? Alianças, anéis ou pingentes?" NUNCA use menus numerados.`;
+      nextStepInstruction = `Apresente-se: "Olá! 😊 Sou a Aline da ACIUM. O que você procura? Alianças, anéis ou pingentes?" (MAX 20 palavras!)`;
     }
 
     console.log(`[ALINE-REPLY] Próximo passo: ${nextStep}`);
@@ -1213,38 +1205,46 @@ serve(async (req) => {
       m.role === 'assistant' && /sou a aline|sou aline/i.test(m.content || '')
     );
     
+    // NOVO: Regras rígidas de resposta curta
+    contextInfo += `\n\n⚠️ REGRAS ABSOLUTAS DE RESPOSTA:`;
+    contextInfo += `\n- MÁXIMO 2-3 linhas por mensagem`;
+    contextInfo += `\n- NUNCA escreva parágrafos longos`;
+    contextInfo += `\n- NUNCA liste produtos no texto (eles são enviados como imagens)`;
+    contextInfo += `\n- Seja OBJETIVA e DIRETA`;
+    
     if (jaSePresentou) {
-      contextInfo += `\n⚠️ VOCÊ JÁ SE APRESENTOU! NÃO se apresente novamente! NÃO diga "Olá, sou a Aline"!`;
+      contextInfo += `\n\n🚫 VOCÊ JÁ SE APRESENTOU! NÃO diga "Olá, sou a Aline" novamente!`;
     }
     
     if (contact_name || newCollectedData.contact_name) {
-      contextInfo += `\nO nome do cliente é: ${contact_name || newCollectedData.contact_name}`;
+      contextInfo += `\nCliente: ${contact_name || newCollectedData.contact_name}`;
     }
     
-    contextInfo += `\n\n=== DADOS JÁ COLETADOS ===`;
-    if (newCollectedData.categoria) contextInfo += `\n- Categoria: ${newCollectedData.categoria} ${newCollectedData.categoria === 'pingente' ? '(MEDALHA = PINGENTE!)' : ''}`;
+    // NOVO: Se produto não disponível, instrução clara
+    if (newCollectedData.produto_nao_disponivel) {
+      contextInfo += `\n\n🚫 PRODUTO NÃO DISPONÍVEL: "${newCollectedData.produto_pedido}"`;
+      contextInfo += `\n→ Diga BREVEMENTE que não temos e SUGIRA pingentes como alternativa`;
+    }
+    
+    contextInfo += `\n\n=== DADOS COLETADOS ===`;
+    if (newCollectedData.categoria) contextInfo += `\n- Categoria: ${newCollectedData.categoria}`;
     if (newCollectedData.finalidade) contextInfo += `\n- Finalidade: ${newCollectedData.finalidade}`;
     if (newCollectedData.cor) contextInfo += `\n- Cor: ${newCollectedData.cor}`;
-    if (coresMostradas.length > 0) contextInfo += `\n- CORES JÁ MOSTRADAS (não repetir): ${coresMostradas.join(', ')}`;
-    if (newCollectedData.quer_outras_cores) contextInfo += `\n- ⚠️ CLIENTE QUER VER OUTRAS CORES - use exclude_shown_colors=true`;
-    if (newCollectedData.selected_sku) contextInfo += `\n- Produto selecionado: ${newCollectedData.selected_sku} (${newCollectedData.selected_name})`;
-    if (newCollectedData.tamanho_1) {
-      contextInfo += `\n- Tamanho(s): ${newCollectedData.tamanho_1}`;
-      if (newCollectedData.tamanho_2) contextInfo += ` e ${newCollectedData.tamanho_2}`;
-    }
-    if (newCollectedData.quantidade_tipo) contextInfo += `\n- Tipo: ${newCollectedData.quantidade_tipo}`;
+    if (coresMostradas.length > 0) contextInfo += `\n- Cores já mostradas: ${coresMostradas.join(', ')}`;
+    if (newCollectedData.selected_sku) contextInfo += `\n- Produto: ${newCollectedData.selected_sku}`;
+    if (newCollectedData.tamanho_1) contextInfo += `\n- Tamanho: ${newCollectedData.tamanho_1}${newCollectedData.tamanho_2 ? '/' + newCollectedData.tamanho_2 : ''}`;
     if (newCollectedData.delivery_method) contextInfo += `\n- Entrega: ${newCollectedData.delivery_method}`;
     if (newCollectedData.payment_method) contextInfo += `\n- Pagamento: ${newCollectedData.payment_method}`;
     
-    // Instrução especial se produto selecionado mas sem tamanhos
+    // Instrução especial se produto selecionado mas sem tamanhos (forma curta)
     let additionalInstruction = '';
     if (newCollectedData.selected_sku && newCollectedData.categoria === 'aliancas' && !newCollectedData.tamanho_1) {
-      additionalInstruction = `\n\nO cliente escolheu o produto ${newCollectedData.selected_name}. Pergunte os TAMANHOS de cada pessoa de forma natural: "Excelente escolha! Me diz, qual o tamanho de cada um?" Dica: mencione que geralmente fica entre 14 e 28.`;
+      additionalInstruction = `\n\n→ Pergunte tamanhos: "Qual tamanho de cada um? (14-28)"`;
     } else if (newCollectedData.selected_sku && newCollectedData.tamanho_1 && !newCollectedData.delivery_method) {
-      additionalInstruction = `\n\nJá temos produto e tamanhos! Pergunte sobre entrega e pagamento: "Perfeito! Vocês preferem retirar na loja (Shopping Sumaúma) ou receber em casa? E vai ser Pix ou cartão?"`;
+      additionalInstruction = `\n\n→ Pergunte: "Retirada na loja ou entrega? Pix ou cartão?"`;
     }
     
-    contextInfo += `\n\n=== ${nextStepInstruction}${additionalInstruction} ===`;
+    contextInfo += `\n\n=== PRÓXIMO PASSO: ${nextStepInstruction}${additionalInstruction} ===`;
 
 
     // Buscar configuração da IA do banco de dados
