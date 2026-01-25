@@ -141,6 +141,48 @@ async function sendMediaToZAPI(
   }
 }
 
+// Helper function to send button message via Z-API (para seleção rápida)
+async function sendButtonMessageToZAPI(
+  phone: string,
+  message: string,
+  buttons: { id: string; label: string }[],
+  instanceId: string,
+  token: string,
+  clientToken?: string
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  
+  const endpoint = `https://api.z-api.io/instances/${instanceId}/token/${token}/send-button-list`;
+  
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (clientToken) {
+    headers['Client-Token'] = clientToken;
+  }
+
+  console.log(`[FIQON-SEND] Enviando botões para ${phone}: ${buttons.map(b => b.label).join(', ')}`);
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        phone,
+        message,
+        buttonList: { buttons }
+      }),
+    });
+
+    const result = await response.json();
+    
+    if (response.ok && (result.messageId || result.zaapId)) {
+      return { success: true, messageId: result.messageId || result.zaapId };
+    }
+    
+    return { success: false, error: JSON.stringify(result) };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Network error' };
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -452,7 +494,56 @@ serve(async (req) => {
     }
 
     // ========================================
-    // SALVAR NO CRM (cada produto individualmente)
+    // ENVIAR BOTÕES DE SELEÇÃO RÁPIDA (após enviar todos os produtos)
+    // ========================================
+    if (successCount > 0 && successCount <= 5) {
+      // Só enviar botões se temos 1-5 produtos (limite do WhatsApp)
+      try {
+        await new Promise(resolve => setTimeout(resolve, delayMs)); // Delay antes dos botões
+        
+        // Criar botões para cada produto enviado
+        const buttons = results
+          .filter(r => r.success)
+          .slice(0, 3) // Máximo 3 botões no WhatsApp
+          .map((r, idx) => {
+            const product = products[r.index - 1];
+            const productName = cleanValue(product?.name) || cleanValue(product?.nome) || 'Produto';
+            // Truncar nome para caber no botão (limite ~20 chars)
+            const shortName = productName.length > 18 ? productName.substring(0, 15) + '...' : productName;
+            return {
+              id: `select_${r.sku}`,
+              label: `${idx + 1}️⃣ ${shortName}`
+            };
+          });
+
+        if (buttons.length > 0) {
+          const buttonMessage = successCount > 3 
+            ? `Gostou de algum? 😊 Clique para escolher ou me diga o número!`
+            : `Gostou de algum? 😊 Clique para escolher!`;
+          
+          const buttonResult = await sendButtonMessageToZAPI(
+            phone,
+            buttonMessage,
+            buttons,
+            ZAPI_INSTANCE_ID!,
+            ZAPI_TOKEN!,
+            ZAPI_CLIENT_TOKEN
+          );
+          
+          if (buttonResult.success) {
+            console.log(`[FIQON-SEND] ✅ Botões de seleção enviados: ${buttonResult.messageId}`);
+          } else {
+            console.warn(`[FIQON-SEND] ⚠️ Botões falharam (não crítico): ${buttonResult.error}`);
+          }
+        }
+      } catch (buttonError) {
+        console.warn(`[FIQON-SEND] ⚠️ Erro ao enviar botões (não crítico):`, buttonError);
+        // Não bloqueia o fluxo se os botões falharem
+      }
+    }
+
+    // ========================================
+    // SALVAR NO CRM E ALINE_MESSAGES (CRÍTICO para follow-up!)
     // ========================================
     if (payload.save_to_crm !== false) {
       try {
@@ -503,6 +594,36 @@ serve(async (req) => {
             }).eq('id', conversationId);
           }
         }
+
+        // ==============================================
+        // CRÍTICO: Salvar no aline_messages para follow-up funcionar!
+        // O aline-followup verifica se a última mensagem é do assistant
+        // ==============================================
+        const { data: alineConv } = await supabase
+          .from('aline_conversations')
+          .select('id, current_node')
+          .eq('phone', phone)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (alineConv && textSent && textMessage) {
+          // Salvar a mensagem da Aline para o follow-up funcionar
+          await supabase.from('aline_messages').insert({
+            conversation_id: alineConv.id,
+            role: 'assistant',
+            message: textMessage,
+            node: alineConv.current_node,
+          });
+          console.log(`[FIQON-SEND] ✅ Mensagem salva em aline_messages (role=assistant) para follow-up`);
+
+          // Atualizar last_message_at para recalcular follow-up
+          await supabase.from('aline_conversations').update({
+            last_message_at: new Date().toISOString(),
+            followup_count: 0, // Reset follow-up count após enviar catálogo
+          }).eq('id', alineConv.id);
+        }
+
       } catch (crmError) {
         console.warn('[FIQON-SEND] Erro ao salvar no CRM:', crmError);
       }

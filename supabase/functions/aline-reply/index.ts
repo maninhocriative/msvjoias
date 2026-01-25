@@ -119,8 +119,17 @@ SEMPRE:
 - **ALIANÇAS** (casamento=tungstênio, namoro=aço)
 - **PINGENTES/MEDALHAS** (fotogravação grátis 1 lado)
 - **ANÉIS**
+- **CORRENTES** (vendidas separadamente - OFERECER quando cliente escolher pingente!)
 
 NÃO TEMOS: pulseiras, brincos, colares simples, relógios
+
+---
+
+## 🔗 REGRA ESPECIAL: PINGENTES E CORRENTES
+
+**IMPORTANTE**: Pingentes NÃO acompanham corrente!
+Quando o cliente escolher um pingente, SEMPRE pergunte:
+"Esse pingente fica lindo! 💫 Ele não acompanha corrente. Quer que eu te mostre nossas correntes também?"
 
 ---
 
@@ -159,6 +168,7 @@ NÃO liste produtos no texto - eles são enviados como imagens.
 Pergunte UMA coisa por vez, em frase CURTA:
 - Tamanho: "Qual o tamanho de vocês? (14-28)"
 - Foto (pingentes): "Me manda a foto para gravação! 📸"
+- **Corrente (pingentes)**: "Quer ver nossas correntes também? 🔗"
 - Entrega: "Retirada na loja ou entrega?"
 - Pagamento: "Pix ou cartão?"
 
@@ -168,7 +178,7 @@ Pergunte UMA coisa por vez, em frase CURTA:
 - Loja: Shopping Sumaúma, Manaus
 - Entrega: 10h após fechamento
 
-#node: abertura | escolha_finalidade | escolha_cor | catalogo | selecao | coleta_tamanhos | coleta_entrega | coleta_pagamento | coleta_foto | finalizado`;
+#node: abertura | escolha_finalidade | escolha_cor | catalogo | selecao | coleta_tamanhos | coleta_entrega | coleta_pagamento | coleta_foto | coleta_corrente | finalizado`;
 
 // Função para formatar legenda do produto para WhatsApp - SEMPRE com preço e descrição
 function formatProductCaption(
@@ -915,29 +925,49 @@ serve(async (req) => {
     if (!newCollectedData.selected_sku && catalogoAnterior.length > 0) {
       console.log(`[ALINE-REPLY] [NLU] Verificando seleção de produto... Catálogo anterior: ${catalogoAnterior.length} itens`);
       
-      // 1. Detectar SKU diretamente (ex: "quero o AC-015", "PF010003-01")
-      const skuPatterns = [
-        /\b([A-Z]{2,3}[-\s]?\d{2,4}(?:-\d{2})?)\b/i,  // AC-015, PG-002, PF010003-01
-        /código\s*:?\s*([A-Z]{2,3}[-\s]?\d{2,4}(?:-\d{2})?)/i,
-        /cod\.?\s*:?\s*([A-Z]{2,3}[-\s]?\d{2,4}(?:-\d{2})?)/i,
-      ];
+      // 0. NOVO: Detectar clique em botão interativo (formato: "select_SKU")
+      const buttonClickPattern = /^select_([A-Z0-9\-]+)$/i;
+      const buttonMatch = message.match(buttonClickPattern);
+      if (buttonMatch) {
+        const clickedSku = buttonMatch[1].toUpperCase();
+        const produto = catalogoAnterior.find((p: any) => 
+          p.sku?.toUpperCase() === clickedSku || 
+          p.sku?.toUpperCase().includes(clickedSku)
+        );
+        if (produto) {
+          newCollectedData.selected_product = produto;
+          newCollectedData.selected_sku = produto.sku;
+          newCollectedData.selected_name = produto.name;
+          newCollectedData.selected_price = produto.price;
+          console.log(`[ALINE-REPLY] [NLU] ✅ Produto selecionado por BOTÃO CLICADO: ${produto.name} (${produto.sku})`);
+        }
+      }
       
-      for (const pattern of skuPatterns) {
-        const match = normalizedMsg.match(pattern);
-        if (match) {
-          const detectedSku = match[1].toUpperCase().replace(/\s+/g, '-');
-          const produto = catalogoAnterior.find((p: any) => 
-            p.sku?.toUpperCase() === detectedSku || 
-            p.sku?.toUpperCase().includes(detectedSku)
-          );
-          if (produto) {
-            newCollectedData.selected_product = produto;
-            newCollectedData.selected_sku = produto.sku;
-            newCollectedData.selected_name = produto.name;
-            newCollectedData.selected_price = produto.price;
-            console.log(`[ALINE-REPLY] [NLU] ✅ Produto selecionado por SKU: ${produto.name} (${produto.sku})`);
+      // 1. Detectar SKU diretamente (ex: "quero o AC-015", "PF010003-01")
+      if (!newCollectedData.selected_sku) {
+        const skuPatterns = [
+          /\b([A-Z]{2,3}[-\s]?\d{2,4}(?:-\d{2})?)\b/i,  // AC-015, PG-002, PF010003-01
+          /código\s*:?\s*([A-Z]{2,3}[-\s]?\d{2,4}(?:-\d{2})?)/i,
+          /cod\.?\s*:?\s*([A-Z]{2,3}[-\s]?\d{2,4}(?:-\d{2})?)/i,
+        ];
+        
+        for (const pattern of skuPatterns) {
+          const match = normalizedMsg.match(pattern);
+          if (match) {
+            const detectedSku = match[1].toUpperCase().replace(/\s+/g, '-');
+            const produto = catalogoAnterior.find((p: any) => 
+              p.sku?.toUpperCase() === detectedSku || 
+              p.sku?.toUpperCase().includes(detectedSku)
+            );
+            if (produto) {
+              newCollectedData.selected_product = produto;
+              newCollectedData.selected_sku = produto.sku;
+              newCollectedData.selected_name = produto.name;
+              newCollectedData.selected_price = produto.price;
+              console.log(`[ALINE-REPLY] [NLU] ✅ Produto selecionado por SKU: ${produto.name} (${produto.sku})`);
+            }
+            break;
           }
-          break;
         }
       }
       
@@ -1121,16 +1151,21 @@ serve(async (req) => {
       NÃO pergunte sobre cor, categoria ou qualquer outra coisa. Apenas tamanhos!`;
       
     } else if (isPingenteSelecionado && !jaTemFoto) {
-      // PINGENTE: Falta FOTO
+      // PINGENTE: Falta FOTO - E oferecer CORRENTES!
       nextStep = 'coleta_foto';
-      nextStepInstruction = `🎯 PASSO ATUAL: COLETAR FOTO PARA GRAVAÇÃO
+      nextStepInstruction = `🎯 PASSO ATUAL: COLETAR FOTO PARA GRAVAÇÃO + OFERECER CORRENTE
       ✅ O cliente ESCOLHEU o pingente "${newCollectedData.selected_name}" (${newCollectedData.selected_sku})!
       
-      Este pingente permite FOTOGRAVAÇÃO personalizada (1 lado GRÁTIS)!
+      IMPORTANTE: Pingentes NÃO acompanham corrente!
       
-      Diga: "Excelente escolha! 💫 Esse pingente permite fotogravação personalizada - a gravação de um lado é GRATUITA! Me manda a foto que você quer gravar! 📸"
+      Diga algo como:
+      "Excelente escolha! 💫 Esse pingente permite fotogravação personalizada - a gravação de um lado é GRATUITA!
       
-      NÃO pergunte sobre cor ou categoria. Apenas peça a foto!`;
+      ⚠️ Só lembrando: o pingente não acompanha corrente. Quer que eu te mostre nossas correntes também? 🔗
+      
+      Enquanto isso, me manda a foto que você quer gravar! 📸"
+      
+      NÃO pergunte sobre cor ou categoria. Peça a foto e OFEREÇA as correntes!`;
       
     } else if (wantsOtherColors && coresMostradas.length > 0) {
       // Cliente pediu outras cores
