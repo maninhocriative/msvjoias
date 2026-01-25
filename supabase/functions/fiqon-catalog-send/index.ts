@@ -363,51 +363,53 @@ serve(async (req) => {
         continue;
       }
 
-      // Get caption - priorizar caption formatado, senão montar manualmente
-      let caption = cleanValue(product.caption);
+      // SEMPRE construir caption completo - não confiar no caption pré-formatado
+      const captionLines: string[] = [`*${name}*`];
       
-      // Se não tem caption formatado, montar um completo
-      if (!caption) {
-        const captionLines: string[] = [`*${name}*`];
-        
-        // Descrição
-        const desc = cleanValue(product.description) || cleanValue(product.descricao);
-        if (desc) captionLines.push(desc);
-        
-        // Preço
-        const price = product.price || product.preco;
-        const priceFormatted = cleanValue(product.price_formatted) || cleanValue(product.preco_formatado);
-        if (priceFormatted) {
-          captionLines.push(`💰 *${priceFormatted}*`);
-        } else if (price) {
-          const numPrice = typeof price === 'number' ? price : parseFloat(String(price).replace(',', '.'));
-          if (!isNaN(numPrice) && numPrice > 0) {
-            captionLines.push(`💰 *R$ ${numPrice.toFixed(2).replace('.', ',')}*`);
-          }
-        }
-        
-        // Cor
-        const color = cleanValue(product.color) || cleanValue(product.cor);
-        if (color) captionLines.push(`🎨 Cor: ${color}`);
-        
-        // Tamanhos
-        const sizes = product.sizes || product.tamanhos || product.sizes_formatted || product.tamanhos_formatado;
-        if (sizes) {
-          const sizesStr = Array.isArray(sizes) ? sizes.join(', ') : String(sizes);
-          if (sizesStr.trim()) captionLines.push(`📏 Tamanhos: ${sizesStr}`);
-        }
-        
-        // Estoque
-        const stock = product.stock || product.estoque;
-        if (stock !== undefined) {
-          captionLines.push(stock > 0 ? `✅ Em estoque` : `⚠️ Sob consulta`);
-        }
-        
-        // SKU
-        captionLines.push(`📦 Cód: ${sku}`);
-        
-        caption = captionLines.join('\n');
+      // Descrição - SEMPRE incluir se existir
+      const desc = cleanValue(product.description) || cleanValue(product.descricao);
+      if (desc) {
+        captionLines.push(desc);
       }
+      
+      // Preço - SEMPRE incluir (é o problema principal!)
+      const price = product.price ?? product.preco;
+      const priceFormatted = cleanValue(product.price_formatted) || cleanValue(product.preco_formatado);
+      
+      console.log(`[FIQON-SEND] Produto ${sku} - price: ${price}, priceFormatted: ${priceFormatted}`);
+      
+      if (priceFormatted) {
+        captionLines.push(`💰 *${priceFormatted}*`);
+      } else if (price !== null && price !== undefined) {
+        const numPrice = typeof price === 'number' ? price : parseFloat(String(price).replace(',', '.'));
+        if (!isNaN(numPrice) && numPrice > 0) {
+          captionLines.push(`💰 *R$ ${numPrice.toFixed(2).replace('.', ',')}*`);
+        }
+      }
+      
+      // Cor
+      const color = cleanValue(product.color) || cleanValue(product.cor);
+      if (color) captionLines.push(`🎨 Cor: ${color}`);
+      
+      // Tamanhos
+      const sizes = product.sizes || product.tamanhos || product.sizes_formatted || product.tamanhos_formatado;
+      if (sizes) {
+        const sizesStr = Array.isArray(sizes) ? sizes.join(', ') : String(sizes);
+        if (sizesStr.trim()) captionLines.push(`📏 Tamanhos: ${sizesStr}`);
+      }
+      
+      // Estoque
+      const stock = product.stock ?? product.estoque;
+      if (stock !== undefined && stock !== null) {
+        captionLines.push(stock > 0 ? `✅ Em estoque` : `⚠️ Sob consulta`);
+      }
+      
+      // SKU
+      captionLines.push(`📦 Cód: ${sku}`);
+      
+      const caption = captionLines.join('\n');
+      
+      console.log(`[FIQON-SEND] Caption gerado: ${caption.substring(0, 100)}...`);
 
       console.log(`[FIQON-SEND] Produto ${productIndex}/${products.length}: ${name}`);
       console.log(`[FIQON-SEND]   SKU: ${sku}`);
