@@ -47,16 +47,34 @@ interface SendResult {
   mediaUrl: string;
 }
 
-// Helper to clean nil/null values from Fiqon
+// Helper to clean nil/null values from Fiqon (ONLY for strings!)
 function cleanValue(val: any): string | null {
   if (val === null || val === undefined) return null;
+  // Se for número, retornar como string
+  if (typeof val === 'number') return String(val);
   if (typeof val === 'string') {
     const lower = val.toLowerCase().trim();
     if (lower === '<nil>' || lower === 'nil' || lower === 'null' || lower === 'undefined' || lower === '') {
       return null;
     }
+    return val.trim();
   }
   return String(val);
+}
+
+// Helper para obter número de forma segura
+function getNumber(val: any): number | null {
+  if (val === null || val === undefined) return null;
+  if (typeof val === 'number') return val;
+  if (typeof val === 'string') {
+    const lower = val.toLowerCase().trim();
+    if (lower === '<nil>' || lower === 'nil' || lower === 'null' || lower === 'undefined' || lower === '') {
+      return null;
+    }
+    const parsed = parseFloat(val.replace(',', '.'));
+    return isNaN(parsed) ? null : parsed;
+  }
+  return null;
 }
 
 // Helper function to send text via Z-API
@@ -414,19 +432,18 @@ serve(async (req) => {
         captionLines.push(desc);
       }
       
-      // Preço - SEMPRE incluir (é o problema principal!)
-      const price = product.price ?? product.preco;
+      // Preço - SEMPRE incluir! Usar getNumber para garantir parsing correto
+      const priceNum = getNumber(product.price) ?? getNumber(product.preco);
       const priceFormatted = cleanValue(product.price_formatted) || cleanValue(product.preco_formatado);
       
-      console.log(`[FIQON-SEND] Produto ${sku} - price: ${price}, priceFormatted: ${priceFormatted}`);
+      console.log(`[FIQON-SEND] Produto ${sku} - priceNum: ${priceNum}, priceFormatted: ${priceFormatted}`);
       
-      if (priceFormatted) {
+      if (priceFormatted && priceFormatted !== 'null' && priceFormatted !== 'undefined') {
         captionLines.push(`💰 *${priceFormatted}*`);
-      } else if (price !== null && price !== undefined) {
-        const numPrice = typeof price === 'number' ? price : parseFloat(String(price).replace(',', '.'));
-        if (!isNaN(numPrice) && numPrice > 0) {
-          captionLines.push(`💰 *R$ ${numPrice.toFixed(2).replace('.', ',')}*`);
-        }
+      } else if (priceNum !== null && priceNum > 0) {
+        captionLines.push(`💰 *R$ ${priceNum.toFixed(2).replace('.', ',')}*`);
+      } else {
+        console.warn(`[FIQON-SEND] ⚠️ Produto ${sku} SEM PREÇO! raw price: ${JSON.stringify(product.price)}, raw preco: ${JSON.stringify(product.preco)}`);
       }
       
       // Cor
@@ -441,9 +458,9 @@ serve(async (req) => {
       }
       
       // Estoque
-      const stock = product.stock ?? product.estoque;
-      if (stock !== undefined && stock !== null) {
-        captionLines.push(stock > 0 ? `✅ Em estoque` : `⚠️ Sob consulta`);
+      const stockNum = getNumber(product.stock) ?? getNumber(product.estoque);
+      if (stockNum !== null) {
+        captionLines.push(stockNum > 0 ? `✅ Em estoque` : `⚠️ Sob consulta`);
       }
       
       // SKU

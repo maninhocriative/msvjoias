@@ -133,6 +133,18 @@ Quando o cliente escolher um pingente, SEMPRE pergunte:
 
 ---
 
+## 📍 ENDEREÇO DA LOJA
+
+**SEMPRE responda quando cliente pedir endereço/localização:**
+📍 *Shopping Sumaúma*
+Av. Noel Nutels, 1762 - Cidade Nova, Manaus - AM
+CEP: 69090-970
+
+Resposta padrão quando perguntarem endereço:
+"📍 Estamos no *Shopping Sumaúma*, Av. Noel Nutels, 1762 - Cidade Nova, Manaus! 🛍️"
+
+---
+
 ## QUANDO CLIENTE PEDIR ALGO QUE NÃO TEMOS
 
 Se o resultado do search_catalog for VAZIO:
@@ -711,6 +723,9 @@ serve(async (req) => {
     const isPerguntandoRelogio = /rel[oó]gio|rel[oó]gios/i.test(normalizedMsg);
     const isPerguntandoAmizade = /amizade|amiga|amigo|friendship|presente.*amig/i.test(normalizedMsg);
     
+    // NOVO: Detectar pedido de ENDEREÇO
+    const isPerguntandoEndereco = /endere[çc]o|localiza[çc][aã]o|onde\s*fica|qual\s*endere|manda\s*o?\s*endere|onde\s*[eé]\s*a\s*loja|onde\s*voc[eê]s?\s*ficam?|onde\s*est[aá]|shopping|localiza|como\s*chego/i.test(normalizedMsg);
+    
     // Flag para produto não disponível
     const produtoNaoDisponivel = isPerguntandoPulseira || isPerguntandoBrinco || isPerguntandoRelogio;
     
@@ -1062,14 +1077,28 @@ serve(async (req) => {
     console.log(`[ALINE-REPLY] Categoria: ${finalCategoria}, isAlianca=${isAliancaSelecionada}, isPingente=${isPingenteSelecionado}`);
     
     // ========================================
-    // PRIORIDADE MÁXIMA: FLUXO DE COLETA APÓS SELEÇÃO
+    // PRIORIDADE MÁXIMA: RESPONDER ENDEREÇO
+    // ========================================
+    if (isPerguntandoEndereco) {
+      nextStep = conversation.current_node || 'endereco';
+      nextStepInstruction = `O cliente PERGUNTOU O ENDEREÇO! RESPONDA IMEDIATAMENTE:
+      
+      "📍 Estamos no *Shopping Sumaúma*!
+      Av. Noel Nutels, 1762 - Cidade Nova, Manaus - AM
+      CEP: 69090-970 🛍️"
+      
+      RESPONDA EXATAMENTE ISSO e depois pergunte se pode ajudar em algo mais. NÃO ignore o pedido de endereço!`;
+    }
+    
+    // ========================================
+    // FLUXO DE COLETA APÓS SELEÇÃO
     // Se cliente selecionou produto, seguir para coleta de dados!
     // ========================================
     
     // ALIANÇAS: Produto → Tamanhos → Entrega → Pagamento → Finalizar
     // PINGENTES: Produto → Foto → Entrega → Pagamento → Finalizar
     
-    if (isAliancaSelecionada && jaTemTamanho && jaTemEntrega && jaTemPagamento) {
+    if (!isPerguntandoEndereco && isAliancaSelecionada && jaTemTamanho && jaTemEntrega && jaTemPagamento) {
       // ALIANÇA COM TODOS OS DADOS → FINALIZAR!
       nextStep = 'finalizado';
       nextStepInstruction = `✅ TODOS OS DADOS COLETADOS PARA ALIANÇAS!
