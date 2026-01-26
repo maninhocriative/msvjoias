@@ -337,19 +337,28 @@ const Chat = () => {
       .subscribe();
 
     // Canal para monitorar mudanças no status de atendimento (aline_conversations)
+    // OTIMIZADO: Só atualizar o mapa local, não recarregar toda a lista
     const alineChannel = supabase
       .channel('aline-conversations-realtime')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'aline_conversations' },
         (payload) => {
-          // Atualizar o mapa de status quando houver mudança
+          // Só atualizar o mapa de status, NÃO recarregar conversas
           const updated = payload.new as AlineConversation;
           if (updated && updated.phone) {
-            setAlineStatusMap(prev => ({
-              ...prev,
-              [updated.phone]: updated
-            }));
+            setAlineStatusMap(prev => {
+              // Só atualizar se realmente mudou algo relevante
+              const current = prev[updated.phone];
+              if (current?.status === updated.status && 
+                  current?.assigned_seller_id === updated.assigned_seller_id) {
+                return prev; // Sem mudança, evitar re-render
+              }
+              return {
+                ...prev,
+                [updated.phone]: updated
+              };
+            });
           }
         }
       )
