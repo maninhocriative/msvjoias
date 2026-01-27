@@ -432,18 +432,38 @@ serve(async (req) => {
         captionLines.push(desc);
       }
       
-      // Preço - SEMPRE incluir! Usar getNumber para garantir parsing correto
-      const priceNum = getNumber(product.price) ?? getNumber(product.preco);
-      const priceFormatted = cleanValue(product.price_formatted) || cleanValue(product.preco_formatado);
+      // Preço - CRÍTICO: Tentar TODOS os campos possíveis
+      // Campos possíveis: price, preco, price_formatted, preco_formatado
+      let priceNum = getNumber(product.price);
+      if (priceNum === null) priceNum = getNumber(product.preco);
       
-      console.log(`[FIQON-SEND] Produto ${sku} - priceNum: ${priceNum}, priceFormatted: ${priceFormatted}`);
+      let priceFormatted = cleanValue(product.price_formatted);
+      if (!priceFormatted) priceFormatted = cleanValue(product.preco_formatado);
       
-      if (priceFormatted && priceFormatted !== 'null' && priceFormatted !== 'undefined') {
-        captionLines.push(`💰 *${priceFormatted}*`);
-      } else if (priceNum !== null && priceNum > 0) {
+      console.log(`[FIQON-SEND] 💰 Produto ${sku} - TODOS CAMPOS:`);
+      console.log(`[FIQON-SEND]   price: ${JSON.stringify(product.price)}`);
+      console.log(`[FIQON-SEND]   preco: ${JSON.stringify(product.preco)}`);
+      console.log(`[FIQON-SEND]   price_formatted: ${JSON.stringify(product.price_formatted)}`);
+      console.log(`[FIQON-SEND]   preco_formatado: ${JSON.stringify(product.preco_formatado)}`);
+      console.log(`[FIQON-SEND]   priceNum calculado: ${priceNum}`);
+      console.log(`[FIQON-SEND]   priceFormatted calculado: ${priceFormatted}`);
+      
+      // PRIORIDADE: price_formatted > priceNum > nenhum
+      if (priceFormatted && priceFormatted !== 'null' && priceFormatted !== 'undefined' && !priceFormatted.includes('null')) {
+        // Garantir que o formato está correto (começar com R$)
+        if (!priceFormatted.startsWith('R$')) {
+          captionLines.push(`💰 *R$ ${priceFormatted}*`);
+        } else {
+          captionLines.push(`💰 *${priceFormatted}*`);
+        }
+      } else if (priceNum !== null && priceNum >= 0) {
+        // IMPORTANTE: Aceitar priceNum >= 0 (antes era > 0, o que excluía preços legítimos!)
         captionLines.push(`💰 *R$ ${priceNum.toFixed(2).replace('.', ',')}*`);
       } else {
-        console.warn(`[FIQON-SEND] ⚠️ Produto ${sku} SEM PREÇO! raw price: ${JSON.stringify(product.price)}, raw preco: ${JSON.stringify(product.preco)}`);
+        console.error(`[FIQON-SEND] ❌ PRODUTO ${sku} SEM PREÇO! Todo o objeto:`);
+        console.error(`[FIQON-SEND]   ${JSON.stringify(product).substring(0, 500)}`);
+        // Ainda assim, adicionar uma linha indicando que não tem preço
+        captionLines.push(`💰 Consulte o preço`);
       }
       
       // Cor
@@ -459,7 +479,7 @@ serve(async (req) => {
       
       // Estoque
       const stockNum = getNumber(product.stock) ?? getNumber(product.estoque);
-      if (stockNum !== null) {
+      if (stockNum !== null && stockNum >= 0) {
         captionLines.push(stockNum > 0 ? `✅ Em estoque` : `⚠️ Sob consulta`);
       }
       
@@ -468,7 +488,7 @@ serve(async (req) => {
       
       const caption = captionLines.join('\n');
       
-      console.log(`[FIQON-SEND] Caption gerado: ${caption.substring(0, 100)}...`);
+      console.log(`[FIQON-SEND] ✅ Caption FINAL gerado: ${caption}`);
 
       console.log(`[FIQON-SEND] Produto ${productIndex}/${products.length}: ${name}`);
       console.log(`[FIQON-SEND]   SKU: ${sku}`);
@@ -511,7 +531,38 @@ serve(async (req) => {
     }
 
     // ========================================
-    // ENVIAR BOTÕES DE SELEÇÃO RÁPIDA (após enviar todos os produtos)
+    // ENVIAR MENSAGEM PÓS-CATÁLOGO (CRÍTICO para engajamento!)
+    // A Aline PRECISA perguntar algo após enviar o catálogo
+    // ========================================
+    let postCatalogSent = false;
+    
+    if (successCount > 0) {
+      await new Promise(resolve => setTimeout(resolve, delayMs)); // Delay após produtos
+      
+      // Pegar a mensagem pós-catálogo da Aline OU usar uma padrão
+      const postCatalogMessage = alineResponse?.mensagem_pos_catalogo 
+        || "Gostou de alguma? Me conta qual chamou mais sua atenção! 😊";
+      
+      console.log(`[FIQON-SEND] 📝 Enviando mensagem pós-catálogo: "${postCatalogMessage}"`);
+      
+      const postResult = await sendTextToZAPI(
+        phone,
+        postCatalogMessage,
+        ZAPI_INSTANCE_ID!,
+        ZAPI_TOKEN!,
+        ZAPI_CLIENT_TOKEN
+      );
+      
+      if (postResult.success) {
+        postCatalogSent = true;
+        console.log(`[FIQON-SEND] ✅ Mensagem pós-catálogo enviada: ${postResult.messageId}`);
+      } else {
+        console.error(`[FIQON-SEND] ❌ Mensagem pós-catálogo falhou: ${postResult.error}`);
+      }
+    }
+
+    // ========================================
+    // ENVIAR BOTÕES DE SELEÇÃO RÁPIDA (OPCIONAL - após mensagem pós-catálogo)
     // ========================================
     if (successCount > 0 && successCount <= 5) {
       // Só enviar botões se temos 1-5 produtos (limite do WhatsApp)
@@ -534,9 +585,7 @@ serve(async (req) => {
           });
 
         if (buttons.length > 0) {
-          const buttonMessage = successCount > 3 
-            ? `Gostou de algum? 😊 Clique para escolher ou me diga o número!`
-            : `Gostou de algum? 😊 Clique para escolher!`;
+          const buttonMessage = `Clique para escolher rapidamente:`;
           
           const buttonResult = await sendButtonMessageToZAPI(
             phone,
@@ -624,21 +673,42 @@ serve(async (req) => {
           .limit(1)
           .maybeSingle();
 
-        if (alineConv && textSent && textMessage) {
-          // Salvar a mensagem da Aline para o follow-up funcionar
-          await supabase.from('aline_messages').insert({
-            conversation_id: alineConv.id,
-            role: 'assistant',
-            message: textMessage,
-            node: alineConv.current_node,
-          });
-          console.log(`[FIQON-SEND] ✅ Mensagem salva em aline_messages (role=assistant) para follow-up`);
+        if (alineConv) {
+          // Salvar mensagem inicial da Aline
+          if (textSent && textMessage) {
+            await supabase.from('aline_messages').insert({
+              conversation_id: alineConv.id,
+              role: 'assistant',
+              message: textMessage,
+              node: alineConv.current_node,
+            });
+            console.log(`[FIQON-SEND] ✅ Texto inicial salvo em aline_messages`);
+          }
+          
+          // CRÍTICO: Salvar mensagem pós-catálogo também!
+          // Esta é a ÚLTIMA mensagem da Aline, então é a que importa para follow-up
+          if (postCatalogSent) {
+            const postCatalogMessage = alineResponse?.mensagem_pos_catalogo 
+              || "Gostou de alguma? Me conta qual chamou mais sua atenção! 😊";
+            
+            await supabase.from('aline_messages').insert({
+              conversation_id: alineConv.id,
+              role: 'assistant',
+              message: postCatalogMessage,
+              node: 'catalogo',
+            });
+            console.log(`[FIQON-SEND] ✅ Mensagem pós-catálogo salva em aline_messages`);
+          }
 
           // Atualizar last_message_at para recalcular follow-up
           await supabase.from('aline_conversations').update({
             last_message_at: new Date().toISOString(),
             followup_count: 0, // Reset follow-up count após enviar catálogo
           }).eq('id', alineConv.id);
+          
+          console.log(`[FIQON-SEND] ✅ aline_conversation atualizada (last_message_at, followup_count=0)`);
+        } else {
+          console.warn(`[FIQON-SEND] ⚠️ Não encontrou aline_conversation para phone=${phone}`);
         }
 
       } catch (crmError) {
