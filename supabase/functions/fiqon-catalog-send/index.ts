@@ -246,6 +246,47 @@ serve(async (req) => {
     const userMessage = cleanValue(payload.message) || cleanValue(payload.mensagem) || cleanValue(payload.text);
     const contactName = cleanValue(payload.contact_name) || cleanValue(payload.nome_contato);
     
+    // ========================================
+    // DEDUPLICAÇÃO: Verificar se já processou esta mensagem
+    // Evita mensagens duplicadas do Fiqon
+    // ========================================
+    const messageId = payload.message_id || payload.messageId || payload.zapiMessageId;
+    
+    if (userMessage && messageId) {
+      console.log(`[FIQON-SEND] Verificando deduplicação para messageId: ${messageId}`);
+      
+      const { data: existingMsg } = await supabase
+        .from('processed_messages')
+        .select('id')
+        .eq('message_id', messageId)
+        .maybeSingle();
+      
+      if (existingMsg) {
+        console.log(`[FIQON-SEND] ⚠️ Mensagem ${messageId} já foi processada! Ignorando duplicata.`);
+        return new Response(
+          JSON.stringify({
+            success: true,
+            skipped: true,
+            reason: 'duplicate_message',
+            message: `Mensagem ${messageId} já foi processada anteriormente`,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      // Registrar mensagem como processada ANTES de processar
+      // Isso evita race condition de múltiplas chamadas simultâneas
+      await supabase
+        .from('processed_messages')
+        .upsert({ 
+          message_id: messageId, 
+          phone,
+          created_at: new Date().toISOString() 
+        }, { onConflict: 'message_id' });
+      
+      console.log(`[FIQON-SEND] ✅ Mensagem ${messageId} registrada para deduplicação`);
+    }
+    
     // Delay between messages (ms)
     const delayMs = payload.delay_ms || payload.delay || 1500;
 
