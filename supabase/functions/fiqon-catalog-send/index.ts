@@ -14,6 +14,8 @@ interface ProductItem {
   descricao?: string;
   price?: number;
   preco?: string;
+  valor?: number;
+  valor_formatado?: string;
   price_formatted?: string;
   preco_formatado?: string;
   caption?: string;
@@ -424,7 +426,7 @@ serve(async (req) => {
       }
 
       // SEMPRE construir caption completo - não confiar no caption pré-formatado
-      const captionLines: string[] = [`*${name}*`];
+      const captionLines: string[] = [`*${productIndex}️⃣ ${name}*`];
       
       // Descrição - SEMPRE incluir se existir
       const desc = cleanValue(product.description) || cleanValue(product.descricao);
@@ -432,38 +434,48 @@ serve(async (req) => {
         captionLines.push(desc);
       }
       
-      // Preço - CRÍTICO: Tentar TODOS os campos possíveis
-      // Campos possíveis: price, preco, price_formatted, preco_formatado
+      // Preço - CRÍTICO: Tentar TODOS os campos possíveis com fallback Z-API direto
+      // Campos possíveis: price, preco, price_formatted, preco_formatado, valor
       let priceNum = getNumber(product.price);
       if (priceNum === null) priceNum = getNumber(product.preco);
+      if (priceNum === null) priceNum = getNumber(product.valor);
       
       let priceFormatted = cleanValue(product.price_formatted);
       if (!priceFormatted) priceFormatted = cleanValue(product.preco_formatado);
+      if (!priceFormatted) priceFormatted = cleanValue(product.valor_formatado);
       
-      console.log(`[FIQON-SEND] 💰 Produto ${sku} - TODOS CAMPOS:`);
-      console.log(`[FIQON-SEND]   price: ${JSON.stringify(product.price)}`);
-      console.log(`[FIQON-SEND]   preco: ${JSON.stringify(product.preco)}`);
-      console.log(`[FIQON-SEND]   price_formatted: ${JSON.stringify(product.price_formatted)}`);
-      console.log(`[FIQON-SEND]   preco_formatado: ${JSON.stringify(product.preco_formatado)}`);
-      console.log(`[FIQON-SEND]   priceNum calculado: ${priceNum}`);
-      console.log(`[FIQON-SEND]   priceFormatted calculado: ${priceFormatted}`);
+      console.log(`[FIQON-SEND] 💰 Produto ${sku} - CAMPOS DE PREÇO:`);
+      console.log(`[FIQON-SEND]   price: ${JSON.stringify(product.price)}, preco: ${JSON.stringify(product.preco)}, valor: ${JSON.stringify(product.valor)}`);
+      console.log(`[FIQON-SEND]   priceNum: ${priceNum}, priceFormatted: ${priceFormatted}`);
       
-      // PRIORIDADE: price_formatted > priceNum > nenhum
+      // Se não encontrou preço no payload, tentar buscar do banco de dados pelo SKU
+      if (priceNum === null && !priceFormatted && sku && sku !== `item-${productIndex}`) {
+        console.log(`[FIQON-SEND] ⚠️ Preço não encontrado no payload, buscando no banco por SKU: ${sku}`);
+        
+        const { data: dbProduct } = await supabase
+          .from('products')
+          .select('price, name')
+          .eq('sku', sku)
+          .maybeSingle();
+        
+        if (dbProduct?.price) {
+          priceNum = dbProduct.price;
+          console.log(`[FIQON-SEND] ✅ Preço encontrado no banco: ${priceNum}`);
+        }
+      }
+      
+      // PRIORIDADE: price_formatted > priceNum > "Consulte"
       if (priceFormatted && priceFormatted !== 'null' && priceFormatted !== 'undefined' && !priceFormatted.includes('null')) {
-        // Garantir que o formato está correto (começar com R$)
         if (!priceFormatted.startsWith('R$')) {
           captionLines.push(`💰 *R$ ${priceFormatted}*`);
         } else {
           captionLines.push(`💰 *${priceFormatted}*`);
         }
       } else if (priceNum !== null && priceNum >= 0) {
-        // IMPORTANTE: Aceitar priceNum >= 0 (antes era > 0, o que excluía preços legítimos!)
         captionLines.push(`💰 *R$ ${priceNum.toFixed(2).replace('.', ',')}*`);
       } else {
-        console.error(`[FIQON-SEND] ❌ PRODUTO ${sku} SEM PREÇO! Todo o objeto:`);
-        console.error(`[FIQON-SEND]   ${JSON.stringify(product).substring(0, 500)}`);
-        // Ainda assim, adicionar uma linha indicando que não tem preço
-        captionLines.push(`💰 Consulte o preço`);
+        console.error(`[FIQON-SEND] ❌ PRODUTO ${sku} SEM PREÇO! Usando fallback "Consulte"`);
+        captionLines.push(`💰 *Consulte o valor*`);
       }
       
       // Cor
@@ -488,7 +500,7 @@ serve(async (req) => {
       
       const caption = captionLines.join('\n');
       
-      console.log(`[FIQON-SEND] ✅ Caption FINAL gerado: ${caption}`);
+      console.log(`[FIQON-SEND] ✅ Caption gerado para ${sku}:`, caption.substring(0, 100) + '...');
 
       console.log(`[FIQON-SEND] Produto ${productIndex}/${products.length}: ${name}`);
       console.log(`[FIQON-SEND]   SKU: ${sku}`);
