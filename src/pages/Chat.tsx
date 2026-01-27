@@ -993,6 +993,21 @@ const Chat = () => {
                           {(conv.contact_name || conv.contact_number).charAt(0).toUpperCase()}
                         </div>
                       )}
+                      
+                      {/* Indicador de online do cliente - verde pulsante quando última msg foi recente */}
+                      {(() => {
+                        const lastMsgTime = conv.created_at ? new Date(conv.created_at).getTime() : 0;
+                        const now = new Date().getTime();
+                        const isRecentlyActive = now - lastMsgTime < 5 * 60 * 1000; // 5 minutos
+                        
+                        if (isRecentlyActive) {
+                          return (
+                            <span className="absolute top-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-slate-900 rounded-full animate-pulse" title="Online" />
+                          );
+                        }
+                        return null;
+                      })()}
+                      
                       <div className={cn(
                         'absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-lg flex items-center justify-center shadow-md',
                         isInstagram ? 'bg-gradient-to-br from-fuchsia-500 to-orange-400' : 'bg-emerald-500'
@@ -1101,13 +1116,37 @@ const Chat = () => {
                   <ArrowLeft className="w-5 h-5" />
                 </Button>
                 
-                <div className={cn(
-                  'w-11 h-11 rounded-2xl flex items-center justify-center text-lg font-semibold text-white shadow-lg shrink-0',
-                  selectedConversation.platform === 'instagram' 
-                    ? 'bg-gradient-to-br from-fuchsia-500 via-pink-500 to-orange-400' 
-                    : 'bg-gradient-to-br from-emerald-400 to-cyan-500'
-                )}>
-                  {(selectedConversation.contact_name || selectedConversation.contact_number).charAt(0).toUpperCase()}
+                <div className="relative">
+                  {customerProfiles[selectedConversation.contact_number]?.profile_pic_url ? (
+                    <img
+                      src={customerProfiles[selectedConversation.contact_number].profile_pic_url}
+                      alt={selectedConversation.contact_name || 'Cliente'}
+                      className="w-11 h-11 rounded-2xl object-cover shadow-lg"
+                    />
+                  ) : (
+                    <div className={cn(
+                      'w-11 h-11 rounded-2xl flex items-center justify-center text-lg font-semibold text-white shadow-lg',
+                      selectedConversation.platform === 'instagram' 
+                        ? 'bg-gradient-to-br from-fuchsia-500 via-pink-500 to-orange-400' 
+                        : 'bg-gradient-to-br from-emerald-400 to-cyan-500'
+                    )}>
+                      {(selectedConversation.contact_name || selectedConversation.contact_number).charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  {/* Indicador de online do cliente - verde pulsante quando tiver atividade recente */}
+                  {(() => {
+                    const alineConv = alineStatusMap[selectedConversation.contact_number];
+                    // Considerar "online" se teve mensagem nos últimos 5 minutos
+                    const isRecentlyActive = messages.length > 0 && messages[messages.length - 1]?.created_at && 
+                      new Date().getTime() - new Date(messages[messages.length - 1].created_at!).getTime() < 5 * 60 * 1000;
+                    
+                    if (isRecentlyActive) {
+                      return (
+                        <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-slate-900 rounded-full animate-pulse" title="Ativo recentemente" />
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
 
                 <div className="min-w-0">
@@ -1244,7 +1283,7 @@ const Chat = () => {
                             >
                               <div
                                 className={cn(
-                                  'relative max-w-[85%] md:max-w-[70%] px-3.5 py-2 shadow-md',
+                                  'relative max-w-[85%] md:max-w-[70%] px-3.5 py-2 shadow-md overflow-hidden',
                                   isMe
                                     ? 'bg-emerald-600 text-white'
                                     : 'bg-slate-800 text-slate-100',
@@ -1254,6 +1293,7 @@ const Chat = () => {
                                       : 'rounded-2xl rounded-tl-md mt-2'
                                     : 'rounded-2xl'
                                 )}
+                                style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
                               >
                                 {/* Media Content */}
                                 {message.message_type === 'image' && message.media_url && (
@@ -1291,7 +1331,7 @@ const Chat = () => {
                                 
                                 {/* Text Content */}
                                 {(message.message_type === 'text' || message.content) && message.message_type !== 'audio' && (
-                                  <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words">
+                                  <p className="text-[15px] leading-relaxed whitespace-pre-wrap" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
                                     {message.content}
                                   </p>
                                 )}
