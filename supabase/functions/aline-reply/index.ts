@@ -93,25 +93,46 @@ Tom: Elegante, objetiva, acolhedora. Emojis moderados (💍✨).
 
 ---
 
+## 🚨 REGRA MÁXIMA: RESPONDA A PERGUNTA DO CLIENTE!
+
+**PRIORIDADE ABSOLUTA**: Se o cliente fez uma PERGUNTA DIRETA, RESPONDA PRIMEIRO!
+
+### PERGUNTAS QUE EXIGEM RESPOSTA DIRETA (NÃO envie catálogo ainda!):
+- "Quanto custa?" / "Qual o valor?" / "Qual o preço?" → Responda: "Os valores variam de R$XX a R$XX! Quer ver as opções?" E SÓ ENTÃO mostre catálogo se ele quiser.
+- "Fica preto?" / "Escurece?" / "Mancha?" → Responda sobre o material ANTES de oferecer produtos.
+- "É resistente?" / "É bom?" / "Dura quanto tempo?" → Responda sobre durabilidade.
+- "Qual a diferença?" → Explique a diferença entre materiais/tipos.
+- "Vocês entregam?" / "Qual o prazo?" → Responda sobre entrega.
+- "Vocês têm garantia?" → Responda sobre garantia.
+
+### SOBRE MATERIAIS (responda quando perguntarem!):
+- **TUNGSTÊNIO** (casamento): Super resistente, NÃO risca, NÃO escurece, hipoalergênico. Cores: dourado, prata, preto, azul.
+- **AÇO INOX** (namoro): Resistente, pode escurecer levemente com o tempo mas é fácil limpar. Mais acessível.
+- **PINGENTES**: Aço inox com banho, fotogravação grátis de 1 lado.
+
+---
+
 ## REGRAS ABSOLUTAS
 
 1. **RESPOSTAS CURTAS**: Máximo 2-3 linhas por mensagem. SEM textão.
 2. **NUNCA se apresente duas vezes** - Se já disse "Sou a Aline", NÃO repita.
 3. **NUNCA repita perguntas** - Se já perguntou algo, não pergunte de novo.
-4. **SEMPRE verifique o catálogo ANTES de afirmar que tem algo** - Use search_catalog primeiro!
-5. **NUNCA diga "temos" sem antes consultar o catálogo** - O resultado da busca é a verdade.
+4. **RESPONDA A PERGUNTA ANTES DE ENVIAR CATÁLOGO** - Se cliente perguntou algo, responda primeiro!
+5. **SÓ envie catálogo quando cliente QUISER VER produtos** - Não force catálogo em perguntas.
 
 ---
 
-## REGRA CRÍTICA: VERIFICAR CATÁLOGO ANTES DE FALAR
+## QUANDO ENVIAR CATÁLOGO vs RESPONDER
 
-❌ ERRADO: Cliente pergunta "tem pulseira?" → Você diz "Temos sim!"
-✅ CORRETO: Cliente pergunta "tem pulseira?" → Use search_catalog(category="pulseira") → Se resultado vazio, diga "Não temos pulseiras no momento, mas temos pingentes lindos! Quer ver?"
+📦 **ENVIAR CATÁLOGO**:
+- "Quero ver" / "Mostra" / "Manda opções" / "Quero comprar"
+- "Sim" / "Pode ser" / "Quero" (após você oferecer mostrar)
+- Quando cliente escolheu categoria + cor e quer ver
 
-SEMPRE:
-1. Receba pedido do cliente
-2. Use search_catalog para verificar
-3. SÓ ENTÃO responda baseado no resultado REAL
+❓ **RESPONDER SEM CATÁLOGO**:
+- Perguntas sobre preço, material, durabilidade, entrega
+- Dúvidas técnicas ("fica preto?", "é bom?")
+- Perguntas sobre a loja, endereço, horário
 
 ---
 
@@ -119,68 +140,23 @@ SEMPRE:
 - **ALIANÇAS** (casamento=tungstênio, namoro=aço)
 - **PINGENTES/MEDALHAS** (fotogravação grátis 1 lado)
 - **ANÉIS**
-- **CORRENTES** (vendidas separadamente - OFERECER quando cliente escolher pingente!)
+- **CORRENTES** (vendidas separadamente)
 
 NÃO TEMOS: pulseiras, brincos, colares simples, relógios
 
 ---
 
-## 🔗 REGRA ESPECIAL: PINGENTES E CORRENTES
-
-**IMPORTANTE**: Pingentes NÃO acompanham corrente!
-Quando o cliente escolher um pingente, SEMPRE pergunte:
-"Esse pingente fica lindo! 💫 Ele não acompanha corrente. Quer que eu te mostre nossas correntes também?"
-
----
-
 ## 📍 ENDEREÇO DA LOJA
-
-**SEMPRE responda quando cliente pedir endereço/localização:**
-📍 *Shopping Sumaúma*
-Av. Noel Nutels, 1762 - Cidade Nova, Manaus - AM
-CEP: 69090-970
-
-Resposta padrão quando perguntarem endereço:
-"📍 Estamos no *Shopping Sumaúma*, Av. Noel Nutels, 1762 - Cidade Nova, Manaus! 🛍️"
-
----
-
-## QUANDO CLIENTE PEDIR ALGO QUE NÃO TEMOS
-
-Se o resultado do search_catalog for VAZIO:
-1. Diga brevemente que não temos
-2. SUGIRA uma alternativa baseada no que o cliente busca:
-   - "amizade" → sugerir pingentes fotogravados
-   - "presente" → sugerir pingentes ou alianças
-   - "casal" → sugerir alianças
-   - "personalizado" → sugerir pingentes com foto
-
-Exemplo:
-"Não temos pulseiras no momento. Mas temos pingentes lindos com fotogravação que simbolizam amizade! Quer ver? 💫"
-
----
-
-## FLUXO ULTRA-DIRETO
-
-Cliente pede produto → search_catalog IMEDIATO → Resultado:
-- Se tem produtos: "Vou te mostrar! 💍" (máx 10 palavras)
-- Se NÃO tem: Sugira alternativa em 1 frase curta
-
----
-
-## APÓS CATÁLOGO
-
-APENAS uma frase curta: "Separei opções incríveis! 💍" (máx 10 palavras)
-NÃO liste produtos no texto - eles são enviados como imagens.
+📍 *Shopping Sumaúma*, Av. Noel Nutels, 1762 - Cidade Nova, Manaus - AM
 
 ---
 
 ## COLETA DE DADOS (APÓS SELEÇÃO)
 
-Pergunte UMA coisa por vez, em frase CURTA:
+Pergunte UMA coisa por vez:
 - Tamanho: "Qual o tamanho de vocês? (14-28)"
 - Foto (pingentes): "Me manda a foto para gravação! 📸"
-- **Corrente (pingentes)**: "Quer ver nossas correntes também? 🔗"
+- Corrente (pingentes): "Quer ver nossas correntes também? 🔗"
 - Entrega: "Retirada na loja ou entrega?"
 - Pagamento: "Pix ou cartão?"
 
@@ -711,8 +687,34 @@ serve(async (req) => {
     // ANÉIS - Padrões
     const isPerguntandoAnel = /anel|anéis|aneis|solitário|solitario/i.test(normalizedMsg);
     
-    // NOVO: Detectar intenção direta de ver/comprar (forçar catálogo)
-    const querVerProdutos = /quero\s*(ver|saber|conhecer|comprar)|mostra|mostrar|ver\s*(as?|os?)?|tem\s*(algum|alguma)?|quer[io]a\s*(saber|ver|comprar)|valores?|quanto\s*custa|preço|preco/i.test(normalizedMsg);
+    // ========================================
+    // NLU: DETECTAR PERGUNTAS DIRETAS (NÃO forçar catálogo!)
+    // Cliente fez uma PERGUNTA que precisa de RESPOSTA antes de mostrar produtos
+    // ========================================
+    const isPerguntaDireta = 
+      // Perguntas sobre preço/valor
+      /quanto\s*custa|qual\s*o?\s*valor|qual\s*o?\s*pre[çc]o|quanto\s*[eé]|quanto\s*fica|quanto\s*sai|saber?\s*(o\s*)?pre[çc]o|valores?|quant[ao]\s*sale/i.test(normalizedMsg) ||
+      // Perguntas sobre material/durabilidade
+      /fica\s*pret[oa]|escurece|mancha|oxida|enferruja|[eé]\s*resistente|dura\s*quanto|quanto\s*tempo\s*dura|[eé]\s*bom|[eé]\s*boa|\s*qualidade/i.test(normalizedMsg) ||
+      // Perguntas sobre diferenças
+      /qual\s*a?\s*diferen[çc]a|diferente|compara|melhor\s*qual/i.test(normalizedMsg) ||
+      // Perguntas sobre entrega/prazo
+      /voc[eê]s?\s*entrega|prazo\s*de\s*entrega|quanto\s*tempo.*entrega|demora\s*quanto|quando\s*chega/i.test(normalizedMsg) ||
+      // Perguntas sobre garantia
+      /tem\s*garantia|garantia|troca/i.test(normalizedMsg) ||
+      // Perguntas genéricas sobre material
+      /material|feito\s*de\s*que|de\s*que\s*[eé]|esse\s*material/i.test(normalizedMsg);
+    
+    // NOVO: Se é pergunta direta, NÃO forçar catálogo - deixar a AI responder primeiro
+    if (isPerguntaDireta) {
+      console.log(`[ALINE-REPLY] [NLU] 🔍 PERGUNTA DIRETA detectada! NÃO forçar catálogo, deixar AI responder.`);
+      newCollectedData.pergunta_direta = true;
+      // NÃO definir quer_ver_catalogo aqui!
+    }
+    
+    // NOVO: Detectar intenção direta de ver/comprar (forçar catálogo) 
+    // MAS não se for pergunta direta sobre preço/material
+    const querVerProdutos = !isPerguntaDireta && /quero\s*(ver|conhecer|comprar)|mostra|mostrar|ver\s*(as?|os?)?|manda\s*op[çc][oõ]es|quero\s*op[çc][oõ]es/i.test(normalizedMsg);
     
     // NOVO: Detectar cor na mensagem (para ir direto ao catálogo)
     const temCorNaMensagem = /dourada|dourado|ouro|gold|prata|prateada|aço|aco|preta|preto|azul|rose|rosé/i.test(normalizedMsg);
@@ -1350,52 +1352,54 @@ serve(async (req) => {
     // ========================================
     const lastUserMessage = message.toLowerCase();
     
+    // ⚠️ CRÍTICO: Se é pergunta direta, NÃO forçar catálogo!
+    const temPerguntaDireta = newCollectedData.pergunta_direta === true;
+    
     // AMPLIADO: Incluir todos os produtos
     const hasCategoryKeyword = /aliança|alianca|pingente|medalha|medalhinha|medalhas|anel|aneis|anéis/i.test(lastUserMessage);
     const hasColorKeyword = /dourada|dourado|prata|aço|aco|preta|preto|azul|rose|rosé/i.test(lastUserMessage);
-    const hasActionKeyword = /quero|ver|mostrar|mostra|catálogo|catalogo|opções|opcoes|valores?|saber|comprar|quanto|preço|preco/i.test(lastUserMessage);
+    // NÃO incluir "quanto", "preço", "valores" como action keyword - são perguntas!
+    const hasActionKeyword = /quero\s*(ver|comprar)|mostrar|mostra|manda\s*op|catálogo|catalogo/i.test(lastUserMessage);
     const hasOtherColorsKeyword = /outra(s)?\s*cor(es)?|tem\s*outras?|mais\s*op[çc][õo]es|outras\s*op[çc][õo]es/i.test(lastUserMessage);
     const isAffirmativeResponse = /^(sim|quero|pode|claro|ok|s|bora|show|isso|exato|perfeito|legal|boa|blz|beleza|pode ser|manda|mostra|opções|quero ver)$/i.test(lastUserMessage.trim());
     
-    // AMPLIADO: "medalha" = "pingente"
-    const hasPingenteOrMedalha = /pingente|pingentes|medalha|medalhas|medalhinha|personalizada|com\s*foto|fotogravação/i.test(lastUserMessage);
+    // AMPLIADO: "medalha" = "pingente" - MAS só se não for pergunta
+    const hasPingenteOrMedalha = !temPerguntaDireta && /pingente|pingentes|medalha|medalhas|medalhinha|personalizada|com\s*foto|fotogravação/i.test(lastUserMessage);
     
-    // NOVO: Detectar anéis
-    const hasAnel = /anel|anéis|aneis|solitário|solitario/i.test(lastUserMessage);
+    // NOVO: Detectar anéis - MAS só se não for pergunta
+    const hasAnel = !temPerguntaDireta && /anel|anéis|aneis|solitário|solitario/i.test(lastUserMessage);
     
     // NOVO: Detectar alianças com finalidade na mesma mensagem
-    const hasAliancaCasamento = /aliança.*casamento|casamento.*aliança|alianca.*casamento|casamento|casar|tungst[eê]nio/i.test(lastUserMessage);
-    const hasAliancaNamoro = /aliança.*namoro|namoro.*aliança|alianca.*namoro|compromisso|namoro|noivado/i.test(lastUserMessage);
+    const hasAliancaCasamento = !temPerguntaDireta && /aliança.*casamento|casamento.*aliança|alianca.*casamento|casamento|casar|tungst[eê]nio/i.test(lastUserMessage);
+    const hasAliancaNamoro = !temPerguntaDireta && /aliança.*namoro|namoro.*aliança|alianca.*namoro|compromisso|namoro|noivado/i.test(lastUserMessage);
     
-    // NOVA LÓGICA: Forçar catálogo em mais cenários
+    // NOVA LÓGICA: Forçar catálogo em mais cenários - MAS NUNCA se for pergunta direta!
     const isPingenteFlow = newCollectedData.categoria === 'pingente';
     const isAneisFlow = newCollectedData.categoria === 'aneis';
     const isAliancasFlow = newCollectedData.categoria === 'aliancas';
     const hasColorForCategory = (isPingenteFlow || isAneisFlow || isAliancasFlow) && hasColorKeyword;
     
-    const shouldForceCatalog = 
-      (hasCategoryKeyword && hasColorKeyword) || 
+    // ⚠️ CRÍTICO: Se é pergunta direta, NUNCA forçar catálogo!
+    const shouldForceCatalog = !temPerguntaDireta && (
+      (hasCategoryKeyword && hasColorKeyword && hasActionKeyword) || // Mais restrito: precisa de ação
       (hasActionKeyword && hasCategoryKeyword) ||
-      (collectedData.cor && hasColorKeyword) ||
       hasOtherColorsKeyword ||
-      hasPingenteOrMedalha || // Forçar se perguntar sobre pingentes OU medalhas
-      hasAnel || // NOVO: Forçar se perguntar sobre anéis
-      hasColorForCategory ||
       (isAffirmativeResponse && detectedCategoria && !newCollectedData.selected_sku) ||
       mudouCategoria ||
       querVerCatalogo ||
-      (isPingenteFlow && !newCollectedData.selected_sku) || // Se é pingente e não selecionou, mostrar catálogo
-      (isPingenteFlow && finalCor) ||
-      (isAneisFlow && !newCollectedData.selected_sku) || // NOVO: Se é anéis e não selecionou
-      (isAneisFlow && finalCor) ||
-      (isAliancasFlow && finalFinalidade && finalCor && !newCollectedData.selected_sku) || // Alianças com finalidade e cor
-      (hasAliancaCasamento && hasColorKeyword) || // NOVO: Aliança casamento + cor = catálogo
-      (hasAliancaNamoro && hasColorKeyword); // NOVO: Aliança namoro + cor = catálogo
+      (isPingenteFlow && hasColorKeyword && hasActionKeyword) || // Pingente + cor + ação
+      (isAneisFlow && hasColorKeyword && hasActionKeyword) || // Anéis + cor + ação
+      (isAliancasFlow && finalFinalidade && finalCor && hasActionKeyword && !newCollectedData.selected_sku) || // Alianças completo + ação
+      (hasAliancaCasamento && hasColorKeyword && hasActionKeyword) || // Aliança casamento + cor + ação
+      (hasAliancaNamoro && hasColorKeyword && hasActionKeyword) // Aliança namoro + cor + ação
+    );
     
     let toolChoice: any = "auto";
     if (shouldForceCatalog) {
       console.log(`[ALINE-REPLY] Forçando busca de catálogo - cenário: pingente=${isPingenteFlow}, aneis=${isAneisFlow}, aliancas=${isAliancasFlow}, mudou=${mudouCategoria}`);
       toolChoice = { type: "function", function: { name: "search_catalog" } };
+    } else if (temPerguntaDireta) {
+      console.log(`[ALINE-REPLY] 🔍 PERGUNTA DIRETA detectada - deixando AI responder naturalmente SEM forçar catálogo`);
     }
 
     // ========================================
