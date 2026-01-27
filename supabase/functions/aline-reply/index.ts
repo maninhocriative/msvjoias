@@ -85,6 +85,7 @@ const tools = [
 ];
 
 // System prompt da Aline - VERSÃO COMPACTA E DIRETA
+// IMPORTANTE: Aline NUNCA responde sobre preços com texto - sempre envia catálogo com os preços nos cards!
 const ALINE_SYSTEM_PROMPT = `# ALINE — Consultora Virtual ACIUM Manaus
 
 ## IDENTIDADE
@@ -93,22 +94,28 @@ Tom: Elegante, objetiva, acolhedora. Emojis moderados (💍✨).
 
 ---
 
-## 🚨 REGRA MÁXIMA: RESPONDA A PERGUNTA DO CLIENTE!
+## 🚨 REGRA MÁXIMA SOBRE PREÇOS:
 
-**PRIORIDADE ABSOLUTA**: Se o cliente fez uma PERGUNTA DIRETA, RESPONDA PRIMEIRO!
+**NUNCA, JAMAIS** responda sobre preços com texto! 
+- Cliente perguntou "quanto custa?" → ENVIE O CATÁLOGO! Diga apenas: "Vou te mostrar com os valores! 💍✨"
+- Os preços aparecem AUTOMATICAMENTE nos cards das fotos/vídeos dos produtos
+- NÃO invente valores, NÃO diga "a partir de", NÃO dê faixa de preço
+- SEMPRE use search_catalog para mostrar os produtos COM PREÇOS
 
-### PERGUNTAS QUE EXIGEM RESPOSTA DIRETA (NÃO envie catálogo ainda!):
-- "Quanto custa?" / "Qual o valor?" / "Qual o preço?" → Responda: "Os valores variam de R$XX a R$XX! Quer ver as opções?" E SÓ ENTÃO mostre catálogo se ele quiser.
-- "Fica preto?" / "Escurece?" / "Mancha?" → Responda sobre o material ANTES de oferecer produtos.
-- "É resistente?" / "É bom?" / "Dura quanto tempo?" → Responda sobre durabilidade.
-- "Qual a diferença?" → Explique a diferença entre materiais/tipos.
-- "Vocês entregam?" / "Qual o prazo?" → Responda sobre entrega.
-- "Vocês têm garantia?" → Responda sobre garantia.
+---
+
+## PERGUNTAS QUE VOCÊ PODE RESPONDER (sem catálogo):
+- "Fica preto?" / "Escurece?" / "Mancha?" → Responda sobre o material
+- "É resistente?" / "É bom?" / "Dura quanto tempo?" → Responda sobre durabilidade
+- "Qual a diferença?" → Explique a diferença entre materiais/tipos
+- "Vocês entregam?" / "Qual o prazo?" → Responda sobre entrega
+- "Vocês têm garantia?" → Responda sobre garantia
+- "Onde fica a loja?" → Dê o endereço
 
 ### SOBRE MATERIAIS (responda quando perguntarem!):
-- **TUNGSTÊNIO** (casamento): Super resistente, NÃO risca, NÃO escurece, hipoalergênico. Cores: dourado, prata, preto, azul.
-- **AÇO INOX** (namoro): Resistente, pode escurecer levemente com o tempo mas é fácil limpar. Mais acessível.
-- **PINGENTES**: Aço inox com banho, fotogravação grátis de 1 lado.
+- **TUNGSTÊNIO** (casamento): Super resistente, NÃO risca, NÃO escurece, hipoalergênico
+- **AÇO INOX** (namoro): Resistente, pode escurecer levemente, mais acessível
+- **PINGENTES**: Aço inox com banho, fotogravação grátis de 1 lado
 
 ---
 
@@ -117,22 +124,18 @@ Tom: Elegante, objetiva, acolhedora. Emojis moderados (💍✨).
 1. **RESPOSTAS CURTAS**: Máximo 2-3 linhas por mensagem. SEM textão.
 2. **NUNCA se apresente duas vezes** - Se já disse "Sou a Aline", NÃO repita.
 3. **NUNCA repita perguntas** - Se já perguntou algo, não pergunte de novo.
-4. **RESPONDA A PERGUNTA ANTES DE ENVIAR CATÁLOGO** - Se cliente perguntou algo, responda primeiro!
-5. **SÓ envie catálogo quando cliente QUISER VER produtos** - Não force catálogo em perguntas.
+4. **PREÇOS**: SEMPRE envie catálogo! NUNCA diga valores em texto!
+5. **SÓ responda perguntas técnicas** - Materiais, entrega, garantia, etc.
 
 ---
 
-## QUANDO ENVIAR CATÁLOGO vs RESPONDER
+## QUANDO ENVIAR CATÁLOGO (com preços nos cards):
 
-📦 **ENVIAR CATÁLOGO**:
+📦 **ENVIAR CATÁLOGO IMEDIATAMENTE**:
+- "Quanto custa?" / "Qual o valor?" / "Qual o preço?" → USE search_catalog!
 - "Quero ver" / "Mostra" / "Manda opções" / "Quero comprar"
 - "Sim" / "Pode ser" / "Quero" (após você oferecer mostrar)
 - Quando cliente escolheu categoria + cor e quer ver
-
-❓ **RESPONDER SEM CATÁLOGO**:
-- Perguntas sobre preço, material, durabilidade, entrega
-- Dúvidas técnicas ("fica preto?", "é bom?")
-- Perguntas sobre a loja, endereço, horário
 
 ---
 
@@ -688,12 +691,22 @@ serve(async (req) => {
     const isPerguntandoAnel = /anel|anéis|aneis|solitário|solitario/i.test(normalizedMsg);
     
     // ========================================
-    // NLU: DETECTAR PERGUNTAS DIRETAS (NÃO forçar catálogo!)
-    // Cliente fez uma PERGUNTA que precisa de RESPOSTA antes de mostrar produtos
+    // NLU: DETECTAR PERGUNTAS SOBRE PREÇO → FORÇAR CATÁLOGO COM PREÇOS!
+    // Cliente perguntou preço? NUNCA responder textualmente, enviar catálogo!
     // ========================================
-    const isPerguntaDireta = 
-      // Perguntas sobre preço/valor
-      /quanto\s*custa|qual\s*o?\s*valor|qual\s*o?\s*pre[çc]o|quanto\s*[eé]|quanto\s*fica|quanto\s*sai|saber?\s*(o\s*)?pre[çc]o|valores?|quant[ao]\s*sale/i.test(normalizedMsg) ||
+    const isPerguntaPreco = 
+      /quanto\s*custa|qual\s*o?\s*valor|qual\s*o?\s*pre[çc]o|quanto\s*[eé]|quanto\s*fica|quanto\s*sai|saber?\s*(o\s*)?pre[çc]o|valores?|quant[ao]\s*sale|pre[çc]o/i.test(normalizedMsg);
+    
+    // CRÍTICO: Pergunta sobre preço → FORÇAR CATÁLOGO com preços nos cards!
+    if (isPerguntaPreco) {
+      console.log(`[ALINE-REPLY] [NLU] 💰 PERGUNTA SOBRE PREÇO detectada! FORÇAR CATÁLOGO COM PREÇOS!`);
+      newCollectedData.pergunta_preco = true;
+      newCollectedData.quer_ver_catalogo = true; // FORÇAR envio do catálogo!
+    }
+    
+    // NLU: DETECTAR PERGUNTAS TÉCNICAS (responder SEM catálogo)
+    // Apenas perguntas sobre material, entrega, garantia - NÃO preço!
+    const isPerguntaTecnica = 
       // Perguntas sobre material/durabilidade
       /fica\s*pret[oa]|escurece|mancha|oxida|enferruja|[eé]\s*resistente|dura\s*quanto|quanto\s*tempo\s*dura|[eé]\s*bom|[eé]\s*boa|\s*qualidade/i.test(normalizedMsg) ||
       // Perguntas sobre diferenças
@@ -705,16 +718,15 @@ serve(async (req) => {
       // Perguntas genéricas sobre material
       /material|feito\s*de\s*que|de\s*que\s*[eé]|esse\s*material/i.test(normalizedMsg);
     
-    // NOVO: Se é pergunta direta, NÃO forçar catálogo - deixar a AI responder primeiro
-    if (isPerguntaDireta) {
-      console.log(`[ALINE-REPLY] [NLU] 🔍 PERGUNTA DIRETA detectada! NÃO forçar catálogo, deixar AI responder.`);
-      newCollectedData.pergunta_direta = true;
-      // NÃO definir quer_ver_catalogo aqui!
+    // Se é pergunta técnica (NÃO preço), deixar AI responder naturalmente
+    if (isPerguntaTecnica && !isPerguntaPreco) {
+      console.log(`[ALINE-REPLY] [NLU] 🔍 PERGUNTA TÉCNICA detectada! Deixar AI responder.`);
+      newCollectedData.pergunta_tecnica = true;
     }
     
     // NOVO: Detectar intenção direta de ver/comprar (forçar catálogo) 
-    // MAS não se for pergunta direta sobre preço/material
-    const querVerProdutos = !isPerguntaDireta && /quero\s*(ver|conhecer|comprar)|mostra|mostrar|ver\s*(as?|os?)?|manda\s*op[çc][oõ]es|quero\s*op[çc][oõ]es/i.test(normalizedMsg);
+    // MAS não se for pergunta técnica sobre material/entrega
+    const querVerProdutos = !isPerguntaTecnica && /quero\s*(ver|conhecer|comprar)|mostra|mostrar|ver\s*(as?|os?)?|manda\s*op[çc][oõ]es|quero\s*op[çc][oõ]es/i.test(normalizedMsg);
     
     // NOVO: Detectar cor na mensagem (para ir direto ao catálogo)
     const temCorNaMensagem = /dourada|dourado|ouro|gold|prata|prateada|aço|aco|preta|preto|azul|rose|rosé/i.test(normalizedMsg);
@@ -1352,54 +1364,65 @@ serve(async (req) => {
     // ========================================
     const lastUserMessage = message.toLowerCase();
     
-    // ⚠️ CRÍTICO: Se é pergunta direta, NÃO forçar catálogo!
-    const temPerguntaDireta = newCollectedData.pergunta_direta === true;
+    // ⚠️ CRÍTICO: Pergunta sobre PREÇO = FORÇAR CATÁLOGO!
+    const temPerguntaPreco = newCollectedData.pergunta_preco === true;
+    
+    // Pergunta técnica (material, entrega, garantia) = deixar AI responder
+    const temPerguntaTecnica = newCollectedData.pergunta_tecnica === true;
     
     // AMPLIADO: Incluir todos os produtos
     const hasCategoryKeyword = /aliança|alianca|pingente|medalha|medalhinha|medalhas|anel|aneis|anéis/i.test(lastUserMessage);
     const hasColorKeyword = /dourada|dourado|prata|aço|aco|preta|preto|azul|rose|rosé/i.test(lastUserMessage);
-    // NÃO incluir "quanto", "preço", "valores" como action keyword - são perguntas!
     const hasActionKeyword = /quero\s*(ver|comprar)|mostrar|mostra|manda\s*op|catálogo|catalogo/i.test(lastUserMessage);
     const hasOtherColorsKeyword = /outra(s)?\s*cor(es)?|tem\s*outras?|mais\s*op[çc][õo]es|outras\s*op[çc][õo]es/i.test(lastUserMessage);
     const isAffirmativeResponse = /^(sim|quero|pode|claro|ok|s|bora|show|isso|exato|perfeito|legal|boa|blz|beleza|pode ser|manda|mostra|opções|quero ver)$/i.test(lastUserMessage.trim());
     
-    // AMPLIADO: "medalha" = "pingente" - MAS só se não for pergunta
-    const hasPingenteOrMedalha = !temPerguntaDireta && /pingente|pingentes|medalha|medalhas|medalhinha|personalizada|com\s*foto|fotogravação/i.test(lastUserMessage);
+    // AMPLIADO: "medalha" = "pingente"
+    const hasPingenteOrMedalha = /pingente|pingentes|medalha|medalhas|medalhinha|personalizada|com\s*foto|fotogravação/i.test(lastUserMessage);
     
-    // NOVO: Detectar anéis - MAS só se não for pergunta
-    const hasAnel = !temPerguntaDireta && /anel|anéis|aneis|solitário|solitario/i.test(lastUserMessage);
+    // NOVO: Detectar anéis
+    const hasAnel = /anel|anéis|aneis|solitário|solitario/i.test(lastUserMessage);
     
     // NOVO: Detectar alianças com finalidade na mesma mensagem
-    const hasAliancaCasamento = !temPerguntaDireta && /aliança.*casamento|casamento.*aliança|alianca.*casamento|casamento|casar|tungst[eê]nio/i.test(lastUserMessage);
-    const hasAliancaNamoro = !temPerguntaDireta && /aliança.*namoro|namoro.*aliança|alianca.*namoro|compromisso|namoro|noivado/i.test(lastUserMessage);
+    const hasAliancaCasamento = /aliança.*casamento|casamento.*aliança|alianca.*casamento|casamento|casar|tungst[eê]nio/i.test(lastUserMessage);
+    const hasAliancaNamoro = /aliança.*namoro|namoro.*aliança|alianca.*namoro|compromisso|namoro|noivado/i.test(lastUserMessage);
     
-    // NOVA LÓGICA: Forçar catálogo em mais cenários - MAS NUNCA se for pergunta direta!
+    // NOVA LÓGICA: Forçar catálogo em mais cenários
     const isPingenteFlow = newCollectedData.categoria === 'pingente';
     const isAneisFlow = newCollectedData.categoria === 'aneis';
     const isAliancasFlow = newCollectedData.categoria === 'aliancas';
     const hasColorForCategory = (isPingenteFlow || isAneisFlow || isAliancasFlow) && hasColorKeyword;
     
-    // ⚠️ CRÍTICO: Se é pergunta direta, NUNCA forçar catálogo!
-    const shouldForceCatalog = !temPerguntaDireta && (
-      (hasCategoryKeyword && hasColorKeyword && hasActionKeyword) || // Mais restrito: precisa de ação
+    // ⚠️ FORÇAR CATÁLOGO quando:
+    // 1. Pergunta sobre PREÇO (mostrar produtos COM preços nos cards!)
+    // 2. Quer ver catálogo
+    // 3. Tem categoria + cor + ação
+    // NÃO forçar se for pergunta técnica (material, entrega, garantia)
+    const shouldForceCatalog = !temPerguntaTecnica && (
+      temPerguntaPreco || // NOVO: Pergunta de preço = FORÇAR catálogo!
+      (hasCategoryKeyword && hasColorKeyword && hasActionKeyword) ||
       (hasActionKeyword && hasCategoryKeyword) ||
       hasOtherColorsKeyword ||
       (isAffirmativeResponse && detectedCategoria && !newCollectedData.selected_sku) ||
       mudouCategoria ||
       querVerCatalogo ||
-      (isPingenteFlow && hasColorKeyword && hasActionKeyword) || // Pingente + cor + ação
-      (isAneisFlow && hasColorKeyword && hasActionKeyword) || // Anéis + cor + ação
-      (isAliancasFlow && finalFinalidade && finalCor && hasActionKeyword && !newCollectedData.selected_sku) || // Alianças completo + ação
-      (hasAliancaCasamento && hasColorKeyword && hasActionKeyword) || // Aliança casamento + cor + ação
-      (hasAliancaNamoro && hasColorKeyword && hasActionKeyword) // Aliança namoro + cor + ação
+      (isPingenteFlow && hasColorKeyword && hasActionKeyword) ||
+      (isAneisFlow && hasColorKeyword && hasActionKeyword) ||
+      (isAliancasFlow && finalFinalidade && finalCor && hasActionKeyword && !newCollectedData.selected_sku) ||
+      (hasAliancaCasamento && hasColorKeyword && hasActionKeyword) ||
+      (hasAliancaNamoro && hasColorKeyword && hasActionKeyword)
     );
     
     let toolChoice: any = "auto";
     if (shouldForceCatalog) {
-      console.log(`[ALINE-REPLY] Forçando busca de catálogo - cenário: pingente=${isPingenteFlow}, aneis=${isAneisFlow}, aliancas=${isAliancasFlow}, mudou=${mudouCategoria}`);
+      if (temPerguntaPreco) {
+        console.log(`[ALINE-REPLY] 💰 PERGUNTA DE PREÇO → Forçando catálogo COM PREÇOS NOS CARDS!`);
+      } else {
+        console.log(`[ALINE-REPLY] Forçando busca de catálogo - cenário: pingente=${isPingenteFlow}, aneis=${isAneisFlow}, aliancas=${isAliancasFlow}, mudou=${mudouCategoria}`);
+      }
       toolChoice = { type: "function", function: { name: "search_catalog" } };
-    } else if (temPerguntaDireta) {
-      console.log(`[ALINE-REPLY] 🔍 PERGUNTA DIRETA detectada - deixando AI responder naturalmente SEM forçar catálogo`);
+    } else if (temPerguntaTecnica) {
+      console.log(`[ALINE-REPLY] 🔍 PERGUNTA TÉCNICA detectada - deixando AI responder naturalmente`);
     }
 
     // ========================================
