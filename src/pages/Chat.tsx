@@ -3,7 +3,7 @@ import { supabase, Conversation, Message, LeadStatus } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, Paperclip, Search, MessageSquare, FileText, Mic, Check, CheckCheck, Instagram, Bot, User, Phone, ArrowLeft, MoreVertical, UserCheck, RefreshCw, Clock, MessageCircle, Sparkles, X, Volume2, Loader2, Users, UserPlus, Timer } from 'lucide-react';
+import { Send, Paperclip, Search, MessageSquare, FileText, Mic, Check, CheckCheck, Instagram, Bot, User, Phone, ArrowLeft, MoreVertical, UserCheck, RefreshCw, Clock, MessageCircle, Sparkles, X, Volume2, Loader2, Users, UserPlus, Timer, Camera, Square } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { LeadStatusSelect, LeadStatusBadge } from '@/components/chat/LeadStatusSelect';
@@ -45,6 +45,9 @@ const Chat = () => {
   const [sending, setSending] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
+  const [recordingStartTime, setRecordingStartTime] = useState<number | null>(null);
+  const [recordingDuration, setRecordingDuration] = useState(0);
   const [updatingLeadStatus, setUpdatingLeadStatus] = useState(false);
   const [takingOver, setTakingOver] = useState(false);
   const [isContactTyping, setIsContactTyping] = useState(false);
@@ -54,6 +57,7 @@ const Chat = () => {
   const [alineStatusMap, setAlineStatusMap] = useState<Record<string, AlineConversation>>({});
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [customerProfiles, setCustomerProfiles] = useState<Record<string, CustomerProfile>>({});
+  const audioStreamRef = useRef<MediaStream | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -488,23 +492,50 @@ const Chat = () => {
     }
   };
 
+  // Timer para exibir duração da gravação
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    if (isRecording && recordingStartTime) {
+      interval = setInterval(() => {
+        setRecordingDuration(Math.floor((Date.now() - recordingStartTime) / 1000));
+      }, 100);
+    } else {
+      setRecordingDuration(0);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isRecording, recordingStartTime]);
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      const chunks: BlobPart[] = [];
+      audioStreamRef.current = stream;
+      
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      const chunks: Blob[] = [];
 
-      recorder.ondataavailable = (e) => chunks.push(e.data);
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunks.push(e.data);
+          setAudioChunks([...chunks]);
+        }
+      };
+      
       recorder.onstop = async () => {
         const blob = new Blob(chunks, { type: 'audio/webm' });
         await uploadAudio(blob);
         stream.getTracks().forEach(track => track.stop());
+        audioStreamRef.current = null;
+        setAudioChunks([]);
       };
 
-      recorder.start();
+      // Gravar em intervalos para permitir parar a qualquer momento
+      recorder.start(100);
       setMediaRecorder(recorder);
       setIsRecording(true);
-      toast({ title: 'Gravando...', description: 'Clique novamente para parar' });
+      setRecordingStartTime(Date.now());
+      toast({ title: '🎙️ Gravando áudio', description: 'Clique no ⏹️ para enviar' });
     } catch (error) {
       console.error('Error starting recording:', error);
       toast({ title: 'Erro', description: 'Não foi possível acessar o microfone.', variant: 'destructive' });
@@ -512,18 +543,38 @@ const Chat = () => {
   };
 
   const stopRecording = () => {
-    if (mediaRecorder) {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
       mediaRecorder.stop();
-      setMediaRecorder(null);
-      setIsRecording(false);
     }
+    setMediaRecorder(null);
+    setIsRecording(false);
+    setRecordingStartTime(null);
+  };
+
+  const cancelRecording = () => {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+    }
+    if (audioStreamRef.current) {
+      audioStreamRef.current.getTracks().forEach(track => track.stop());
+      audioStreamRef.current = null;
+    }
+    setMediaRecorder(null);
+    setIsRecording(false);
+    setRecordingStartTime(null);
+    setAudioChunks([]);
+    toast({ title: 'Gravação cancelada' });
   };
 
   const uploadAudio = async (blob: Blob) => {
-    if (!selectedConversation) return;
+    if (!selectedConversation || blob.size < 1000) {
+      toast({ title: 'Áudio muito curto', description: 'Grave por mais tempo' });
+      return;
+    }
+    
     setSending(true);
     try {
-      const fileName = `${Date.now()}.webm`;
+      const fileName = `audio-${Date.now()}.webm`;
       const { error: uploadError } = await supabase.storage.from('chat-media').upload(fileName, blob);
       if (uploadError) throw uploadError;
 
@@ -541,13 +592,89 @@ const Chat = () => {
       });
 
       if (error) throw error;
-      toast({ title: 'Áudio enviado!' });
+      toast({ title: '✅ Áudio enviado!' });
     } catch (error) {
       console.error('Error uploading audio:', error);
       toast({ title: 'Erro', description: 'Não foi possível enviar o áudio.', variant: 'destructive' });
     } finally {
       setSending(false);
     }
+  };
+
+  // Capturar screenshot da tela e enviar
+  const captureAndSendScreenshot = async () => {
+    if (!selectedConversation) return;
+    
+    try {
+      // Solicitar permissão para capturar tela
+      const stream = await navigator.mediaDevices.getDisplayMedia({ 
+        video: { mediaSource: 'screen' } as any
+      });
+      
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      await video.play();
+      
+      // Criar canvas e capturar frame
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx?.drawImage(video, 0, 0);
+      
+      // Parar stream
+      stream.getTracks().forEach(track => track.stop());
+      
+      // Converter para blob
+      const blob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob((b) => resolve(b), 'image/png', 0.9);
+      });
+      
+      if (!blob) {
+        throw new Error('Failed to capture screenshot');
+      }
+      
+      setSending(true);
+      
+      // Upload para storage
+      const fileName = `screenshot-${Date.now()}.png`;
+      const { error: uploadError } = await supabase.storage.from('chat-media').upload(fileName, blob);
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage.from('chat-media').getPublicUrl(fileName);
+
+      // Enviar via automation-send
+      const { error } = await supabase.functions.invoke('automation-send', {
+        body: {
+          conversation_id: selectedConversation.id,
+          phone: selectedConversation.contact_number,
+          message: 'Screenshot',
+          message_type: 'image',
+          media_url: publicUrl,
+          platform: selectedConversation.platform || 'whatsapp',
+        },
+      });
+
+      if (error) throw error;
+      toast({ title: '📸 Screenshot enviado!' });
+      
+    } catch (error: any) {
+      console.error('Error capturing screenshot:', error);
+      if (error.name === 'NotAllowedError') {
+        toast({ title: 'Permissão negada', description: 'Você precisa permitir o compartilhamento de tela.', variant: 'destructive' });
+      } else {
+        toast({ title: 'Erro', description: 'Não foi possível capturar a tela.', variant: 'destructive' });
+      }
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // Função para formatar duração da gravação
+  const formatRecordingTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   const filteredConversations = conversations.filter((conv) => {
@@ -1205,6 +1332,38 @@ const Chat = () => {
             {/* Input Area */}
             <div className="px-4 py-3 bg-slate-900/95 backdrop-blur-xl border-t border-white/5 shrink-0">
               <form onSubmit={sendMessage} className="max-w-4xl mx-auto">
+                {/* Recording indicator bar */}
+                {isRecording && (
+                  <div className="flex items-center justify-between mb-3 px-4 py-2 bg-rose-500/20 border border-rose-500/30 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <span className="w-3 h-3 rounded-full bg-rose-500 animate-pulse" />
+                      <span className="text-rose-400 font-medium">Gravando áudio</span>
+                      <span className="text-rose-300 font-mono">{formatRecordingTime(recordingDuration)}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={cancelRecording}
+                        className="text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 h-8 px-3"
+                      >
+                        <X className="w-4 h-4 mr-1" />
+                        Cancelar
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={stopRecording}
+                        className="bg-rose-500 hover:bg-rose-600 text-white h-8 px-3"
+                      >
+                        <Square className="w-3 h-3 mr-1.5" />
+                        Enviar
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-end gap-2">
                   {/* Attachment Button */}
                   <input
@@ -1225,6 +1384,19 @@ const Chat = () => {
                   >
                     <Paperclip className="w-5 h-5" />
                   </Button>
+
+                  {/* Screenshot Button */}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="shrink-0 rounded-xl text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/10 h-10 w-10 transition-colors"
+                    onClick={captureAndSendScreenshot}
+                    disabled={sending || isRecording}
+                    title="Capturar e enviar print"
+                  >
+                    <Camera className="w-5 h-5" />
+                  </Button>
                   
                   {/* Input Container */}
                   <div className="flex-1 relative bg-slate-800/60 rounded-2xl border border-white/5 focus-within:border-emerald-500/50 focus-within:ring-1 focus-within:ring-emerald-500/20 transition-all">
@@ -1232,47 +1404,35 @@ const Chat = () => {
                       value={newMessage}
                       onChange={(e) => setNewMessage(e.target.value)}
                       placeholder="Digite uma mensagem..."
-                      className="border-0 bg-transparent text-white placeholder:text-slate-500 focus-visible:ring-0 h-11 px-4 text-[15px]"
+                      className="border-0 bg-transparent text-white placeholder:text-slate-500 focus-visible:ring-0 h-11 px-4 pr-12 text-[15px]"
                       disabled={sending || isRecording}
                     />
                     
-                    {/* Emoji/extra buttons could go here */}
-                    {isRecording && (
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                        <span className="flex items-center gap-1.5 text-rose-400 text-sm font-medium animate-pulse">
-                          <span className="w-2 h-2 rounded-full bg-rose-500" />
-                          Gravando...
-                        </span>
-                      </div>
+                    {/* Send while typing button - inside input */}
+                    {newMessage.trim() && (
+                      <Button
+                        type="submit"
+                        size="icon"
+                        disabled={sending}
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 h-8 w-8 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white shadow-md transition-all"
+                        title="Enviar (Enter)"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                      </Button>
                     )}
                   </div>
 
-                  {/* Action Buttons */}
-                  {newMessage.trim() ? (
-                    <Button 
-                      type="submit" 
-                      size="icon"
-                      disabled={sending}
-                      className="shrink-0 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white h-10 w-10 shadow-lg shadow-emerald-500/25 transition-all hover:scale-105"
-                      title="Enviar mensagem"
-                    >
-                      <Send className="w-4 h-4" />
-                    </Button>
-                  ) : (
+                  {/* Main action button - Audio or Send */}
+                  {!isRecording && (
                     <Button
                       type="button"
                       size="icon"
-                      className={cn(
-                        'shrink-0 rounded-xl h-10 w-10 transition-all',
-                        isRecording 
-                          ? 'bg-gradient-to-r from-rose-500 to-rose-600 text-white shadow-lg shadow-rose-500/25 hover:scale-105' 
-                          : 'bg-slate-800/80 hover:bg-emerald-500/20 text-slate-400 hover:text-emerald-400'
-                      )}
-                      onClick={isRecording ? stopRecording : startRecording}
+                      className="shrink-0 rounded-xl h-10 w-10 transition-all bg-slate-800/80 hover:bg-emerald-500/20 text-slate-400 hover:text-emerald-400"
+                      onClick={startRecording}
                       disabled={sending}
-                      title={isRecording ? "Parar gravação" : "Gravar áudio"}
+                      title="Gravar áudio"
                     >
-                      {isRecording ? <X className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                      <Mic className="w-5 h-5" />
                     </Button>
                   )}
                 </div>
@@ -1281,11 +1441,15 @@ const Chat = () => {
                 <div className="flex items-center justify-center gap-4 mt-2 text-[10px] text-slate-500">
                   <span className="flex items-center gap-1">
                     <Paperclip className="w-3 h-3" />
-                    Fotos, áudios e documentos
+                    Anexos
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Camera className="w-3 h-3" />
+                    Print
                   </span>
                   <span className="flex items-center gap-1">
                     <Mic className="w-3 h-3" />
-                    Segure para gravar
+                    Áudio
                   </span>
                 </div>
               </form>
