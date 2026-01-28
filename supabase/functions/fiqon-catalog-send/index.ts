@@ -417,13 +417,39 @@ serve(async (req) => {
     // ========================================
     const sendVideoPriority = payload.send_video_priority !== false && payload.priorizar_video !== false;
 
+    // PRIMEIRO: Buscar TODOS os preços do banco de dados pelos SKUs para garantir
+    const productSkus = products
+      .map((p: ProductItem) => cleanValue(p.sku))
+      .filter((sku: string | null): sku is string => sku !== null && !sku.startsWith('item-'));
+    
+    let dbPrices: Record<string, { price: number; name: string }> = {};
+    
+    if (productSkus.length > 0) {
+      console.log(`[FIQON-SEND] 💰 Buscando preços no banco para SKUs: ${productSkus.join(', ')}`);
+      
+      const { data: dbProducts } = await supabase
+        .from('products')
+        .select('sku, price, name')
+        .in('sku', productSkus);
+      
+      if (dbProducts && dbProducts.length > 0) {
+        dbPrices = dbProducts.reduce((acc: Record<string, { price: number; name: string }>, p: any) => {
+          if (p.sku && p.price !== null && p.price !== undefined) {
+            acc[p.sku] = { price: p.price, name: p.name };
+          }
+          return acc;
+        }, {});
+        console.log(`[FIQON-SEND] ✅ Preços encontrados no banco:`, Object.keys(dbPrices).map(k => `${k}: R$${dbPrices[k].price}`).join(', '));
+      }
+    }
+
     for (let i = 0; i < products.length; i++) {
       const product = products[i];
       const productIndex = i + 1;
       
       // Get product details with fallbacks
       const sku = cleanValue(product.sku) || `item-${productIndex}`;
-      const name = cleanValue(product.name) || cleanValue(product.nome) || 'Produto';
+      const name = cleanValue(product.name) || cleanValue(product.nome) || dbPrices[sku]?.name || 'Produto';
       
       // Determine media URL - try multiple field names
       let imageUrl = cleanValue(product.image_url) || cleanValue(product.url_imagem);
@@ -466,7 +492,7 @@ serve(async (req) => {
         continue;
       }
 
-      // SEMPRE construir caption completo - não confiar no caption pré-formatado
+      // SEMPRE construir caption completo - GARANTIR PREÇO DO BANCO DE DADOS
       const captionLines: string[] = [`*${productIndex}️⃣ ${name}*`];
       
       // Descrição - SEMPRE incluir se existir
@@ -475,47 +501,64 @@ serve(async (req) => {
         captionLines.push(desc);
       }
       
-      // Preço - CRÍTICO: Tentar TODOS os campos possíveis com fallback Z-API direto
-      // Campos possíveis: price, preco, price_formatted, preco_formatado, valor
-      let priceNum = getNumber(product.price);
-      if (priceNum === null) priceNum = getNumber(product.preco);
-      if (priceNum === null) priceNum = getNumber(product.valor);
+      // PREÇO - ESTRATÉGIA DE 3 NÍVEIS:
+      // 1. Tentar do payload (product.price, product.preco, etc)
+      // 2. Tentar do banco de dados (dbPrices[sku])
+      // 3. Fallback para "Consulte"
       
-      let priceFormatted = cleanValue(product.price_formatted);
-      if (!priceFormatted) priceFormatted = cleanValue(product.preco_formatado);
-      if (!priceFormatted) priceFormatted = cleanValue(product.valor_formatado);
+      let finalPrice: number | null = null;
+      let priceSource = 'not_found';
       
-      console.log(`[FIQON-SEND] 💰 Produto ${sku} - CAMPOS DE PREÇO:`);
-      console.log(`[FIQON-SEND]   price: ${JSON.stringify(product.price)}, preco: ${JSON.stringify(product.preco)}, valor: ${JSON.stringify(product.valor)}`);
-      console.log(`[FIQON-SEND]   priceNum: ${priceNum}, priceFormatted: ${priceFormatted}`);
+      // NÍVEL 1: Payload
+      let priceFromPayload = getNumber(product.price);
+      if (priceFromPayload === null) priceFromPayload = getNumber(product.preco);
+      if (priceFromPayload === null) priceFromPayload = getNumber(product.valor);
       
-      // Se não encontrou preço no payload, tentar buscar do banco de dados pelo SKU
-      if (priceNum === null && !priceFormatted && sku && sku !== `item-${productIndex}`) {
-        console.log(`[FIQON-SEND] ⚠️ Preço não encontrado no payload, buscando no banco por SKU: ${sku}`);
-        
-        const { data: dbProduct } = await supabase
-          .from('products')
-          .select('price, name')
-          .eq('sku', sku)
-          .maybeSingle();
-        
-        if (dbProduct?.price) {
-          priceNum = dbProduct.price;
-          console.log(`[FIQON-SEND] ✅ Preço encontrado no banco: ${priceNum}`);
+      let priceFormattedFromPayload = cleanValue(product.price_formatted);
+      if (!priceFormattedFromPayload) priceFormattedFromPayload = cleanValue(product.preco_formatado);
+      if (!priceFormattedFromPayload) priceFormattedFromPayload = cleanValue(product.valor_formatado);
+      
+      if (priceFromPayload !== null && priceFromPayload > 0) {
+        finalPrice = priceFromPayload;
+        priceSource = 'payload';
+      } else if (priceFormattedFromPayload && !priceFormattedFromPayload.includes('null')) {
+        // Tentar extrair número do preço formatado
+        const match = priceFormattedFromPayload.replace('R$', '').replace(',', '.').trim().match(/[\d.]+/);
+        if (match) {
+          finalPrice = parseFloat(match[0]);
+          priceSource = 'payload_formatted';
         }
       }
       
-      // PRIORIDADE: price_formatted > priceNum > "Consulte"
-      if (priceFormatted && priceFormatted !== 'null' && priceFormatted !== 'undefined' && !priceFormatted.includes('null')) {
-        if (!priceFormatted.startsWith('R$')) {
-          captionLines.push(`💰 *R$ ${priceFormatted}*`);
-        } else {
-          captionLines.push(`💰 *${priceFormatted}*`);
+      // NÍVEL 2: Banco de dados (SEMPRE tentar se não achou no payload)
+      if (finalPrice === null && sku && dbPrices[sku]) {
+        finalPrice = dbPrices[sku].price;
+        priceSource = 'database';
+      }
+      
+      // NÍVEL 2.5: Buscar individualmente se ainda não encontrou
+      if (finalPrice === null && sku && sku !== `item-${productIndex}`) {
+        console.log(`[FIQON-SEND] 🔍 Buscando preço individual para SKU: ${sku}`);
+        const { data: singleProduct } = await supabase
+          .from('products')
+          .select('price')
+          .eq('sku', sku)
+          .maybeSingle();
+        
+        if (singleProduct?.price) {
+          finalPrice = singleProduct.price;
+          priceSource = 'database_single';
+          console.log(`[FIQON-SEND] ✅ Preço encontrado individual: R$${finalPrice}`);
         }
-      } else if (priceNum !== null && priceNum >= 0) {
-        captionLines.push(`💰 *R$ ${priceNum.toFixed(2).replace('.', ',')}*`);
+      }
+      
+      console.log(`[FIQON-SEND] 💰 Produto ${sku}: preço=${finalPrice} (fonte: ${priceSource})`);
+      
+      // ADICIONAR PREÇO AO CAPTION
+      if (finalPrice !== null && finalPrice > 0) {
+        captionLines.push(`💰 *R$ ${finalPrice.toFixed(2).replace('.', ',')}*`);
       } else {
-        console.error(`[FIQON-SEND] ❌ PRODUTO ${sku} SEM PREÇO! Usando fallback "Consulte"`);
+        console.error(`[FIQON-SEND] ❌ PRODUTO ${sku} SEM PREÇO! Adicionando "Consulte"`);
         captionLines.push(`💰 *Consulte o valor*`);
       }
       
@@ -541,7 +584,8 @@ serve(async (req) => {
       
       const caption = captionLines.join('\n');
       
-      console.log(`[FIQON-SEND] ✅ Caption gerado para ${sku}:`, caption.substring(0, 100) + '...');
+      console.log(`[FIQON-SEND] ✅ CAPTION FINAL para ${sku}:`);
+      console.log(caption);
 
       console.log(`[FIQON-SEND] Produto ${productIndex}/${products.length}: ${name}`);
       console.log(`[FIQON-SEND]   SKU: ${sku}`);
