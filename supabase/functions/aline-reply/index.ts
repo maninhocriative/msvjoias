@@ -91,83 +91,69 @@ const ALINE_SYSTEM_PROMPT = `# ALINE — Consultora Virtual ACIUM Manaus
 ## IDENTIDADE
 Você é **Aline**, consultora de joias da **ACIUM Manaus**.
 Tom: Elegante, objetiva, acolhedora. Emojis moderados (💍✨).
+MÁXIMO 2-3 linhas por resposta. SEM textos longos.
 
 ---
 
-## 🚨 REGRA MÁXIMA SOBRE PREÇOS:
+## 🚨 REGRAS ABSOLUTAS:
 
-**NUNCA, JAMAIS** responda sobre preços com texto! 
-- Cliente perguntou "quanto custa?" → ENVIE O CATÁLOGO! Diga apenas: "Vou te mostrar com os valores! 💍✨"
-- Os preços aparecem AUTOMATICAMENTE nos cards das fotos/vídeos dos produtos
-- NÃO invente valores, NÃO diga "a partir de", NÃO dê faixa de preço
-- SEMPRE use search_catalog para mostrar os produtos COM PREÇOS
-
----
-
-## PERGUNTAS QUE VOCÊ PODE RESPONDER (sem catálogo):
-- "Fica preto?" / "Escurece?" / "Mancha?" → Responda sobre o material
-- "É resistente?" / "É bom?" / "Dura quanto tempo?" → Responda sobre durabilidade
-- "Qual a diferença?" → Explique a diferença entre materiais/tipos
-- "Vocês entregam?" / "Qual o prazo?" → Responda sobre entrega
-- "Vocês têm garantia?" → Responda sobre garantia
-- "Onde fica a loja?" → Dê o endereço
-
-### SOBRE MATERIAIS (responda quando perguntarem!):
-- **TUNGSTÊNIO** (casamento): Super resistente, NÃO risca, NÃO escurece, hipoalergênico
-- **AÇO INOX** (namoro): Resistente, pode escurecer levemente, mais acessível
-- **PINGENTES**: Aço inox com banho, fotogravação grátis de 1 lado
+1. **RESPOSTAS ULTRA-CURTAS**: Máximo 2-3 linhas. NUNCA mais de 3 linhas.
+2. **NUNCA liste produtos no texto** - os cards são enviados automaticamente com fotos e preços
+3. **NUNCA descreva produtos** - apenas diga uma frase curta tipo "Separei opções lindas! 💍"
+4. **PREÇOS**: NUNCA diga valores - envie o catálogo! Os preços aparecem nos cards.
+5. **NÃO repita saudação** - Se já disse "Sou a Aline", NÃO repita.
 
 ---
 
-## REGRAS ABSOLUTAS
-
-1. **RESPOSTAS CURTAS**: Máximo 2-3 linhas por mensagem. SEM textão.
-2. **NUNCA se apresente duas vezes** - Se já disse "Sou a Aline", NÃO repita.
-3. **NUNCA repita perguntas** - Se já perguntou algo, não pergunte de novo.
-4. **PREÇOS**: SEMPRE envie catálogo! NUNCA diga valores em texto!
-5. **SÓ responda perguntas técnicas** - Materiais, entrega, garantia, etc.
+## 📦 SOBRE CORRENTES:
+- **Pingentes NÃO acompanham corrente** - são vendidas separadamente
+- Quando cliente perguntar "acompanha corrente?" → Diga: "O pingente não acompanha corrente, mas temos lindas opções! Quer ver? 😊"
+- SEMPRE oferecer correntes após vender pingente
 
 ---
 
-## QUANDO ENVIAR CATÁLOGO (com preços nos cards):
+## 🎨 FLUXO DE VENDAS:
 
-📦 **ENVIAR CATÁLOGO IMEDIATAMENTE**:
-- "Quanto custa?" / "Qual o valor?" / "Qual o preço?" → USE search_catalog!
-- "Quero ver" / "Mostra" / "Manda opções" / "Quero comprar"
-- "Sim" / "Pode ser" / "Quero" (após você oferecer mostrar)
-- Quando cliente escolheu categoria + cor e quer ver
+**PINGENTES/MEDALHAS:**
+1. Cliente menciona pingente/medalha → PERGUNTE A COR: "Qual cor você prefere? Dourada ou prata? 💛🤍"
+2. Cliente escolhe cor → ENVIE CATÁLOGO (frases curtas!)
+3. Cliente escolhe → Pergunte foto para gravação
+4. Ofereça corrente → Colete entrega/pagamento
 
----
-
-## PRODUTOS DISPONÍVEIS
-- **ALIANÇAS** (casamento=tungstênio, namoro=aço)
-- **PINGENTES/MEDALHAS** (fotogravação grátis 1 lado)
-- **ANÉIS**
-- **CORRENTES** (vendidas separadamente)
-
-NÃO TEMOS: pulseiras, brincos, colares simples, relógios
+**ALIANÇAS:**
+1. Cliente menciona aliança → PERGUNTE FINALIDADE: "Para namoro ou casamento? 💍"
+2. Cliente responde → PERGUNTE COR: "Qual cor prefere? Dourada, prata, preta ou azul?"
+3. Resposta → ENVIE CATÁLOGO
 
 ---
 
-## 📍 ENDEREÇO DA LOJA
-📍 *Shopping Sumaúma*, Av. Noel Nutels, 1762 - Cidade Nova, Manaus - AM
+## 🤔 PERGUNTAS FORA DE CONTEXTO:
+
+Quando cliente fizer pergunta que NÃO é sobre compra (ex: "vocês abrem domingo?", "onde fica?", "tem garantia?"):
+1. RESPONDA a pergunta BREVEMENTE
+2. DEPOIS pergunte: "Posso te mostrar nossas opções com valores? 😊"
+
+Exemplos:
+- "Vocês abrem domingo?" → "Funcionamos no shopping, das 10h às 22h! Posso te mostrar nosso catálogo? 💍"
+- "Tem garantia?" → "Sim, todos os produtos têm garantia! Quer ver as opções? 😊"
 
 ---
 
-## COLETA DE DADOS (APÓS SELEÇÃO)
-
-Pergunte UMA coisa por vez:
-- Tamanho: "Qual o tamanho de vocês? (14-28)"
-- Foto (pingentes): "Me manda a foto para gravação! 📸"
-- Corrente (pingentes): "Quer ver nossas correntes também? 🔗"
-- Entrega: "Retirada na loja ou entrega?"
-- Pagamento: "Pix ou cartão?"
+## ❌ PRODUTOS QUE NÃO TEMOS:
+- Pulseiras, brincos, relógios → "Não trabalhamos com pulseiras, mas nossos pingentes personalizados são incríveis! Quer ver? 💍"
 
 ---
 
-## INFORMAÇÕES
-- Loja: Shopping Sumaúma, Manaus
-- Entrega: 10h após fechamento
+## ✅ PRODUTOS DISPONÍVEIS:
+- ALIANÇAS (casamento=tungstênio, namoro=aço)
+- PINGENTES/MEDALHAS (fotogravação grátis 1 lado, corrente vendida separada)
+- ANÉIS
+- CORRENTES (vendidas separadamente)
+
+---
+
+## 📍 LOJA:
+Shopping Sumaúma, Av. Noel Nutels, 1762 - Cidade Nova, Manaus - AM
 
 #node: abertura | escolha_finalidade | escolha_cor | catalogo | selecao | coleta_tamanhos | coleta_entrega | coleta_pagamento | coleta_foto | coleta_corrente | finalizado`;
 
@@ -740,6 +726,14 @@ serve(async (req) => {
     // NOVO: Detectar pedido de ENDEREÇO
     const isPerguntandoEndereco = /endere[çc]o|localiza[çc][aã]o|onde\s*fica|qual\s*endere|manda\s*o?\s*endere|onde\s*[eé]\s*a\s*loja|onde\s*voc[eê]s?\s*ficam?|onde\s*est[aá]|shopping|localiza|como\s*chego/i.test(normalizedMsg);
     
+    // NOVO: Detectar pergunta sobre CORRENTE (pingente acompanha corrente?)
+    const isPerguntandoCorrente = /acompanha\s*corrente|vem\s*com\s*corrente|inclui\s*corrente|tem\s*corrente|corrente.*junto|junto.*corrente|s[oó]\s*o?\s*pingente|vem\s*s[oó]/i.test(normalizedMsg);
+    
+    if (isPerguntandoCorrente) {
+      console.log(`[ALINE-REPLY] [NLU] 🔗 PERGUNTA SOBRE CORRENTE detectada!`);
+      newCollectedData.pergunta_corrente = true;
+    }
+    
     // Flag para produto não disponível
     const produtoNaoDisponivel = isPerguntandoPulseira || isPerguntandoBrinco || isPerguntandoRelogio;
     
@@ -779,15 +773,20 @@ serve(async (req) => {
       delete newCollectedData.produto_nao_disponivel;
       delete newCollectedData.sugerir_alternativa;
       newCollectedData.mudou_categoria = true;
-      // NOVO: Se mencionou "personalizada" ou "com foto", forçar catálogo IMEDIATO
-      if (/personalizada|com\s*foto|fotogravação/i.test(normalizedMsg)) {
+      // IMPORTANTE: Pingentes precisam de COR antes de catálogo
+      if (temCorNaMensagem) {
+        // Já tem cor na mensagem, pode enviar catálogo
         newCollectedData.quer_ver_catalogo = true;
-        console.log(`[ALINE-REPLY] [NLU] Mencionou "personalizada/foto" → FORÇAR CATÁLOGO!`);
-      }
-      // NOVO: Se quer ver, forçar catálogo IMEDIATO
-      if (querVerProdutos) {
+        console.log(`[ALINE-REPLY] [NLU] Pingente + COR detectada → FORÇAR CATÁLOGO!`);
+      } else if (/personalizada|com\s*foto|fotogravação/i.test(normalizedMsg)) {
+        // Quer foto personalizada = prata (mais comum)
+        newCollectedData.cor = 'prata';
         newCollectedData.quer_ver_catalogo = true;
-        console.log(`[ALINE-REPLY] [NLU] Quer ver pingentes → FORÇAR CATÁLOGO!`);
+        console.log(`[ALINE-REPLY] [NLU] Pingente personalizado → prata + FORÇAR CATÁLOGO!`);
+      } else {
+        // SEM cor - NÃO forçar catálogo, deixar AI perguntar cor
+        console.log(`[ALINE-REPLY] [NLU] Pingente SEM COR → Deixar AI perguntar cor!`);
+        // NÃO definir quer_ver_catalogo aqui
       }
     } else if (isPerguntandoAnel && newCollectedData.categoria !== 'aneis') {
       console.log(`[ALINE-REPLY] [NLU] DETECTADO: ANÉIS (categoria anterior: ${newCollectedData.categoria || 'nenhuma'})`);
@@ -1616,117 +1615,82 @@ serve(async (req) => {
     cleanMessage = uniqueLines.join('\n').trim();
     
     // ========================================
-    // LIMPEZA ESPECIAL: Remover detalhes dos produtos do texto
-    // Quando há catálogo, o Fiqon envia os cards separadamente
-    // Então o texto deve conter apenas a frase introdutória
+    // LIMPEZA ESPECIAL: Remover TUDO sobre produtos do texto
+    // Quando há catálogo, o texto deve ser APENAS uma frase curta
+    // Os cards com fotos, preços e detalhes são enviados pelo Fiqon
     // ========================================
     if (catalogProducts.length > 0) {
-      console.log(`[ALINE-REPLY] Limpando texto - produtos serão enviados como cards pelo Fiqon`);
-      console.log(`[ALINE-REPLY] Texto antes da limpeza: "${cleanMessage.substring(0, 200)}..."`);
+      console.log(`[ALINE-REPLY] Limpando texto - produtos serão enviados como cards`);
+      console.log(`[ALINE-REPLY] Texto original: "${cleanMessage.substring(0, 300)}..."`);
       
-      // Processar linha por linha para melhor controle
-      const linesToKeep: string[] = [];
-      const lines = cleanMessage.split('\n');
+      // ESTRATÉGIA: Extrair APENAS a primeira frase introdutória
+      // Ignorar todo o resto (listas, descrições, preços, etc.)
       
-      for (const line of lines) {
-        const trimmedLine = line.trim();
-        
-        // Pular linhas vazias
-        if (!trimmedLine) continue;
-        
-        // Pular linhas que contêm informações de produto
-        const isProductLine = 
-          // Linhas numeradas (1. 2. 3. ou 1) 2) 3))
-          /^\d+[\.\)]\s+/.test(trimmedLine) ||
-          
-          // Linhas que são nomes de produtos em negrito
-          /^\*\*[^*]+\*\*\s*$/.test(trimmedLine) ||
-          /^\*\*Aliança/.test(trimmedLine) ||
-          /^\*\*aliança/.test(trimmedLine) ||
-          /^\*\*Pingente/.test(trimmedLine) ||
-          
-          // Linhas com preço
-          /💰/.test(trimmedLine) ||
-          /R\$\s*[\d.,]+/.test(trimmedLine) ||
-          /\*\*Preço\*\*/.test(trimmedLine) ||
-          
-          // Linhas com cor
-          /🎨/.test(trimmedLine) ||
-          /\*\*Cor\*\*/.test(trimmedLine) ||
-          /^-?\s*🖤\s*Cor:/i.test(trimmedLine) ||
-          /^-?\s*💛\s*Cor:/i.test(trimmedLine) ||
-          /^-?\s*🤍\s*Cor:/i.test(trimmedLine) ||
-          /^-?\s*💙\s*Cor:/i.test(trimmedLine) ||
-          /Cor:\s*(dourada|prata|preta|azul|rose)/i.test(trimmedLine) ||
-          
-          // Linhas com tamanho
-          /📏/.test(trimmedLine) ||
-          /Tamanhos?:/.test(trimmedLine) ||
-          
-          // Linhas com estoque
-          /✅\s*(Em )?estoque/i.test(trimmedLine) ||
-          /⚠️/.test(trimmedLine) ||
-          /Sob consulta/i.test(trimmedLine) ||
-          /\*Produto indisponível\*/i.test(trimmedLine) ||
-          /\*Este modelo/.test(trimmedLine) ||
-          
-          // Linhas com código/SKU
-          /📦/.test(trimmedLine) ||
-          /C[óo]d:/.test(trimmedLine) ||
-          /SKU:/i.test(trimmedLine) ||
-          
-          // Links e imagens markdown
-          /!\[.*\]\(https?:\/\//.test(trimmedLine) ||
-          /\[Imagem.*\]\(https?:\/\//.test(trimmedLine) ||
-          /\[Veja o vídeo.*\]\(https?:\/\//.test(trimmedLine) ||
-          /\[Vídeo.*\]\(https?:\/\//.test(trimmedLine) ||
-          /🎥/.test(trimmedLine) ||
-          
-          // URLs diretas de mídia
-          /^https?:\/\/\S+\.(png|jpg|jpeg|gif|webp|mp4)/i.test(trimmedLine) ||
-          /drive\.google\.com/.test(trimmedLine) ||
-          
-          // Linhas que começam com - seguido de emoji ou **
-          /^-\s*(💰|📏|🎨|✅|⚠️|📦|🎥|\*\*)/.test(trimmedLine) ||
-          /^-\s*\*Este modelo/.test(trimmedLine) ||
-          /^-\s*\[Vídeo/.test(trimmedLine) ||
-          
-          // Linhas que são apenas um item de lista com hífen
-          /^-\s*$/.test(trimmedLine);
-        
-        if (!isProductLine) {
-          linesToKeep.push(line);
+      // Lista de frases introdutórias válidas (ordem de preferência)
+      const frasesIntrodutorias = [
+        "Separei algumas opções incríveis para você!",
+        "Separei opções lindas para você!",
+        "Vou te mostrar algumas opções!",
+        "Olha só o que separei para você!",
+        "Aqui estão as opções!",
+        "Veja só essas opções!",
+        "Tenho essas opções para você!",
+        "Confira essas opções incríveis!",
+      ];
+      
+      // Tentar encontrar uma frase introdutória no texto
+      let fraseEncontrada = "";
+      const msgLower = cleanMessage.toLowerCase();
+      
+      for (const frase of frasesIntrodutorias) {
+        if (msgLower.includes(frase.toLowerCase().substring(0, 20))) {
+          fraseEncontrada = frase;
+          break;
         }
       }
       
-      let cleanedForCards = linesToKeep.join('\n').trim();
-      
-      // Remover ":" sozinho no final (resto de lista)
-      cleanedForCards = cleanedForCards.replace(/:\s*$/, '');
-      
-      // IMPORTANTE: Quando há produtos, NÃO fazer pergunta na mensagem inicial!
-      // O Fiqon vai enviar as fotos DEPOIS dessa mensagem, então a pergunta
-      // ficaria antes das fotos. A pergunta será enviada APÓS as fotos pelo Fiqon.
-      
-      // Remover qualquer pergunta sobre os produtos da mensagem inicial
-      cleanedForCards = cleanedForCards
-        .replace(/\?[^\n]*/g, '') // Remove frases com interrogação
-        .replace(/me (conta|diz|avisa|fala)[^.!?\n]*/gi, '') // Remove "me conta..."
-        .replace(/qual.*aten[çc][aã]o[^.!?\n]*/gi, '') // Remove "qual chamou sua atenção"
-        .replace(/gostou[^.!?\n]*/gi, '') // Remove "gostou de alguma"
-        .replace(/\n{2,}/g, '\n') // Remove linhas vazias extras
-        .trim();
-      
-      // Se a limpeza removeu tudo ou ficou muito curto, usar frase introdutória SIMPLES
-      if (!cleanedForCards || cleanedForCards.length < 15) {
-        cleanedForCards = "Separei algumas opções incríveis para você! 💍✨";
+      // Se não encontrou, verificar se começa com algo válido
+      if (!fraseEncontrada) {
+        // Pegar só a primeira linha ou primeira sentença (antes de lista/descrição)
+        const primeiraLinha = cleanMessage.split('\n')[0].trim();
+        
+        // Verificar se a primeira linha é válida (não é lista, não tem emoji de produto)
+        const isLinhaValida = primeiraLinha.length > 10 && 
+          primeiraLinha.length < 100 &&
+          !primeiraLinha.startsWith('-') &&
+          !primeiraLinha.startsWith('*') &&
+          !primeiraLinha.match(/^\d+[\.\)]/) &&
+          !primeiraLinha.includes('💰') &&
+          !primeiraLinha.includes('📏') &&
+          !primeiraLinha.includes('📦') &&
+          !primeiraLinha.includes('R$') &&
+          !primeiraLinha.includes('Cód:') &&
+          !primeiraLinha.toLowerCase().includes('preço') &&
+          !primeiraLinha.toLowerCase().includes('tamanho');
+        
+        if (isLinhaValida) {
+          // Remover perguntas do final (serão enviadas depois dos cards)
+          fraseEncontrada = primeiraLinha
+            .replace(/\?[^.!]*$/, '!')
+            .replace(/gostou[^.!?]*/gi, '')
+            .replace(/me conta[^.!?]*/gi, '')
+            .replace(/qual.*atenção[^.!?]*/gi, '')
+            .trim();
+        }
       }
       
-      // NÃO adicionar pergunta aqui - ela será enviada APÓS as fotos pelo Fiqon
+      // Se ainda não tem frase válida, usar padrão
+      if (!fraseEncontrada || fraseEncontrada.length < 10) {
+        fraseEncontrada = "Separei algumas opções incríveis para você! 💍✨";
+      }
       
-      console.log(`[ALINE-REPLY] Texto original: ${cleanMessage.length} chars → Limpo: ${cleanedForCards.length} chars`);
-      console.log(`[ALINE-REPLY] Texto após limpeza (SEM pergunta - fotos vêm depois): "${cleanedForCards}"`);
-      cleanMessage = cleanedForCards;
+      // Garantir que termina com emoji
+      if (!fraseEncontrada.match(/[💍✨😊🔥💛🤍]/)) {
+        fraseEncontrada = fraseEncontrada.replace(/[.!]?\s*$/, '') + " 💍✨";
+      }
+      
+      console.log(`[ALINE-REPLY] Texto limpo FINAL: "${fraseEncontrada}"`);
+      cleanMessage = fraseEncontrada;
     }
 
     // ========================================
