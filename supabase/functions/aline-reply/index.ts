@@ -967,7 +967,47 @@ serve(async (req) => {
           newCollectedData.selected_sku = produto.sku;
           newCollectedData.selected_name = produto.name;
           newCollectedData.selected_price = produto.price;
+          newCollectedData.produto_selecionado_agora = true; // Flag para forçar resposta
           console.log(`[ALINE-REPLY] [NLU] ✅ Produto selecionado por BOTÃO CLICADO: ${produto.name} (${produto.sku})`);
+        }
+      }
+      
+      // 0.5 NOVO: Detectar texto que corresponde ao nome de um produto do catálogo
+      // Ex: "1 Pingente Redond..." ou "Pingente Coração..." (texto truncado do botão)
+      if (!newCollectedData.selected_sku) {
+        // Tentar match com prefixo de nome de produto (botões truncados)
+        for (let i = 0; i < catalogoAnterior.length; i++) {
+          const produto = catalogoAnterior[i];
+          const productName = (produto.name || '').toLowerCase();
+          const msgLower = normalizedMsg.toLowerCase();
+          
+          // Verificar se a mensagem começa com número + parte do nome do produto
+          // Ex: "1 Pingente Redond" quando o produto é "Pingente Redondo Fotogravado"
+          const numPrefix = `${i + 1} `;
+          if (msgLower.startsWith(numPrefix)) {
+            const restOfMsg = msgLower.substring(numPrefix.length).replace(/\.+$/, '').trim();
+            // Se pelo menos 8 caracteres do nome batem, considerar match
+            if (restOfMsg.length >= 8 && productName.startsWith(restOfMsg)) {
+              newCollectedData.selected_product = produto;
+              newCollectedData.selected_sku = produto.sku;
+              newCollectedData.selected_name = produto.name;
+              newCollectedData.selected_price = produto.price;
+              newCollectedData.produto_selecionado_agora = true;
+              console.log(`[ALINE-REPLY] [NLU] ✅ Produto selecionado por TEXTO TRUNCADO: ${produto.name} (${produto.sku})`);
+              break;
+            }
+          }
+          
+          // Também tentar match direto se o nome do produto aparece na mensagem
+          if (msgLower.includes(productName.substring(0, 12)) && productName.length > 10) {
+            newCollectedData.selected_product = produto;
+            newCollectedData.selected_sku = produto.sku;
+            newCollectedData.selected_name = produto.name;
+            newCollectedData.selected_price = produto.price;
+            newCollectedData.produto_selecionado_agora = true;
+            console.log(`[ALINE-REPLY] [NLU] ✅ Produto selecionado por NOME PARCIAL: ${produto.name} (${produto.sku})`);
+            break;
+          }
         }
       }
       
@@ -992,6 +1032,7 @@ serve(async (req) => {
               newCollectedData.selected_sku = produto.sku;
               newCollectedData.selected_name = produto.name;
               newCollectedData.selected_price = produto.price;
+              newCollectedData.produto_selecionado_agora = true;
               console.log(`[ALINE-REPLY] [NLU] ✅ Produto selecionado por SKU: ${produto.name} (${produto.sku})`);
             }
             break;
@@ -1057,6 +1098,7 @@ serve(async (req) => {
           newCollectedData.selected_sku = selectedProduct.sku;
           newCollectedData.selected_name = selectedProduct.name;
           newCollectedData.selected_price = selectedProduct.price;
+          newCollectedData.produto_selecionado_agora = true;
           console.log(`[ALINE-REPLY] [NLU] ✅ Produto selecionado por posição #${productIndex + 1}: ${selectedProduct.name} (${selectedProduct.sku})`);
         }
       }
@@ -1184,30 +1226,34 @@ serve(async (req) => {
     } else if (isAliancaSelecionada && !jaTemTamanho) {
       // ALIANÇA: Falta TAMANHOS
       nextStep = 'coleta_tamanhos';
+      const produtoRecemSelecionado = newCollectedData.produto_selecionado_agora === true;
       nextStepInstruction = `🎯 PASSO ATUAL: COLETAR TAMANHOS DE ALIANÇA
       ✅ O cliente ESCOLHEU a aliança "${newCollectedData.selected_name}" (${newCollectedData.selected_sku})!
       
-      VOCÊ DEVE perguntar os TAMANHOS agora! Diga:
-      "Excelente escolha! 💍 Me conta os tamanhos de vocês? Geralmente fica entre 14 e 28."
+      ${produtoRecemSelecionado ? '⚠️ ACABOU DE SELECIONAR! RESPONDA IMEDIATAMENTE!' : ''}
       
-      NÃO pergunte sobre cor, categoria ou qualquer outra coisa. Apenas tamanhos!`;
+      VOCÊ DEVE perguntar os TAMANHOS agora! Diga EXATAMENTE:
+      "Excelente escolha! 💍 Qual o tamanho de cada um? Geralmente fica entre 14 e 28."
+      
+      NÃO pergunte sobre cor, categoria ou qualquer outra coisa. APENAS tamanhos!`;
       
     } else if (isPingenteSelecionado && !jaTemFoto) {
       // PINGENTE: Falta FOTO - E oferecer CORRENTES!
       nextStep = 'coleta_foto';
+      const produtoRecemSelecionado = newCollectedData.produto_selecionado_agora === true;
       nextStepInstruction = `🎯 PASSO ATUAL: COLETAR FOTO PARA GRAVAÇÃO + OFERECER CORRENTE
       ✅ O cliente ESCOLHEU o pingente "${newCollectedData.selected_name}" (${newCollectedData.selected_sku})!
       
+      ${produtoRecemSelecionado ? '⚠️ ACABOU DE SELECIONAR! RESPONDA IMEDIATAMENTE!' : ''}
+      
       IMPORTANTE: Pingentes NÃO acompanham corrente!
       
-      Diga algo como:
-      "Excelente escolha! 💫 Esse pingente permite fotogravação personalizada - a gravação de um lado é GRATUITA!
+      Diga EXATAMENTE (MAX 3 linhas!):
+      "Excelente escolha! 💫 A gravação de um lado é GRÁTIS!
+      Só lembrando: não acompanha corrente. Quer ver nossas correntes? 🔗
+      Me manda a foto que você quer gravar! 📸"
       
-      ⚠️ Só lembrando: o pingente não acompanha corrente. Quer que eu te mostre nossas correntes também? 🔗
-      
-      Enquanto isso, me manda a foto que você quer gravar! 📸"
-      
-      NÃO pergunte sobre cor ou categoria. Peça a foto e OFEREÇA as correntes!`;
+      NÃO pergunte sobre cor ou categoria. APENAS peça a foto!`;
       
     } else if (wantsOtherColors && coresMostradas.length > 0) {
       // Cliente pediu outras cores
@@ -1359,12 +1405,119 @@ serve(async (req) => {
     console.log(`[ALINE-REPLY] Histórico: ${historyMessages.length} mensagens`);
 
     // ========================================
-    // PASSO 5: DETECTAR SE DEVE FORÇAR CATÁLOGO
+    // PASSO 5: RESPOSTA DIRETA PARA SELEÇÃO DE PRODUTO (BYPASS AI)
+    // Quando o cliente ACABA de selecionar um produto, não chamar a IA!
+    // Responder diretamente para seguir o fluxo sem confusão.
+    // ========================================
+    const produtoRecemSelecionado = newCollectedData.produto_selecionado_agora === true;
+    
+    if (produtoRecemSelecionado) {
+      console.log(`[ALINE-REPLY] ⚡ PRODUTO RECÉM SELECIONADO - Respondendo diretamente sem chamar IA!`);
+      console.log(`[ALINE-REPLY] Produto: ${newCollectedData.selected_name} (${newCollectedData.selected_sku})`);
+      
+      let respostaDireta = '';
+      let nodeValueDirect = '';
+      
+      if (isPingenteSelecionado) {
+        // PINGENTE → Pedir foto e oferecer corrente
+        respostaDireta = `Excelente escolha! 💫 A gravação de um lado é GRÁTIS!
+
+⚠️ Só lembrando: o pingente não acompanha corrente. Quer ver nossas correntes? 🔗
+
+Me manda a foto que você quer gravar! 📸`;
+        nodeValueDirect = 'coleta_foto';
+      } else if (isAliancaSelecionada) {
+        // ALIANÇA → Pedir tamanhos
+        respostaDireta = `Excelente escolha! 💍
+
+Qual o tamanho de cada um? Geralmente fica entre 14 e 28.`;
+        nodeValueDirect = 'coleta_tamanhos';
+      } else {
+        // Categoria genérica → Pedir entrega
+        respostaDireta = `Ótima escolha! 😊
+
+Vocês preferem retirar na nossa loja no Shopping Sumaúma ou receber em casa?`;
+        nodeValueDirect = 'coleta_entrega';
+      }
+      
+      // Remover flag de recém selecionado para próximas mensagens
+      delete newCollectedData.produto_selecionado_agora;
+      
+      // Salvar no banco
+      await supabase
+        .from('aline_conversations')
+        .update({
+          current_node: nodeValueDirect,
+          last_node: conversation.current_node,
+          collected_data: newCollectedData,
+          last_message_at: new Date().toISOString(),
+        })
+        .eq('id', conversation.id);
+
+      // Salvar resposta da Aline
+      await supabase.from('aline_messages').insert({
+        conversation_id: conversation.id,
+        role: 'assistant',
+        message: respostaDireta,
+        node: nodeValueDirect,
+      });
+
+      // Salvar no CRM também
+      if (crmConversationId) {
+        await supabase.from('messages').insert({
+          conversation_id: crmConversationId,
+          content: respostaDireta,
+          is_from_me: true,
+          message_type: 'text',
+          status: 'sent'
+        });
+
+        await supabase
+          .from('conversations')
+          .update({ last_message: respostaDireta.substring(0, 100) })
+          .eq('id', crmConversationId);
+      }
+      
+      console.log(`[ALINE-REPLY] ✅ Resposta direta enviada: "${respostaDireta.substring(0, 50)}..."`);
+      console.log(`[ALINE-REPLY] ====== FIM (BYPASS AI) ======`);
+      
+      return new Response(
+        JSON.stringify({
+          success: true,
+          response: respostaDireta,
+          mensagem_whatsapp: respostaDireta,
+          reply_text: respostaDireta.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim(),
+          node_tecnico: nodeValueDirect,
+          acao_nome: null,
+          tem_acao: false,
+          produtos: [],
+          total_produtos: 0,
+          tem_produtos: false,
+          produto_selecionado: newCollectedData.selected_product || null,
+          tem_produto_selecionado: true,
+          categoria_crm: newCollectedData.categoria || null,
+          cor_crm: newCollectedData.cor || null,
+          memoria: {
+            phone,
+            stage: nodeValueDirect,
+            categoria: newCollectedData.categoria,
+            produto_sku: newCollectedData.selected_sku,
+            produto_nome: newCollectedData.selected_name,
+            produto_preco: newCollectedData.selected_price,
+          },
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    // ========================================
+    // PASSO 5B: DETECTAR SE DEVE FORÇAR CATÁLOGO
     // ========================================
     const lastUserMessage = message.toLowerCase();
     
     // ⚠️ CRÍTICO: Pergunta sobre PREÇO = FORÇAR CATÁLOGO!
-    const temPerguntaPreco = newCollectedData.pergunta_preco === true;
+    // Mas NÃO se já tem produto selecionado!
+    const temPerguntaPreco = newCollectedData.pergunta_preco === true && !jaSelecionouProduto;
     
     // Pergunta técnica (material, entrega, garantia) = deixar AI responder
     const temPerguntaTecnica = newCollectedData.pergunta_tecnica === true;
@@ -1387,6 +1540,7 @@ serve(async (req) => {
     const hasAliancaNamoro = /aliança.*namoro|namoro.*aliança|alianca.*namoro|compromisso|namoro|noivado/i.test(lastUserMessage);
     
     // NOVA LÓGICA: Forçar catálogo em mais cenários
+    // MAS NÃO se já tem produto selecionado!
     const isPingenteFlow = newCollectedData.categoria === 'pingente';
     const isAneisFlow = newCollectedData.categoria === 'aneis';
     const isAliancasFlow = newCollectedData.categoria === 'aliancas';
@@ -1396,9 +1550,11 @@ serve(async (req) => {
     // 1. Pergunta sobre PREÇO (mostrar produtos COM preços nos cards!)
     // 2. Quer ver catálogo
     // 3. Tem categoria + cor + ação
-    // NÃO forçar se for pergunta técnica (material, entrega, garantia)
-    const shouldForceCatalog = !temPerguntaTecnica && (
-      temPerguntaPreco || // NOVO: Pergunta de preço = FORÇAR catálogo!
+    // NÃO forçar se:
+    // - For pergunta técnica (material, entrega, garantia)
+    // - Já tem produto selecionado (precisa coletar dados, não mostrar mais catálogo!)
+    const shouldForceCatalog = !temPerguntaTecnica && !jaSelecionouProduto && (
+      temPerguntaPreco || // Pergunta de preço = FORÇAR catálogo!
       (hasCategoryKeyword && hasColorKeyword && hasActionKeyword) ||
       (hasActionKeyword && hasCategoryKeyword) ||
       hasOtherColorsKeyword ||
