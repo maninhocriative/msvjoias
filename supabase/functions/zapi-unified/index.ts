@@ -229,7 +229,7 @@ serve(async (req) => {
           contact_name: contactName,
           last_message: messageContent || `[${messageType}]`,
           unread_count: (existingConv.unread_count || 0) + 1,
-          created_at: new Date().toISOString(), // Isso faz aparecer no topo!
+          last_message_at: new Date().toISOString(), // Isso faz aparecer no topo!
         })
         .eq('id', conversationId);
       
@@ -242,6 +242,7 @@ serve(async (req) => {
           contact_name: contactName,
           platform: 'whatsapp',
           last_message: messageContent || `[${messageType}]`,
+          last_message_at: new Date().toISOString(),
           unread_count: 1,
         })
         .select()

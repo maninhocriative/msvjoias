@@ -246,17 +246,7 @@ const Chat = () => {
       const { data, error } = await supabase
         .from('conversations')
         .select('*')
-        .order('created_at', { ascending: false });
-      
-      // Ordenar localmente por created_at (que reflete a última mensagem)
-      // para que conversas com mensagens novas fiquem no topo
-      if (data) {
-        data.sort((a, b) => {
-          const dateA = new Date(a.created_at || 0).getTime();
-          const dateB = new Date(b.created_at || 0).getTime();
-          return dateB - dateA;
-        });
-      }
+        .order('last_message_at', { ascending: false, nullsFirst: false });
 
       if (error) throw error;
       setConversations(data || []);
@@ -1018,7 +1008,10 @@ const Chat = () => {
                       
                       {/* Indicador de online do cliente - verde pulsante quando última msg foi recente */}
                       {(() => {
-                        const lastMsgTime = conv.created_at ? new Date(conv.created_at).getTime() : 0;
+                        // Usar last_message_at se disponível, senão created_at
+                        const lastMsgTime = (conv as any).last_message_at 
+                          ? new Date((conv as any).last_message_at).getTime() 
+                          : (conv.created_at ? new Date(conv.created_at).getTime() : 0);
                         const now = new Date().getTime();
                         const isRecentlyActive = now - lastMsgTime < 5 * 60 * 1000; // 5 minutos
                         
@@ -1067,7 +1060,7 @@ const Chat = () => {
                             'text-[11px]',
                             hasUnread ? 'text-emerald-400 font-medium' : 'text-slate-500'
                           )}>
-                            {formatLastSeen(conv.created_at)}
+                            {formatLastSeen((conv as any).last_message_at || conv.created_at)}
                           </span>
                         </div>
                       </div>
