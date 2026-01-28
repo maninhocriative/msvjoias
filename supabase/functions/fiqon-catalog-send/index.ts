@@ -47,12 +47,12 @@ interface SendResult {
   error?: string;
   mediaType: string;
   mediaUrl: string;
+  price?: number;
 }
 
-// Helper to clean nil/null values from Fiqon (ONLY for strings!)
+// Helper to clean nil/null values from Fiqon
 function cleanValue(val: any): string | null {
   if (val === null || val === undefined) return null;
-  // Se for número, retornar como string
   if (typeof val === 'number') return String(val);
   if (typeof val === 'string') {
     const lower = val.toLowerCase().trim();
@@ -79,6 +79,15 @@ function getNumber(val: any): number | null {
   return null;
 }
 
+// Gerar hash único para deduplicação
+function generateMessageHash(phone: string, message: string): string {
+  // Criar um hash simples baseado em phone + primeiros 100 chars da mensagem + minuto atual
+  const now = new Date();
+  const minuteKey = `${now.getFullYear()}${now.getMonth()}${now.getDate()}${now.getHours()}${now.getMinutes()}`;
+  const msgKey = message.toLowerCase().replace(/\s+/g, '').substring(0, 100);
+  return `${phone}_${msgKey}_${minuteKey}`;
+}
+
 // Helper function to send text via Z-API
 async function sendTextToZAPI(
   phone: string,
@@ -95,7 +104,7 @@ async function sendTextToZAPI(
     headers['Client-Token'] = clientToken;
   }
 
-  console.log(`[FIQON-SEND] Enviando texto para ${phone}: "${message.substring(0, 50)}..."`);
+  console.log(`[ZAPI-SEND] Enviando texto para ${phone}: "${message.substring(0, 50)}..."`);
 
   try {
     const response = await fetch(endpoint, {
@@ -140,7 +149,8 @@ async function sendMediaToZAPI(
     headers['Client-Token'] = clientToken;
   }
 
-  console.log(`[FIQON-SEND] Enviando ${mediaType} para ${phone}: ${mediaUrl.substring(0, 50)}...`);
+  console.log(`[ZAPI-SEND] Enviando ${mediaType} para ${phone}: ${mediaUrl.substring(0, 50)}...`);
+  console.log(`[ZAPI-SEND] Caption: ${caption.substring(0, 100)}...`);
 
   try {
     const response = await fetch(endpoint, {
@@ -161,7 +171,7 @@ async function sendMediaToZAPI(
   }
 }
 
-// Helper function to send button message via Z-API (para seleção rápida)
+// Helper function to send button message via Z-API
 async function sendButtonMessageToZAPI(
   phone: string,
   message: string,
@@ -178,7 +188,7 @@ async function sendButtonMessageToZAPI(
     headers['Client-Token'] = clientToken;
   }
 
-  console.log(`[FIQON-SEND] Enviando botões para ${phone}: ${buttons.map(b => b.label).join(', ')}`);
+  console.log(`[ZAPI-SEND] Enviando botões para ${phone}: ${buttons.map(b => b.label).join(', ')}`);
 
   try {
     const response = await fetch(endpoint, {
@@ -218,7 +228,7 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
     if (!ZAPI_INSTANCE_ID || !ZAPI_TOKEN) {
-      console.error('[FIQON-SEND] Z-API not configured');
+      console.error('[ZAPI-SEND] Z-API not configured');
       return new Response(
         JSON.stringify({ error: 'Z-API credentials not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -228,8 +238,8 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
     const payload = await req.json();
 
-    console.log('[FIQON-SEND] ====== NOVA REQUISIÇÃO ======');
-    console.log('[FIQON-SEND] Payload keys:', Object.keys(payload));
+    console.log('[ZAPI-SEND] ====== NOVA REQUISIÇÃO ======');
+    console.log('[ZAPI-SEND] Payload keys:', Object.keys(payload));
 
     // Extract phone - support multiple formats
     let phone = cleanValue(payload.phone) || cleanValue(payload.telefone) || cleanValue(payload.numero);
@@ -240,51 +250,66 @@ serve(async (req) => {
       );
     }
     phone = phone.replace(/\D/g, '');
-    console.log(`[FIQON-SEND] Phone: ${phone}`);
+    console.log(`[ZAPI-SEND] Phone: ${phone}`);
 
     // Extract message from user
     const userMessage = cleanValue(payload.message) || cleanValue(payload.mensagem) || cleanValue(payload.text);
     const contactName = cleanValue(payload.contact_name) || cleanValue(payload.nome_contato);
     
     // ========================================
-    // DEDUPLICAÇÃO: Verificar se já processou esta mensagem
-    // Evita mensagens duplicadas do Fiqon
+    // DEDUPLICAÇÃO ROBUSTA: Verificar hash da mensagem + phone + minuto
+    // Não depende mais do messageId do Fiqon
     // ========================================
-    const messageId = payload.message_id || payload.messageId || payload.zapiMessageId;
-    
-    if (userMessage && messageId) {
-      console.log(`[FIQON-SEND] Verificando deduplicação para messageId: ${messageId}`);
+    if (userMessage) {
+      const messageHash = generateMessageHash(phone, userMessage);
+      console.log(`[ZAPI-SEND] 🔐 Hash de deduplicação: ${messageHash}`);
       
+      // Verificar se já processamos esta combinação no último minuto
       const { data: existingMsg } = await supabase
         .from('processed_messages')
-        .select('id')
-        .eq('message_id', messageId)
+        .select('id, created_at')
+        .eq('message_id', messageHash)
         .maybeSingle();
       
       if (existingMsg) {
-        console.log(`[FIQON-SEND] ⚠️ Mensagem ${messageId} já foi processada! Ignorando duplicata.`);
+        console.log(`[ZAPI-SEND] ⚠️ DUPLICATA DETECTADA! Hash ${messageHash} já processado em ${existingMsg.created_at}`);
         return new Response(
           JSON.stringify({
             success: true,
             skipped: true,
             reason: 'duplicate_message',
-            message: `Mensagem ${messageId} já foi processada anteriormente`,
+            message: `Mensagem já processada (hash: ${messageHash})`,
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       
-      // Registrar mensagem como processada ANTES de processar
-      // Isso evita race condition de múltiplas chamadas simultâneas
-      await supabase
+      // Registrar ANTES de processar para evitar race condition
+      const { error: insertError } = await supabase
         .from('processed_messages')
-        .upsert({ 
-          message_id: messageId, 
+        .insert({ 
+          message_id: messageHash, 
           phone,
           created_at: new Date().toISOString() 
-        }, { onConflict: 'message_id' });
+        });
       
-      console.log(`[FIQON-SEND] ✅ Mensagem ${messageId} registrada para deduplicação`);
+      if (insertError) {
+        // Se falhou por duplicata (race condition), ignorar
+        if (insertError.code === '23505') {
+          console.log(`[ZAPI-SEND] ⚠️ Race condition detectada, ignorando duplicata`);
+          return new Response(
+            JSON.stringify({
+              success: true,
+              skipped: true,
+              reason: 'duplicate_race_condition',
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        console.error(`[ZAPI-SEND] Erro ao registrar hash:`, insertError);
+      } else {
+        console.log(`[ZAPI-SEND] ✅ Hash registrado para deduplicação`);
+      }
     }
     
     // Delay between messages (ms)
@@ -298,8 +323,8 @@ serve(async (req) => {
     // MODO 1: Processar mensagem do usuário com Aline
     // ========================================
     if (userMessage) {
-      console.log(`[FIQON-SEND] Modo: Processar mensagem do usuário com Aline`);
-      console.log(`[FIQON-SEND] Mensagem do usuário: "${userMessage}"`);
+      console.log(`[ZAPI-SEND] Modo: Processar mensagem do usuário com Aline`);
+      console.log(`[ZAPI-SEND] Mensagem do usuário: "${userMessage}"`);
       
       // Chamar aline-reply internamente
       const alineEndpoint = `${supabaseUrl}/functions/v1/aline-reply`;
@@ -320,16 +345,16 @@ serve(async (req) => {
 
         if (!alineReq.ok) {
           const errorText = await alineReq.text();
-          console.error('[FIQON-SEND] Erro ao chamar aline-reply:', errorText);
+          console.error('[ZAPI-SEND] Erro ao chamar aline-reply:', errorText);
           throw new Error(`aline-reply error: ${alineReq.status}`);
         }
 
         alineResponse = await alineReq.json();
-        console.log(`[FIQON-SEND] Aline respondeu: success=${alineResponse.success}`);
+        console.log(`[ZAPI-SEND] Aline respondeu: success=${alineResponse.success}`);
         
         // Verificar se foi pulado (human_takeover, loop, etc.)
         if (alineResponse.skipped) {
-          console.log(`[FIQON-SEND] Aline pulou: ${alineResponse.reason}`);
+          console.log(`[ZAPI-SEND] Aline pulou: ${alineResponse.reason}`);
           return new Response(
             JSON.stringify({
               success: true,
@@ -345,11 +370,11 @@ serve(async (req) => {
         textMessage = alineResponse.mensagem_whatsapp || alineResponse.response;
         products = alineResponse.produtos || [];
         
-        console.log(`[FIQON-SEND] Texto: "${textMessage?.substring(0, 50)}..."`);
-        console.log(`[FIQON-SEND] Produtos: ${products.length}`);
+        console.log(`[ZAPI-SEND] Texto: "${textMessage?.substring(0, 50)}..."`);
+        console.log(`[ZAPI-SEND] Produtos: ${products.length}`);
 
       } catch (alineError) {
-        console.error('[FIQON-SEND] Erro na chamada aline-reply:', alineError);
+        console.error('[ZAPI-SEND] Erro na chamada aline-reply:', alineError);
         throw alineError;
       }
     }
@@ -357,7 +382,7 @@ serve(async (req) => {
     // MODO 2: Enviar mensagem e produtos já processados (legacy)
     // ========================================
     else {
-      console.log(`[FIQON-SEND] Modo: Legacy (mensagem e produtos já processados)`);
+      console.log(`[ZAPI-SEND] Modo: Legacy (mensagem e produtos já processados)`);
       
       // Get text message
       textMessage = cleanValue(payload.mensagem) || cleanValue(payload.mensagem_whatsapp) || cleanValue(payload.texto);
@@ -389,7 +414,7 @@ serve(async (req) => {
     // ENVIAR MENSAGEM DE TEXTO (fala da Aline)
     // ========================================
     if (textMessage) {
-      console.log(`[FIQON-SEND] Enviando mensagem de texto...`);
+      console.log(`[ZAPI-SEND] Enviando mensagem de texto...`);
       
       const textResult = await sendTextToZAPI(
         phone,
@@ -400,10 +425,40 @@ serve(async (req) => {
       );
 
       if (textResult.success) {
-        console.log(`[FIQON-SEND] ✅ Texto enviado: ${textResult.messageId}`);
+        console.log(`[ZAPI-SEND] ✅ Texto enviado: ${textResult.messageId}`);
         textSent = true;
+        
+        // Salvar a resposta da Aline na tabela aline_messages
+        try {
+          // Buscar ou criar conversa Aline
+          const { data: alineConv } = await supabase
+            .from('aline_conversations')
+            .select('id')
+            .eq('phone', phone)
+            .maybeSingle();
+          
+          if (alineConv) {
+            await supabase.from('aline_messages').insert({
+              conversation_id: alineConv.id,
+              role: 'assistant',
+              message: textMessage,
+              node: alineResponse?.node_tecnico || 'reply'
+            });
+            
+            // Reset followup_count após resposta
+            await supabase
+              .from('aline_conversations')
+              .update({ 
+                followup_count: 0,
+                last_message_at: new Date().toISOString()
+              })
+              .eq('id', alineConv.id);
+          }
+        } catch (dbError) {
+          console.warn(`[ZAPI-SEND] Aviso: Não salvou mensagem Aline:`, dbError);
+        }
       } else {
-        console.error(`[FIQON-SEND] ❌ Texto falhou: ${textResult.error}`);
+        console.error(`[ZAPI-SEND] ❌ Texto falhou: ${textResult.error}`);
       }
 
       // Aguardar antes de enviar produtos
@@ -413,45 +468,77 @@ serve(async (req) => {
     }
 
     // ========================================
-    // ENVIAR CADA PRODUTO (com iteração correta)
+    // BUSCAR PREÇOS DO BANCO - ESTRATÉGIA DEFINITIVA
     // ========================================
-    const sendVideoPriority = payload.send_video_priority !== false && payload.priorizar_video !== false;
-
-    // PRIMEIRO: Buscar TODOS os preços do banco de dados pelos SKUs para garantir
     const productSkus = products
       .map((p: ProductItem) => cleanValue(p.sku))
-      .filter((sku: string | null): sku is string => sku !== null && !sku.startsWith('item-'));
+      .filter((sku: string | null): sku is string => sku !== null && sku.length > 0 && !sku.startsWith('item-'));
     
-    let dbPrices: Record<string, { price: number; name: string }> = {};
+    // Mapa de preços do banco de dados
+    let dbProducts: Record<string, { price: number; name: string; description: string; color: string }> = {};
     
     if (productSkus.length > 0) {
-      console.log(`[FIQON-SEND] 💰 Buscando preços no banco para SKUs: ${productSkus.join(', ')}`);
+      console.log(`[ZAPI-SEND] 💰 BUSCANDO PREÇOS NO BANCO para SKUs: ${productSkus.join(', ')}`);
       
-      const { data: dbProducts } = await supabase
+      const { data: productsFromDb, error: dbError } = await supabase
         .from('products')
-        .select('sku, price, name')
+        .select('sku, price, name, description, color')
         .in('sku', productSkus);
       
-      if (dbProducts && dbProducts.length > 0) {
-        dbPrices = dbProducts.reduce((acc: Record<string, { price: number; name: string }>, p: any) => {
-          if (p.sku && p.price !== null && p.price !== undefined) {
-            acc[p.sku] = { price: p.price, name: p.name };
+      if (dbError) {
+        console.error(`[ZAPI-SEND] ❌ Erro ao buscar preços:`, dbError);
+      } else if (productsFromDb && productsFromDb.length > 0) {
+        for (const p of productsFromDb) {
+          if (p.sku) {
+            dbProducts[p.sku] = {
+              price: p.price || 0,
+              name: p.name || '',
+              description: p.description || '',
+              color: p.color || ''
+            };
           }
-          return acc;
-        }, {});
-        console.log(`[FIQON-SEND] ✅ Preços encontrados no banco:`, Object.keys(dbPrices).map(k => `${k}: R$${dbPrices[k].price}`).join(', '));
+        }
+        console.log(`[ZAPI-SEND] ✅ PREÇOS DO BANCO:`, Object.entries(dbProducts).map(([k, v]) => `${k}: R$${v.price}`).join(' | '));
+      } else {
+        console.warn(`[ZAPI-SEND] ⚠️ Nenhum produto encontrado no banco para os SKUs`);
       }
     }
+
+    // ========================================
+    // ENVIAR CADA PRODUTO COM PREÇO DO BANCO
+    // ========================================
+    const sendVideoPriority = payload.send_video_priority !== false && payload.priorizar_video !== false;
 
     for (let i = 0; i < products.length; i++) {
       const product = products[i];
       const productIndex = i + 1;
       
-      // Get product details with fallbacks
+      // Get SKU
       const sku = cleanValue(product.sku) || `item-${productIndex}`;
-      const name = cleanValue(product.name) || cleanValue(product.nome) || dbPrices[sku]?.name || 'Produto';
       
-      // Determine media URL - try multiple field names
+      // PREÇO: SEMPRE DO BANCO DE DADOS (fonte única de verdade)
+      const dbData = dbProducts[sku];
+      let finalPrice: number | null = dbData?.price || null;
+      
+      // Fallback: buscar individualmente se não encontrou
+      if (finalPrice === null && sku && !sku.startsWith('item-')) {
+        console.log(`[ZAPI-SEND] 🔍 Buscando preço individual para SKU: ${sku}`);
+        const { data: singleProduct } = await supabase
+          .from('products')
+          .select('price, name')
+          .eq('sku', sku)
+          .maybeSingle();
+        
+        if (singleProduct?.price) {
+          finalPrice = singleProduct.price;
+          console.log(`[ZAPI-SEND] ✅ Preço individual encontrado: R$${finalPrice}`);
+        }
+      }
+      
+      // Nome do produto
+      const name = cleanValue(product.name) || cleanValue(product.nome) || dbData?.name || 'Produto';
+      
+      // Determine media URL
       let imageUrl = cleanValue(product.image_url) || cleanValue(product.url_imagem);
       let videoUrl = cleanValue(product.video_url) || cleanValue(product.url_video);
       let mediaUrlGeneric = cleanValue(product.media_url) || cleanValue(product.url_midia);
@@ -479,7 +566,7 @@ serve(async (req) => {
         finalMediaUrl = mediaUrlGeneric;
         finalMediaType = isVideo ? 'video' : 'image';
       } else {
-        console.warn(`[FIQON-SEND] Produto ${productIndex} (${sku}) sem mídia, pulando...`);
+        console.warn(`[ZAPI-SEND] Produto ${productIndex} (${sku}) sem mídia, pulando...`);
         results.push({
           index: productIndex,
           sku,
@@ -492,91 +579,36 @@ serve(async (req) => {
         continue;
       }
 
-      // SEMPRE construir caption completo - GARANTIR PREÇO DO BANCO DE DADOS
-      const captionLines: string[] = [`*${productIndex}️⃣ ${name}*`];
+      // ========================================
+      // CONSTRUIR CAPTION COM PREÇO GARANTIDO
+      // ========================================
+      const captionLines: string[] = [`*${name}*`];
       
-      // Descrição - SEMPRE incluir se existir
-      const desc = cleanValue(product.description) || cleanValue(product.descricao);
-      if (desc) {
-        captionLines.push(desc);
-      }
-      
-      // PREÇO - ESTRATÉGIA DE 3 NÍVEIS:
-      // 1. Tentar do payload (product.price, product.preco, etc)
-      // 2. Tentar do banco de dados (dbPrices[sku])
-      // 3. Fallback para "Consulte"
-      
-      let finalPrice: number | null = null;
-      let priceSource = 'not_found';
-      
-      // NÍVEL 1: Payload
-      let priceFromPayload = getNumber(product.price);
-      if (priceFromPayload === null) priceFromPayload = getNumber(product.preco);
-      if (priceFromPayload === null) priceFromPayload = getNumber(product.valor);
-      
-      let priceFormattedFromPayload = cleanValue(product.price_formatted);
-      if (!priceFormattedFromPayload) priceFormattedFromPayload = cleanValue(product.preco_formatado);
-      if (!priceFormattedFromPayload) priceFormattedFromPayload = cleanValue(product.valor_formatado);
-      
-      if (priceFromPayload !== null && priceFromPayload > 0) {
-        finalPrice = priceFromPayload;
-        priceSource = 'payload';
-      } else if (priceFormattedFromPayload && !priceFormattedFromPayload.includes('null')) {
-        // Tentar extrair número do preço formatado
-        const match = priceFormattedFromPayload.replace('R$', '').replace(',', '.').trim().match(/[\d.]+/);
-        if (match) {
-          finalPrice = parseFloat(match[0]);
-          priceSource = 'payload_formatted';
-        }
-      }
-      
-      // NÍVEL 2: Banco de dados (SEMPRE tentar se não achou no payload)
-      if (finalPrice === null && sku && dbPrices[sku]) {
-        finalPrice = dbPrices[sku].price;
-        priceSource = 'database';
-      }
-      
-      // NÍVEL 2.5: Buscar individualmente se ainda não encontrou
-      if (finalPrice === null && sku && sku !== `item-${productIndex}`) {
-        console.log(`[FIQON-SEND] 🔍 Buscando preço individual para SKU: ${sku}`);
-        const { data: singleProduct } = await supabase
-          .from('products')
-          .select('price')
-          .eq('sku', sku)
-          .maybeSingle();
-        
-        if (singleProduct?.price) {
-          finalPrice = singleProduct.price;
-          priceSource = 'database_single';
-          console.log(`[FIQON-SEND] ✅ Preço encontrado individual: R$${finalPrice}`);
-        }
-      }
-      
-      console.log(`[FIQON-SEND] 💰 Produto ${sku}: preço=${finalPrice} (fonte: ${priceSource})`);
-      
-      // ADICIONAR PREÇO AO CAPTION
+      // PREÇO PRIMEIRO - É O MAIS IMPORTANTE!
       if (finalPrice !== null && finalPrice > 0) {
-        captionLines.push(`💰 *R$ ${finalPrice.toFixed(2).replace('.', ',')}*`);
+        const priceFormatted = finalPrice.toFixed(2).replace('.', ',');
+        captionLines.push(`💰 *R$ ${priceFormatted}*`);
+        console.log(`[ZAPI-SEND] ✅ PREÇO INCLUÍDO NO CARD: ${sku} = R$${priceFormatted}`);
       } else {
-        console.error(`[FIQON-SEND] ❌ PRODUTO ${sku} SEM PREÇO! Adicionando "Consulte"`);
         captionLines.push(`💰 *Consulte o valor*`);
+        console.error(`[ZAPI-SEND] ⚠️ PRODUTO ${sku} SEM PREÇO NO BANCO!`);
       }
       
       // Cor
-      const color = cleanValue(product.color) || cleanValue(product.cor);
-      if (color) captionLines.push(`🎨 Cor: ${color}`);
+      const color = cleanValue(product.color) || cleanValue(product.cor) || dbData?.color;
+      if (color) captionLines.push(`🎨 ${color}`);
       
       // Tamanhos
       const sizes = product.sizes || product.tamanhos || product.sizes_formatted || product.tamanhos_formatado;
       if (sizes) {
         const sizesStr = Array.isArray(sizes) ? sizes.join(', ') : String(sizes);
-        if (sizesStr.trim()) captionLines.push(`📏 Tamanhos: ${sizesStr}`);
+        if (sizesStr.trim()) captionLines.push(`📏 Tam: ${sizesStr}`);
       }
       
       // Estoque
       const stockNum = getNumber(product.stock) ?? getNumber(product.estoque);
-      if (stockNum !== null && stockNum >= 0) {
-        captionLines.push(stockNum > 0 ? `✅ Em estoque` : `⚠️ Sob consulta`);
+      if (stockNum !== null && stockNum > 0) {
+        captionLines.push(`✅ Pronta entrega`);
       }
       
       // SKU
@@ -584,13 +616,11 @@ serve(async (req) => {
       
       const caption = captionLines.join('\n');
       
-      console.log(`[FIQON-SEND] ✅ CAPTION FINAL para ${sku}:`);
-      console.log(caption);
-
-      console.log(`[FIQON-SEND] Produto ${productIndex}/${products.length}: ${name}`);
-      console.log(`[FIQON-SEND]   SKU: ${sku}`);
-      console.log(`[FIQON-SEND]   Tipo: ${finalMediaType}`);
-      console.log(`[FIQON-SEND]   URL: ${finalMediaUrl.substring(0, 80)}...`);
+      console.log(`[ZAPI-SEND] ========== CARD ${productIndex} ==========`);
+      console.log(`[ZAPI-SEND] SKU: ${sku}`);
+      console.log(`[ZAPI-SEND] Preço: ${finalPrice ? `R$${finalPrice}` : 'NÃO ENCONTRADO'}`);
+      console.log(`[ZAPI-SEND] Caption:\n${caption}`);
+      console.log(`[ZAPI-SEND] =====================================`);
 
       // Send to Z-API
       const sendResult = await sendMediaToZAPI(
@@ -611,14 +641,15 @@ serve(async (req) => {
         error: sendResult.error,
         mediaType: finalMediaType,
         mediaUrl: finalMediaUrl,
+        price: finalPrice || undefined,
       });
 
       if (sendResult.success) {
         successCount++;
-        console.log(`[FIQON-SEND] ✅ Produto ${productIndex} enviado: ${sendResult.messageId}`);
+        console.log(`[ZAPI-SEND] ✅ Card ${productIndex} enviado: ${sendResult.messageId}`);
       } else {
         errorCount++;
-        console.error(`[FIQON-SEND] ❌ Produto ${productIndex} falhou: ${sendResult.error}`);
+        console.error(`[ZAPI-SEND] ❌ Card ${productIndex} falhou: ${sendResult.error}`);
       }
 
       // Delay between products (except for last one)
@@ -628,19 +659,17 @@ serve(async (req) => {
     }
 
     // ========================================
-    // ENVIAR MENSAGEM PÓS-CATÁLOGO (CRÍTICO para engajamento!)
-    // A Aline PRECISA perguntar algo após enviar o catálogo
+    // ENVIAR MENSAGEM PÓS-CATÁLOGO
     // ========================================
     let postCatalogSent = false;
     
     if (successCount > 0) {
-      await new Promise(resolve => setTimeout(resolve, delayMs)); // Delay após produtos
+      await new Promise(resolve => setTimeout(resolve, delayMs));
       
-      // Pegar a mensagem pós-catálogo da Aline OU usar uma padrão
       const postCatalogMessage = alineResponse?.mensagem_pos_catalogo 
         || "Gostou de alguma? Me conta qual chamou mais sua atenção! 😊";
       
-      console.log(`[FIQON-SEND] 📝 Enviando mensagem pós-catálogo: "${postCatalogMessage}"`);
+      console.log(`[ZAPI-SEND] 📝 Enviando mensagem pós-catálogo...`);
       
       const postResult = await sendTextToZAPI(
         phone,
@@ -652,28 +681,23 @@ serve(async (req) => {
       
       if (postResult.success) {
         postCatalogSent = true;
-        console.log(`[FIQON-SEND] ✅ Mensagem pós-catálogo enviada: ${postResult.messageId}`);
-      } else {
-        console.error(`[FIQON-SEND] ❌ Mensagem pós-catálogo falhou: ${postResult.error}`);
+        console.log(`[ZAPI-SEND] ✅ Mensagem pós-catálogo enviada`);
       }
     }
 
     // ========================================
-    // ENVIAR BOTÕES DE SELEÇÃO RÁPIDA (OPCIONAL - após mensagem pós-catálogo)
+    // ENVIAR BOTÕES DE SELEÇÃO RÁPIDA
     // ========================================
     if (successCount > 0 && successCount <= 5) {
-      // Só enviar botões se temos 1-5 produtos (limite do WhatsApp)
       try {
-        await new Promise(resolve => setTimeout(resolve, delayMs)); // Delay antes dos botões
+        await new Promise(resolve => setTimeout(resolve, delayMs));
         
-        // Criar botões para cada produto enviado
         const buttons = results
           .filter(r => r.success)
-          .slice(0, 3) // Máximo 3 botões no WhatsApp
+          .slice(0, 3)
           .map((r, idx) => {
             const product = products[r.index - 1];
             const productName = cleanValue(product?.name) || cleanValue(product?.nome) || 'Produto';
-            // Truncar nome para caber no botão (limite ~20 chars)
             const shortName = productName.length > 18 ? productName.substring(0, 15) + '...' : productName;
             return {
               id: `select_${r.sku}`,
@@ -682,11 +706,9 @@ serve(async (req) => {
           });
 
         if (buttons.length > 0) {
-          const buttonMessage = `Clique para escolher rapidamente:`;
-          
           const buttonResult = await sendButtonMessageToZAPI(
             phone,
-            buttonMessage,
+            `Clique para escolher:`,
             buttons,
             ZAPI_INSTANCE_ID!,
             ZAPI_TOKEN!,
@@ -694,171 +716,75 @@ serve(async (req) => {
           );
           
           if (buttonResult.success) {
-            console.log(`[FIQON-SEND] ✅ Botões de seleção enviados: ${buttonResult.messageId}`);
-          } else {
-            console.warn(`[FIQON-SEND] ⚠️ Botões falharam (não crítico): ${buttonResult.error}`);
+            console.log(`[ZAPI-SEND] ✅ Botões enviados`);
           }
         }
-      } catch (buttonError) {
-        console.warn(`[FIQON-SEND] ⚠️ Erro ao enviar botões (não crítico):`, buttonError);
-        // Não bloqueia o fluxo se os botões falharem
+      } catch (btnError) {
+        console.warn(`[ZAPI-SEND] Botões falharam (não crítico)`);
       }
     }
 
     // ========================================
-    // SALVAR NO CRM E ALINE_MESSAGES (CRÍTICO para follow-up!)
+    // REGISTRAR NO BANCO DE DADOS
     // ========================================
-    if (payload.save_to_crm !== false) {
+    if (successCount > 0 && alineResponse) {
       try {
-        const { data: conv } = await supabase
-          .from('conversations')
-          .select('id')
-          .eq('contact_number', phone)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        const conversationId = conv?.id;
+        // Criar sessão de catálogo
+        const { data: session } = await supabase.rpc('create_catalog_session', {
+          p_phone: phone,
+          p_thread_id: alineResponse.thread_id || null,
+          p_categoria: alineResponse.categoria_crm || null,
+          p_tipo_alianca: null,
+          p_cor_preferida: alineResponse.cor_crm || null
+        });
         
-        if (conversationId) {
-          // Salvar mensagem de texto da Aline
-          if (textMessage && textSent) {
-            await supabase.from('messages').insert({
-              conversation_id: conversationId,
-              content: textMessage,
-              message_type: 'text',
-              is_from_me: true,
-              status: 'sent',
+        if (session) {
+          // Registrar cada item enviado
+          for (const result of results.filter(r => r.success)) {
+            const product = products[result.index - 1];
+            await supabase.rpc('add_catalog_item', {
+              p_session_id: session,
+              p_sku: result.sku,
+              p_name: cleanValue(product?.name) || cleanValue(product?.nome),
+              p_price: result.price || null,
+              p_image_url: result.mediaType === 'image' ? result.mediaUrl : null,
+              p_video_url: result.mediaType === 'video' ? result.mediaUrl : null
             });
           }
-
-          // Salvar CADA produto como mensagem separada com media_url
-          for (const result of results) {
-            if (result.success && result.mediaUrl) {
-              const product = products[result.index - 1];
-              const productName = cleanValue(product?.name) || cleanValue(product?.nome) || 'Produto';
-              const sku = result.sku;
-              
-              await supabase.from('messages').insert({
-                conversation_id: conversationId,
-                content: `*${productName}*\n📦 Cód: ${sku}`,
-                message_type: result.mediaType === 'video' ? 'video' : 'image',
-                media_url: result.mediaUrl,
-                is_from_me: true,
-                status: 'sent',
-              });
-            }
-          }
-
-          // Atualizar última mensagem da conversa
-          if (products.length > 0) {
-            await supabase.from('conversations').update({
-              last_message: `[Catálogo: ${successCount} produtos enviados]`,
-            }).eq('id', conversationId);
-          }
+          console.log(`[ZAPI-SEND] ✅ Sessão de catálogo registrada: ${session}`);
         }
-
-        // ==============================================
-        // CRÍTICO: Salvar no aline_messages para follow-up funcionar!
-        // O aline-followup verifica se a última mensagem é do assistant
-        // ==============================================
-        const { data: alineConv } = await supabase
-          .from('aline_conversations')
-          .select('id, current_node')
-          .eq('phone', phone)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (alineConv) {
-          // Salvar mensagem inicial da Aline
-          if (textSent && textMessage) {
-            await supabase.from('aline_messages').insert({
-              conversation_id: alineConv.id,
-              role: 'assistant',
-              message: textMessage,
-              node: alineConv.current_node,
-            });
-            console.log(`[FIQON-SEND] ✅ Texto inicial salvo em aline_messages`);
-          }
-          
-          // CRÍTICO: Salvar mensagem pós-catálogo também!
-          // Esta é a ÚLTIMA mensagem da Aline, então é a que importa para follow-up
-          if (postCatalogSent) {
-            const postCatalogMessage = alineResponse?.mensagem_pos_catalogo 
-              || "Gostou de alguma? Me conta qual chamou mais sua atenção! 😊";
-            
-            await supabase.from('aline_messages').insert({
-              conversation_id: alineConv.id,
-              role: 'assistant',
-              message: postCatalogMessage,
-              node: 'catalogo',
-            });
-            console.log(`[FIQON-SEND] ✅ Mensagem pós-catálogo salva em aline_messages`);
-          }
-
-          // Atualizar last_message_at para recalcular follow-up
-          await supabase.from('aline_conversations').update({
-            last_message_at: new Date().toISOString(),
-            followup_count: 0, // Reset follow-up count após enviar catálogo
-          }).eq('id', alineConv.id);
-          
-          console.log(`[FIQON-SEND] ✅ aline_conversation atualizada (last_message_at, followup_count=0)`);
-        } else {
-          console.warn(`[FIQON-SEND] ⚠️ Não encontrou aline_conversation para phone=${phone}`);
-        }
-
-      } catch (crmError) {
-        console.warn('[FIQON-SEND] Erro ao salvar no CRM:', crmError);
+      } catch (dbError) {
+        console.warn(`[ZAPI-SEND] Aviso ao salvar sessão:`, dbError);
       }
     }
 
-    const duration = Date.now() - startTime;
-    console.log(`[FIQON-SEND] ====== CONCLUÍDO ======`);
-    console.log(`[FIQON-SEND] Texto: ${textSent ? 'OK' : 'N/A'}, Produtos: ${successCount}/${products.length}, Duração: ${duration}ms`);
+    const totalTime = Date.now() - startTime;
+    
+    console.log(`[ZAPI-SEND] ====== RESUMO ======`);
+    console.log(`[ZAPI-SEND] Texto enviado: ${textSent}`);
+    console.log(`[ZAPI-SEND] Produtos: ${successCount}/${products.length} enviados`);
+    console.log(`[ZAPI-SEND] Pós-catálogo: ${postCatalogSent}`);
+    console.log(`[ZAPI-SEND] Tempo total: ${totalTime}ms`);
+    console.log(`[ZAPI-SEND] ====================`);
 
-    // ========================================
-    // RESPOSTA FINAL (inclui dados da Aline se processou)
-    // ========================================
     return new Response(
       JSON.stringify({
         success: true,
         phone,
-        
-        // Envio de texto
         text_sent: textSent,
-        text_message: textMessage,
-        
-        // Envio de produtos
-        total_products: products.length,
         products_sent: successCount,
         products_failed: errorCount,
+        post_catalog_sent: postCatalogSent,
         results,
-        
-        // Dados da Aline (se processou)
-        aline: alineResponse ? {
-          node: alineResponse.node_tecnico,
-          action: alineResponse.acao_nome,
-          has_action: alineResponse.tem_acao,
-          categoria: alineResponse.categoria_crm,
-          cor: alineResponse.cor_crm,
-          memoria: alineResponse.memoria,
-          tamanhos: alineResponse.tamanhos,
-        } : null,
-        
-        // Tempo de execução
-        duration_ms: duration,
+        execution_time_ms: totalTime,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
-    console.error('[FIQON-SEND] Erro geral:', error);
+    console.error('[ZAPI-SEND] ERRO FATAL:', error);
     return new Response(
-      JSON.stringify({ 
-        error: error instanceof Error ? error.message : 'Unknown error',
-        success: false 
-      }),
+      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
