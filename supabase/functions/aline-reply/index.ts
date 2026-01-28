@@ -13,20 +13,23 @@ const tools = [
     type: "function",
     function: {
       name: "search_catalog",
-      description: `OBRIGATÓRIO usar para mostrar produtos ao cliente. Busca produtos por categoria, cor, preço e outros filtros.
+      description: `OBRIGATÓRIO usar para mostrar produtos ao cliente. Os produtos são enviados como CARDS VISUAIS com foto, preço e código.
+      
+      🚨 CRÍTICO - SEMPRE USE O PARÂMETRO "color" QUANDO O CLIENTE ESPECIFICAR UMA COR!
       
       QUANDO USAR:
-      - Cliente escolheu categoria (alianças ou pingentes) E cor
+      - Cliente escolheu categoria (alianças, pingentes ou anéis) E/OU cor
       - Cliente pediu para "ver", "mostrar", "quero ver" produtos
       - Cliente mencionou tipo específico (casamento, namoro, compromisso)
-      - Cliente perguntou "outras cores?", "tem outras?", "mais opções?" → use exclude_shown_colors=true
+      - Cliente perguntou "outras cores?", "tem outras?", "mais opções?"
       
       PARÂMETROS IMPORTANTES:
-      - category: "aliancas" para todas as alianças, "pingente" para pingentes
-      - color: cor normalizada (dourada, aco, prata, preta, azul)
-      - search: use para buscar por nome ou descrição específica
-      - only_available: sempre use true para mostrar apenas produtos em estoque
-      - exclude_shown_colors: use TRUE quando cliente pedir "outras cores" ou "mais opções" para excluir cores já mostradas`,
+      - category: "aliancas" para todas as alianças, "pingente" para pingentes, "aneis" para anéis
+      - color: 🚨 OBRIGATÓRIO quando cliente especificar cor! Use exatamente: "dourada", "prata", "preta", "azul", "rose"
+        → Cliente disse "azul" → color="azul"
+        → Cliente disse "dourada" → color="dourada"
+        → Cliente disse "prata" ou "aço" → color="prata"
+      - only_available: sempre use true para mostrar apenas produtos em estoque`,
       parameters: {
         type: "object",
         properties: {
@@ -41,8 +44,8 @@ const tools = [
           },
           color: {
             type: "string",
-            enum: ["dourada", "aco", "preta", "azul", "prata", "rose"],
-            description: "Cor do produto. Use quando o cliente especificar preferência de cor. NÃO use junto com exclude_shown_colors."
+            enum: ["dourada", "prata", "preta", "azul", "rose"],
+            description: "🚨 CRÍTICO: SEMPRE USE quando cliente especificar cor! Exemplos: cliente disse 'azul' → use 'azul'. Cliente disse 'dourada' → use 'dourada'."
           },
           min_price: {
             type: "number",
@@ -85,7 +88,7 @@ const tools = [
 ];
 
 // System prompt da Aline - VERSÃO COMPACTA E DIRETA
-// IMPORTANTE: Aline NUNCA responde sobre preços com texto - sempre envia catálogo com os preços nos cards!
+// IMPORTANTE: Aline NUNCA responde sobre preços/produtos com texto - SEMPRE envia catálogo visual!
 const ALINE_SYSTEM_PROMPT = `# ALINE — Consultora Virtual ACIUM Manaus
 
 ## IDENTIDADE
@@ -95,13 +98,17 @@ MÁXIMO 2-3 linhas por resposta. SEM textos longos.
 
 ---
 
-## 🚨 REGRAS ABSOLUTAS:
+## 🚨 REGRAS ABSOLUTAS - NUNCA QUEBRE ESSAS REGRAS:
 
 1. **RESPOSTAS ULTRA-CURTAS**: Máximo 2-3 linhas. NUNCA mais de 3 linhas.
-2. **NUNCA liste produtos no texto** - os cards são enviados automaticamente com fotos e preços
-3. **NUNCA descreva produtos** - apenas diga uma frase curta tipo "Separei opções lindas! 💍"
-4. **PREÇOS**: NUNCA diga valores - envie o catálogo! Os preços aparecem nos cards.
-5. **NÃO repita saudação** - Se já disse "Sou a Aline", NÃO repita.
+2. **NUNCA LISTE PRODUTOS NO TEXTO** - os produtos são enviados automaticamente como CARDS VISUAIS com foto, preço e código.
+3. **NUNCA DESCREVA PRODUTOS** - diga APENAS uma frase curta tipo "Separei opções lindas! 💍" 
+4. **NUNCA DIGA PREÇOS NO TEXTO** - os preços aparecem nos CARDS automaticamente.
+5. **NUNCA DIGA "aqui estão algumas opções" + lista** - isso é PROIBIDO! Use apenas frase curta.
+6. **NÃO repita saudação** - Se já disse "Sou a Aline", NÃO repita.
+
+⚠️ QUANDO BUSCAR CATÁLOGO: Diga SOMENTE: "Vou te mostrar! 💍" ou "Separei opções incríveis! ✨" (max 10 palavras)
+⚠️ OS CARDS COM FOTOS, PREÇOS E CÓDIGOS SÃO ENVIADOS AUTOMATICAMENTE PELO SISTEMA!
 
 ---
 
@@ -116,26 +123,24 @@ MÁXIMO 2-3 linhas por resposta. SEM textos longos.
 
 **PINGENTES/MEDALHAS:**
 1. Cliente menciona pingente/medalha → PERGUNTE A COR: "Qual cor você prefere? Dourada ou prata? 💛🤍"
-2. Cliente escolhe cor → ENVIE CATÁLOGO (frases curtas!)
+2. Cliente escolhe cor → USE search_catalog com color="[cor escolhida]"! Diga: "Vou te mostrar! 💫"
 3. Cliente escolhe → Pergunte foto para gravação
 4. Ofereça corrente → Colete entrega/pagamento
 
 **ALIANÇAS:**
 1. Cliente menciona aliança → PERGUNTE FINALIDADE: "Para namoro ou casamento? 💍"
 2. Cliente responde → PERGUNTE COR: "Qual cor prefere? Dourada, prata, preta ou azul?"
-3. Resposta → ENVIE CATÁLOGO
+3. Cliente escolhe cor → USE search_catalog com color="[cor escolhida]"! Diga: "Vou te mostrar! 💍"
+
+IMPORTANTE: SEMPRE use o parâmetro "color" na busca quando o cliente especificar uma cor!
 
 ---
 
 ## 🤔 PERGUNTAS FORA DE CONTEXTO:
 
-Quando cliente fizer pergunta que NÃO é sobre compra (ex: "vocês abrem domingo?", "onde fica?", "tem garantia?"):
+Quando cliente fizer pergunta que NÃO é sobre compra:
 1. RESPONDA a pergunta BREVEMENTE
 2. DEPOIS pergunte: "Posso te mostrar nossas opções com valores? 😊"
-
-Exemplos:
-- "Vocês abrem domingo?" → "Funcionamos no shopping, das 10h às 22h! Posso te mostrar nosso catálogo? 💍"
-- "Tem garantia?" → "Sim, todos os produtos têm garantia! Quer ver as opções? 😊"
 
 ---
 
@@ -145,8 +150,8 @@ Exemplos:
 ---
 
 ## ✅ PRODUTOS DISPONÍVEIS:
-- ALIANÇAS (casamento=tungstênio, namoro=aço)
-- PINGENTES/MEDALHAS (fotogravação grátis 1 lado, corrente vendida separada)
+- ALIANÇAS (casamento=tungstênio nas cores dourada/prata/preta/azul, namoro=aço nas cores dourada/prata)
+- PINGENTES/MEDALHAS (fotogravação grátis 1 lado, corrente vendida separada, cores dourada/prata)
 - ANÉIS
 - CORRENTES (vendidas separadamente)
 
@@ -219,8 +224,9 @@ async function searchCatalog(
   supabase: any,
   collectedData?: Record<string, any>
 ): Promise<any> {
-  console.log(`[ALINE-REPLY] Buscando catálogo:`, params);
-  console.log(`[ALINE-REPLY] Dados coletados:`, collectedData);
+  console.log(`[ALINE-REPLY] ========== BUSCA CATÁLOGO ==========`);
+  console.log(`[ALINE-REPLY] Parâmetros recebidos:`, JSON.stringify(params));
+  console.log(`[ALINE-REPLY] Dados coletados:`, JSON.stringify(collectedData || {}));
   
   // LÓGICA CRÍTICA: Determinar material baseado na finalidade
   const finalidade = collectedData?.finalidade || params.finalidade;
@@ -236,6 +242,11 @@ async function searchCatalog(
     }
   }
   
+  // 🚨 CRÍTICO: COR DO CLIENTE - RESPEITAR A COR SOLICITADA!
+  // Prioridade: parâmetro cor > cor do collectedData
+  const corSolicitada = params.color?.toLowerCase().trim() || collectedData?.cor?.toLowerCase().trim();
+  console.log(`[ALINE-REPLY] 🎨 COR SOLICITADA: "${corSolicitada || 'NENHUMA'}"`);
+  
   // Cores já mostradas anteriormente
   const coresMostradas = collectedData?.cores_mostradas || [];
   console.log(`[ALINE-REPLY] Cores já mostradas: ${JSON.stringify(coresMostradas)}`);
@@ -250,9 +261,17 @@ async function searchCatalog(
     .eq('active', true)
     .order('created_at', { ascending: false });
   
-  // Filtrar por cor se especificada E não estiver pedindo outras cores
-  if (params.color && !params.exclude_shown_colors) {
-    query = query.ilike('color', `%${params.color}%`);
+  // 🚨 CRÍTICO: Filtrar por cor IMEDIATAMENTE se especificada
+  // Isso DEVE acontecer na query do banco para performance e precisão
+  if (corSolicitada && !params.exclude_shown_colors) {
+    // Normalizar a cor para busca
+    const corNormalizada = corSolicitada
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace('aco', 'prata') // aço = prata na prática
+      .trim();
+    
+    console.log(`[ALINE-REPLY] 🔍 APLICANDO FILTRO DE COR NO BANCO: "${corNormalizada}"`);
+    query = query.ilike('color', `%${corNormalizada}%`);
   }
   
   if (params.min_price) {
@@ -1798,80 +1817,92 @@ Vocês preferem retirar na nossa loja no Shopping Sumaúma ou receber em casa?`;
     // ========================================
     // LIMPEZA ESPECIAL: Remover TUDO sobre produtos do texto
     // Quando há catálogo, o texto deve ser APENAS uma frase curta
-    // Os cards com fotos, preços e detalhes são enviados pelo Fiqon
+    // Os cards com fotos, preços e detalhes são enviados pelo sistema
     // ========================================
     if (catalogProducts.length > 0) {
-      console.log(`[ALINE-REPLY] Limpando texto - produtos serão enviados como cards`);
-      console.log(`[ALINE-REPLY] Texto original: "${cleanMessage.substring(0, 300)}..."`);
+      console.log(`[ALINE-REPLY] 🧹 Limpando texto - produtos serão enviados como CARDS VISUAIS`);
+      console.log(`[ALINE-REPLY] Texto original: "${cleanMessage.substring(0, 500)}..."`);
       
-      // ESTRATÉGIA: Extrair APENAS a primeira frase introdutória
-      // Ignorar todo o resto (listas, descrições, preços, etc.)
+      // ESTRATÉGIA AGRESSIVA: Remover QUALQUER lista de produtos ou descrições
+      // O sistema envia os CARDS automaticamente!
       
-      // Lista de frases introdutórias válidas (ordem de preferência)
-      const frasesIntrodutorias = [
-        "Separei algumas opções incríveis para você!",
-        "Separei opções lindas para você!",
-        "Vou te mostrar algumas opções!",
-        "Olha só o que separei para você!",
-        "Aqui estão as opções!",
-        "Veja só essas opções!",
-        "Tenho essas opções para você!",
-        "Confira essas opções incríveis!",
-      ];
+      // 1. Remover listas com bullets, números, ou descrições de produtos
+      cleanMessage = cleanMessage
+        // Remover linhas que começam com bullets/asteriscos/hífens/números
+        .replace(/^[\-\*•]\s*.+$/gm, '')
+        .replace(/^\d+[\.\)]\s*.+$/gm, '')
+        // Remover qualquer linha com preço
+        .replace(/.*R\$\s*[\d\.,]+.*/gi, '')
+        .replace(/.*💰.*/gi, '')
+        .replace(/.*preço.*/gi, '')
+        .replace(/.*valor.*/gi, '')
+        // Remover linhas com código/SKU
+        .replace(/.*📦.*/gi, '')
+        .replace(/.*Cód:.*/gi, '')
+        .replace(/.*código.*/gi, '')
+        .replace(/.*SKU.*/gi, '')
+        // Remover linhas com tamanhos
+        .replace(/.*📏.*/gi, '')
+        .replace(/.*tamanho.*/gi, '')
+        // Remover linhas com "aqui estão", "opções:"
+        .replace(/.*aqui estão.*/gi, '')
+        .replace(/.*opções:/gi, '')
+        .replace(/.*seguem as.*/gi, '')
+        // Remover linhas de descrição de produto
+        .replace(/.*aliança.*ouro.*quilates.*/gi, '')
+        .replace(/.*aliança.*tungstênio.*/gi, '')
+        .replace(/.*aliança.*tungstenio.*/gi, '')
+        .replace(/.*banho de ouro.*/gi, '')
+        .replace(/.*friso lateral.*/gi, '')
+        .replace(/.*infelizmente.*/gi, '')
+        // Limpar múltiplas quebras de linha
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
       
-      // Tentar encontrar uma frase introdutória no texto
-      let fraseEncontrada = "";
-      const msgLower = cleanMessage.toLowerCase();
+      // 2. Pegar apenas a PRIMEIRA linha que é uma frase válida de introdução
+      const linhas = cleanMessage.split('\n').filter((l: string) => l.trim().length > 0);
+      let fraseIntro = "";
       
-      for (const frase of frasesIntrodutorias) {
-        if (msgLower.includes(frase.toLowerCase().substring(0, 20))) {
-          fraseEncontrada = frase;
+      for (const linha of linhas) {
+        const linhaLimpa = linha.trim();
+        // Verificar se é uma frase introdutória válida (não é lista, não tem detalhes)
+        const isValidIntro = linhaLimpa.length >= 10 && 
+          linhaLimpa.length <= 100 &&
+          !linhaLimpa.match(/^\d/) &&
+          !linhaLimpa.startsWith('-') &&
+          !linhaLimpa.startsWith('*') &&
+          !linhaLimpa.includes('R$') &&
+          !linhaLimpa.toLowerCase().includes('preço') &&
+          !linhaLimpa.toLowerCase().includes('tamanho') &&
+          !linhaLimpa.toLowerCase().includes('quilate') &&
+          !linhaLimpa.toLowerCase().includes('tungst');
+        
+        if (isValidIntro) {
+          fraseIntro = linhaLimpa;
           break;
         }
       }
       
-      // Se não encontrou, verificar se começa com algo válido
-      if (!fraseEncontrada) {
-        // Pegar só a primeira linha ou primeira sentença (antes de lista/descrição)
-        const primeiraLinha = cleanMessage.split('\n')[0].trim();
-        
-        // Verificar se a primeira linha é válida (não é lista, não tem emoji de produto)
-        const isLinhaValida = primeiraLinha.length > 10 && 
-          primeiraLinha.length < 100 &&
-          !primeiraLinha.startsWith('-') &&
-          !primeiraLinha.startsWith('*') &&
-          !primeiraLinha.match(/^\d+[\.\)]/) &&
-          !primeiraLinha.includes('💰') &&
-          !primeiraLinha.includes('📏') &&
-          !primeiraLinha.includes('📦') &&
-          !primeiraLinha.includes('R$') &&
-          !primeiraLinha.includes('Cód:') &&
-          !primeiraLinha.toLowerCase().includes('preço') &&
-          !primeiraLinha.toLowerCase().includes('tamanho');
-        
-        if (isLinhaValida) {
-          // Remover perguntas do final (serão enviadas depois dos cards)
-          fraseEncontrada = primeiraLinha
-            .replace(/\?[^.!]*$/, '!')
-            .replace(/gostou[^.!?]*/gi, '')
-            .replace(/me conta[^.!?]*/gi, '')
-            .replace(/qual.*atenção[^.!?]*/gi, '')
-            .trim();
-        }
+      // 3. Se não encontrou frase válida, usar padrão
+      if (!fraseIntro || fraseIntro.length < 10) {
+        fraseIntro = "Separei algumas opções incríveis para você! 💍✨";
       }
       
-      // Se ainda não tem frase válida, usar padrão
-      if (!fraseEncontrada || fraseEncontrada.length < 10) {
-        fraseEncontrada = "Separei algumas opções incríveis para você! 💍✨";
+      // 4. Remover perguntas do final (serão enviadas como mensagem_pos_catalogo)
+      fraseIntro = fraseIntro
+        .replace(/\?.*$/, '!')
+        .replace(/gostou[^.!?]*/gi, '')
+        .replace(/me conta[^.!?]*/gi, '')
+        .replace(/qual.*atenção[^.!?]*/gi, '')
+        .trim();
+      
+      // 5. Garantir que termina com emoji
+      if (!fraseIntro.match(/[💍✨😊🔥💛🤍💫]/)) {
+        fraseIntro = fraseIntro.replace(/[.!]?\s*$/, '') + " 💍✨";
       }
       
-      // Garantir que termina com emoji
-      if (!fraseEncontrada.match(/[💍✨😊🔥💛🤍]/)) {
-        fraseEncontrada = fraseEncontrada.replace(/[.!]?\s*$/, '') + " 💍✨";
-      }
-      
-      console.log(`[ALINE-REPLY] Texto limpo FINAL: "${fraseEncontrada}"`);
-      cleanMessage = fraseEncontrada;
+      console.log(`[ALINE-REPLY] ✅ Texto limpo FINAL: "${fraseIntro}"`);
+      cleanMessage = fraseIntro;
     }
 
     // ========================================
