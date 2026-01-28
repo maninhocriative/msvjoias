@@ -687,23 +687,25 @@ serve(async (req) => {
 
     // ========================================
     // ENVIAR LISTA NUMÉRICA PARA SELEÇÃO (substitui botões truncados)
+    // Lista clara com número + nome completo + código
     // ========================================
     if (successCount > 0) {
       try {
         await new Promise(resolve => setTimeout(resolve, delayMs));
         
-        // Construir lista textual com número + nome + código
+        // Construir lista textual com número + nome COMPLETO + código
         const listaItens = results
           .filter(r => r.success)
           .map((r, idx) => {
             const product = products[r.index - 1];
             const productName = cleanValue(product?.name) || cleanValue(product?.nome) || 'Produto';
-            // Nome completo, não truncado
-            return `${idx + 1}️⃣ *${productName}*\n    📦 Cód: ${r.sku}`;
+            const preco = r.price ? `R$${r.price.toFixed(2).replace('.', ',')}` : '';
+            // Nome COMPLETO, não truncado, com preço
+            return `${idx + 1}️⃣ *${productName}*${preco ? ` - ${preco}` : ''}\n     📦 Cód: ${r.sku}`;
           });
 
         if (listaItens.length > 0) {
-          const mensagemLista = `Clique para escolher ou digite o número:\n\n${listaItens.join('\n\n')}`;
+          const mensagemLista = `📋 *ESCOLHA O SEU:*\n\n${listaItens.join('\n\n')}\n\n✏️ _Digite o número para escolher!_`;
           
           const listResult = await sendTextToZAPI(
             phone,
@@ -714,7 +716,7 @@ serve(async (req) => {
           );
           
           if (listResult.success) {
-            console.log(`[ZAPI-SEND] ✅ Lista numérica enviada`);
+            console.log(`[ZAPI-SEND] ✅ Lista numérica enviada com ${listaItens.length} itens`);
           }
         }
       } catch (listError) {
