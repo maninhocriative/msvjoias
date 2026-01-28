@@ -83,3 +83,6 @@ verify_jwt = false
 
 [functions.seller-offline-alert]
 verify_jwt = false
+
+[functions.zapi-unified]
+verify_jwt = false
