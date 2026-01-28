@@ -686,41 +686,39 @@ serve(async (req) => {
     }
 
     // ========================================
-    // ENVIAR BOTÕES DE SELEÇÃO RÁPIDA
+    // ENVIAR LISTA NUMÉRICA PARA SELEÇÃO (substitui botões truncados)
     // ========================================
-    if (successCount > 0 && successCount <= 5) {
+    if (successCount > 0) {
       try {
         await new Promise(resolve => setTimeout(resolve, delayMs));
         
-        const buttons = results
+        // Construir lista textual com número + nome + código
+        const listaItens = results
           .filter(r => r.success)
-          .slice(0, 3)
           .map((r, idx) => {
             const product = products[r.index - 1];
             const productName = cleanValue(product?.name) || cleanValue(product?.nome) || 'Produto';
-            const shortName = productName.length > 18 ? productName.substring(0, 15) + '...' : productName;
-            return {
-              id: `select_${r.sku}`,
-              label: `${idx + 1}️⃣ ${shortName}`
-            };
+            // Nome completo, não truncado
+            return `${idx + 1}️⃣ *${productName}*\n    📦 Cód: ${r.sku}`;
           });
 
-        if (buttons.length > 0) {
-          const buttonResult = await sendButtonMessageToZAPI(
+        if (listaItens.length > 0) {
+          const mensagemLista = `Clique para escolher ou digite o número:\n\n${listaItens.join('\n\n')}`;
+          
+          const listResult = await sendTextToZAPI(
             phone,
-            `Clique para escolher:`,
-            buttons,
+            mensagemLista,
             ZAPI_INSTANCE_ID!,
             ZAPI_TOKEN!,
             ZAPI_CLIENT_TOKEN
           );
           
-          if (buttonResult.success) {
-            console.log(`[ZAPI-SEND] ✅ Botões enviados`);
+          if (listResult.success) {
+            console.log(`[ZAPI-SEND] ✅ Lista numérica enviada`);
           }
         }
-      } catch (btnError) {
-        console.warn(`[ZAPI-SEND] Botões falharam (não crítico)`);
+      } catch (listError) {
+        console.warn(`[ZAPI-SEND] Lista falhou (não crítico):`, listError);
       }
     }
 
