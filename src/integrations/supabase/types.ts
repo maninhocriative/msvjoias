@@ -553,6 +553,7 @@ export type Database = {
           message_type: string | null
           product_interest: string | null
           status: string | null
+          zapi_message_id: string | null
         }
         Insert: {
           content?: string | null
@@ -564,6 +565,7 @@ export type Database = {
           message_type?: string | null
           product_interest?: string | null
           status?: string | null
+          zapi_message_id?: string | null
         }
         Update: {
           content?: string | null
@@ -575,6 +577,7 @@ export type Database = {
           message_type?: string | null
           product_interest?: string | null
           status?: string | null
+          zapi_message_id?: string | null
         }
         Relationships: [
           {
