@@ -806,33 +806,47 @@ serve(async (req) => {
         console.log(`[ALINE-REPLY] [NLU] Quer ver anéis → FORÇAR CATÁLOGO!`);
       }
     } else if (isPerguntandoAlianca && newCollectedData.categoria !== 'aliancas') {
-      console.log(`[ALINE-REPLY] [NLU] DETECTADO: ALIANÇAS (categoria anterior: ${newCollectedData.categoria || 'nenhuma'})`);
-      newCollectedData.categoria = 'aliancas';
-      delete newCollectedData.cor;
-      delete newCollectedData.cores_mostradas;
-      delete newCollectedData.selected_sku;
-      delete newCollectedData.selected_name;
-      delete newCollectedData.selected_product;
-      delete newCollectedData.selected_price;
-      delete newCollectedData.last_catalog;
-      newCollectedData.mudou_categoria = true;
+      // CRÍTICO: Se JÁ ESTÁ em uma categoria diferente (pingente, aneis), NÃO mudar para alianças
+      // a menos que o cliente EXPLICITAMENTE peça
+      const categoriaAtual = newCollectedData.categoria || collectedData.categoria;
+      const clienteTemCategoria = !!categoriaAtual;
       
-      // Detectar finalidade JÁ NA PRIMEIRA MENSAGEM
-      if (isPerguntandoAliancaCasamento) {
-        newCollectedData.finalidade = 'casamento';
-        console.log(`[ALINE-REPLY] [NLU] Finalidade detectada: CASAMENTO (tungstênio)`);
-        // Se também tem cor, forçar catálogo
-        if (temCorNaMensagem || querVerProdutos) {
-          newCollectedData.quer_ver_catalogo = true;
-          console.log(`[ALINE-REPLY] [NLU] Casamento + cor/ver → FORÇAR CATÁLOGO!`);
-        }
-      } else if (isPerguntandoAliancaNamoro) {
-        newCollectedData.finalidade = 'namoro';
-        console.log(`[ALINE-REPLY] [NLU] Finalidade detectada: NAMORO (aço)`);
-        // Se também tem cor, forçar catálogo
-        if (temCorNaMensagem || querVerProdutos) {
-          newCollectedData.quer_ver_catalogo = true;
-          console.log(`[ALINE-REPLY] [NLU] Namoro + cor/ver → FORÇAR CATÁLOGO!`);
+      // Padrões que indicam PEDIDO EXPLÍCITO de mudar categoria
+      const pedidoExplicitoAlianca = /quero\s*(ver\s*)?(as?\s*)?alian[çc]|ver\s*alian[çc]|mostra.*alian[çc]|me\s*mostra.*alian[çc]|pode\s*me\s*mostrar.*alian[çc]/i.test(normalizedMsg);
+      
+      // Se cliente já tem categoria E não pediu explicitamente aliança, IGNORAR
+      if (clienteTemCategoria && !pedidoExplicitoAlianca) {
+        console.log(`[ALINE-REPLY] [NLU] ⚠️ Detectou palavra "aliança" mas cliente já está em ${categoriaAtual}. IGNORANDO mudança de categoria.`);
+        // NÃO muda categoria - continua no fluxo atual
+      } else {
+        console.log(`[ALINE-REPLY] [NLU] DETECTADO: ALIANÇAS (categoria anterior: ${newCollectedData.categoria || 'nenhuma'})`);
+        newCollectedData.categoria = 'aliancas';
+        delete newCollectedData.cor;
+        delete newCollectedData.cores_mostradas;
+        delete newCollectedData.selected_sku;
+        delete newCollectedData.selected_name;
+        delete newCollectedData.selected_product;
+        delete newCollectedData.selected_price;
+        delete newCollectedData.last_catalog;
+        newCollectedData.mudou_categoria = true;
+        
+        // Detectar finalidade JÁ NA PRIMEIRA MENSAGEM
+        if (isPerguntandoAliancaCasamento) {
+          newCollectedData.finalidade = 'casamento';
+          console.log(`[ALINE-REPLY] [NLU] Finalidade detectada: CASAMENTO (tungstênio)`);
+          // Se também tem cor, forçar catálogo
+          if (temCorNaMensagem || querVerProdutos) {
+            newCollectedData.quer_ver_catalogo = true;
+            console.log(`[ALINE-REPLY] [NLU] Casamento + cor/ver → FORÇAR CATÁLOGO!`);
+          }
+        } else if (isPerguntandoAliancaNamoro) {
+          newCollectedData.finalidade = 'namoro';
+          console.log(`[ALINE-REPLY] [NLU] Finalidade detectada: NAMORO (aço)`);
+          // Se também tem cor, forçar catálogo
+          if (temCorNaMensagem || querVerProdutos) {
+            newCollectedData.quer_ver_catalogo = true;
+            console.log(`[ALINE-REPLY] [NLU] Namoro + cor/ver → FORÇAR CATÁLOGO!`);
+          }
         }
       }
     }
@@ -852,7 +866,11 @@ serve(async (req) => {
     }
     
     // Detectar CATEGORIA em qualquer mensagem (se ainda não tem)
-    if (!newCollectedData.categoria) {
+    // PROTEÇÃO: Se já tem categoria, só mudar se for pedido EXPLÍCITO
+    const categoriaExistente = newCollectedData.categoria || collectedData.categoria;
+    
+    if (!categoriaExistente) {
+      // Cliente sem categoria - pode definir normalmente
       if (isPerguntandoAlianca && !isPerguntandoPingente && !isPerguntandoAnel) {
         newCollectedData.categoria = 'aliancas';
         console.log(`[ALINE-REPLY] [NLU] Categoria: aliancas`);
@@ -868,6 +886,13 @@ serve(async (req) => {
       } else if (isPerguntandoAnel) {
         newCollectedData.categoria = 'aneis';
         console.log(`[ALINE-REPLY] [NLU] Categoria: aneis`);
+      }
+    } else {
+      // Cliente JÁ TEM categoria - manter categoria atual
+      // (mudanças de categoria já foram tratadas acima com lógica de pedido explícito)
+      console.log(`[ALINE-REPLY] [NLU] Cliente já está na categoria: ${categoriaExistente} - mantendo`);
+      if (!newCollectedData.categoria) {
+        newCollectedData.categoria = categoriaExistente;
       }
     }
     

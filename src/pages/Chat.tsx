@@ -242,10 +242,21 @@ const Chat = () => {
   const fetchConversations = useCallback(async (showToast = false) => {
     try {
       setRefreshing(true);
+      // Ordenar por última mensagem para conversas novas aparecerem no topo
       const { data, error } = await supabase
         .from('conversations')
         .select('*')
         .order('created_at', { ascending: false });
+      
+      // Ordenar localmente por created_at (que reflete a última mensagem)
+      // para que conversas com mensagens novas fiquem no topo
+      if (data) {
+        data.sort((a, b) => {
+          const dateA = new Date(a.created_at || 0).getTime();
+          const dateB = new Date(b.created_at || 0).getTime();
+          return dateB - dateA;
+        });
+      }
 
       if (error) throw error;
       setConversations(data || []);
@@ -677,22 +688,33 @@ const Chat = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const filteredConversations = conversations.filter((conv) => {
-    const matchesSearch = conv.contact_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      conv.contact_number?.includes(searchTerm);
-    const matchesStatus = filterStatus === 'all' || conv.lead_status === filterStatus;
-    
-    // Filtro por atendente
-    const convAlineData = alineStatusMap[conv.contact_number];
-    const convStatus = convAlineData?.status;
-    const isHumanAttendant = convStatus === 'human_takeover';
-    const isAlineAttendant = convStatus === 'active' || !convStatus;
-    const matchesAttendant = filterAttendant === 'all' || 
-      (filterAttendant === 'vendedor' && isHumanAttendant) ||
-      (filterAttendant === 'aline' && isAlineAttendant);
-    
-    return matchesSearch && matchesStatus && matchesAttendant;
-  });
+  const filteredConversations = conversations
+    .filter((conv) => {
+      // Usar nome do cliente da tabela customers se disponível
+      const customerProfile = customerProfiles[conv.contact_number];
+      const displayName = customerProfile?.name || conv.contact_name || '';
+      
+      const matchesSearch = displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        conv.contact_number?.includes(searchTerm);
+      const matchesStatus = filterStatus === 'all' || conv.lead_status === filterStatus;
+      
+      // Filtro por atendente
+      const convAlineData = alineStatusMap[conv.contact_number];
+      const convStatus = convAlineData?.status;
+      const isHumanAttendant = convStatus === 'human_takeover';
+      const isAlineAttendant = convStatus === 'active' || !convStatus;
+      const matchesAttendant = filterAttendant === 'all' || 
+        (filterAttendant === 'vendedor' && isHumanAttendant) ||
+        (filterAttendant === 'aline' && isAlineAttendant);
+      
+      return matchesSearch && matchesStatus && matchesAttendant;
+    })
+    // Ordenar por última mensagem (mais recente primeiro)
+    .sort((a, b) => {
+      const dateA = new Date(a.created_at || 0).getTime();
+      const dateB = new Date(b.created_at || 0).getTime();
+      return dateB - dateA;
+    });
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -1031,14 +1053,23 @@ const Chat = () => {
                           'font-semibold text-white truncate text-sm',
                           hasUnread && 'text-emerald-300'
                         )}>
-                          {conv.contact_name || conv.contact_number}
+                          {/* Priorizar nome do cliente da tabela customers */}
+                          {customerProfile?.name || conv.contact_name || conv.contact_number}
                         </p>
-                        <span className={cn(
-                          'text-[11px] shrink-0',
-                          hasUnread ? 'text-emerald-400 font-medium' : 'text-slate-500'
-                        )}>
-                          {formatLastSeen(conv.created_at)}
-                        </span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {/* Contador de mensagens estilo WhatsApp */}
+                          {hasUnread && (
+                            <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center">
+                              {(conv.unread_count ?? 0) > 99 ? '99+' : conv.unread_count}
+                            </span>
+                          )}
+                          <span className={cn(
+                            'text-[11px]',
+                            hasUnread ? 'text-emerald-400 font-medium' : 'text-slate-500'
+                          )}>
+                            {formatLastSeen(conv.created_at)}
+                          </span>
+                        </div>
                       </div>
                       
                       <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
