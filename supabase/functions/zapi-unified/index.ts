@@ -110,15 +110,17 @@ serve(async (req) => {
     // FILTRAR EVENTOS QUE NÃO SÃO MENSAGENS
     // ========================================
     const eventType = (payload as any).type || payload.event || '';
+    const hasError = !!(payload as any).error;
     const isCallback = eventType.includes('Callback') || 
                        eventType.includes('callback') ||
                        eventType === 'DeliveryCallback' ||
                        eventType === 'ReadCallback' ||
                        eventType === 'SentCallback' ||
-                       (payload as any).error === 'Phone number does not exist';
+                       eventType === 'ReceivedCallback' ||
+                       hasError;
     
     if (isCallback) {
-      console.log(`[ZAPI-UNIFIED] Evento de callback ignorado: ${eventType}`);
+      console.log(`[ZAPI-UNIFIED] Evento de callback ignorado: ${eventType || 'error'}`);
       return new Response(JSON.stringify({ success: true, skipped: true, reason: 'callback_event' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });

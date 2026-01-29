@@ -384,7 +384,11 @@ const Chat = () => {
         .order('created_at', { ascending: true });
 
       if (error) throw error;
-      setMessages(data || []);
+      // Filtrar mensagens vazias (callbacks salvos por erro)
+      const validMessages = (data || []).filter(msg => 
+        msg.content?.trim() || msg.media_url
+      );
+      setMessages(validMessages);
     } catch (error) {
       console.error('Error fetching messages:', error);
     }
