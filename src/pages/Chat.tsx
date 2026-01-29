@@ -206,9 +206,10 @@ const Chat = () => {
           'postgres_changes',
           { event: 'INSERT', schema: 'public', table: 'messages', filter: `conversation_id=eq.${selectedConversation.id}` },
           (payload) => {
+            console.log('[Chat] Nova mensagem via realtime:', payload.new);
             if (!(payload.new as Message).is_from_me) setIsContactTyping(false);
             setMessages((prev) => {
-              if (prev.some(m => m.id === payload.new.id)) return prev;
+              if (prev.some(m => m.id === (payload.new as Message).id)) return prev;
               return [...prev, payload.new as Message];
             });
           }
@@ -218,14 +219,22 @@ const Chat = () => {
           { event: 'UPDATE', schema: 'public', table: 'messages', filter: `conversation_id=eq.${selectedConversation.id}` },
           (payload) => {
             setMessages((prev) => 
-              prev.map((msg) => msg.id === payload.new.id ? { ...msg, ...payload.new } : msg)
+              prev.map((msg) => msg.id === (payload.new as Message).id ? { ...msg, ...payload.new } : msg)
             );
           }
         )
-        .subscribe();
+        .subscribe((status) => {
+          console.log('[Chat] Subscription status:', status);
+        });
+
+      // Fallback: Poll para novas mensagens a cada 5 segundos (caso realtime falhe)
+      const pollInterval = setInterval(() => {
+        fetchMessages(selectedConversation.id);
+      }, 5000);
 
       return () => {
         supabase.removeChannel(channel);
+        clearInterval(pollInterval);
         // Marcar que parou de atender quando sair da conversa
         stopChatting();
       };
