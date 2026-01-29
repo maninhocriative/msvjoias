@@ -107,6 +107,24 @@ serve(async (req) => {
     console.log('[ZAPI-UNIFIED] Payload:', JSON.stringify(payload, null, 2));
 
     // ========================================
+    // FILTRAR EVENTOS QUE NÃO SÃO MENSAGENS
+    // ========================================
+    const eventType = (payload as any).type || payload.event || '';
+    const isCallback = eventType.includes('Callback') || 
+                       eventType.includes('callback') ||
+                       eventType === 'DeliveryCallback' ||
+                       eventType === 'ReadCallback' ||
+                       eventType === 'SentCallback' ||
+                       (payload as any).error === 'Phone number does not exist';
+    
+    if (isCallback) {
+      console.log(`[ZAPI-UNIFIED] Evento de callback ignorado: ${eventType}`);
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'callback_event' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // ========================================
     // PROCESSAR EVENTOS DE STATUS (delivered, read, etc.)
     // ========================================
     if (payload.event === 'message-status-update' && payload.messageId) {
@@ -123,22 +141,40 @@ serve(async (req) => {
     }
 
     // ========================================
-    // EXTRAIR DADOS DA MENSAGEM
+    // EXTRAIR DADOS DA MENSAGEM - SUPORTE A MÚLTIPLOS FORMATOS
     // ========================================
-    const phone = payload.phone?.replace(/\D/g, '') || '';
-    const isFromMe = payload.isFromMe === true;
-    const contactName = payload.senderName || payload.pushName || phone;
+    // Formato 1: payload.phone (ZAPI padrão)
+    // Formato 2: payload.text?.phone (Fiqon wrapper)
+    // Formato 3: campo phone com @c.us/@g.us
+    const rawPhone = payload.phone || (payload as any).text?.phone || '';
+    const phone = rawPhone.replace(/\D/g, '').replace(/@[cg]\.us$/, '');
     
-    // Extrair conteúdo da mensagem
+    const isFromMe = payload.isFromMe === true || (payload as any).fromMe === true;
+    const contactName = payload.senderName || payload.pushName || (payload as any).text?.senderName || phone;
+    
+    // Extrair conteúdo da mensagem - SUPORTE A MÚLTIPLOS FORMATOS
     let messageContent = '';
     let messageType = 'text';
     let mediaUrl: string | null = null;
 
+    // Formato ZAPI padrão: text.message
     if (payload.text?.message) {
       messageContent = payload.text.message;
-    } else if (payload.message) {
+    } 
+    // Formato Fiqon: text.message diretamente
+    else if ((payload as any).text?.message) {
+      messageContent = (payload as any).text.message;
+    }
+    // Formato direto: message string
+    else if (typeof payload.message === 'string' && payload.message) {
       messageContent = payload.message;
-    } else if (payload.image) {
+    }
+    // Fallback: procurar em qualquer lugar
+    else if ((payload as any).message) {
+      messageContent = String((payload as any).message);
+    }
+    // Mídia
+    else if (payload.image) {
       messageType = 'image';
       mediaUrl = payload.image.imageUrl || null;
       messageContent = payload.image.caption || '';
@@ -155,6 +191,11 @@ serve(async (req) => {
       messageContent = payload.document.fileName || '';
     }
 
+    // Fallback final - tentar extrair de payload.text como string
+    if (!messageContent && typeof (payload as any).text === 'string') {
+      messageContent = (payload as any).text;
+    }
+
     if (!phone) {
       console.log('[ZAPI-UNIFIED] Phone vazio, ignorando');
       return new Response(JSON.stringify({ success: true, skipped: true, reason: 'no_phone' }), {
@@ -163,7 +204,7 @@ serve(async (req) => {
     }
 
     console.log(`[ZAPI-UNIFIED] Phone: ${phone}, isFromMe: ${isFromMe}, type: ${messageType}`);
-    console.log(`[ZAPI-UNIFIED] Content: "${messageContent.substring(0, 100)}"`);
+    console.log(`[ZAPI-UNIFIED] Content extraído: "${messageContent.substring(0, 100)}"`);
 
     // ========================================
     // IGNORAR MENSAGENS ENVIADAS POR NÓS
@@ -176,37 +217,56 @@ serve(async (req) => {
     }
 
     // ========================================
-    // DEDUPLICAÇÃO
+    // IGNORAR MENSAGENS SEM CONTEÚDO (eventos vazios)
     // ========================================
-    if (messageContent) {
-      const hash = generateHash(phone, messageContent);
-      console.log(`[ZAPI-UNIFIED] Hash: ${hash}`);
+    if (!messageContent && messageType === 'text') {
+      console.log('[ZAPI-UNIFIED] Mensagem sem conteúdo, ignorando');
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'empty_content' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
+    // ========================================
+    // DEDUPLICAÇÃO USANDO HASH (MAIS RÁPIDO) E MESSAGE_ID
+    // ========================================
+    const zapiMessageId = payload.messageId || (payload as any).zaapId;
+    
+    // Criar hash único para deduplicação rápida
+    const dedupeKey = zapiMessageId || generateHash(phone, messageContent || 'no-content');
+    console.log(`[ZAPI-UNIFIED] Dedupe key: ${dedupeKey}`);
+    
+    // Tentar inserir o hash PRIMEIRO (upsert atômico)
+    const { error: insertError } = await supabase
+      .from('processed_messages')
+      .insert({ message_id: dedupeKey, phone });
+
+    if (insertError?.code === '23505') {
+      console.log('[ZAPI-UNIFIED] Duplicata detectada (constraint), ignorando');
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'duplicate' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    
+    // Se deu outro erro que não é constraint, verificar manualmente
+    if (insertError) {
+      console.log(`[ZAPI-UNIFIED] Erro ao inserir hash: ${insertError.message}`);
+      
+      // Verificar se já existe
       const { data: existing } = await supabase
         .from('processed_messages')
         .select('id')
-        .eq('message_id', hash)
+        .eq('message_id', dedupeKey)
         .maybeSingle();
 
       if (existing) {
-        console.log('[ZAPI-UNIFIED] Duplicata detectada, ignorando');
+        console.log('[ZAPI-UNIFIED] Duplicata detectada (manual check), ignorando');
         return new Response(JSON.stringify({ success: true, skipped: true, reason: 'duplicate' }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
-
-      // Registrar hash ANTES de processar
-      const { error: insertError } = await supabase
-        .from('processed_messages')
-        .insert({ message_id: hash, phone });
-
-      if (insertError?.code === '23505') {
-        console.log('[ZAPI-UNIFIED] Race condition, ignorando');
-        return new Response(JSON.stringify({ success: true, skipped: true, reason: 'race_condition' }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
     }
+    
+    console.log('[ZAPI-UNIFIED] Hash inserido, processando mensagem...');
 
     // ========================================
     // BUSCAR OU CRIAR CONVERSA (para UI do Chat)
@@ -265,7 +325,7 @@ serve(async (req) => {
         media_url: mediaUrl,
         is_from_me: false,
         status: 'received',
-        zapi_message_id: payload.messageId,
+        zapi_message_id: zapiMessageId,
       });
 
     if (msgError) {
