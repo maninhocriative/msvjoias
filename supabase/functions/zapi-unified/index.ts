@@ -111,20 +111,24 @@ serve(async (req) => {
     // ========================================
     const eventType = (payload as any).type || payload.event || '';
     const hasError = !!(payload as any).error;
-    const isCallback = eventType.includes('Callback') || 
-                       eventType.includes('callback') ||
-                       eventType === 'DeliveryCallback' ||
-                       eventType === 'ReadCallback' ||
-                       eventType === 'SentCallback' ||
-                       eventType === 'ReceivedCallback' ||
-                       hasError;
     
-    if (isCallback) {
-      console.log(`[ZAPI-UNIFIED] Evento de callback ignorado: ${eventType || 'error'}`);
-      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'callback_event' }), {
+    // ReceivedCallback É uma mensagem real recebida - NÃO filtrar!
+    // Apenas filtrar callbacks de status (Delivery, Read, Sent)
+    const isStatusCallback = eventType === 'DeliveryCallback' ||
+                             eventType === 'ReadCallback' ||
+                             eventType === 'SentCallback' ||
+                             eventType === 'MessageStatusCallback' ||
+                             eventType === 'message-status-update' ||
+                             hasError;
+    
+    if (isStatusCallback) {
+      console.log(`[ZAPI-UNIFIED] Evento de status callback ignorado: ${eventType || 'error'}`);
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'status_callback' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+    
+    console.log(`[ZAPI-UNIFIED] Processando evento: ${eventType || 'mensagem'}`)
 
     // ========================================
     // PROCESSAR EVENTOS DE STATUS (delivered, read, etc.)
