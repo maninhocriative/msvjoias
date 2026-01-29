@@ -296,18 +296,29 @@ async function searchCatalog(
   
   if (params.category === 'aliancas') {
     if (materialFilter === 'tungstenio') {
+      // CRÍTICO: Buscar tungstênio na categoria OU no nome do produto!
+      // Alguns produtos estão em categoria "aliancas" mas têm "tungstênio" no nome
       filteredProducts = filteredProducts.filter((p: any) => {
         const cat = (p.category || '').toLowerCase();
-        return cat.includes('tungstenio') || cat.includes('tungstênio') || cat.includes('tungsten');
+        const nome = (p.name || '').toLowerCase();
+        const isTungstenio = cat.includes('tungstenio') || cat.includes('tungstênio') || cat.includes('tungsten') ||
+                            nome.includes('tungstenio') || nome.includes('tungstênio') || nome.includes('tungsten');
+        return isTungstenio;
       });
-      console.log(`[ALINE-REPLY] Filtro TUNGSTÊNIO: ${filteredProducts.length} produtos`);
+      console.log(`[ALINE-REPLY] Filtro TUNGSTÊNIO (categoria+nome): ${filteredProducts.length} produtos`);
     } else if (materialFilter === 'aco') {
+      // AÇO = alianças que NÃO são tungstênio
       filteredProducts = filteredProducts.filter((p: any) => {
         const cat = (p.category || '').toLowerCase();
-        return cat === 'aliancas' && !cat.includes('tungstenio') && !cat.includes('tungstênio');
+        const nome = (p.name || '').toLowerCase();
+        const isTungstenio = cat.includes('tungstenio') || cat.includes('tungstênio') ||
+                            nome.includes('tungstenio') || nome.includes('tungstênio');
+        const isAlianca = cat.includes('alianca') || cat.includes('aliança') || cat === 'aliancas';
+        return isAlianca && !isTungstenio;
       });
-      console.log(`[ALINE-REPLY] Filtro AÇO: ${filteredProducts.length} produtos`);
+      console.log(`[ALINE-REPLY] Filtro AÇO (excluindo tungstênio): ${filteredProducts.length} produtos`);
     } else {
+      // Sem filtro de material - todas as alianças
       filteredProducts = filteredProducts.filter((p: any) => {
         const cat = (p.category || '').toLowerCase();
         return cat.includes('alianca') || cat.includes('aliança') || cat.includes('tungstenio') || cat.includes('tungstênio');
@@ -853,19 +864,31 @@ serve(async (req) => {
         if (isPerguntandoAliancaCasamento) {
           newCollectedData.finalidade = 'casamento';
           console.log(`[ALINE-REPLY] [NLU] Finalidade detectada: CASAMENTO (tungstênio)`);
-          // Se também tem cor, forçar catálogo
-          if (temCorNaMensagem || querVerProdutos) {
+          // IMPORTANTE: Só forçar catálogo se tiver COR também! Senão, perguntar cor primeiro.
+          if (temCorNaMensagem) {
             newCollectedData.quer_ver_catalogo = true;
-            console.log(`[ALINE-REPLY] [NLU] Casamento + cor/ver → FORÇAR CATÁLOGO!`);
+            console.log(`[ALINE-REPLY] [NLU] Casamento + COR → FORÇAR CATÁLOGO!`);
+          } else {
+            console.log(`[ALINE-REPLY] [NLU] Casamento detectado, mas SEM COR → vai perguntar cor!`);
+            // NÃO forçar catálogo sem cor
           }
         } else if (isPerguntandoAliancaNamoro) {
           newCollectedData.finalidade = 'namoro';
           console.log(`[ALINE-REPLY] [NLU] Finalidade detectada: NAMORO (aço)`);
-          // Se também tem cor, forçar catálogo
-          if (temCorNaMensagem || querVerProdutos) {
+          // IMPORTANTE: Só forçar catálogo se tiver COR também! Senão, perguntar cor primeiro.
+          if (temCorNaMensagem) {
             newCollectedData.quer_ver_catalogo = true;
-            console.log(`[ALINE-REPLY] [NLU] Namoro + cor/ver → FORÇAR CATÁLOGO!`);
+            console.log(`[ALINE-REPLY] [NLU] Namoro + COR → FORÇAR CATÁLOGO!`);
+          } else {
+            console.log(`[ALINE-REPLY] [NLU] Namoro detectado, mas SEM COR → vai perguntar cor!`);
+            // NÃO forçar catálogo sem cor
           }
+        } else {
+          // Cliente quer ver alianças mas NÃO especificou finalidade (casamento/namoro)
+          // NÃO forçar catálogo - deve perguntar finalidade primeiro!
+          console.log(`[ALINE-REPLY] [NLU] Alianças SEM FINALIDADE → vai perguntar finalidade!`);
+          // Garantir que NÃO vai direto para catálogo
+          delete newCollectedData.quer_ver_catalogo;
         }
       }
     }
@@ -1338,13 +1361,18 @@ serve(async (req) => {
       // NOVO: ANÉIS
       nextStep = 'catalogo_aneis';
       nextStepInstruction = `O cliente quer ver anéis! Use search_catalog com category="aneis" AGORA! Diga: "Vou te mostrar! 💍" (MAX 10 palavras!)`;
-    } else if (querVerCatalogo && finalCategoria === 'aliancas' && finalFinalidade) {
+    } else if (querVerCatalogo && finalCategoria === 'aliancas' && finalFinalidade && finalCor) {
+      // CATÁLOGO SÓ SE TIVER: categoria + finalidade + cor!
       nextStep = 'catalogo';
-      nextStepInstruction = `O cliente quer ver o catálogo! Use search_catalog com category="aliancas" AGORA. Diga: "Separei opções incríveis! 💍" (MAX 10 palavras!)`;
-    } else if (querVerCatalogo && finalCategoria === 'aliancas') {
-      // NOVO: Se quer ver aliança mas não tem finalidade ainda
+      nextStepInstruction = `O cliente quer ver o catálogo! Use search_catalog com category="aliancas" e color="${finalCor}" AGORA. Diga: "Separei opções incríveis! 💍" (MAX 10 palavras!)`;
+    } else if (querVerCatalogo && finalCategoria === 'aliancas' && finalFinalidade && !finalCor) {
+      // Tem finalidade mas falta COR - perguntar cor!
+      nextStep = 'escolha_cor';
+      nextStepInstruction = `O cliente quer ver alianças de ${finalFinalidade}! Pergunte a cor: "Qual cor preferem? Dourada, prata, preta ou azul? 💍" (MAX 15 palavras!)`;
+    } else if (querVerCatalogo && finalCategoria === 'aliancas' && !finalFinalidade) {
+      // Falta FINALIDADE - perguntar finalidade!
       nextStep = 'escolha_finalidade';
-      nextStepInstruction = `O cliente quer ver alianças! Pergunte: "Vocês celebram namoro ou casamento?" (MAX 10 palavras!)`;
+      nextStepInstruction = `O cliente quer ver alianças! Pergunte: "Vocês celebram namoro ou casamento? 💍" (MAX 10 palavras!)`;
     } else if (finalCategoria === 'pingente' && finalCor && !jaSelecionouProduto) {
       nextStep = 'catalogo_pingentes';
       nextStepInstruction = `O cliente quer PINGENTES na cor ${finalCor}! Use search_catalog com category="pingente" e color="${finalCor}". Diga: "Vou te mostrar! 💫" (MAX 10 palavras!)`;
@@ -1883,9 +1911,16 @@ Vocês preferem retirar na nossa loja no Shopping Sumaúma ou receber em casa?`;
         }
       }
       
-      // 3. Se não encontrou frase válida, usar padrão
+      // 3. Se não encontrou frase válida, usar padrão baseado na categoria
       if (!fraseIntro || fraseIntro.length < 10) {
-        fraseIntro = "Separei algumas opções incríveis para você! 💍✨";
+        const cat = (newCollectedData.categoria as string) || '';
+        if (cat === 'aliancas') {
+          fraseIntro = "Olha só essas alianças lindas! 💍✨";
+        } else if (cat === 'pingente') {
+          fraseIntro = "Separei esses pingentes especiais para você! ✨";
+        } else {
+          fraseIntro = "Separei algumas opções incríveis para você! 💍✨";
+        }
       }
       
       // 4. Remover perguntas do final (serão enviadas como mensagem_pos_catalogo)
@@ -1896,9 +1931,15 @@ Vocês preferem retirar na nossa loja no Shopping Sumaúma ou receber em casa?`;
         .replace(/qual.*atenção[^.!?]*/gi, '')
         .trim();
       
-      // 5. Garantir que termina com emoji
+      // 5. Garantir que termina com emoji e tem texto suficiente
       if (!fraseIntro.match(/[💍✨😊🔥💛🤍💫]/)) {
         fraseIntro = fraseIntro.replace(/[.!]?\s*$/, '') + " 💍✨";
+      }
+      
+      // 6. Se ficou só com emojis/texto muito curto, usar fallback
+      const textoSemEmojis = fraseIntro.replace(/[\u{1F300}-\u{1F9FF}]/gu, '').trim();
+      if (textoSemEmojis.length < 8) {
+        fraseIntro = "Olha só essas opções que separei! 💍✨";
       }
       
       console.log(`[ALINE-REPLY] ✅ Texto limpo FINAL: "${fraseIntro}"`);
