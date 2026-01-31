@@ -2286,13 +2286,20 @@ Vocês preferem retirar na nossa loja no Shopping Sumaúma ou receber em casa?`;
       .eq('id', conversation.id);
 
     // Salvar resposta da Aline
-    await supabase.from('aline_messages').insert({
+    // IMPORTANTE: Usar role 'aline' para consistência com dados históricos e follow-up
+    const insertResult = await supabase.from('aline_messages').insert({
       conversation_id: conversation.id,
-      role: 'assistant',
+      role: 'aline',  // Manter consistência com dados existentes
       message: cleanMessage,
       node: nodeValue,
       actions_executed: actionValue ? [{ action: actionValue }] : null,
     });
+    
+    if (insertResult.error) {
+      console.error(`[ALINE-REPLY] ❌ ERRO ao salvar mensagem: ${insertResult.error.message}`);
+    } else {
+      console.log(`[ALINE-REPLY] ✅ Mensagem salva em aline_messages com role=aline`);
+    }
 
     // Salvar no CRM também
     if (crmConversationId) {
