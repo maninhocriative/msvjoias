@@ -659,7 +659,7 @@ serve(async (req) => {
     }
 
     // ========================================
-    // ENVIAR MENSAGEM PÓS-CATÁLOGO
+    // ENVIAR MENSAGEM PÓS-CATÁLOGO E SALVAR COMO ASSISTANT
     // ========================================
     let postCatalogSent = false;
     
@@ -682,6 +682,37 @@ serve(async (req) => {
       if (postResult.success) {
         postCatalogSent = true;
         console.log(`[ZAPI-SEND] ✅ Mensagem pós-catálogo enviada`);
+        
+        // CRÍTICO: Salvar mensagem pós-catálogo como assistant para follow-up funcionar
+        try {
+          const { data: alineConv } = await supabase
+            .from('aline_conversations')
+            .select('id')
+            .eq('phone', phone)
+            .maybeSingle();
+          
+          if (alineConv) {
+            await supabase.from('aline_messages').insert({
+              conversation_id: alineConv.id,
+              role: 'assistant',
+              message: postCatalogMessage,
+              node: 'pos_catalogo'
+            });
+            
+            // Atualizar last_message_at para o follow-up começar a contar daqui
+            await supabase
+              .from('aline_conversations')
+              .update({ 
+                last_message_at: new Date().toISOString(),
+                current_node: 'aguardando_selecao'
+              })
+              .eq('id', alineConv.id);
+            
+            console.log(`[ZAPI-SEND] ✅ Mensagem pós-catálogo salva como assistant`);
+          }
+        } catch (dbError) {
+          console.warn(`[ZAPI-SEND] Aviso: Não salvou mensagem pós-catálogo:`, dbError);
+        }
       }
     }
 
@@ -717,6 +748,36 @@ serve(async (req) => {
           
           if (listResult.success) {
             console.log(`[ZAPI-SEND] ✅ Lista numérica enviada com ${listaItens.length} itens`);
+            
+            // CRÍTICO: Salvar lista como última mensagem do assistant
+            try {
+              const { data: alineConv } = await supabase
+                .from('aline_conversations')
+                .select('id')
+                .eq('phone', phone)
+                .maybeSingle();
+              
+              if (alineConv) {
+                await supabase.from('aline_messages').insert({
+                  conversation_id: alineConv.id,
+                  role: 'assistant',
+                  message: mensagemLista,
+                  node: 'lista_selecao'
+                });
+                
+                // Atualizar last_message_at - É DAQUI que o follow-up começa a contar!
+                await supabase
+                  .from('aline_conversations')
+                  .update({ 
+                    last_message_at: new Date().toISOString()
+                  })
+                  .eq('id', alineConv.id);
+                
+                console.log(`[ZAPI-SEND] ✅ Lista salva como última mensagem assistant - Follow-up ativo!`);
+              }
+            } catch (dbError) {
+              console.warn(`[ZAPI-SEND] Aviso: Não salvou lista:`, dbError);
+            }
           }
         }
       } catch (listError) {
