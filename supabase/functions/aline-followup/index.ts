@@ -192,6 +192,7 @@ serve(async (req) => {
         const intervalMs = nextFollowupConfig.intervalMinutes * 60 * 1000;
 
         // Verificar se a última mensagem foi da Aline (bot)
+        // NOTA: As mensagens da Aline podem ter role 'assistant' OU 'aline'
         const { data: lastMessage, error: msgError } = await supabase
           .from('aline_messages')
           .select('role, created_at')
@@ -206,8 +207,10 @@ serve(async (req) => {
         }
 
         // Se a última mensagem foi do usuário, pular
-        if (lastMessage?.role === 'user') {
-          console.log(`[ALINE-FOLLOWUP] Última mensagem de ${conversation.phone} é do usuário, pulando`);
+        // IMPORTANTE: Só enviamos follow-up se a última mensagem foi da ALINE (role: 'assistant' ou 'aline')
+        const isFromBot = lastMessage?.role === 'assistant' || lastMessage?.role === 'aline';
+        if (!isFromBot) {
+          console.log(`[ALINE-FOLLOWUP] Última mensagem de ${conversation.phone} é do usuário (role: ${lastMessage?.role}), pulando`);
           continue;
         }
 
