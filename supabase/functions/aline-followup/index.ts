@@ -14,21 +14,20 @@ interface FollowupConfig {
   buttonText?: string;
 }
 
-// Configuração de follow-ups com intervalos MAIS CURTOS para testes
+// Configuração de follow-ups com intervalos de produção
+// Follow-up 1: 10 minutos - lembrete leve
+// Follow-up 2: 1 hora - pergunta sobre dúvidas
+// Follow-up 3: 2 horas - oferta especial
+// Follow-up 4: 6 horas - pergunta sobre pagamento/entrega para fechar venda
 const DEFAULT_FOLLOWUP_CONFIG: FollowupConfig[] = [
   { 
-    intervalMinutes: 3, // 3 minutos
-    message: "Oi! Ainda está por aí? Posso te ajudar com algo mais? 😊",
-    type: 'text'
-  },
-  { 
     intervalMinutes: 10, // 10 minutos
-    message: "Ei, vi que você ainda não respondeu. Se tiver alguma dúvida, é só me chamar! 💬",
+    message: "Oi! Ainda está por aí? Gostou de alguma das opções que te mostrei? 😊\n\nMe conta qual chamou mais sua atenção!",
     type: 'text'
   },
   { 
-    intervalMinutes: 30, // 30 minutos
-    message: "Olá! Só passando para ver se está tudo bem. Posso te ajudar em algo? 🙋‍♀️",
+    intervalMinutes: 60, // 1 hora
+    message: "Ei, vi que você ainda não respondeu. Se tiver alguma dúvida sobre os modelos, tamanhos ou preços, é só me chamar! 💬\n\nEstou aqui para te ajudar!",
     type: 'text'
   },
   { 
@@ -38,10 +37,10 @@ const DEFAULT_FOLLOWUP_CONFIG: FollowupConfig[] = [
     buttonText: "✅ Quero aproveitar!"
   },
   { 
-    intervalMinutes: 360, // 6 horas
-    message: "Oi! 👋\n\nVi que você ainda não finalizou sua compra.\n\nPosso te ajudar a escolher o modelo perfeito de alianças ou pingentes?\n\n💍 Estou aqui para te atender!",
+    intervalMinutes: 360, // 6 horas - FECHAMENTO DA VENDA
+    message: "Oi! 👋\n\nVi que você gostou das nossas alianças!\n\n💍 Para finalizar seu pedido, preciso saber:\n\n💳 Qual a forma de pagamento? (Pix, cartão, boleto)\n🚚 Prefere retirar ou receber em casa?\n\n_Responda aqui que já preparo seu pedido!_",
     type: 'button',
-    buttonText: "💬 Retomar atendimento"
+    buttonText: "💬 Quero finalizar meu pedido!"
   },
 ];
 
