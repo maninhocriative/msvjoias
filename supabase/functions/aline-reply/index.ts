@@ -804,19 +804,26 @@ serve(async (req) => {
       delete newCollectedData.sugerir_alternativa;
       newCollectedData.mudou_categoria = true;
       // IMPORTANTE: Pingentes precisam de COR antes de catálogo
+      // 🚨 FLUXO OBRIGATÓRIO: Categoria → Cor → Catálogo
       if (temCorNaMensagem) {
-        // Já tem cor na mensagem, pode enviar catálogo
+        // Extrair a cor específica da mensagem
+        if (/dourada|dourado|ouro|gold/i.test(normalizedMsg)) {
+          newCollectedData.cor = 'dourada';
+        } else if (/prata|prateada|aço|aco/i.test(normalizedMsg)) {
+          newCollectedData.cor = 'prata';
+        }
         newCollectedData.quer_ver_catalogo = true;
-        console.log(`[ALINE-REPLY] [NLU] Pingente + COR detectada → FORÇAR CATÁLOGO!`);
+        console.log(`[ALINE-REPLY] [NLU] Pingente + COR "${newCollectedData.cor}" detectada → FORÇAR CATÁLOGO!`);
       } else if (/personalizada|com\s*foto|fotogravação/i.test(normalizedMsg)) {
         // Quer foto personalizada = prata (mais comum)
         newCollectedData.cor = 'prata';
         newCollectedData.quer_ver_catalogo = true;
         console.log(`[ALINE-REPLY] [NLU] Pingente personalizado → prata + FORÇAR CATÁLOGO!`);
       } else {
-        // SEM cor - NÃO forçar catálogo, deixar AI perguntar cor
-        console.log(`[ALINE-REPLY] [NLU] Pingente SEM COR → Deixar AI perguntar cor!`);
-        // NÃO definir quer_ver_catalogo aqui
+        // 🚨 SEM cor - NÃO forçar catálogo! DEVE perguntar cor primeiro!
+        console.log(`[ALINE-REPLY] [NLU] Pingente SEM COR → PERGUNTAR COR PRIMEIRO! NÃO enviar catálogo!`);
+        // NÃO definir quer_ver_catalogo aqui - vai perguntar a cor antes
+        delete newCollectedData.quer_ver_catalogo;
       }
     } else if (isPerguntandoAnel && newCollectedData.categoria !== 'aneis') {
       console.log(`[ALINE-REPLY] [NLU] DETECTADO: ANÉIS (categoria anterior: ${newCollectedData.categoria || 'nenhuma'})`);
@@ -893,14 +900,21 @@ serve(async (req) => {
       }
     }
     
-    // NOVO: Se já tem categoria pingente e quer ver, forçar catálogo
+    // 🚨 PINGENTES: Só forçar catálogo se já tem COR!
     if (isPerguntandoPingente && querVerProdutos) {
       newCollectedData.categoria = 'pingente';
-      newCollectedData.quer_ver_catalogo = true;
-      console.log(`[ALINE-REPLY] [NLU] Quer ver pingentes → FORÇAR CATÁLOGO!`);
+      // SÓ forçar catálogo se já tem cor!
+      const jaTemCorPingente = newCollectedData.cor || temCorNaMensagem;
+      if (jaTemCorPingente) {
+        newCollectedData.quer_ver_catalogo = true;
+        console.log(`[ALINE-REPLY] [NLU] Quer ver pingentes + TEM COR → FORÇAR CATÁLOGO!`);
+      } else {
+        console.log(`[ALINE-REPLY] [NLU] Quer ver pingentes mas SEM COR → vai perguntar cor primeiro!`);
+        delete newCollectedData.quer_ver_catalogo;
+      }
     }
     
-    // NOVO: Se perguntou sobre anéis e quer ver
+    // ANÉIS: Pode ir direto ao catálogo (sem requisito de cor)
     if (isPerguntandoAnel && querVerProdutos) {
       newCollectedData.categoria = 'aneis';
       newCollectedData.quer_ver_catalogo = true;
@@ -1341,22 +1355,38 @@ serve(async (req) => {
       
       RESPOSTA MÁXIMA: 2 linhas! SEM textão!`;
     } else if (mudouCategoria && finalCategoria === 'pingente') {
-      nextStep = 'catalogo_pingentes';
-      nextStepInstruction = `IMPORTANTE: O cliente PERGUNTOU sobre PINGENTES/MEDALHAS! Use search_catalog com category="pingente" IMEDIATAMENTE para mostrar os pingentes disponíveis. NÃO pergunte cor antes! Diga: "Vou te mostrar! 💫" (MAX 10 palavras!)`;
+      // 🚨 PINGENTES: PERGUNTAR COR PRIMEIRO se ainda não tem!
+      if (finalCor) {
+        nextStep = 'catalogo_pingentes';
+        nextStepInstruction = `O cliente quer PINGENTES na cor ${finalCor}! Use search_catalog com category="pingente" e color="${finalCor}". Diga: "Vou te mostrar! 💫" (MAX 10 palavras!)`;
+      } else {
+        nextStep = 'escolha_cor_pingente';
+        nextStepInstruction = `O cliente perguntou sobre PINGENTES/MEDALHAS! PERGUNTE A COR PRIMEIRO: "Qual cor você prefere? Dourada ou prata? 💛🤍" (MAX 15 palavras!) NÃO mostre o catálogo ainda!`;
+      }
     } else if (mudouCategoria && finalCategoria === 'aneis') {
-      // NOVO: ANÉIS - ir direto ao catálogo
+      // ANÉIS - ir direto ao catálogo (sem requisito de cor)
       nextStep = 'catalogo_aneis';
       nextStepInstruction = `IMPORTANTE: O cliente PERGUNTOU sobre ANÉIS! Use search_catalog com category="aneis" IMEDIATAMENTE para mostrar os anéis disponíveis. Diga: "Vou te mostrar! 💍" (MAX 10 palavras!)`;
+    } else if (mudouCategoria && finalCategoria === 'aliancas' && finalFinalidade && finalCor) {
+      // ALIANÇAS: Só catálogo se tem FINALIDADE + COR!
+      nextStep = 'catalogo';
+      nextStepInstruction = `O cliente quer alianças de ${finalFinalidade} na cor ${finalCor}! Use search_catalog com category="aliancas" e color="${finalCor}". Diga: "Separei opções incríveis! 💍" (MAX 10 palavras!)`;
     } else if (mudouCategoria && finalCategoria === 'aliancas' && finalFinalidade) {
-      // NOVO: Se já tem finalidade na primeira mensagem, ir direto para cor ou catálogo
+      // Tem finalidade mas falta COR - perguntar cor!
       nextStep = 'escolha_cor';
-      nextStepInstruction = `O cliente quer alianças de ${finalFinalidade}! Pergunte a cor: "Qual cor preferem? Dourada, prata, preta ou azul?" (MAX 15 palavras!)`;
+      nextStepInstruction = `O cliente quer alianças de ${finalFinalidade}! PERGUNTE A COR: "Qual cor preferem? Dourada, prata, preta ou azul? 💍" (MAX 15 palavras!) NÃO mostre catálogo ainda!`;
     } else if (mudouCategoria && finalCategoria === 'aliancas') {
+      // Falta FINALIDADE - perguntar finalidade!
       nextStep = 'escolha_finalidade';
-      nextStepInstruction = `O cliente perguntou sobre ALIANÇAS. Pergunte: "Vocês celebram namoro ou casamento?" (MAX 10 palavras!)`;
-    } else if (querVerCatalogo && finalCategoria === 'pingente') {
+      nextStepInstruction = `O cliente perguntou sobre ALIANÇAS. PERGUNTE: "Vocês celebram namoro ou casamento? 💍" (MAX 10 palavras!) NÃO mostre catálogo ainda!`;
+    } else if (querVerCatalogo && finalCategoria === 'pingente' && finalCor) {
+      // PINGENTES: Só mostrar catálogo se já tem cor!
       nextStep = 'catalogo_pingentes';
-      nextStepInstruction = `O cliente quer ver pingentes/medalhas! Use search_catalog com category="pingente" AGORA! Diga: "Vou te mostrar! 💫" (MAX 10 palavras!)`;
+      nextStepInstruction = `O cliente quer ver pingentes na cor ${finalCor}! Use search_catalog com category="pingente" e color="${finalCor}". Diga: "Vou te mostrar! 💫" (MAX 10 palavras!)`;
+    } else if (querVerCatalogo && finalCategoria === 'pingente' && !finalCor) {
+      // PINGENTES sem cor - perguntar cor primeiro!
+      nextStep = 'escolha_cor_pingente';
+      nextStepInstruction = `O cliente quer ver pingentes! PERGUNTE A COR PRIMEIRO: "Qual cor você prefere? Dourada ou prata? 💛🤍" (MAX 15 palavras!) NÃO mostre catálogo ainda!`;
     } else if (querVerCatalogo && finalCategoria === 'aneis') {
       // NOVO: ANÉIS
       nextStep = 'catalogo_aneis';
@@ -1374,33 +1404,37 @@ serve(async (req) => {
       nextStep = 'escolha_finalidade';
       nextStepInstruction = `O cliente quer ver alianças! Pergunte: "Vocês celebram namoro ou casamento? 💍" (MAX 10 palavras!)`;
     } else if (finalCategoria === 'pingente' && finalCor && !jaSelecionouProduto) {
+      // PINGENTES com cor - pode mostrar catálogo
       nextStep = 'catalogo_pingentes';
       nextStepInstruction = `O cliente quer PINGENTES na cor ${finalCor}! Use search_catalog com category="pingente" e color="${finalCor}". Diga: "Vou te mostrar! 💫" (MAX 10 palavras!)`;
-    } else if (finalCategoria === 'pingente' && !jaSelecionouProduto) {
-      // NOVO: Se é pingente e ainda não selecionou, IR DIRETO PARA CATÁLOGO!
-      nextStep = 'catalogo_pingentes';
-      nextStepInstruction = `O cliente quer PINGENTES! Use search_catalog com category="pingente" AGORA! Diga: "Vou te mostrar! 💫" (MAX 10 palavras!)`;
+    } else if (finalCategoria === 'pingente' && !finalCor && !jaSelecionouProduto) {
+      // 🚨 PINGENTES SEM COR - PERGUNTAR COR PRIMEIRO! NÃO enviar catálogo!
+      nextStep = 'escolha_cor_pingente';
+      nextStepInstruction = `O cliente quer PINGENTES mas NÃO escolheu cor! PERGUNTE: "Qual cor você prefere? Dourada ou prata? 💛🤍" (MAX 15 palavras!) NÃO use search_catalog ainda!`;
     } else if (finalCategoria === 'aneis' && finalCor && !jaSelecionouProduto) {
-      // NOVO: ANÉIS com cor
+      // ANÉIS com cor
       nextStep = 'catalogo_aneis';
       nextStepInstruction = `O cliente quer ANÉIS na cor ${finalCor}! Use search_catalog com category="aneis" e color="${finalCor}". Diga: "Vou te mostrar! 💍" (MAX 10 palavras!)`;
     } else if (finalCategoria === 'aneis' && !jaSelecionouProduto) {
-      // NOVO: ANÉIS sem cor - ir direto ao catálogo
+      // ANÉIS sem cor - ir direto ao catálogo
       nextStep = 'catalogo_aneis';
       nextStepInstruction = `O cliente quer ANÉIS! Use search_catalog com category="aneis" AGORA! Diga: "Vou te mostrar! 💍" (MAX 10 palavras!)`;
     } else if (finalCategoria === 'aliancas' && finalCor && finalFinalidade && !jaSelecionouProduto) {
+      // ALIANÇAS: Tem categoria + finalidade + cor - pode mostrar catálogo
       nextStep = 'catalogo';
       nextStepInstruction = `O cliente quer alianças de ${finalFinalidade} ${finalCor}. Use search_catalog. Diga: "Separei opções incríveis!" (MAX 10 palavras!)`;
-    } else if (finalCategoria === 'aliancas' && finalFinalidade && !jaSelecionouProduto) {
-      // NOVO: Alianças com finalidade mas sem cor - perguntar cor
+    } else if (finalCategoria === 'aliancas' && finalFinalidade && !finalCor && !jaSelecionouProduto) {
+      // 🚨 ALIANÇAS: Tem finalidade mas SEM COR - PERGUNTAR COR! NÃO enviar catálogo!
       nextStep = 'escolha_cor';
-      nextStepInstruction = `O cliente quer alianças de ${finalFinalidade}! Pergunte: "Qual cor preferem? Dourada, prata, preta ou azul?" (MAX 15 palavras!)`;
+      nextStepInstruction = `O cliente quer alianças de ${finalFinalidade}! PERGUNTE A COR: "Qual cor preferem? Dourada, prata, preta ou azul? 💍" (MAX 15 palavras!) NÃO use search_catalog ainda!`;
     } else if (finalCategoria === 'aliancas' && finalFinalidade) {
+      // ALIANÇAS com finalidade - perguntar cor
       nextStep = 'escolha_cor';
-      nextStepInstruction = `Pergunte a cor: "Qual cor preferem? Dourada, prata, preta ou azul?" (MAX 15 palavras!)`;
-    } else if (finalCategoria === 'aliancas') {
+      nextStepInstruction = `PERGUNTE A COR: "Qual cor preferem? Dourada, prata, preta ou azul? 💍" (MAX 15 palavras!) NÃO mostre catálogo!`;
+    } else if (finalCategoria === 'aliancas' && !finalFinalidade) {
+      // 🚨 ALIANÇAS SEM FINALIDADE - PERGUNTAR FINALIDADE PRIMEIRO!
       nextStep = 'escolha_finalidade';
-      nextStepInstruction = `Pergunte: "Vocês celebram namoro ou casamento?" (MAX 10 palavras!)`;
+      nextStepInstruction = `O cliente perguntou sobre ALIANÇAS mas NÃO disse a finalidade! PERGUNTE: "Vocês celebram namoro ou casamento? 💍" (MAX 10 palavras!) NÃO use search_catalog ainda!`;
     } else {
       nextStep = 'abertura';
       nextStepInstruction = `Apresente-se: "Olá! 😊 Sou a Aline da ACIUM. O que você procura? Alianças, anéis ou pingentes?" (MAX 20 palavras!)`;
