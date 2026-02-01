@@ -1202,14 +1202,24 @@ serve(async (req) => {
     
     // VERIFICAR SE CLIENTE JÁ SELECIONOU UM PRODUTO (para decidir próximo passo)
     const jaSelecionouProduto = !!newCollectedData.selected_sku;
-    const jaTemTamanho = !!newCollectedData.tamanho_1;
+    // 🚨 TAMANHOS: Para alianças de casal, precisa de 2 tamanhos!
+    // Considerar "tem tamanho" apenas se tem tamanho_1 E (tamanho_2 OU é unidade)
+    const temTamanho1 = !!newCollectedData.tamanho_1;
+    const temTamanho2 = !!newCollectedData.tamanho_2;
+    const ehUnidade = newCollectedData.quantidade_tipo === 'unidade';
+    // Para par de alianças, precisa de 2 tamanhos. Para unidade, só precisa de 1
+    const jaTemTamanhoCompleto = temTamanho1 && (temTamanho2 || ehUnidade);
+    // Compatibilidade: usar jaTemTamanhoCompleto no fluxo
+    const jaTemTamanho = jaTemTamanhoCompleto;
     const jaTemEntrega = !!newCollectedData.delivery_method;
     const jaTemPagamento = !!newCollectedData.payment_method;
     const jaTemFoto = !!newCollectedData.foto_gravacao;
     const isAliancaSelecionada = jaSelecionouProduto && finalCategoria === 'aliancas';
     const isPingenteSelecionado = jaSelecionouProduto && finalCategoria === 'pingente';
     
-    console.log(`[ALINE-REPLY] Estado seleção: produto=${jaSelecionouProduto}, sku=${newCollectedData.selected_sku}, tamanho=${jaTemTamanho}, entrega=${jaTemEntrega}, pagamento=${jaTemPagamento}, foto=${jaTemFoto}`);
+    console.log(`[ALINE-REPLY] Estado seleção: produto=${jaSelecionouProduto}, sku=${newCollectedData.selected_sku}`);
+    console.log(`[ALINE-REPLY] Tamanhos: tam1=${temTamanho1 ? newCollectedData.tamanho_1 : 'N/A'}, tam2=${temTamanho2 ? newCollectedData.tamanho_2 : 'N/A'}, unidade=${ehUnidade}, completo=${jaTemTamanhoCompleto}`);
+    console.log(`[ALINE-REPLY] Entrega=${jaTemEntrega}, pagamento=${jaTemPagamento}, foto=${jaTemFoto}`);
     console.log(`[ALINE-REPLY] Categoria: ${finalCategoria}, isAlianca=${isAliancaSelecionada}, isPingente=${isPingenteSelecionado}`);
     
     // ========================================
@@ -1305,18 +1315,31 @@ serve(async (req) => {
       Pergunte: "Você prefere retirar na nossa loja no Shopping Sumaúma ou receber em casa?" NÃO faça outras perguntas.`;
       
     } else if (isAliancaSelecionada && !jaTemTamanho) {
-      // ALIANÇA: Falta TAMANHOS
+      // ALIANÇA: Falta TAMANHOS (1 ou 2)
       nextStep = 'coleta_tamanhos';
       const produtoRecemSelecionado = newCollectedData.produto_selecionado_agora === true;
-      nextStepInstruction = `🎯 PASSO ATUAL: COLETAR TAMANHOS DE ALIANÇA
-      ✅ O cliente ESCOLHEU a aliança "${newCollectedData.selected_name}" (${newCollectedData.selected_sku})!
       
-      ${produtoRecemSelecionado ? '⚠️ ACABOU DE SELECIONAR! RESPONDA IMEDIATAMENTE!' : ''}
-      
-      VOCÊ DEVE perguntar os TAMANHOS agora! Diga EXATAMENTE:
-      "Excelente escolha! 💍 Qual o tamanho de cada um? Geralmente fica entre 14 e 28."
-      
-      NÃO pergunte sobre cor, categoria ou qualquer outra coisa. APENAS tamanhos!`;
+      // 🚨 Verificar se já tem tamanho 1 - nesse caso, perguntar apenas o segundo
+      if (temTamanho1 && !temTamanho2 && !ehUnidade) {
+        // Já tem o primeiro tamanho, perguntar só o segundo
+        nextStepInstruction = `🎯 PASSO ATUAL: COLETAR SEGUNDO TAMANHO
+        ✅ Primeiro tamanho já coletado: ${newCollectedData.tamanho_1}
+        
+        Diga EXATAMENTE: "Ótimo! E o tamanho da outra aliança? 💍"
+        
+        NÃO repita a pergunta dos dois tamanhos. Pergunte APENAS o segundo!`;
+      } else {
+        // Precisa dos dois tamanhos
+        nextStepInstruction = `🎯 PASSO ATUAL: COLETAR TAMANHOS DE ALIANÇA
+        ✅ O cliente ESCOLHEU a aliança "${newCollectedData.selected_name}" (${newCollectedData.selected_sku})!
+        
+        ${produtoRecemSelecionado ? '⚠️ ACABOU DE SELECIONAR! RESPONDA IMEDIATAMENTE!' : ''}
+        
+        VOCÊ DEVE perguntar os TAMANHOS agora! Diga EXATAMENTE:
+        "Excelente escolha! 💍 Qual o tamanho de cada um? Geralmente fica entre 14 e 28."
+        
+        NÃO pergunte sobre cor, categoria ou qualquer outra coisa. APENAS tamanhos!`;
+      }
       
     } else if (isPingenteSelecionado && !jaTemFoto) {
       // PINGENTE: Falta FOTO - E oferecer CORRENTES!
@@ -2091,6 +2114,11 @@ Vocês preferem retirar na nossa loja no Shopping Sumaúma ou receber em casa?`;
     // ========================================
     // PASSO 9.5: DETECTAR TAMANHOS DE ALIANÇA
     // ========================================
+    // 🚨 CONTEXTO CRÍTICO: Se já selecionou produto de aliança, um número simples é TAMANHO!
+    const jaSelecionouAlianca = (newCollectedData.selected_sku || collectedData.selected_sku) && 
+                                 (newCollectedData.categoria === 'aliancas' || collectedData.categoria === 'aliancas');
+    const jaTemTamanhoAnterior = collectedData.tamanho_1 || newCollectedData.tamanho_1;
+    
     // Padrões para detectar tamanhos (números entre 10-30 geralmente)
     const sizePatterns = [
       /tamanho[s]?\s*:?\s*(\d{1,2})\s*(?:e|,|\/|\s)\s*(\d{1,2})/i,  // "tamanho 18 e 22", "tamanhos: 18, 22"
@@ -2139,6 +2167,51 @@ Vocês preferem retirar na nossa loja no Shopping Sumaúma ou receber em casa?`;
       }
     }
     
+    // 🚨 NOVO: Se cliente JÁ SELECIONOU ALIANÇA e enviou APENAS um número, é o TAMANHO!
+    // Exemplos: "28", "22", "18"
+    if (!size1 && jaSelecionouAlianca) {
+      // Verificar se a mensagem é APENAS um número (ou número com texto curto)
+      const singleNumberMatch = normalizedMsg.match(/^\s*(\d{1,2})\s*$/);
+      if (singleNumberMatch) {
+        const numValue = parseInt(singleNumberMatch[1]);
+        // Validar se é tamanho válido (8-35)
+        if (numValue >= 8 && numValue <= 35) {
+          // Se já tem tamanho_1, este é o tamanho_2
+          if (jaTemTamanhoAnterior) {
+            size2 = singleNumberMatch[1];
+            console.log(`[ALINE-REPLY] [NLU] 🚨 Número simples "${size2}" detectado como SEGUNDO TAMANHO (já tem ${collectedData.tamanho_1 || newCollectedData.tamanho_1})`);
+          } else {
+            size1 = singleNumberMatch[1];
+            console.log(`[ALINE-REPLY] [NLU] 🚨 Número simples "${size1}" detectado como TAMANHO (contexto: aliança selecionada)`);
+          }
+        }
+      }
+      
+      // Também tentar padrões com contexto mínimo tipo "o meu é 28", "é 22"
+      if (!size1 && !size2) {
+        const simplePatterns = [
+          /(?:é|uso|meu|minha)\s*(?:é|:)?\s*(\d{1,2})/i,  // "é 28", "meu é 22", "uso 18"
+          /^(\d{1,2})$/,  // apenas número
+        ];
+        for (const pattern of simplePatterns) {
+          const match = normalizedMsg.match(pattern);
+          if (match) {
+            const numValue = parseInt(match[1]);
+            if (numValue >= 8 && numValue <= 35) {
+              if (jaTemTamanhoAnterior) {
+                size2 = match[1];
+                console.log(`[ALINE-REPLY] [NLU] 🚨 Padrão simples detectado como SEGUNDO TAMANHO: ${size2}`);
+              } else {
+                size1 = match[1];
+                console.log(`[ALINE-REPLY] [NLU] 🚨 Padrão simples detectado como TAMANHO: ${size1}`);
+              }
+              break;
+            }
+          }
+        }
+      }
+    }
+    
     // Validar tamanhos (geralmente entre 10-30 para alianças)
     const isValidSize = (s: string | null): boolean => {
       if (!s) return false;
@@ -2146,12 +2219,20 @@ Vocês preferem retirar na nossa loja no Shopping Sumaúma ou receber em casa?`;
       return num >= 8 && num <= 35;
     };
     
+    // Salvar tamanhos detectados
     if (isValidSize(size1)) {
       newCollectedData.tamanho_1 = size1;
-      if (isValidSize(size2)) {
+      console.log(`[ALINE-REPLY] ✅ Tamanho 1 salvo: ${size1}`);
+    }
+    if (isValidSize(size2)) {
+      // Se já tem tamanho_1 anterior, este é o segundo tamanho
+      if (jaTemTamanhoAnterior && !newCollectedData.tamanho_1) {
         newCollectedData.tamanho_2 = size2;
+        console.log(`[ALINE-REPLY] ✅ Tamanho 2 salvo: ${size2} (primeiro era ${collectedData.tamanho_1})`);
+      } else if (isValidSize(size1)) {
+        newCollectedData.tamanho_2 = size2;
+        console.log(`[ALINE-REPLY] ✅ Tamanho 2 salvo: ${size2}`);
       }
-      console.log(`[ALINE-REPLY] Tamanhos salvos: ${size1}${size2 ? ' e ' + size2 : ''}`);
     }
     
     // Detectar se é PAR ou UNIDADE
