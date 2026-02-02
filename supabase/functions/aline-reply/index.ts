@@ -601,54 +601,21 @@ serve(async (req) => {
     });
 
     // ========================================
-    // PASSO 2: SINCRONIZAR COM CRM (conversations + messages)
+    // PASSO 2: OBTER ID DA CONVERSA CRM (sem duplicar inserções)
+    // NOTA: A mensagem do cliente já foi salva pelo zapi-unified
     // ========================================
     let crmConversationId: string | null = null;
     
     const { data: existingCrmConv } = await supabase
       .from('conversations')
-      .select('id, unread_count')
+      .select('id')
       .eq('contact_number', phone)
       .maybeSingle();
 
     if (existingCrmConv) {
       crmConversationId = existingCrmConv.id;
-      await supabase
-        .from('conversations')
-        .update({ 
-          last_message: message,
-          unread_count: (existingCrmConv.unread_count || 0) + 1
-        })
-        .eq('id', crmConversationId);
-    } else {
-      const { data: newCrmConv } = await supabase
-        .from('conversations')
-        .insert({
-          contact_number: phone,
-          contact_name: contact_name || conversation.collected_data?.contact_name || phone,
-          platform: 'whatsapp',
-          last_message: message,
-          unread_count: 1,
-          lead_status: 'novo'
-        })
-        .select()
-        .single();
-      
-      if (newCrmConv) {
-        crmConversationId = newCrmConv.id;
-      }
     }
-
-    // Salvar mensagem do cliente no CRM
-    if (crmConversationId) {
-      await supabase.from('messages').insert({
-        conversation_id: crmConversationId,
-        content: message,
-        is_from_me: false,
-        message_type: 'text',
-        status: 'delivered'
-      });
-    }
+    // Se não existe, o zapi-unified já vai criar. Não duplicamos aqui.
 
     // ========================================
     // PASSO 3: BUSCAR HISTÓRICO PARA CONTEXTO
@@ -2416,22 +2383,8 @@ Vocês preferem retirar na nossa loja no Shopping Sumaúma ou receber em casa?`;
       console.log(`[ALINE-REPLY] ✅ Mensagem salva em aline_messages com role=aline`);
     }
 
-    // Salvar no CRM também
-    if (crmConversationId) {
-      await supabase.from('messages').insert({
-        conversation_id: crmConversationId,
-        content: cleanMessage,
-        is_from_me: true,
-        message_type: 'text',
-        status: 'sent'
-      });
-
-      // Atualizar última mensagem
-      await supabase
-        .from('conversations')
-        .update({ last_message: cleanMessage.substring(0, 100) })
-        .eq('id', crmConversationId);
-    }
+    // NOTA: A resposta da Aline será salva no CRM pelo zapi-unified
+    // após o envio bem-sucedido via Z-API. Não duplicamos aqui.
 
     // ========================================
     // PASSO 13: ENCAMINHAR AO VENDEDOR (SOMENTE SE TIVER TODOS OS DADOS)

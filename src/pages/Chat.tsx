@@ -60,7 +60,10 @@ const Chat = () => {
   const audioStreamRef = useRef<MediaStream | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const shouldAutoScroll = useRef(true);
+  const lastMessageCount = useRef(0);
   const { toast } = useToast();
   const { onlineSellers, getRandomOnlineSeller, startChatting, stopChatting } = useSellerPresence();
   const { isAdmin, isGerente } = useUserRole();
@@ -192,6 +195,10 @@ const Chat = () => {
 
   useEffect(() => {
     if (selectedConversation) {
+      // Reset scroll tracking for new conversation
+      lastMessageCount.current = 0;
+      shouldAutoScroll.current = true;
+      
       fetchMessages(selectedConversation.id);
       markAsRead(selectedConversation.id);
       setIsContactTyping(false);
@@ -209,6 +216,7 @@ const Chat = () => {
             console.log('[Chat] Nova mensagem via realtime:', payload.new);
             if (!(payload.new as Message).is_from_me) setIsContactTyping(false);
             setMessages((prev) => {
+              // Prevent duplicates by checking id
               if (prev.some(m => m.id === (payload.new as Message).id)) return prev;
               return [...prev, payload.new as Message];
             });
@@ -227,10 +235,10 @@ const Chat = () => {
           console.log('[Chat] Subscription status:', status);
         });
 
-      // Fallback: Poll para novas mensagens a cada 5 segundos (caso realtime falhe)
+      // Fallback: Poll a cada 8s (increased interval to reduce load)
       const pollInterval = setInterval(() => {
         fetchMessages(selectedConversation.id);
-      }, 5000);
+      }, 8000);
 
       return () => {
         supabase.removeChannel(channel);
@@ -244,9 +252,28 @@ const Chat = () => {
     }
   }, [selectedConversation?.id, startChatting, stopChatting]);
 
+  // Smart scroll: only auto-scroll if user is at the bottom or new conversation
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const isNewConversation = messages.length > 0 && lastMessageCount.current === 0;
+    const hasNewMessages = messages.length > lastMessageCount.current;
+    
+    if (isNewConversation) {
+      // New conversation selected - scroll to bottom immediately
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+    } else if (hasNewMessages && shouldAutoScroll.current) {
+      // New messages and user is at bottom - smooth scroll
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+    
+    lastMessageCount.current = messages.length;
   }, [messages]);
+  
+  // Track scroll position to determine if auto-scroll should happen
+  const handleMessagesScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    const target = event.currentTarget;
+    const isAtBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 100;
+    shouldAutoScroll.current = isAtBottom;
+  }, []);
 
   const fetchConversations = useCallback(async (showToast = false) => {
     try {
@@ -1285,8 +1312,8 @@ const Chat = () => {
             <div className="flex-1 overflow-hidden bg-[#0b141a]" style={{
               backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.02'%3E%3Ccircle cx='30' cy='30' r='1'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`
             }}>
-              <ScrollArea className="h-full">
-                <div className="px-4 md:px-12 lg:px-20 py-4 space-y-1 max-w-4xl mx-auto min-h-full">
+              <ScrollArea className="h-full" onScrollCapture={handleMessagesScroll}>
+                <div ref={messagesContainerRef} className="px-4 md:px-12 lg:px-20 py-4 space-y-1 max-w-4xl mx-auto min-h-full">
                   {messages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20">
                       <div className="w-20 h-20 rounded-3xl bg-slate-800/50 flex items-center justify-center mb-4">
@@ -1332,13 +1359,21 @@ const Chat = () => {
                                 )}
                                 style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
                               >
-                                {/* Media Content */}
+                                {/* Media Content - Optimized image loading */}
                                 {message.message_type === 'image' && message.media_url && (
                                   <img
                                     src={message.media_url}
                                     alt="Imagem"
-                                    className="w-full max-w-[300px] rounded-xl cursor-pointer hover:opacity-90 transition-opacity mb-1.5"
+                                    loading="lazy"
+                                    decoding="async"
+                                    className="w-full max-w-[300px] rounded-xl cursor-pointer hover:opacity-90 transition-opacity mb-1.5 bg-slate-700/50"
+                                    style={{ aspectRatio: '4/3', objectFit: 'cover' }}
                                     onClick={() => window.open(message.media_url!, '_blank')}
+                                    onLoad={(e) => {
+                                      // Reset aspect ratio once loaded
+                                      (e.target as HTMLImageElement).style.aspectRatio = 'auto';
+                                      (e.target as HTMLImageElement).style.objectFit = 'contain';
+                                    }}
                                   />
                                 )}
                                 {message.message_type === 'audio' && message.media_url && (
