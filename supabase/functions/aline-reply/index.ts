@@ -674,13 +674,31 @@ serve(async (req) => {
     const isPerguntandoAnel = /anel|anéis|aneis|solitário|solitario/i.test(normalizedMsg);
     
     // ========================================
+    // NLU: DETECTAR PERGUNTAS SOBRE FOTOGRAVAÇÃO / PERSONALIZAÇÃO
+    // Cliente perguntou sobre preço de FOTO? Responder que é GRÁTIS!
+    // ========================================
+    const isPerguntaFotogravacao = 
+      /com\s*(a\s*)?foto.*fica|com\s*(a\s*)?foto.*quanto|quanto.*com\s*(a\s*)?foto|pre[çc]o.*foto|foto.*pre[çc]o|valor.*foto|foto.*valor|quanto.*fotograva|fotograva.*quanto|personaliza[çc][aã]o.*quanto|quanto.*personaliza|grava[çc][aã]o.*quanto|quanto.*grava[çc]|foto.*custa|custa.*foto|personalizada.*fica|fica.*personalizada/i.test(normalizedMsg);
+    
+    // CRÍTICO: Pergunta sobre fotogravação → Responder que é GRÁTIS! NÃO enviar catálogo!
+    if (isPerguntaFotogravacao) {
+      console.log(`[ALINE-REPLY] [NLU] 📸 PERGUNTA SOBRE FOTOGRAVAÇÃO/PERSONALIZAÇÃO detectada! Responder que é GRÁTIS!`);
+      newCollectedData.pergunta_fotogravacao = true;
+      newCollectedData.pergunta_tecnica = true; // Tratar como pergunta técnica (resposta em texto)
+      // NÃO forçar catálogo - responder com texto!
+    }
+    
+    // ========================================
     // NLU: DETECTAR PERGUNTAS SOBRE PREÇO → FORÇAR CATÁLOGO COM PREÇOS!
     // Cliente perguntou preço? NUNCA responder textualmente, enviar catálogo!
+    // MAS não se for pergunta sobre fotogravação!
     // ========================================
     const isPerguntaPreco = 
+      !isPerguntaFotogravacao && // 🚨 NÃO tratar pergunta de foto como preço genérico!
       /quanto\s*custa|qual\s*o?\s*valor|qual\s*o?\s*pre[çc]o|quanto\s*[eé]|quanto\s*fica|quanto\s*sai|saber?\s*(o\s*)?pre[çc]o|valores?|quant[ao]\s*sale|pre[çc]o/i.test(normalizedMsg);
     
     // CRÍTICO: Pergunta sobre preço → FORÇAR CATÁLOGO com preços nos cards!
+    // MAS não se for pergunta sobre fotogravação (isso tem resposta específica)
     if (isPerguntaPreco) {
       console.log(`[ALINE-REPLY] [NLU] 💰 PERGUNTA SOBRE PREÇO detectada! FORÇAR CATÁLOGO COM PREÇOS!`);
       newCollectedData.pergunta_preco = true;
@@ -690,6 +708,7 @@ serve(async (req) => {
     // NLU: DETECTAR PERGUNTAS TÉCNICAS (responder SEM catálogo)
     // Apenas perguntas sobre material, entrega, garantia - NÃO preço!
     const isPerguntaTecnica = 
+      isPerguntaFotogravacao || // Pergunta sobre foto é técnica!
       // Perguntas sobre material/durabilidade
       /fica\s*pret[oa]|escurece|mancha|oxida|enferruja|[eé]\s*resistente|dura\s*quanto|quanto\s*tempo\s*dura|[eé]\s*bom|[eé]\s*boa|\s*qualidade/i.test(normalizedMsg) ||
       // Perguntas sobre diferenças
@@ -701,7 +720,7 @@ serve(async (req) => {
       // Perguntas genéricas sobre material
       /material|feito\s*de\s*que|de\s*que\s*[eé]|esse\s*material/i.test(normalizedMsg);
     
-    // Se é pergunta técnica (NÃO preço), deixar AI responder naturalmente
+    // Se é pergunta técnica (NÃO preço genérico), deixar AI responder naturalmente
     if (isPerguntaTecnica && !isPerguntaPreco) {
       console.log(`[ALINE-REPLY] [NLU] 🔍 PERGUNTA TÉCNICA detectada! Deixar AI responder.`);
       newCollectedData.pergunta_tecnica = true;
@@ -1190,9 +1209,23 @@ serve(async (req) => {
     console.log(`[ALINE-REPLY] Categoria: ${finalCategoria}, isAlianca=${isAliancaSelecionada}, isPingente=${isPingenteSelecionado}`);
     
     // ========================================
+    // PRIORIDADE MÁXIMA: RESPONDER FOTOGRAVAÇÃO (GRÁTIS!)
+    // ========================================
+    if (newCollectedData.pergunta_fotogravacao) {
+      nextStep = conversation.current_node || 'coleta_foto';
+      nextStepInstruction = `O cliente PERGUNTOU SOBRE O PREÇO DA FOTOGRAVAÇÃO! RESPONDA IMEDIATAMENTE:
+      
+      "A fotogravação é *GRÁTIS*! 🎁✨ Você só paga o valor do pingente. 💫
+      
+      Me manda a foto que você quer gravar! 📸"
+      
+      RESPONDA EXATAMENTE ISSO! NÃO envie catálogo! NÃO faça outras perguntas! A resposta é que fotogravação é GRÁTIS!
+      #node: coleta_foto`;
+    }
+    // ========================================
     // PRIORIDADE MÁXIMA: RESPONDER ENDEREÇO
     // ========================================
-    if (isPerguntandoEndereco) {
+    else if (isPerguntandoEndereco) {
       nextStep = conversation.current_node || 'endereco';
       nextStepInstruction = `O cliente PERGUNTOU O ENDEREÇO! RESPONDA IMEDIATAMENTE:
       
