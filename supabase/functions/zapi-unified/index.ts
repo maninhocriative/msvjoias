@@ -187,6 +187,8 @@ serve(async (req) => {
     } else if (payload.audio) {
       messageType = 'audio';
       mediaUrl = payload.audio.audioUrl || null;
+      // Transcrição será feita depois
+      messageContent = '[Áudio - aguardando transcrição]';
     } else if (payload.video) {
       messageType = 'video';
       mediaUrl = payload.video.videoUrl || null;
@@ -341,6 +343,54 @@ serve(async (req) => {
     }
 
     // ========================================
+    // TRANSCREVER ÁUDIO SE NECESSÁRIO
+    // ========================================
+    let messageForAline = messageContent;
+    
+    if (messageType === 'audio' && mediaUrl) {
+      console.log('[ZAPI-UNIFIED] 🎤 Transcrevendo áudio...');
+      
+      try {
+        const transcribeEndpoint = `${supabaseUrl}/functions/v1/transcribe-audio`;
+        const transcribeReq = await fetch(transcribeEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseKey}`,
+          },
+          body: JSON.stringify({ audioUrl: mediaUrl }),
+        });
+
+        if (transcribeReq.ok) {
+          const transcribeResult = await transcribeReq.json();
+          if (transcribeResult.transcription) {
+            messageForAline = transcribeResult.transcription;
+            console.log(`[ZAPI-UNIFIED] ✅ Transcrição: "${messageForAline.substring(0, 100)}..."`);
+            
+            // Atualizar a mensagem salva com a transcrição
+            await supabase
+              .from('messages')
+              .update({ content: `🎤 ${messageForAline}` })
+              .eq('conversation_id', conversationId)
+              .eq('zapi_message_id', zapiMessageId);
+              
+            // Atualizar last_message na conversa
+            await supabase
+              .from('conversations')
+              .update({ last_message: `🎤 ${messageForAline.substring(0, 80)}...` })
+              .eq('id', conversationId);
+          }
+        } else {
+          console.error('[ZAPI-UNIFIED] Erro na transcrição:', await transcribeReq.text());
+          messageForAline = '[Áudio recebido]';
+        }
+      } catch (transcribeError) {
+        console.error('[ZAPI-UNIFIED] Erro ao transcrever:', transcribeError);
+        messageForAline = '[Áudio recebido]';
+      }
+    }
+
+    // ========================================
     // PROCESSAR COM ALINE
     // ========================================
     console.log('[ZAPI-UNIFIED] Chamando aline-reply...');
@@ -354,7 +404,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         phone,
-        message: messageContent,
+        message: messageForAline, // Usar transcrição se for áudio
         contact_name: contactName,
         media_type: messageType,
         media_url: mediaUrl,

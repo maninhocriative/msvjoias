@@ -86,3 +86,9 @@ verify_jwt = false
 
 [functions.zapi-unified]
 verify_jwt = false
+
+[functions.transcribe-audio]
+verify_jwt = true
+
+[functions.zapi-profile-picture]
+verify_jwt = true
