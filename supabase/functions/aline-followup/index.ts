@@ -271,7 +271,7 @@ serve(async (req) => {
           console.error(`[ALINE-FOLLOWUP] Erro ao atualizar conversa ${conversation.id}:`, updateError);
         }
 
-        // Salvar mensagem de follow-up no histórico
+        // Salvar mensagem de follow-up no histórico da Aline
         const savedMessage = messageType === 'button' 
           ? `${followupMessage}\n\n[Botão: ${nextFollowupConfig.buttonText}]`
           : followupMessage;
@@ -282,6 +282,38 @@ serve(async (req) => {
           message: savedMessage,
           node: conversation.current_node,
         });
+
+        // ========== SALVAR TAMBÉM NA TABELA MESSAGES (PARA O CRM) ==========
+        // Buscar ou criar a conversa na tabela conversations
+        const { data: crmConversation } = await supabase
+          .from('conversations')
+          .select('id')
+          .eq('contact_number', conversation.phone)
+          .maybeSingle();
+
+        if (crmConversation) {
+          // Inserir mensagem de follow-up na tabela messages
+          await supabase.from('messages').insert({
+            conversation_id: crmConversation.id,
+            content: `📢 *Follow-up ${followupCount + 1}*\n\n${savedMessage}`,
+            message_type: 'text',
+            is_from_me: true,
+            status: 'sent',
+          });
+
+          // Atualizar last_message da conversa
+          await supabase
+            .from('conversations')
+            .update({
+              last_message: `[Follow-up ${followupCount + 1}] ${followupMessage.substring(0, 50)}...`,
+              last_message_at: new Date().toISOString(),
+            })
+            .eq('id', crmConversation.id);
+
+          console.log(`[ALINE-FOLLOWUP] ✅ Follow-up salvo no CRM para ${conversation.phone}`);
+        } else {
+          console.log(`[ALINE-FOLLOWUP] ⚠️ Conversa CRM não encontrada para ${conversation.phone}`);
+        }
 
         // ========== NOTIFICAR ACIUM APÓS ENVIO DE CATÁLOGO SEM RESPOSTA ==========
         // Se o stage atual é 'catalog_sent' e é o primeiro follow-up, notifica a Acium
