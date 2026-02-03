@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase, Conversation, Message, LeadStatus } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, Paperclip, Search, MessageSquare, FileText, Mic, Check, CheckCheck, Instagram, Bot, User, Phone, ArrowLeft, MoreVertical, UserCheck, RefreshCw, Clock, MessageCircle, Sparkles, X, Volume2, Loader2, Users, UserPlus, Timer, Camera, Square } from 'lucide-react';
+import { Send, Paperclip, Search, MessageSquare, Mic, Bot, User, Phone, ArrowLeft, MoreVertical, UserCheck, RefreshCw, MessageCircle, Sparkles, X, Loader2, Users, UserPlus, Camera, Square } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { LeadStatusSelect, LeadStatusBadge } from '@/components/chat/LeadStatusSelect';
@@ -11,11 +11,14 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import TypingIndicator from '@/components/chat/TypingIndicator';
 import SellerToolsPanel from '@/components/chat/SellerToolsPanel';
 import AssignSellerDialog from '@/components/chat/AssignSellerDialog';
+import MessageItem from '@/components/chat/MessageItem';
+import ConversationItem from '@/components/chat/ConversationItem';
 
 import { useSellerPresence, assignConversationToSeller } from '@/hooks/useSellerPresence';
 import { useUserRole } from '@/hooks/useUserRole';
 import { Badge } from '@/components/ui/badge';
 import { useAssignmentNotification } from '@/hooks/useAssignmentNotification';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
 
 interface AlineConversation {
@@ -40,6 +43,7 @@ const Chat = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebouncedValue(searchTerm, 200);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [sending, setSending] = useState(false);
@@ -235,10 +239,10 @@ const Chat = () => {
           console.log('[Chat] Subscription status:', status);
         });
 
-      // Fallback: Poll a cada 8s (increased interval to reduce load)
+      // Fallback: Poll a cada 15s (reduced frequency for better performance)
       const pollInterval = setInterval(() => {
         fetchMessages(selectedConversation.id);
-      }, 8000);
+      }, 15000);
 
       return () => {
         supabase.removeChannel(channel);
@@ -411,13 +415,14 @@ const Chat = () => {
     };
   }, [fetchConversations]);
 
-  const fetchMessages = async (conversationId: string) => {
+  const fetchMessages = useCallback(async (conversationId: string) => {
     try {
       const { data, error } = await supabase
         .from('messages')
-        .select('*')
+        .select('id, content, created_at, is_from_me, media_url, message_type, status, conversation_id')
         .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: true })
+        .limit(100); // Limit for performance
 
       if (error) throw error;
       // Filtrar mensagens vazias (callbacks salvos por erro)
@@ -428,7 +433,7 @@ const Chat = () => {
     } catch (error) {
       console.error('Error fetching messages:', error);
     }
-  };
+  }, []);
 
   const markAsRead = async (conversationId: string) => {
     await supabase
@@ -718,50 +723,47 @@ const Chat = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const filteredConversations = conversations
-    .filter((conv) => {
-      // Usar nome do cliente da tabela customers se disponível
-      const customerProfile = customerProfiles[conv.contact_number];
-      const displayName = customerProfile?.name || conv.contact_name || '';
-      
-      const matchesSearch = displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        conv.contact_number?.includes(searchTerm);
-      const matchesStatus = filterStatus === 'all' || conv.lead_status === filterStatus;
-      
-      // Filtro por atendente
-      const convAlineData = alineStatusMap[conv.contact_number];
-      const convStatus = convAlineData?.status;
-      const isHumanAttendant = convStatus === 'human_takeover';
-      const isAlineAttendant = convStatus === 'active' || !convStatus;
-      const matchesAttendant = filterAttendant === 'all' || 
-        (filterAttendant === 'vendedor' && isHumanAttendant) ||
-        (filterAttendant === 'aline' && isAlineAttendant);
-      
-      return matchesSearch && matchesStatus && matchesAttendant;
-    })
-    // Ordenar por última mensagem (mais recente primeiro)
-    .sort((a, b) => {
-      const dateA = new Date(a.created_at || 0).getTime();
-      const dateB = new Date(b.created_at || 0).getTime();
-      return dateB - dateA;
-    });
+  const filteredConversations = useMemo(() => {
+    const searchLower = debouncedSearchTerm.toLowerCase();
+    return conversations
+      .filter((conv) => {
+        // Usar nome do cliente da tabela customers se disponível
+        const customerProfile = customerProfiles[conv.contact_number];
+        const displayName = customerProfile?.name || conv.contact_name || '';
+        
+        const matchesSearch = !debouncedSearchTerm || 
+          displayName.toLowerCase().includes(searchLower) ||
+          conv.contact_number?.includes(debouncedSearchTerm);
+        const matchesStatus = filterStatus === 'all' || conv.lead_status === filterStatus;
+        
+        // Filtro por atendente
+        const convAlineData = alineStatusMap[conv.contact_number];
+        const convStatus = convAlineData?.status;
+        const isHumanAttendant = convStatus === 'human_takeover';
+        const isAlineAttendant = convStatus === 'active' || !convStatus;
+        const matchesAttendant = filterAttendant === 'all' || 
+          (filterAttendant === 'vendedor' && isHumanAttendant) ||
+          (filterAttendant === 'aline' && isAlineAttendant);
+        
+        return matchesSearch && matchesStatus && matchesAttendant;
+      })
+      // Ordenar por última mensagem (mais recente primeiro)
+      .sort((a, b) => {
+        const dateA = new Date((a as any).last_message_at || a.created_at || 0).getTime();
+        const dateB = new Date((b as any).last_message_at || b.created_at || 0).getTime();
+        return dateB - dateA;
+      });
+  }, [conversations, debouncedSearchTerm, filterStatus, filterAttendant, alineStatusMap, customerProfiles]);
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'sent': return <Check className="w-3 h-3" />;
-      case 'delivered': return <CheckCheck className="w-3 h-3" />;
-      case 'read': return <CheckCheck className="w-3 h-3 text-blue-400" />;
-      default: return <Clock className="w-3 h-3 opacity-50" />;
-    }
-  };
-
-  const getPlatformIcon = (platform: string) => {
-    return platform === 'instagram' ? Instagram : MessageCircle;
-  };
-
-  const formatTime = (date: string) => {
-    return new Date(date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  };
+  // Memoized grouped messages for better performance
+  const groupedMessages = useMemo(() => {
+    return messages.reduce((groups, message) => {
+      const date = new Date(message.created_at || '').toDateString();
+      if (!groups[date]) groups[date] = [];
+      groups[date].push(message);
+      return groups;
+    }, {} as Record<string, Message[]>);
+  }, [messages]);
 
   const formatDate = (date: string) => {
     const d = new Date(date);
@@ -773,46 +775,6 @@ const Chat = () => {
     if (d.toDateString() === yesterday.toDateString()) return 'Ontem';
     return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
   };
-
-  const formatLastSeen = (date: string) => {
-    const d = new Date(date);
-    const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffMins < 1) return 'agora';
-    if (diffMins < 60) return `${diffMins}min`;
-    if (diffHours < 24) return `${diffHours}h`;
-    return `${diffDays}d`;
-  };
-
-  // Calcula tempo de espera desde o encaminhamento para humano
-  const getWaitingTime = (phone: string): string | null => {
-    const alineData = alineStatusMap[phone];
-    if (!alineData || alineData.status !== 'human_takeover' || !alineData.assigned_at) {
-      return null;
-    }
-    
-    const assignedAt = new Date(alineData.assigned_at);
-    const now = new Date();
-    const diffMs = now.getTime() - assignedAt.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    
-    if (diffMins < 1) return 'agora';
-    if (diffMins < 60) return `${diffMins}min`;
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours}h ${diffMins % 60}min`;
-    return `${Math.floor(diffHours / 24)}d`;
-  };
-
-  const groupedMessages = messages.reduce((groups, message) => {
-    const date = new Date(message.created_at || '').toDateString();
-    if (!groups[date]) groups[date] = [];
-    groups[date].push(message);
-    return groups;
-  }, {} as Record<string, Message[]>);
 
   const unreadTotal = conversations.reduce((sum, c) => sum + (c.unread_count || 0), 0);
 
@@ -1008,154 +970,16 @@ const Chat = () => {
             </div>
           ) : (
             <div className="py-2">
-              {filteredConversations.map((conv) => {
-                const PlatformIcon = getPlatformIcon(conv.platform || 'whatsapp');
-                const hasUnread = (conv.unread_count ?? 0) > 0;
-                const isInstagram = conv.platform === 'instagram';
-                const customerProfile = customerProfiles[conv.contact_number];
-                const waitingTime = getWaitingTime(conv.contact_number);
-                
-                return (
-                  <button
-                    key={conv.id}
-                    onClick={() => setSelectedConversation(conv)}
-                    className={cn(
-                      'w-full px-4 py-3.5 flex items-start gap-3.5 transition-all text-left relative mx-2 rounded-xl mb-1',
-                      'hover:bg-white/5',
-                      selectedConversation?.id === conv.id && 'bg-emerald-500/10 border border-emerald-500/20',
-                      hasUnread && 'bg-slate-800/50'
-                    )}
-                    style={{ width: 'calc(100% - 16px)' }}
-                  >
-                    {/* Avatar com foto de perfil */}
-                    <div className="relative shrink-0">
-                      {customerProfile?.profile_pic_url ? (
-                        <img
-                          src={customerProfile.profile_pic_url}
-                          alt={conv.contact_name || 'Cliente'}
-                          className="w-12 h-12 rounded-2xl object-cover shadow-lg"
-                        />
-                      ) : (
-                        <div className={cn(
-                          'w-12 h-12 rounded-2xl flex items-center justify-center text-lg font-semibold text-white shadow-lg',
-                          isInstagram 
-                            ? 'bg-gradient-to-br from-fuchsia-500 via-pink-500 to-orange-400' 
-                            : 'bg-gradient-to-br from-emerald-400 to-cyan-500'
-                        )}>
-                          {(conv.contact_name || conv.contact_number).charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                      
-                      {/* Indicador de online do cliente - verde pulsante quando última msg foi recente */}
-                      {(() => {
-                        // Usar last_message_at se disponível, senão created_at
-                        const lastMsgTime = (conv as any).last_message_at 
-                          ? new Date((conv as any).last_message_at).getTime() 
-                          : (conv.created_at ? new Date(conv.created_at).getTime() : 0);
-                        const now = new Date().getTime();
-                        const isRecentlyActive = now - lastMsgTime < 5 * 60 * 1000; // 5 minutos
-                        
-                        if (isRecentlyActive) {
-                          return (
-                            <span className="absolute top-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-slate-900 rounded-full animate-pulse" title="Online" />
-                          );
-                        }
-                        return null;
-                      })()}
-                      
-                      <div className={cn(
-                        'absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-lg flex items-center justify-center shadow-md',
-                        isInstagram ? 'bg-gradient-to-br from-fuchsia-500 to-orange-400' : 'bg-emerald-500'
-                      )}>
-                        <PlatformIcon className="w-3 h-3 text-white" />
-                      </div>
-                      
-                      {/* Indicador de tempo de espera */}
-                      {waitingTime && (
-                        <div className="absolute -top-1 -left-1 px-1.5 py-0.5 bg-amber-500 rounded-md flex items-center gap-0.5 shadow-lg">
-                          <Timer className="w-2.5 h-2.5 text-white" />
-                          <span className="text-[9px] font-bold text-white">{waitingTime}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2 mb-1">
-                        <p className={cn(
-                          'font-semibold text-white truncate text-sm',
-                          hasUnread && 'text-emerald-300'
-                        )}>
-                          {/* Priorizar nome do cliente da tabela customers */}
-                          {customerProfile?.name || conv.contact_name || conv.contact_number}
-                        </p>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {/* Contador de mensagens estilo WhatsApp */}
-                          {hasUnread && (
-                            <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center">
-                              {(conv.unread_count ?? 0) > 99 ? '99+' : conv.unread_count}
-                            </span>
-                          )}
-                          <span className={cn(
-                            'text-[11px]',
-                            hasUnread ? 'text-emerald-400 font-medium' : 'text-slate-500'
-                          )}>
-                            {formatLastSeen((conv as any).last_message_at || conv.created_at)}
-                          </span>
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-                        <LeadStatusBadge status={(conv.lead_status as LeadStatus) || 'novo'} />
-                        {/* Indicador de atendente */}
-                        {(() => {
-                          const convAlineData = alineStatusMap[conv.contact_number];
-                          const isHumanTakeover = convAlineData?.status === 'human_takeover';
-                          const sellerName = convAlineData?.assigned_seller_name;
-                          
-                          if (isHumanTakeover && sellerName) {
-                            return (
-                              <span className="px-1.5 py-0.5 bg-gradient-to-r from-amber-500/20 to-orange-500/20 text-amber-300 border border-amber-500/30 rounded text-[9px] font-medium flex items-center gap-1">
-                                <UserCheck className="w-2.5 h-2.5" />
-                                {sellerName.split(' ')[0]}
-                              </span>
-                            );
-                          } else if (isHumanTakeover) {
-                            return (
-                              <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded text-[9px] font-medium flex items-center gap-1">
-                                <User className="w-2.5 h-2.5" />
-                                Vendedor
-                              </span>
-                            );
-                          } else {
-                            return (
-                              <span className="px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400/70 border border-emerald-500/20 rounded text-[9px] font-medium flex items-center gap-1">
-                                <Bot className="w-2.5 h-2.5" />
-                                Aline
-                              </span>
-                            );
-                          }
-                        })()}
-                      </div>
-                      
-                      <div className="flex items-start justify-between gap-2">
-                        <p className={cn(
-                          'text-xs flex-1 line-clamp-2',
-                          hasUnread ? 'text-slate-200' : 'text-slate-500'
-                        )}>
-                          {conv.last_message || 'Sem mensagens'}
-                        </p>
-                        
-                        {hasUnread && (
-                          <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-emerald-500 text-white text-[10px] flex items-center justify-center shrink-0 font-bold shadow-lg shadow-emerald-500/30">
-                            {conv.unread_count}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
+              {filteredConversations.map((conv) => (
+                <ConversationItem
+                  key={conv.id}
+                  conv={conv}
+                  isSelected={selectedConversation?.id === conv.id}
+                  customerProfile={customerProfiles[conv.contact_number]}
+                  alineData={alineStatusMap[conv.contact_number]}
+                  onClick={() => setSelectedConversation(conv)}
+                />
+              ))}
             </div>
           )}
         </ScrollArea>
@@ -1332,102 +1156,14 @@ const Chat = () => {
                           </span>
                         </div>
 
-                        {/* Messages */}
-                        {msgs.map((message, idx) => {
-                          const showTail = idx === 0 || msgs[idx - 1]?.is_from_me !== message.is_from_me;
-                          const isMe = message.is_from_me;
-                          
-                          return (
-                            <div
-                              key={message.id}
-                              className={cn(
-                                'flex mb-0.5',
-                                isMe ? 'justify-end' : 'justify-start'
-                              )}
-                            >
-                              <div
-                                className={cn(
-                                  'relative max-w-[85%] md:max-w-[70%] px-3.5 py-2 shadow-md overflow-hidden',
-                                  isMe
-                                    ? 'bg-emerald-600 text-white'
-                                    : 'bg-slate-800 text-slate-100',
-                                  showTail 
-                                    ? isMe 
-                                      ? 'rounded-2xl rounded-tr-md mt-2' 
-                                      : 'rounded-2xl rounded-tl-md mt-2'
-                                    : 'rounded-2xl'
-                                )}
-                                style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
-                              >
-                                {/* Media Content - Optimized image loading */}
-                                {message.message_type === 'image' && message.media_url && (
-                                  <img
-                                    src={message.media_url}
-                                    alt="Imagem"
-                                    loading="lazy"
-                                    decoding="async"
-                                    className="w-full max-w-[300px] rounded-xl cursor-pointer hover:opacity-90 transition-opacity mb-1.5 bg-slate-700/50"
-                                    style={{ aspectRatio: '4/3', objectFit: 'cover' }}
-                                    onClick={() => window.open(message.media_url!, '_blank')}
-                                    onLoad={(e) => {
-                                      // Reset aspect ratio once loaded
-                                      (e.target as HTMLImageElement).style.aspectRatio = 'auto';
-                                      (e.target as HTMLImageElement).style.objectFit = 'contain';
-                                    }}
-                                  />
-                                )}
-                                {message.message_type === 'audio' && message.media_url && (
-                                  <div className="flex items-center gap-2 bg-black/20 rounded-xl p-2 mb-1">
-                                    <Volume2 className="w-5 h-5 text-emerald-300" />
-                                    <audio controls className="max-w-[200px] h-8">
-                                      <source src={message.media_url} />
-                                    </audio>
-                                  </div>
-                                )}
-                                {message.message_type === 'video' && message.media_url && (
-                                  <video controls className="max-w-full rounded-xl mb-1.5">
-                                    <source src={message.media_url} />
-                                  </video>
-                                )}
-                                {message.message_type === 'document' && message.media_url && (
-                                  <a
-                                    href={message.media_url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex items-center gap-2 text-sm underline mb-1 hover:opacity-80"
-                                  >
-                                    <FileText className="w-4 h-4" />
-                                    {message.content || 'Documento'}
-                                  </a>
-                                )}
-                                
-                                {/* Text Content */}
-                                {(message.message_type === 'text' || message.content) && message.message_type !== 'audio' && (
-                                  <p className="text-[15px] leading-relaxed whitespace-pre-wrap" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
-                                    {message.content}
-                                  </p>
-                                )}
-                                
-                                {/* Time & Status */}
-                                <div className="flex items-center gap-1.5 justify-end mt-1 -mb-0.5">
-                                  <span className={cn(
-                                    "text-[10px]",
-                                    isMe ? "text-emerald-200/60" : "text-slate-500"
-                                  )}>
-                                    {formatTime(message.created_at || '')}
-                                  </span>
-                                  {isMe && (
-                                    <span className={cn(
-                                      message.status === 'read' ? 'text-blue-400' : 'text-emerald-200/60'
-                                    )}>
-                                      {getStatusIcon(message.status || 'sent')}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
+                        {/* Messages - Using memoized component */}
+                        {msgs.map((message, idx) => (
+                          <MessageItem
+                            key={message.id}
+                            message={message}
+                            showTail={idx === 0 || msgs[idx - 1]?.is_from_me !== message.is_from_me}
+                          />
+                        ))}
                       </div>
                     ))
                   )}
