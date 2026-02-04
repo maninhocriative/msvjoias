@@ -6,19 +6,20 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Tipos de follow-up: 'text' ou 'button'
+// Tipos de follow-up: 'text', 'button' ou 'video'
 interface FollowupConfig {
   intervalMinutes: number;
   message: string;
-  type: 'text' | 'button';
+  type: 'text' | 'button' | 'video';
   buttonText?: string;
+  videoUrl?: string;
+  minOrderValue?: number; // Valor mínimo do pedido para este follow-up
 }
 
+// URL do vídeo do pingente fotogravado (hospedado publicamente)
+const PINGENTE_VIDEO_URL = "https://mono-canvas-pro.lovable.app/videos/pingente-fotogravado.mp4";
+
 // Configuração de follow-ups com intervalos de produção
-// Follow-up 1: 10 minutos - lembrete leve
-// Follow-up 2: 1 hora - pergunta sobre dúvidas
-// Follow-up 3: 2 horas - oferta especial
-// Follow-up 4: 6 horas - pergunta sobre pagamento/entrega para fechar venda
 const DEFAULT_FOLLOWUP_CONFIG: FollowupConfig[] = [
   { 
     intervalMinutes: 10, // 10 minutos
@@ -31,10 +32,12 @@ const DEFAULT_FOLLOWUP_CONFIG: FollowupConfig[] = [
     type: 'text'
   },
   { 
-    intervalMinutes: 120, // 2 horas
+    intervalMinutes: 120, // 2 horas - OFERTA ALIANÇAS
     message: "🎁 *OFERTA ESPECIAL!*\n\nComprando o par de alianças, você *GANHA um pingente fotogravado* personalizado!\n\n⏰ Essa promoção é por tempo limitado.\n\nQuer aproveitar?",
-    type: 'button',
-    buttonText: "✅ Quero aproveitar!"
+    type: 'video',
+    buttonText: "✅ Quero aproveitar!",
+    videoUrl: PINGENTE_VIDEO_URL,
+    minOrderValue: 0 // Qualquer valor
   },
   { 
     intervalMinutes: 360, // 6 horas - FECHAMENTO DA VENDA
@@ -43,6 +46,16 @@ const DEFAULT_FOLLOWUP_CONFIG: FollowupConfig[] = [
     buttonText: "💬 Quero finalizar meu pedido!"
   },
 ];
+
+// Configuração de follow-up específico para PINGENTES (compras acima de R$299)
+const PINGENTE_FOLLOWUP_CONFIG: FollowupConfig = {
+  intervalMinutes: 120, // 2 horas
+  message: "🎁 *OFERTA ESPECIAL PARA VOCÊ!*\n\nNas compras acima de R$299, você *GANHA um pingente fotogravado* personalizado!\n\n✨ Coloque a foto de quem você ama!\n\n⏰ Promoção por tempo limitado.",
+  type: 'video',
+  buttonText: "✅ Quero aproveitar!",
+  videoUrl: PINGENTE_VIDEO_URL,
+  minOrderValue: 299
+};
 
 // Função para enviar mensagem de texto simples
 async function sendTextMessage(
@@ -60,6 +73,30 @@ async function sendTextMessage(
       'Client-Token': zapiClientToken,
     },
     body: JSON.stringify({ phone, message }),
+  });
+}
+
+// Função para enviar vídeo com legenda
+async function sendVideoMessage(
+  zapiInstanceId: string,
+  zapiToken: string,
+  zapiClientToken: string,
+  phone: string,
+  videoUrl: string,
+  caption: string
+): Promise<Response> {
+  const zapiUrl = `https://api.z-api.io/instances/${zapiInstanceId}/token/${zapiToken}/send-video`;
+  return fetch(zapiUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Client-Token': zapiClientToken,
+    },
+    body: JSON.stringify({ 
+      phone, 
+      video: videoUrl,
+      caption 
+    }),
   });
 }
 
@@ -94,6 +131,116 @@ async function sendButtonMessage(
   });
 }
 
+// Função para notificar múltiplos números sobre cliente querendo finalizar
+async function notifyTeamAboutBuyer(
+  supabase: any,
+  zapiInstanceId: string,
+  zapiToken: string,
+  zapiClientToken: string,
+  customerPhone: string,
+  customerName: string | null
+): Promise<void> {
+  try {
+    // Buscar todos os números de notificação
+    const { data: settings } = await supabase
+      .from('store_settings')
+      .select('key, value')
+      .or('key.eq.notification_whatsapp,key.like.notification_phone_%');
+
+    const notificationNumbers: string[] = [];
+    
+    if (settings) {
+      for (const setting of settings) {
+        if (setting.value) {
+          notificationNumbers.push(setting.value.replace(/\D/g, ''));
+        }
+      }
+    }
+
+    // Se não houver números configurados, usar o padrão
+    if (notificationNumbers.length === 0) {
+      notificationNumbers.push('5592984145531');
+    }
+
+    const notificationMsg = `🔥 *CLIENTE QUER FINALIZAR COMPRA!*\n\n` +
+      `📱 *Telefone:* ${customerPhone}\n` +
+      `👤 *Nome:* ${customerName || 'Não informado'}\n\n` +
+      `⚡ O cliente clicou no botão "Quero finalizar meu pedido"!\n\n` +
+      `_Entre em contato AGORA para fechar a venda!_`;
+
+    // Enviar para todos os números
+    for (const number of notificationNumbers) {
+      await sendTextMessage(
+        zapiInstanceId,
+        zapiToken,
+        zapiClientToken,
+        number,
+        notificationMsg
+      );
+      console.log(`[ALINE-FOLLOWUP] Notificação enviada para ${number}`);
+    }
+  } catch (error) {
+    console.error('[ALINE-FOLLOWUP] Erro ao notificar equipe:', error);
+  }
+}
+
+// Função para marcar cliente como comprador
+async function markAsBuyer(
+  supabase: any,
+  phone: string
+): Promise<void> {
+  try {
+    // Atualizar lead_status na conversa
+    const { error } = await supabase
+      .from('conversations')
+      .update({ lead_status: 'comprador' })
+      .eq('contact_number', phone);
+
+    if (error) {
+      console.error('[ALINE-FOLLOWUP] Erro ao marcar como comprador:', error);
+    } else {
+      console.log(`[ALINE-FOLLOWUP] Cliente ${phone} marcado como COMPRADOR`);
+    }
+  } catch (error) {
+    console.error('[ALINE-FOLLOWUP] Erro ao marcar como comprador:', error);
+  }
+}
+
+// Função para verificar se cliente tem interesse em pingentes ou valor alto
+async function getCustomerContext(
+  supabase: any,
+  phone: string
+): Promise<{ categoria: string | null; valorTotal: number }> {
+  try {
+    // Buscar última sessão de catálogo
+    const { data: session } = await supabase
+      .from('catalog_sessions')
+      .select('categoria')
+      .eq('phone', phone)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    // Buscar valor do pedido pendente
+    const { data: order } = await supabase
+      .from('orders')
+      .select('total_price')
+      .eq('customer_phone', phone)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    return {
+      categoria: session?.categoria || null,
+      valorTotal: order?.total_price || 0
+    };
+  } catch (error) {
+    console.error('[ALINE-FOLLOWUP] Erro ao buscar contexto:', error);
+    return { categoria: null, valorTotal: 0 };
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -115,6 +262,41 @@ serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Verificar se é uma requisição de callback de botão
+    const body = await req.json().catch(() => ({}));
+    
+    if (body.buttonResponse && body.phone) {
+      // Cliente clicou no botão "Quero finalizar meu pedido"
+      console.log(`[ALINE-FOLLOWUP] Cliente ${body.phone} clicou no botão de finalizar`);
+      
+      // Buscar nome do cliente
+      const { data: conv } = await supabase
+        .from('conversations')
+        .select('contact_name')
+        .eq('contact_number', body.phone)
+        .maybeSingle();
+
+      // Marcar como comprador
+      await markAsBuyer(supabase, body.phone);
+
+      // Notificar equipe
+      await notifyTeamAboutBuyer(
+        supabase,
+        zapiInstanceId,
+        zapiToken,
+        zapiClientToken,
+        body.phone,
+        conv?.contact_name || null
+      );
+
+      return new Response(JSON.stringify({ 
+        success: true, 
+        message: 'Cliente marcado como comprador e equipe notificada' 
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     // Buscar configurações de follow-up do banco
     const { data: aiConfig, error: configError } = await supabase
@@ -182,8 +364,22 @@ serve(async (req) => {
       try {
         const followupCount = conversation.followup_count || 0;
         
-        // Obter configuração do próximo follow-up (baseado no count atual)
-        const nextFollowupConfig = followupConfig[followupCount];
+        // Buscar contexto do cliente para decidir qual oferta enviar
+        const customerContext = await getCustomerContext(supabase, conversation.phone);
+        
+        // Determinar qual configuração de follow-up usar
+        let nextFollowupConfig = followupConfig[followupCount];
+        
+        // Se for o follow-up de oferta (índice 2) e cliente tem contexto de pingente ou valor alto
+        if (followupCount === 2) {
+          const isPingente = customerContext.categoria?.toLowerCase().includes('pingente');
+          const isHighValue = customerContext.valorTotal >= 299;
+          
+          if (isPingente || isHighValue) {
+            nextFollowupConfig = { ...PINGENTE_FOLLOWUP_CONFIG };
+          }
+        }
+        
         if (!nextFollowupConfig) {
           console.log(`[ALINE-FOLLOWUP] Sem config para follow-up #${followupCount + 1} de ${conversation.phone}`);
           continue;
@@ -192,7 +388,6 @@ serve(async (req) => {
         const intervalMs = nextFollowupConfig.intervalMinutes * 60 * 1000;
 
         // Verificar se a última mensagem foi da Aline (bot)
-        // NOTA: As mensagens da Aline podem ter role 'assistant' OU 'aline'
         const { data: lastMessage, error: msgError } = await supabase
           .from('aline_messages')
           .select('role, created_at')
@@ -207,7 +402,6 @@ serve(async (req) => {
         }
 
         // Se a última mensagem foi do usuário, pular
-        // IMPORTANTE: Só enviamos follow-up se a última mensagem foi da ALINE (role: 'assistant' ou 'aline')
         const isFromBot = lastMessage?.role === 'assistant' || lastMessage?.role === 'aline';
         if (!isFromBot) {
           console.log(`[ALINE-FOLLOWUP] Última mensagem de ${conversation.phone} é do usuário (role: ${lastMessage?.role}), pulando`);
@@ -229,10 +423,33 @@ serve(async (req) => {
 
         console.log(`[ALINE-FOLLOWUP] Enviando follow-up #${followupCount + 1} (${messageType}) para ${conversation.phone} (intervalo: ${nextFollowupConfig.intervalMinutes}min)`);
 
-        // Enviar mensagem via Z-API (texto simples ou com botão)
+        // Enviar mensagem via Z-API
         let zapiResponse: Response;
         
-        if (messageType === 'button' && nextFollowupConfig.buttonText) {
+        if (messageType === 'video' && nextFollowupConfig.videoUrl) {
+          // Enviar vídeo com legenda
+          zapiResponse = await sendVideoMessage(
+            zapiInstanceId,
+            zapiToken,
+            zapiClientToken,
+            conversation.phone,
+            nextFollowupConfig.videoUrl,
+            followupMessage
+          );
+          
+          // Se tiver botão, enviar botão após o vídeo
+          if (nextFollowupConfig.buttonText) {
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Aguardar 2s
+            await sendButtonMessage(
+              zapiInstanceId,
+              zapiToken,
+              zapiClientToken,
+              conversation.phone,
+              "👆 Gostou? Clique abaixo para aproveitar!",
+              nextFollowupConfig.buttonText
+            );
+          }
+        } else if (messageType === 'button' && nextFollowupConfig.buttonText) {
           zapiResponse = await sendButtonMessage(
             zapiInstanceId,
             zapiToken,
@@ -271,11 +488,18 @@ serve(async (req) => {
           console.error(`[ALINE-FOLLOWUP] Erro ao atualizar conversa ${conversation.id}:`, updateError);
         }
 
-        // Salvar mensagem de follow-up no histórico da Aline
-        const savedMessage = messageType === 'button' 
-          ? `${followupMessage}\n\n[Botão: ${nextFollowupConfig.buttonText}]`
-          : followupMessage;
+        // Preparar mensagem para salvar (SEM o prefixo Follow-up X)
+        let savedMessage = followupMessage;
+        if (messageType === 'video') {
+          savedMessage = `🎥 ${followupMessage}`;
+          if (nextFollowupConfig.buttonText) {
+            savedMessage += `\n\n[Botão: ${nextFollowupConfig.buttonText}]`;
+          }
+        } else if (messageType === 'button' && nextFollowupConfig.buttonText) {
+          savedMessage = `${followupMessage}\n\n[Botão: ${nextFollowupConfig.buttonText}]`;
+        }
           
+        // Salvar mensagem de follow-up no histórico da Aline
         await supabase.from('aline_messages').insert({
           conversation_id: conversation.id,
           role: 'assistant',
@@ -284,7 +508,6 @@ serve(async (req) => {
         });
 
         // ========== SALVAR TAMBÉM NA TABELA MESSAGES (PARA O CRM) ==========
-        // Buscar ou criar a conversa na tabela conversations
         const { data: crmConversation } = await supabase
           .from('conversations')
           .select('id')
@@ -292,20 +515,21 @@ serve(async (req) => {
           .maybeSingle();
 
         if (crmConversation) {
-          // Inserir mensagem de follow-up na tabela messages
+          // Inserir mensagem de follow-up na tabela messages (SEM prefixo Follow-up X)
           await supabase.from('messages').insert({
             conversation_id: crmConversation.id,
-            content: `📢 *Follow-up ${followupCount + 1}*\n\n${savedMessage}`,
-            message_type: 'text',
+            content: savedMessage,
+            message_type: messageType === 'video' ? 'video' : 'text',
+            media_url: messageType === 'video' ? nextFollowupConfig.videoUrl : null,
             is_from_me: true,
             status: 'sent',
           });
 
-          // Atualizar last_message da conversa
+          // Atualizar last_message da conversa (sem prefixo)
           await supabase
             .from('conversations')
             .update({
-              last_message: `[Follow-up ${followupCount + 1}] ${followupMessage.substring(0, 50)}...`,
+              last_message: followupMessage.substring(0, 80) + (followupMessage.length > 80 ? '...' : ''),
               last_message_at: new Date().toISOString(),
             })
             .eq('id', crmConversation.id);
@@ -316,10 +540,8 @@ serve(async (req) => {
         }
 
         // ========== NOTIFICAR ACIUM APÓS ENVIO DE CATÁLOGO SEM RESPOSTA ==========
-        // Se o stage atual é 'catalog_sent' e é o primeiro follow-up, notifica a Acium
         if (followupCount === 0 && conversation.current_node === 'catalog_sent') {
           try {
-            // Buscar número de notificação das configurações
             const { data: notifConfig } = await supabase
               .from('store_settings')
               .select('value')
@@ -328,7 +550,6 @@ serve(async (req) => {
 
             const aciumPhone = notifConfig?.value || '5592984145531';
             
-            // Buscar dados do catálogo enviado
             const { data: catalogSession } = await supabase
               .from('catalog_sessions')
               .select('categoria, cor_preferida, tipo_alianca, created_at')
@@ -358,7 +579,6 @@ serve(async (req) => {
             console.log(`[ALINE-FOLLOWUP] Notificação enviada para Acium sobre ${conversation.phone}`);
           } catch (notifError) {
             console.error(`[ALINE-FOLLOWUP] Erro ao notificar Acium:`, notifError);
-            // Não bloqueia o fluxo se a notificação falhar
           }
         }
 

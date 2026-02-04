@@ -145,7 +145,6 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-
     // ========================================
     // EXTRAIR DADOS DA MENSAGEM - SUPORTE A MÚLTIPLOS FORMATOS
     // ========================================
@@ -214,6 +213,38 @@ serve(async (req) => {
     console.log(`[ZAPI-UNIFIED] Phone: ${phone}, isFromMe: ${isFromMe}, type: ${messageType}`);
     console.log(`[ZAPI-UNIFIED] Content extraído: "${messageContent.substring(0, 100)}"`);
 
+    // ========================================
+    // DETECTAR CLIQUE EM BOTÃO DE FINALIZAR PEDIDO
+    // ========================================
+    const buttonResponseId = (payload as any).buttonResponseId || (payload as any).buttonId || '';
+    const isFinalizarButton = buttonResponseId === 'retomar_atendimento' || 
+                               (payload as any).listResponseId === 'retomar_atendimento' ||
+                               (payload as any).buttonResponse?.buttonId === 'retomar_atendimento';
+    
+    if (isFinalizarButton) {
+      console.log(`[ZAPI-UNIFIED] 🔥 Cliente ${phone} clicou no botão de FINALIZAR PEDIDO!`);
+      
+      // Chamar aline-followup para processar o botão (marcar comprador + notificar equipe)
+      const followupEndpoint = `${supabaseUrl}/functions/v1/aline-followup`;
+      try {
+        await fetch(followupEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseKey}`,
+          },
+          body: JSON.stringify({ 
+            buttonResponse: true, 
+            phone: phone 
+          }),
+        });
+        console.log(`[ZAPI-UNIFIED] ✅ Notificação de comprador enviada para equipe`);
+      } catch (notifErr) {
+        console.error(`[ZAPI-UNIFIED] Erro ao notificar equipe:`, notifErr);
+      }
+      
+      // Continuar processando a mensagem normalmente para a Aline responder
+    }
     // ========================================
     // IGNORAR MENSAGENS ENVIADAS POR NÓS
     // ========================================
