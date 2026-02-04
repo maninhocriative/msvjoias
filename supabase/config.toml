@@ -92,3 +92,6 @@ verify_jwt = true
 
 [functions.zapi-profile-picture]
 verify_jwt = true
+
+[functions.send-offer-test]
+verify_jwt = false
