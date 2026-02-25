@@ -539,34 +539,86 @@ serve(async (req) => {
           console.log(`[ALINE-FOLLOWUP] ⚠️ Conversa CRM não encontrada para ${conversation.phone}`);
         }
 
-        // ========== NOTIFICAR ACIUM APÓS ENVIO DE CATÁLOGO SEM RESPOSTA ==========
-        if (followupCount === 0 && conversation.current_node === 'catalog_sent') {
+        // ========== 10 MIN SEM RESPOSTA AO CATÁLOGO: LEAD FRIO + TAKEOVER + NOTIFICAÇÃO ==========
+        if (followupCount === 0) {
           try {
+            // Buscar nome do cliente no CRM
+            const { data: crmConvForNotif } = await supabase
+              .from('conversations')
+              .select('id, contact_name, contact_number')
+              .eq('contact_number', conversation.phone)
+              .maybeSingle();
+
+            const customerName = crmConvForNotif?.contact_name || 'Não informado';
+
+            // 1) Marcar lead como FRIO
+            if (crmConvForNotif) {
+              await supabase
+                .from('conversations')
+                .update({ lead_status: 'frio' })
+                .eq('id', crmConvForNotif.id);
+              console.log(`[ALINE-FOLLOWUP] Lead ${conversation.phone} marcado como FRIO`);
+            }
+
+            // 2) Encaminhar para atendimento humano (takeover)
+            await supabase
+              .from('aline_conversations')
+              .update({
+                status: 'human_takeover',
+                assignment_reason: 'Lead frio - 10min sem resposta após catálogo',
+                last_message_at: new Date().toISOString(),
+              })
+              .eq('id', conversation.id);
+            console.log(`[ALINE-FOLLOWUP] Conversa ${conversation.phone} encaminhada para atendimento humano`);
+
+            // 3) Buscar detalhes do catálogo enviado e produtos de interesse
+            const { data: catalogSession } = await supabase
+              .from('catalog_sessions')
+              .select('id, categoria, cor_preferida, tipo_alianca')
+              .eq('phone', conversation.phone)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            let produtosInteresse = '';
+            if (catalogSession?.id) {
+              const { data: items } = await supabase
+                .from('catalog_items_sent')
+                .select('name, sku, price')
+                .eq('session_id', catalogSession.id)
+                .order('position', { ascending: true })
+                .limit(5);
+
+              if (items && items.length > 0) {
+                produtosInteresse = items
+                  .map((item: any, i: number) => `  ${i + 1}. ${item.name || item.sku}${item.price ? ` - R$${item.price}` : ''}`)
+                  .join('\n');
+              }
+            }
+
+            const catalogInfo = catalogSession 
+              ? `📋 *Interesse:*\n• Categoria: ${catalogSession.categoria || 'N/A'}\n• Cor: ${catalogSession.cor_preferida || 'N/A'}\n• Tipo: ${catalogSession.tipo_alianca || 'N/A'}`
+              : '📋 Sem dados de catálogo';
+
+            const produtosInfo = produtosInteresse 
+              ? `\n\n🛍️ *Produtos enviados:*\n${produtosInteresse}`
+              : '';
+
+            // 4) Notificar Acium com resumo completo
             const { data: notifConfig } = await supabase
               .from('store_settings')
               .select('value')
               .eq('key', 'notification_whatsapp')
-              .single();
+              .maybeSingle();
 
-            const aciumPhone = notifConfig?.value || '5592984145531';
-            
-            const { data: catalogSession } = await supabase
-              .from('catalog_sessions')
-              .select('categoria, cor_preferida, tipo_alianca, created_at')
-              .eq('phone', conversation.phone)
-              .order('created_at', { ascending: false })
-              .limit(1)
-              .single();
+            const aciumPhone = (notifConfig?.value || '5592984145531').replace(/\D/g, '');
 
-            const catalogInfo = catalogSession 
-              ? `📋 *Catálogo enviado:*\n• Categoria: ${catalogSession.categoria || 'N/A'}\n• Cor: ${catalogSession.cor_preferida || 'N/A'}\n• Tipo: ${catalogSession.tipo_alianca || 'N/A'}`
-              : '📋 Catálogo enviado (sem detalhes)';
-
-            const notificationMsg = `🔔 *ALERTA DE LEAD SEM RESPOSTA*\n\n` +
-              `📱 *Cliente:* ${conversation.phone}\n` +
-              `⏰ *Tempo sem resposta:* ${nextFollowupConfig.intervalMinutes} minutos\n\n` +
-              `${catalogInfo}\n\n` +
-              `💡 O cliente recebeu o catálogo mas não respondeu. Aline enviou o primeiro follow-up automático.`;
+            const notificationMsg = `🧊 *LEAD FRIO - SEM RESPOSTA*\n\n` +
+              `👤 *Nome:* ${customerName}\n` +
+              `📱 *Telefone:* ${conversation.phone}\n` +
+              `⏰ *Tempo sem resposta:* 10 minutos após catálogo\n\n` +
+              `${catalogInfo}${produtosInfo}\n\n` +
+              `⚠️ Lead marcado como *FRIO* e encaminhado para atendimento humano.`;
 
             await sendTextMessage(
               zapiInstanceId,
@@ -576,9 +628,9 @@ serve(async (req) => {
               notificationMsg
             );
 
-            console.log(`[ALINE-FOLLOWUP] Notificação enviada para Acium sobre ${conversation.phone}`);
+            console.log(`[ALINE-FOLLOWUP] Notificação de lead frio enviada para Acium sobre ${conversation.phone}`);
           } catch (notifError) {
-            console.error(`[ALINE-FOLLOWUP] Erro ao notificar Acium:`, notifError);
+            console.error(`[ALINE-FOLLOWUP] Erro ao processar lead frio:`, notifError);
           }
         }
 
