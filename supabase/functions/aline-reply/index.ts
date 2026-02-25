@@ -149,8 +149,14 @@ Quando cliente fizer pergunta que NÃO é sobre compra:
 
 ---
 
+## 🚫 RESTRIÇÃO DE CORES POR FINALIDADE:
+- **NAMORO**: Apenas cores *dourada* e *prata*. Se cliente pedir PRETA, AZUL ou ROSE → Responda: "Não temos alianças nessa cor para namoro, apenas dourada e prata. Qual prefere? 💍"
+- **CASAMENTO**: Cores disponíveis: dourada, prata, preta, azul
+
+---
+
 ## ✅ PRODUTOS DISPONÍVEIS:
-- ALIANÇAS (casamento=tungstênio nas cores dourada/prata/preta/azul, namoro=aço nas cores dourada/prata)
+- ALIANÇAS (casamento=tungstênio nas cores dourada/prata/preta/azul, namoro=aço nas cores dourada/prata APENAS)
 - PINGENTES/MEDALHAS (fotogravação grátis 1 lado, corrente vendida separada, cores dourada/prata)
 - ANÉIS
 - CORRENTES (vendidas separadamente)
@@ -246,6 +252,24 @@ async function searchCatalog(
   // Prioridade: parâmetro cor > cor do collectedData
   const corSolicitada = params.color?.toLowerCase().trim() || collectedData?.cor?.toLowerCase().trim();
   console.log(`[ALINE-REPLY] 🎨 COR SOLICITADA: "${corSolicitada || 'NENHUMA'}"`);
+  
+  // 🚨 VALIDAÇÃO DE COR POR FINALIDADE - NAMORO SÓ TEM DOURADA E PRATA
+  if (finalidade === 'namoro' && corSolicitada) {
+    const corNorm = corSolicitada.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    const coresNamoroPermitidas = ['dourada', 'dourado', 'prata', 'aco', 'ouro'];
+    const corProibidaNoNamoro = !coresNamoroPermitidas.some(c => corNorm.includes(c));
+    if (corProibidaNoNamoro) {
+      console.log(`[ALINE-REPLY] ❌ COR "${corSolicitada}" NÃO DISPONÍVEL para NAMORO! Apenas dourada e prata.`);
+      return {
+        success: true,
+        products: [],
+        count: 0,
+        available_colors: ['dourada', 'prata'],
+        color_unavailable: true,
+        message: `Não temos alianças na cor ${corSolicitada} para namoro. Nossas alianças de namoro estão disponíveis nas cores *dourada* e *prata*. Qual você prefere? 💍`
+      };
+    }
+  }
   
   // Cores já mostradas anteriormente
   const coresMostradas = collectedData?.cores_mostradas || [];
@@ -1397,7 +1421,11 @@ serve(async (req) => {
     } else if (mudouCategoria && finalCategoria === 'aliancas' && finalFinalidade) {
       // Tem finalidade mas falta COR - perguntar cor!
       nextStep = 'escolha_cor';
-      nextStepInstruction = `O cliente quer alianças de ${finalFinalidade}! PERGUNTE A COR: "Qual cor preferem? Dourada, prata, preta ou azul? 💍" (MAX 15 palavras!) NÃO mostre catálogo ainda!`;
+      if (finalFinalidade === 'namoro') {
+        nextStepInstruction = `O cliente quer alianças de NAMORO! IMPORTANTE: Para namoro só temos DOURADA e PRATA. PERGUNTE: "Qual cor preferem? Dourada ou prata? 💍" (MAX 15 palavras!) NÃO ofereça preta ou azul! NÃO mostre catálogo ainda!`;
+      } else {
+        nextStepInstruction = `O cliente quer alianças de ${finalFinalidade}! PERGUNTE A COR: "Qual cor preferem? Dourada, prata, preta ou azul? 💍" (MAX 15 palavras!) NÃO mostre catálogo ainda!`;
+      }
     } else if (mudouCategoria && finalCategoria === 'aliancas') {
       // Falta FINALIDADE - perguntar finalidade!
       nextStep = 'escolha_finalidade';
@@ -1421,8 +1449,11 @@ serve(async (req) => {
     } else if (querVerCatalogo && finalCategoria === 'aliancas' && finalFinalidade && !finalCor) {
       // Tem finalidade mas falta COR - perguntar cor!
       nextStep = 'escolha_cor';
-      nextStepInstruction = `O cliente quer ver alianças de ${finalFinalidade}! Pergunte a cor: "Qual cor preferem? Dourada, prata, preta ou azul? 💍" (MAX 15 palavras!)`;
-    } else if (querVerCatalogo && finalCategoria === 'aliancas' && !finalFinalidade) {
+      if (finalFinalidade === 'namoro') {
+        nextStepInstruction = `O cliente quer alianças de NAMORO! IMPORTANTE: Para namoro só temos DOURADA e PRATA. Pergunte: "Qual cor preferem? Dourada ou prata? 💍" (MAX 15 palavras!) NÃO ofereça preta ou azul!`;
+      } else {
+        nextStepInstruction = `O cliente quer ver alianças de ${finalFinalidade}! Pergunte a cor: "Qual cor preferem? Dourada, prata, preta ou azul? 💍" (MAX 15 palavras!)`;
+      }
       // Falta FINALIDADE - perguntar finalidade!
       nextStep = 'escolha_finalidade';
       nextStepInstruction = `O cliente quer ver alianças! Pergunte: "Vocês celebram namoro ou casamento? 💍" (MAX 10 palavras!)`;
