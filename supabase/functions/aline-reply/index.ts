@@ -2287,6 +2287,99 @@ Vocês preferem retirar na nossa loja no Shopping Sumaúma ou receber em casa?`;
       newCollectedData.payment_method = 'cartao';
     }
 
+    // ========================================
+    // NOTIFICAÇÃO DE COMPRADOR: Quando cliente informa pagamento OU entrega
+    // Marcar como comprador e enviar resumo para Acium
+    // ========================================
+    const entregaAcabouDeSerColetada = !!newCollectedData.delivery_method && !collectedData.delivery_method;
+    const pagamentoAcabouDeSerColetado = !!newCollectedData.payment_method && !collectedData.payment_method;
+    
+    if ((entregaAcabouDeSerColetada || pagamentoAcabouDeSerColetado) && newCollectedData.selected_sku && !collectedData.comprador_notificado) {
+      const motivoNotificacao = pagamentoAcabouDeSerColetado ? 'pagamento informado' : 'entrega informada';
+      console.log(`[ALINE-REPLY] 🔥 LEAD COMPRADOR detectado! Motivo: ${motivoNotificacao}`);
+      
+      // 1. Marcar como comprador no CRM
+      if (crmConversationId) {
+        await supabase
+          .from('conversations')
+          .update({ lead_status: 'comprador' })
+          .eq('id', crmConversationId);
+        console.log(`[ALINE-REPLY] ✅ Lead marcado como COMPRADOR`);
+      }
+      
+      // 2. Buscar produtos enviados na sessão do catálogo
+      let produtosEnviados = '';
+      const lastSessionId = newCollectedData.last_catalog_session_id || collectedData.last_catalog_session_id;
+      if (lastSessionId) {
+        const { data: catalogItems } = await supabase
+          .from('catalog_items_sent')
+          .select('sku, name, price')
+          .eq('session_id', lastSessionId)
+          .order('position', { ascending: true });
+        
+        if (catalogItems && catalogItems.length > 0) {
+          produtosEnviados = catalogItems.map((item: any, i: number) => {
+            const preco = item.price ? `R$ ${Number(item.price).toFixed(2).replace('.', ',')}` : '';
+            return `${i + 1}. ${item.name || item.sku} - ${preco}`;
+          }).join('\n');
+        }
+      }
+      
+      // Fallback: usar produto selecionado
+      if (!produtosEnviados && newCollectedData.selected_name) {
+        const preco = newCollectedData.selected_price 
+          ? `R$ ${Number(newCollectedData.selected_price).toFixed(2).replace('.', ',')}` 
+          : '';
+        produtosEnviados = `1. ${newCollectedData.selected_name} - ${preco}`;
+      }
+      
+      // 3. Montar mensagem de notificação
+      const nomeCliente = contact_name || newCollectedData.contact_name || 'Cliente';
+      const categoriaCliente = newCollectedData.categoria || '';
+      const corCliente = newCollectedData.cor || '';
+      const tipoCliente = newCollectedData.finalidade || '';
+      const entregaInfo = newCollectedData.delivery_method || 'não informado';
+      const pagamentoInfo = newCollectedData.payment_method || 'não informado';
+      
+      const notificacao = `🟢 LEAD COMPRADOR - INTERESSE DE COMPRA!\n\n👤 Nome: ${nomeCliente}\n📱 Telefone: ${phone}\n📋 Categoria: ${categoriaCliente}${corCliente ? ` | Cor: ${corCliente}` : ''}${tipoCliente ? ` | Tipo: ${tipoCliente}` : ''}\n🚚 Entrega: ${entregaInfo}\n💳 Pagamento: ${pagamentoInfo}\n🛍️ Produtos enviados:\n${produtosEnviados || 'Não disponível'}`;
+      
+      console.log(`[ALINE-REPLY] 📨 Enviando notificação de comprador para Acium...`);
+      
+      // 4. Buscar números de notificação
+      const { data: notifSettings } = await supabase
+        .from('store_settings')
+        .select('key, value')
+        .or('key.eq.notification_whatsapp,key.like.notification_phone_%');
+      
+      const ZAPI_INSTANCE_ID = Deno.env.get('ZAPI_INSTANCE_ID');
+      const ZAPI_TOKEN = Deno.env.get('ZAPI_TOKEN');
+      const ZAPI_CLIENT_TOKEN = Deno.env.get('ZAPI_CLIENT_TOKEN');
+      
+      if (notifSettings && notifSettings.length > 0 && ZAPI_INSTANCE_ID && ZAPI_TOKEN) {
+        const notifNumbers = [...new Set(notifSettings.map((s: any) => s.value.replace(/\D/g, '')))];
+        
+        for (const notifNumber of notifNumbers) {
+          if (!notifNumber) continue;
+          try {
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+            if (ZAPI_CLIENT_TOKEN) headers['Client-Token'] = ZAPI_CLIENT_TOKEN;
+            
+            await fetch(`https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-text`, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({ phone: notifNumber, message: notificacao }),
+            });
+            console.log(`[ALINE-REPLY] ✅ Notificação comprador enviada para ${notifNumber}`);
+          } catch (notifErr) {
+            console.error(`[ALINE-REPLY] Erro ao enviar notificação:`, notifErr);
+          }
+        }
+      }
+      
+      // Marcar que já notificou para não repetir
+      newCollectedData.comprador_notificado = true;
+    }
+
     // Detectar envio de foto (para fotogravação em pingentes)
     // Verificar se a mensagem contém uma mídia (será detectada pela presença de URL de imagem)
     // OU se o cliente menciona que enviou/vai enviar foto
