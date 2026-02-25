@@ -123,10 +123,10 @@ const ConversationItem = memo(({ conv, isSelected, customerProfile, alineData, o
       </div>
 
       {/* Content */}
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 overflow-hidden">
         <div className="flex items-center justify-between gap-2 mb-1">
           <p className={cn(
-            'font-semibold text-white truncate text-sm',
+            'font-semibold text-white truncate text-sm flex-1 min-w-0',
             hasUnread && 'text-emerald-300'
           )}>
             {customerProfile?.name || conv.contact_name || conv.contact_number}
@@ -138,7 +138,7 @@ const ConversationItem = memo(({ conv, isSelected, customerProfile, alineData, o
               </span>
             )}
             <span className={cn(
-              'text-[11px]',
+              'text-[11px] whitespace-nowrap',
               hasUnread ? 'text-emerald-400 font-medium' : 'text-slate-500'
             )}>
               {formatLastSeen((conv as any).last_message_at || conv.created_at)}
@@ -167,9 +167,9 @@ const ConversationItem = memo(({ conv, isSelected, customerProfile, alineData, o
         </div>
         
         <p className={cn(
-          'text-xs flex-1 line-clamp-2',
+          'text-xs break-words whitespace-normal',
           hasUnread ? 'text-slate-200' : 'text-slate-500'
-        )}>
+        )} style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
           {conv.last_message || 'Sem mensagens'}
         </p>
       </div>
