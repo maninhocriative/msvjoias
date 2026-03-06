@@ -465,43 +465,84 @@ const Chat = () => {
     }
   };
 
+  // Helper to add optimistic message to UI instantly
+  const addOptimisticMessage = useCallback((content: string, messageType = 'text', mediaUrl: string | null = null): string => {
+    const tempId = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const optimisticMsg: Message = {
+      id: tempId,
+      conversation_id: selectedConversation?.id || '',
+      content,
+      message_type: messageType,
+      media_url: mediaUrl,
+      is_from_me: true,
+      status: 'sending',
+      created_at: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, optimisticMsg]);
+    shouldAutoScroll.current = true;
+    return tempId;
+  }, [selectedConversation?.id]);
+
+  // Helper to mark optimistic message as failed
+  const markOptimisticFailed = useCallback((tempId: string) => {
+    setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'failed' } : m));
+  }, []);
+
+  // Helper to remove optimistic message (when real one arrives via realtime)
+  const removeOptimistic = useCallback((tempId: string) => {
+    setMessages(prev => prev.filter(m => m.id !== tempId));
+  }, []);
+
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedConversation || sending) return;
 
-    await sendMessageDirect(newMessage);
+    const msg = newMessage;
     setNewMessage('');
+    await sendMessageDirect(msg);
   };
 
   const sendMessageDirect = async (messageText: string) => {
     if (!messageText.trim() || !selectedConversation) return;
 
-    setSending(true);
-    try {
-      const { error } = await supabase.functions.invoke('automation-send', {
-        body: {
-          conversation_id: selectedConversation.id,
-          phone: selectedConversation.contact_number,
-          message: messageText,
-          message_type: 'text',
-          platform: selectedConversation.platform || 'whatsapp',
-        },
-      });
+    // Optimistic: show message instantly
+    const tempId = addOptimisticMessage(messageText);
 
-      if (error) throw error;
-    } catch (error) {
-      console.error('Error sending message:', error);
+    // Fire and forget - don't block UI
+    supabase.functions.invoke('automation-send', {
+      body: {
+        conversation_id: selectedConversation.id,
+        phone: selectedConversation.contact_number,
+        message: messageText,
+        message_type: 'text',
+        platform: selectedConversation.platform || 'whatsapp',
+      },
+    }).then(({ error }) => {
+      if (error) {
+        markOptimisticFailed(tempId);
+        toast({ title: 'Erro', description: 'Não foi possível enviar a mensagem.', variant: 'destructive' });
+      }
+      // On success, realtime will deliver the real message - remove optimistic after a delay
+      setTimeout(() => removeOptimistic(tempId), 3000);
+    }).catch(() => {
+      markOptimisticFailed(tempId);
       toast({ title: 'Erro', description: 'Não foi possível enviar a mensagem.', variant: 'destructive' });
-    } finally {
-      setSending(false);
-    }
+    });
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !selectedConversation) return;
 
-    setSending(true);
+    let messageType = 'document';
+    if (file.type.startsWith('image/')) messageType = 'image';
+    else if (file.type.startsWith('audio/')) messageType = 'audio';
+    else if (file.type.startsWith('video/')) messageType = 'video';
+
+    // Optimistic: show file message instantly
+    const tempId = addOptimisticMessage(file.name, messageType);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+
     try {
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}.${fileExt}`;
@@ -510,11 +551,6 @@ const Chat = () => {
       if (uploadError) throw uploadError;
 
       const { data: { publicUrl } } = supabase.storage.from('chat-media').getPublicUrl(fileName);
-
-      let messageType = 'document';
-      if (file.type.startsWith('image/')) messageType = 'image';
-      else if (file.type.startsWith('audio/')) messageType = 'audio';
-      else if (file.type.startsWith('video/')) messageType = 'video';
 
       const { error } = await supabase.functions.invoke('automation-send', {
         body: {
@@ -528,13 +564,11 @@ const Chat = () => {
       });
 
       if (error) throw error;
-      toast({ title: 'Arquivo enviado!' });
+      setTimeout(() => removeOptimistic(tempId), 3000);
     } catch (error) {
       console.error('Error uploading file:', error);
+      markOptimisticFailed(tempId);
       toast({ title: 'Erro', description: 'Não foi possível enviar o arquivo.', variant: 'destructive' });
-    } finally {
-      setSending(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -618,7 +652,9 @@ const Chat = () => {
       return;
     }
     
-    setSending(true);
+    // Optimistic: show audio message instantly
+    const tempId = addOptimisticMessage('🎤 Áudio', 'audio');
+
     try {
       const fileName = `audio-${Date.now()}.webm`;
       const { error: uploadError } = await supabase.storage.from('chat-media').upload(fileName, blob);
@@ -638,12 +674,11 @@ const Chat = () => {
       });
 
       if (error) throw error;
-      toast({ title: '✅ Áudio enviado!' });
+      setTimeout(() => removeOptimistic(tempId), 3000);
     } catch (error) {
       console.error('Error uploading audio:', error);
+      markOptimisticFailed(tempId);
       toast({ title: 'Erro', description: 'Não foi possível enviar o áudio.', variant: 'destructive' });
-    } finally {
-      setSending(false);
     }
   };
 
@@ -652,7 +687,6 @@ const Chat = () => {
     if (!selectedConversation) return;
     
     try {
-      // Solicitar permissão para capturar tela
       const stream = await navigator.mediaDevices.getDisplayMedia({ 
         video: { mediaSource: 'screen' } as any
       });
@@ -661,35 +695,28 @@ const Chat = () => {
       video.srcObject = stream;
       await video.play();
       
-      // Criar canvas e capturar frame
       const canvas = document.createElement('canvas');
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       const ctx = canvas.getContext('2d');
       ctx?.drawImage(video, 0, 0);
-      
-      // Parar stream
       stream.getTracks().forEach(track => track.stop());
       
-      // Converter para blob
       const blob = await new Promise<Blob | null>((resolve) => {
         canvas.toBlob((b) => resolve(b), 'image/png', 0.9);
       });
       
-      if (!blob) {
-        throw new Error('Failed to capture screenshot');
-      }
+      if (!blob) throw new Error('Failed to capture screenshot');
       
-      setSending(true);
-      
-      // Upload para storage
+      // Optimistic
+      const tempId = addOptimisticMessage('📸 Screenshot', 'image');
+
       const fileName = `screenshot-${Date.now()}.png`;
       const { error: uploadError } = await supabase.storage.from('chat-media').upload(fileName, blob);
       if (uploadError) throw uploadError;
 
       const { data: { publicUrl } } = supabase.storage.from('chat-media').getPublicUrl(fileName);
 
-      // Enviar via automation-send
       const { error } = await supabase.functions.invoke('automation-send', {
         body: {
           conversation_id: selectedConversation.id,
@@ -702,7 +729,7 @@ const Chat = () => {
       });
 
       if (error) throw error;
-      toast({ title: '📸 Screenshot enviado!' });
+      setTimeout(() => removeOptimistic(tempId), 3000);
       
     } catch (error: any) {
       console.error('Error capturing screenshot:', error);
@@ -711,8 +738,6 @@ const Chat = () => {
       } else {
         toast({ title: 'Erro', description: 'Não foi possível capturar a tela.', variant: 'destructive' });
       }
-    } finally {
-      setSending(false);
     }
   };
 
