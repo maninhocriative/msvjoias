@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { cn } from '@/lib/utils';
-import { Check, CheckCheck, Clock, Volume2, FileText } from 'lucide-react';
+import { Check, CheckCheck, Clock, Volume2, FileText, Loader2, AlertCircle } from 'lucide-react';
 import type { Message } from '@/lib/supabase';
 
 interface MessageItemProps {
@@ -10,6 +10,8 @@ interface MessageItemProps {
 
 const getStatusIcon = (status: string) => {
   switch (status) {
+    case 'sending': return <Loader2 className="w-3 h-3 animate-spin" />;
+    case 'failed': return <AlertCircle className="w-3 h-3 text-red-400" />;
     case 'sent': return <Check className="w-3 h-3" />;
     case 'delivered': return <CheckCheck className="w-3 h-3" />;
     case 'read': return <CheckCheck className="w-3 h-3 text-blue-400" />;

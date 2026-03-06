@@ -687,7 +687,6 @@ const Chat = () => {
     if (!selectedConversation) return;
     
     try {
-      // Solicitar permissão para capturar tela
       const stream = await navigator.mediaDevices.getDisplayMedia({ 
         video: { mediaSource: 'screen' } as any
       });
@@ -696,35 +695,28 @@ const Chat = () => {
       video.srcObject = stream;
       await video.play();
       
-      // Criar canvas e capturar frame
       const canvas = document.createElement('canvas');
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       const ctx = canvas.getContext('2d');
       ctx?.drawImage(video, 0, 0);
-      
-      // Parar stream
       stream.getTracks().forEach(track => track.stop());
       
-      // Converter para blob
       const blob = await new Promise<Blob | null>((resolve) => {
         canvas.toBlob((b) => resolve(b), 'image/png', 0.9);
       });
       
-      if (!blob) {
-        throw new Error('Failed to capture screenshot');
-      }
+      if (!blob) throw new Error('Failed to capture screenshot');
       
-      setSending(true);
-      
-      // Upload para storage
+      // Optimistic
+      const tempId = addOptimisticMessage('📸 Screenshot', 'image');
+
       const fileName = `screenshot-${Date.now()}.png`;
       const { error: uploadError } = await supabase.storage.from('chat-media').upload(fileName, blob);
       if (uploadError) throw uploadError;
 
       const { data: { publicUrl } } = supabase.storage.from('chat-media').getPublicUrl(fileName);
 
-      // Enviar via automation-send
       const { error } = await supabase.functions.invoke('automation-send', {
         body: {
           conversation_id: selectedConversation.id,
@@ -737,7 +729,7 @@ const Chat = () => {
       });
 
       if (error) throw error;
-      toast({ title: '📸 Screenshot enviado!' });
+      setTimeout(() => removeOptimistic(tempId), 3000);
       
     } catch (error: any) {
       console.error('Error capturing screenshot:', error);
@@ -746,8 +738,7 @@ const Chat = () => {
       } else {
         toast({ title: 'Erro', description: 'Não foi possível capturar a tela.', variant: 'destructive' });
       }
-    } finally {
-      setSending(false);
+    }
     }
   };
 
