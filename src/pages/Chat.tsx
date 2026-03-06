@@ -652,7 +652,9 @@ const Chat = () => {
       return;
     }
     
-    setSending(true);
+    // Optimistic: show audio message instantly
+    const tempId = addOptimisticMessage('🎤 Áudio', 'audio');
+
     try {
       const fileName = `audio-${Date.now()}.webm`;
       const { error: uploadError } = await supabase.storage.from('chat-media').upload(fileName, blob);
@@ -672,12 +674,11 @@ const Chat = () => {
       });
 
       if (error) throw error;
-      toast({ title: '✅ Áudio enviado!' });
+      setTimeout(() => removeOptimistic(tempId), 3000);
     } catch (error) {
       console.error('Error uploading audio:', error);
+      markOptimisticFailed(tempId);
       toast({ title: 'Erro', description: 'Não foi possível enviar o áudio.', variant: 'destructive' });
-    } finally {
-      setSending(false);
     }
   };
 
