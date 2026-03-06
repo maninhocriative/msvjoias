@@ -109,41 +109,67 @@ serve(async (req) => {
 
     const messageId = zapiResult.messageId || zapiResult.zaapId;
 
-    // Save message to database
-    const { data: savedMessage, error: dbError } = await supabase
-      .from('messages')
-      .insert({
-        conversation_id,
-        content: message,
-        message_type,
-        media_url,
-        is_from_me: true,
-        zapi_message_id: messageId,
-        status: 'sent',
-      })
-      .select()
-      .single();
+    // Resolve conversation_id (explicit or by phone)
+    let resolvedConversationId = conversation_id;
 
-    if (dbError) {
-      console.error('Error saving message:', dbError);
-      throw dbError;
+    if (!resolvedConversationId) {
+      const { data: conversationByPhone } = await supabase
+        .from('conversations')
+        .select('id')
+        .eq('contact_number', formattedPhone)
+        .maybeSingle();
+
+      resolvedConversationId = conversationByPhone?.id;
     }
 
-    // Update conversation last message
-    await supabase
-      .from('conversations')
-      .update({
-        last_message: message || '[Mídia]',
-        last_message_at: new Date().toISOString(),
-      })
-      .eq('id', conversation_id);
+    if (resolvedConversationId) {
+      // Save message to database
+      const { data: savedMessage, error: dbError } = await supabase
+        .from('messages')
+        .insert({
+          conversation_id: resolvedConversationId,
+          content: message,
+          message_type,
+          media_url,
+          is_from_me: true,
+          zapi_message_id: messageId,
+          status: 'sent',
+        })
+        .select()
+        .single();
 
-    console.log('Message sent and saved:', savedMessage);
+      if (dbError) {
+        console.error('Error saving message:', dbError);
+        throw dbError;
+      }
 
-    return new Response(JSON.stringify({ 
-      success: true, 
-      message: savedMessage,
-      zapi_response: zapiResult 
+      // Update conversation last message
+      await supabase
+        .from('conversations')
+        .update({
+          last_message: message || '[Mídia]',
+          last_message_at: new Date().toISOString(),
+        })
+        .eq('id', resolvedConversationId);
+
+      console.log('Message sent and saved:', savedMessage);
+
+      return new Response(JSON.stringify({
+        success: true,
+        message: savedMessage,
+        zapi_response: zapiResult
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    console.log('Message sent without conversation linkage');
+
+    return new Response(JSON.stringify({
+      success: true,
+      message: null,
+      warning: 'Mensagem enviada, mas não foi possível vincular conversation_id',
+      zapi_response: zapiResult
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
