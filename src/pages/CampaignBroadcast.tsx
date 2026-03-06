@@ -21,7 +21,7 @@ A partir de *R$ 139,00* ✨
 
 Responda essa mensagem para saber mais! 💬`;
 
-const DEFAULT_VIDEO_URL = 'https://mono-canvas-pro.lovable.app/videos/pingente-fotogravado.mp4';
+const DEFAULT_VIDEO_URL = 'https://mono-canvas-pro.lovable.app/videos/campanha-dia-mulheres.mp4';
 
 interface PreviewResult {
   total_conversations: number;
