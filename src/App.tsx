@@ -31,6 +31,7 @@ import AIConfig from "./pages/AIConfig";
 import PendingOrders from "./pages/PendingOrders";
 import FollowupMonitor from "./pages/FollowupMonitor";
 import SellerMonitor from "./pages/SellerMonitor";
+import CampaignBroadcast from "./pages/CampaignBroadcast";
 import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
