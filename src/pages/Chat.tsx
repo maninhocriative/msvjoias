@@ -534,7 +534,15 @@ const Chat = () => {
     const file = e.target.files?.[0];
     if (!file || !selectedConversation) return;
 
-    setSending(true);
+    let messageType = 'document';
+    if (file.type.startsWith('image/')) messageType = 'image';
+    else if (file.type.startsWith('audio/')) messageType = 'audio';
+    else if (file.type.startsWith('video/')) messageType = 'video';
+
+    // Optimistic: show file message instantly
+    const tempId = addOptimisticMessage(file.name, messageType);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+
     try {
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}.${fileExt}`;
@@ -543,11 +551,6 @@ const Chat = () => {
       if (uploadError) throw uploadError;
 
       const { data: { publicUrl } } = supabase.storage.from('chat-media').getPublicUrl(fileName);
-
-      let messageType = 'document';
-      if (file.type.startsWith('image/')) messageType = 'image';
-      else if (file.type.startsWith('audio/')) messageType = 'audio';
-      else if (file.type.startsWith('video/')) messageType = 'video';
 
       const { error } = await supabase.functions.invoke('automation-send', {
         body: {
@@ -561,13 +564,11 @@ const Chat = () => {
       });
 
       if (error) throw error;
-      toast({ title: 'Arquivo enviado!' });
+      setTimeout(() => removeOptimistic(tempId), 3000);
     } catch (error) {
       console.error('Error uploading file:', error);
+      markOptimisticFailed(tempId);
       toast({ title: 'Erro', description: 'Não foi possível enviar o arquivo.', variant: 'destructive' });
-    } finally {
-      setSending(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
