@@ -739,7 +739,6 @@ const Chat = () => {
         toast({ title: 'Erro', description: 'Não foi possível capturar a tela.', variant: 'destructive' });
       }
     }
-    }
   };
 
   // Função para formatar duração da gravação
