@@ -465,36 +465,69 @@ const Chat = () => {
     }
   };
 
+  // Helper to add optimistic message to UI instantly
+  const addOptimisticMessage = useCallback((content: string, messageType = 'text', mediaUrl: string | null = null): string => {
+    const tempId = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const optimisticMsg: Message = {
+      id: tempId,
+      conversation_id: selectedConversation?.id || '',
+      content,
+      message_type: messageType,
+      media_url: mediaUrl,
+      is_from_me: true,
+      status: 'sending',
+      created_at: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, optimisticMsg]);
+    shouldAutoScroll.current = true;
+    return tempId;
+  }, [selectedConversation?.id]);
+
+  // Helper to mark optimistic message as failed
+  const markOptimisticFailed = useCallback((tempId: string) => {
+    setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'failed' } : m));
+  }, []);
+
+  // Helper to remove optimistic message (when real one arrives via realtime)
+  const removeOptimistic = useCallback((tempId: string) => {
+    setMessages(prev => prev.filter(m => m.id !== tempId));
+  }, []);
+
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedConversation || sending) return;
 
-    await sendMessageDirect(newMessage);
+    const msg = newMessage;
     setNewMessage('');
+    await sendMessageDirect(msg);
   };
 
   const sendMessageDirect = async (messageText: string) => {
     if (!messageText.trim() || !selectedConversation) return;
 
-    setSending(true);
-    try {
-      const { error } = await supabase.functions.invoke('automation-send', {
-        body: {
-          conversation_id: selectedConversation.id,
-          phone: selectedConversation.contact_number,
-          message: messageText,
-          message_type: 'text',
-          platform: selectedConversation.platform || 'whatsapp',
-        },
-      });
+    // Optimistic: show message instantly
+    const tempId = addOptimisticMessage(messageText);
 
-      if (error) throw error;
-    } catch (error) {
-      console.error('Error sending message:', error);
+    // Fire and forget - don't block UI
+    supabase.functions.invoke('automation-send', {
+      body: {
+        conversation_id: selectedConversation.id,
+        phone: selectedConversation.contact_number,
+        message: messageText,
+        message_type: 'text',
+        platform: selectedConversation.platform || 'whatsapp',
+      },
+    }).then(({ error }) => {
+      if (error) {
+        markOptimisticFailed(tempId);
+        toast({ title: 'Erro', description: 'Não foi possível enviar a mensagem.', variant: 'destructive' });
+      }
+      // On success, realtime will deliver the real message - remove optimistic after a delay
+      setTimeout(() => removeOptimistic(tempId), 3000);
+    }).catch(() => {
+      markOptimisticFailed(tempId);
       toast({ title: 'Erro', description: 'Não foi possível enviar a mensagem.', variant: 'destructive' });
-    } finally {
-      setSending(false);
-    }
+    });
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
