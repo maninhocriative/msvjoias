@@ -53,6 +53,14 @@ serve(async (req) => {
           caption: message || '',
         };
         break;
+      case 'video':
+        zapiEndpoint = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-video`;
+        zapiBody = {
+          phone: formattedPhone,
+          video: media_url,
+          caption: message || '',
+        };
+        break;
       case 'audio':
         zapiEndpoint = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-audio`;
         zapiBody = {
