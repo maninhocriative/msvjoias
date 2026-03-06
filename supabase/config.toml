@@ -1,5 +1,8 @@
 project_id = "ahbjwpkpxqqrpvpzmqwa"
 
+[functions.campaign-broadcast]
+verify_jwt = false
+
 [functions.aline-reply]
 verify_jwt = false
 

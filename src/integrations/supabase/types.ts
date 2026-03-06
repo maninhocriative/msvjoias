@@ -220,6 +220,33 @@ export type Database = {
           },
         ]
       }
+      campaign_sends: {
+        Row: {
+          campaign_id: string
+          created_at: string
+          error: string | null
+          id: string
+          phone: string
+          status: string
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          phone: string
+          status?: string
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          phone?: string
+          status?: string
+        }
+        Relationships: []
+      }
       catalog_items_sent: {
         Row: {
           created_at: string
