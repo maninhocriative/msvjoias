@@ -71,6 +71,7 @@ const App = () => (
                   <Route path="/ai/followups" element={<FollowupMonitor />} />
                   <Route path="/seller-monitor" element={<SellerMonitor />} />
                   <Route path="/pedidos/pendentes" element={<PendingOrders />} />
+                  <Route path="/campaigns" element={<CampaignBroadcast />} />
                 </Route>
               </Route>
               <Route path="*" element={<NotFound />} />
