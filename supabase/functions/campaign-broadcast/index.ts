@@ -161,6 +161,15 @@ serve(async (req) => {
             }).eq('id', conv.id);
           }
 
+          // Set conversation context so Aline knows the campaign category
+          if (categoria) {
+            await supabase.rpc('upsert_conversation_state', {
+              p_phone: phone,
+              p_stage: 'campaign_reply',
+              p_categoria: categoria
+            });
+          }
+
           console.log(`[CAMPAIGN] ✅ Sent to ${phone.slice(0, 6)}**** (${i + 1}/${phonesToSend.length})`);
         } else {
           failed++;
