@@ -23,7 +23,7 @@ serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
-    const { campaign_id, message, video_url, dry_run = false, batch_size = 10 } = await req.json();
+    const { campaign_id, message, video_url, dry_run = false, batch_size = 10, categoria = null } = await req.json();
 
     if (!campaign_id || !message) {
       return new Response(
@@ -159,6 +159,42 @@ serve(async (req) => {
               last_message: contentToSave,
               last_message_at: new Date().toISOString()
             }).eq('id', conv.id);
+          }
+
+          // Set Aline conversation context so she knows the campaign category
+          if (categoria) {
+            const { data: alineConv } = await supabase
+              .from('aline_conversations')
+              .select('id, collected_data, status')
+              .eq('phone', phone)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            if (alineConv) {
+              const existingData = alineConv.collected_data || {};
+              await supabase.from('aline_conversations').update({
+                collected_data: { ...existingData, categoria, campaign_origin: campaign_id },
+                status: 'active',
+                current_node: 'abertura',
+                followup_count: 0,
+                last_message_at: new Date().toISOString(),
+              }).eq('id', alineConv.id);
+            } else {
+              await supabase.from('aline_conversations').insert({
+                phone,
+                current_node: 'abertura',
+                collected_data: { categoria, campaign_origin: campaign_id },
+                status: 'active',
+              });
+            }
+
+            // Also set conversation_state for legacy context
+            await supabase.rpc('upsert_conversation_state', {
+              p_phone: phone,
+              p_stage: 'campaign_reply',
+              p_categoria: categoria
+            });
           }
 
           console.log(`[CAMPAIGN] ✅ Sent to ${phone.slice(0, 6)}**** (${i + 1}/${phonesToSend.length})`);
