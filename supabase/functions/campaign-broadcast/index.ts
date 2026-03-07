@@ -161,8 +161,35 @@ serve(async (req) => {
             }).eq('id', conv.id);
           }
 
-          // Set conversation context so Aline knows the campaign category
+          // Set Aline conversation context so she knows the campaign category
           if (categoria) {
+            const { data: alineConv } = await supabase
+              .from('aline_conversations')
+              .select('id, collected_data, status')
+              .eq('phone', phone)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            if (alineConv) {
+              const existingData = alineConv.collected_data || {};
+              await supabase.from('aline_conversations').update({
+                collected_data: { ...existingData, categoria, campaign_origin: campaign_id },
+                status: 'active',
+                current_node: 'abertura',
+                followup_count: 0,
+                last_message_at: new Date().toISOString(),
+              }).eq('id', alineConv.id);
+            } else {
+              await supabase.from('aline_conversations').insert({
+                phone,
+                current_node: 'abertura',
+                collected_data: { categoria, campaign_origin: campaign_id },
+                status: 'active',
+              });
+            }
+
+            // Also set conversation_state for legacy context
             await supabase.rpc('upsert_conversation_state', {
               p_phone: phone,
               p_stage: 'campaign_reply',
