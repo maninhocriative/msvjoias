@@ -23,7 +23,7 @@ serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
-    const { campaign_id, message, video_url, dry_run = false, batch_size = 10 } = await req.json();
+    const { campaign_id, message, video_url, dry_run = false, batch_size = 10, categoria = null } = await req.json();
 
     if (!campaign_id || !message) {
       return new Response(
