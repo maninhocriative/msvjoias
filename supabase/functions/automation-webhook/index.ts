@@ -225,6 +225,7 @@ serve(async (req) => {
         .from('conversations')
         .update({ 
           last_message: messageContent || `[${messageType}]`,
+          last_message_at: new Date().toISOString(),
           unread_count: isFromMe ? 0 : (existingConv.unread_count || 0) + 1
         })
         .eq('id', conversationId)
