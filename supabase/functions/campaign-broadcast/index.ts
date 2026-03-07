@@ -135,6 +135,32 @@ serve(async (req) => {
             phone,
             status: 'sent'
           });
+
+          // Save message to CRM so it appears in chat
+          const { data: conv } = await supabase
+            .from('conversations')
+            .select('id')
+            .eq('contact_number', phone)
+            .single();
+
+          if (conv) {
+            const contentToSave = message;
+            const msgType = video_url ? 'video' : 'text';
+            await supabase.from('messages').insert({
+              conversation_id: conv.id,
+              content: contentToSave,
+              is_from_me: true,
+              message_type: msgType,
+              media_url: video_url || null,
+              status: 'sent',
+              zapi_message_id: result.messageId || result.zaapId || null
+            });
+            await supabase.from('conversations').update({
+              last_message: contentToSave,
+              last_message_at: new Date().toISOString()
+            }).eq('id', conv.id);
+          }
+
           console.log(`[CAMPAIGN] ✅ Sent to ${phone.slice(0, 6)}**** (${i + 1}/${phonesToSend.length})`);
         } else {
           failed++;
