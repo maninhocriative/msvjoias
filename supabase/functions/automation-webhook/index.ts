@@ -271,6 +271,41 @@ serve(async (req) => {
 
     console.log('Mensagem salva! isFromMe:', isFromMe, 'tipo:', messageType)
 
+    // Chamar Aline para processar mensagens de clientes (não enviadas por nós)
+    if (!isFromMe && messageContent) {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+      const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      
+      try {
+        console.log('[AUTOMATION-WEBHOOK] Chamando aline-reply para:', phone)
+        const alineEndpoint = `${supabaseUrl}/functions/v1/aline-reply`
+        const alineReq = await fetch(alineEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseKey}`,
+          },
+          body: JSON.stringify({
+            phone,
+            message: messageContent,
+            contact_name: contactName,
+            media_type: messageType,
+            media_url: mediaUrl,
+          }),
+        })
+
+        if (!alineReq.ok) {
+          const errorText = await alineReq.text()
+          console.error('[AUTOMATION-WEBHOOK] Erro aline-reply:', errorText)
+        } else {
+          const alineResponse = await alineReq.json()
+          console.log('[AUTOMATION-WEBHOOK] Aline respondeu:', JSON.stringify(alineResponse).substring(0, 300))
+        }
+      } catch (alineError) {
+        console.error('[AUTOMATION-WEBHOOK] Erro ao chamar aline-reply:', alineError)
+      }
+    }
+
     return new Response(JSON.stringify({ success: true, conversation_id: conversationId }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
