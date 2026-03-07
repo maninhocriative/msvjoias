@@ -640,13 +640,22 @@ serve(async (req) => {
       
       // Reativar conversa finalizada ou atualizar ativa
       if (existingConv.status === 'finished') {
+        // Preserve campaign context if it exists
+        const prevData = existingConv.collected_data || {};
+        const reactivateData: Record<string, unknown> = {
+          contact_name: contact_name || prevData.contact_name || 'Cliente'
+        };
+        // Keep categoria and campaign_origin if set by campaign-broadcast
+        if (prevData.categoria) reactivateData.categoria = prevData.categoria;
+        if (prevData.campaign_origin) reactivateData.campaign_origin = prevData.campaign_origin;
+
         const { data: reactivatedConv } = await supabase
           .from('aline_conversations')
           .update({
             status: 'active',
             current_node: 'abertura',
             last_node: null,
-            collected_data: { contact_name: contact_name || existingConv.collected_data?.contact_name || 'Cliente' },
+            collected_data: reactivateData,
             last_message_at: new Date().toISOString(),
             followup_count: 0,
           })
@@ -654,7 +663,7 @@ serve(async (req) => {
           .select()
           .single();
         conversation = reactivatedConv;
-        console.log(`[ALINE-REPLY] Conversa reativada: id=${conversation.id}`);
+        console.log(`[ALINE-REPLY] Conversa reativada: id=${conversation.id}, categoria_preservada=${reactivateData.categoria || 'nenhuma'}`);
       } else {
         await supabase
           .from('aline_conversations')
