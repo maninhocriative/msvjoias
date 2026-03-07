@@ -379,8 +379,8 @@ serve(async (req) => {
     let messageForAline = messageContent;
     
     if (messageType === 'audio' && mediaUrl) {
-      console.log('[ZAPI-UNIFIED] 🎤 Transcrevendo áudio...');
-      
+      console.log(`[ZAPI-UNIFIED] 🎤 Transcrevendo áudio: ${mediaUrl.substring(0, 120)}...`);
+
       try {
         const transcribeEndpoint = `${supabaseUrl}/functions/v1/transcribe-audio`;
         const transcribeReq = await fetch(transcribeEndpoint, {
@@ -389,32 +389,48 @@ serve(async (req) => {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${supabaseKey}`,
           },
-          body: JSON.stringify({ audioUrl: mediaUrl }),
+          body: JSON.stringify({ audioUrl: mediaUrl, zapiMessageId }),
         });
 
-        if (transcribeReq.ok) {
-          const transcribeResult = await transcribeReq.json();
-          if (transcribeResult.transcription) {
-            messageForAline = transcribeResult.transcription;
-            console.log(`[ZAPI-UNIFIED] ✅ Transcrição: "${messageForAline.substring(0, 100)}..."`);
-            
-            // Atualizar a mensagem salva com a transcrição
-            await supabase
-              .from('messages')
-              .update({ content: `🎤 ${messageForAline}` })
-              .eq('conversation_id', conversationId)
-              .eq('zapi_message_id', zapiMessageId);
-              
-            // Atualizar last_message na conversa
-            await supabase
-              .from('conversations')
-              .update({ last_message: `🎤 ${messageForAline.substring(0, 80)}...` })
-              .eq('id', conversationId);
-          }
+        let transcribeResult: any = null;
+        try {
+          transcribeResult = await transcribeReq.json();
+        } catch {
+          transcribeResult = null;
+        }
+
+        const transcription = transcribeResult?.transcription?.trim();
+
+        if (transcribeReq.ok && transcription) {
+          messageForAline = transcription;
+          console.log(`[ZAPI-UNIFIED] ✅ Transcrição: "${messageForAline.substring(0, 100)}..."`);
         } else {
-          console.error('[ZAPI-UNIFIED] Erro na transcrição:', await transcribeReq.text());
+          console.error('[ZAPI-UNIFIED] Erro/sem transcrição no transcribe-audio:', {
+            status: transcribeReq.status,
+            body: transcribeResult,
+          });
           messageForAline = '[Áudio recebido]';
         }
+
+        const contentToSave = `🎤 ${messageForAline}`;
+
+        let updateQuery = supabase
+          .from('messages')
+          .update({ content: contentToSave })
+          .eq('conversation_id', conversationId);
+
+        if (zapiMessageId) {
+          updateQuery = updateQuery.eq('zapi_message_id', zapiMessageId);
+        } else {
+          updateQuery = updateQuery.eq('media_url', mediaUrl);
+        }
+
+        await updateQuery;
+
+        await supabase
+          .from('conversations')
+          .update({ last_message: contentToSave.substring(0, 90) })
+          .eq('id', conversationId);
       } catch (transcribeError) {
         console.error('[ZAPI-UNIFIED] Erro ao transcrever:', transcribeError);
         messageForAline = '[Áudio recebido]';
