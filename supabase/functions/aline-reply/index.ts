@@ -2601,6 +2601,96 @@ Vocês preferem retirar na nossa loja no Shopping Sumaúma ou receber em casa?`;
       })
       .eq('id', conversation.id);
 
+    // ========================================
+    // DETECÇÃO DE DATA DE RETORNO DO CLIENTE
+    // ========================================
+    try {
+      const datePatterns = [
+        // "dia X" ou "pro dia X"
+        { regex: /(?:pro |para o |no )?dia\s+(\d{1,2})/i, type: 'day' },
+        // "semana que vem", "próxima semana"
+        { regex: /(?:semana que vem|pr[oó]xima semana)/i, type: 'next_week' },
+        // "amanhã"
+        { regex: /amanh[aã]/i, type: 'tomorrow' },
+        // "segunda", "terça", etc.
+        { regex: /(?:pr[oó]xima?\s+)?(segunda|ter[cç]a|quarta|quinta|sexta|s[aá]bado|domingo)/i, type: 'weekday' },
+        // "depois de amanhã"
+        { regex: /depois\s+de\s+amanh[aã]/i, type: 'day_after_tomorrow' },
+        // "mês que vem", "próximo mês"
+        { regex: /(?:m[eê]s que vem|pr[oó]ximo m[eê]s)/i, type: 'next_month' },
+      ];
+
+      let callbackDate: Date | null = null;
+      const now = new Date();
+
+      for (const pattern of datePatterns) {
+        const match = normalizedMsg.match(pattern.regex);
+        if (!match) continue;
+
+        if (pattern.type === 'day') {
+          const day = parseInt(match[1]);
+          if (day >= 1 && day <= 31) {
+            callbackDate = new Date(now.getFullYear(), now.getMonth(), day);
+            // Se o dia já passou neste mês, agendar para o próximo
+            if (callbackDate <= now) {
+              callbackDate.setMonth(callbackDate.getMonth() + 1);
+            }
+          }
+        } else if (pattern.type === 'tomorrow') {
+          callbackDate = new Date(now);
+          callbackDate.setDate(callbackDate.getDate() + 1);
+        } else if (pattern.type === 'day_after_tomorrow') {
+          callbackDate = new Date(now);
+          callbackDate.setDate(callbackDate.getDate() + 2);
+        } else if (pattern.type === 'next_week') {
+          callbackDate = new Date(now);
+          callbackDate.setDate(callbackDate.getDate() + 7);
+        } else if (pattern.type === 'next_month') {
+          callbackDate = new Date(now);
+          callbackDate.setMonth(callbackDate.getMonth() + 1);
+        } else if (pattern.type === 'weekday') {
+          const dayMap: Record<string, number> = {
+            'domingo': 0, 'segunda': 1, 'terca': 2, 'terça': 2,
+            'quarta': 3, 'quinta': 4, 'sexta': 5, 'sabado': 6, 'sábado': 6,
+          };
+          const targetDay = dayMap[match[1]?.toLowerCase()] ?? -1;
+          if (targetDay >= 0) {
+            callbackDate = new Date(now);
+            const currentDay = callbackDate.getDay();
+            let daysAhead = targetDay - currentDay;
+            if (daysAhead <= 0) daysAhead += 7;
+            callbackDate.setDate(callbackDate.getDate() + daysAhead);
+          }
+        }
+        if (callbackDate) break;
+      }
+
+      if (callbackDate) {
+        const dateStr = callbackDate.toISOString().split('T')[0];
+        console.log(`[ALINE-REPLY] 📅 DATA DETECTADA! Agendando callback para ${dateStr} - ${phone}`);
+
+        await supabase.from('scheduled_callbacks').upsert({
+          phone,
+          callback_date: dateStr,
+          reason: `Cliente disse: "${message.substring(0, 150)}"`,
+          context: {
+            contact_name: contactName,
+            categoria: newCollectedData.categoria || null,
+            finalidade: newCollectedData.finalidade || null,
+            cor: newCollectedData.cor || null,
+            selected_product: newCollectedData.selected_product || null,
+            campaign_origin: newCollectedData.campaign_origin || null,
+          },
+          status: 'pending',
+        }, { onConflict: 'phone,callback_date' });
+
+        newCollectedData.callback_agendado = dateStr;
+        console.log(`[ALINE-REPLY] ✅ Callback agendado para ${dateStr}`);
+      }
+    } catch (dateErr) {
+      console.error(`[ALINE-REPLY] Erro ao detectar data:`, dateErr);
+    }
+
     // Salvar resposta da Aline
     // IMPORTANTE: Usar role 'aline' para consistência com dados históricos e follow-up
     const insertResult = await supabase.from('aline_messages').insert({
