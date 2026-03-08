@@ -98,3 +98,6 @@ verify_jwt = true
 
 [functions.send-offer-test]
 verify_jwt = false
+
+[functions.aline-scheduled-callback]
+verify_jwt = false
