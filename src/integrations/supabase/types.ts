@@ -918,6 +918,39 @@ export type Database = {
         }
         Relationships: []
       }
+      scheduled_callbacks: {
+        Row: {
+          callback_date: string
+          context: Json | null
+          created_at: string
+          executed_at: string | null
+          id: string
+          phone: string
+          reason: string | null
+          status: string
+        }
+        Insert: {
+          callback_date: string
+          context?: Json | null
+          created_at?: string
+          executed_at?: string | null
+          id?: string
+          phone: string
+          reason?: string | null
+          status?: string
+        }
+        Update: {
+          callback_date?: string
+          context?: Json | null
+          created_at?: string
+          executed_at?: string | null
+          id?: string
+          phone?: string
+          reason?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       seller_presence: {
         Row: {
           chat_started_at: string | null
