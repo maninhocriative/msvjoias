@@ -177,7 +177,7 @@ serve(async (req) => {
             if (alineConv) {
               const existingData = alineConv.collected_data || {};
               await supabase.from('aline_conversations').update({
-                collected_data: { ...existingData, categoria, campaign_origin: campaign_id },
+                collected_data: { ...existingData, categoria, campaign_origin: campaign_id, transfer_to_seller: transfer_to_seller },
                 status: 'active',
                 current_node: 'abertura',
                 followup_count: 0,
@@ -187,7 +187,7 @@ serve(async (req) => {
               await supabase.from('aline_conversations').insert({
                 phone,
                 current_node: 'abertura',
-                collected_data: { categoria, campaign_origin: campaign_id },
+                collected_data: { categoria, campaign_origin: campaign_id, transfer_to_seller: transfer_to_seller },
                 status: 'active',
               });
             }
