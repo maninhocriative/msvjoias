@@ -23,7 +23,7 @@ serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
-    const { campaign_id, message, video_url, dry_run = false, batch_size = 10, categoria = null } = await req.json();
+    const { campaign_id, message, video_url, dry_run = false, batch_size = 10, categoria = null, include_buyers = false, transfer_to_seller = false } = await req.json();
 
     if (!campaign_id || !message) {
       return new Response(
@@ -47,15 +47,18 @@ serve(async (req) => {
       );
     }
 
-    // 2. Get phones that already have orders (exclude buyers)
-    const { data: orders } = await supabase
-      .from('orders')
-      .select('customer_phone')
-      .in('status', ['completed', 'pending']);
+    // 2. Get phones that already have orders (exclude buyers unless include_buyers is true)
+    let buyerPhones = new Set<string>();
+    if (!include_buyers) {
+      const { data: orders } = await supabase
+        .from('orders')
+        .select('customer_phone')
+        .in('status', ['completed', 'pending']);
 
-    const buyerPhones = new Set(
-      (orders || []).map(o => o.customer_phone.replace(/\D/g, ''))
-    );
+      buyerPhones = new Set(
+        (orders || []).map(o => o.customer_phone.replace(/\D/g, ''))
+      );
+    }
 
     // 3. Get phones already sent in this campaign (deduplication)
     const { data: alreadySent } = await supabase
@@ -174,7 +177,7 @@ serve(async (req) => {
             if (alineConv) {
               const existingData = alineConv.collected_data || {};
               await supabase.from('aline_conversations').update({
-                collected_data: { ...existingData, categoria, campaign_origin: campaign_id },
+                collected_data: { ...existingData, categoria, campaign_origin: campaign_id, transfer_to_seller: transfer_to_seller },
                 status: 'active',
                 current_node: 'abertura',
                 followup_count: 0,
@@ -184,7 +187,7 @@ serve(async (req) => {
               await supabase.from('aline_conversations').insert({
                 phone,
                 current_node: 'abertura',
-                collected_data: { categoria, campaign_origin: campaign_id },
+                collected_data: { categoria, campaign_origin: campaign_id, transfer_to_seller: transfer_to_seller },
                 status: 'active',
               });
             }
