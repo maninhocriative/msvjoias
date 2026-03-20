@@ -574,7 +574,7 @@ const Chat = () => {
 
   // Timer para exibir duração da gravação
   useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
+    let interval: ReturnType<typeof setInterval> | null = null;
     if (isRecording && recordingStartTime) {
       interval = setInterval(() => {
         setRecordingDuration(Math.floor((Date.now() - recordingStartTime) / 1000));
