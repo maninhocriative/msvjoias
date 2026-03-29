@@ -33,6 +33,7 @@ import FollowupMonitor from "./pages/FollowupMonitor";
 import SellerMonitor from "./pages/SellerMonitor";
 import CampaignBroadcast from "./pages/CampaignBroadcast";
 import NotFound from "./pages/NotFound";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -50,6 +51,7 @@ const App = () => (
               <Route path="/docs" element={<PublicApiDocs />} />
               <Route path="/nomenclatura" element={<DatabaseNomenclature />} />
               <Route path="/fiqon-integration" element={<FiqonIntegrationText />} />
+              <Route path="/privacidade" element={<PrivacyPolicy />} />
               <Route element={<ProtectedRoute />}>
                 <Route element={<MainLayout />}>
                   <Route path="/" element={<Dashboard />} />
