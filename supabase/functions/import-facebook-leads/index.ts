@@ -131,8 +131,8 @@ Deno.serve(async (req) => {
   }
 
   const headers = Object.keys(rows[0]);
-  const phoneCol    = detectColumn(headers, ["phone","telefone","whatsapp","celular","mobile","fone","numero"]);
-  const nameCol     = detectColumn(headers, ["name","nome","fullname","contactname","cliente"]);
+  const phoneCol    = detectColumn(headers, ["telefone","phone","whatsapp","celular","mobile","fone","numero","phone_number"]);
+  const nameCol     = detectColumn(headers, ["nome_completo","nome","name","fullname","contactname","cliente","full_name"]);
   const campaignCol = detectColumn(headers, ["campaignname","campaign","campanha","adname","anuncio"]);
 
   const results = {
