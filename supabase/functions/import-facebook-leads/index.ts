@@ -7,7 +7,8 @@ const corsHeaders = {
 
 function normalizePhone(raw: string): string | null {
   if (!raw) return null;
-  let p = raw.replace(/\D/g, "");
+  let cleaned = raw.replace(/^p:/i, "").trim();
+  let p = cleaned.replace(/\D/g, "");
   if (p.length === 0) return null;
   p = p.replace(/^0+/, "");
   if (!p.startsWith("55") && p.length <= 11) p = "55" + p;
@@ -130,8 +131,8 @@ Deno.serve(async (req) => {
   }
 
   const headers = Object.keys(rows[0]);
-  const phoneCol    = detectColumn(headers, ["phone","telefone","whatsapp","celular","mobile","fone","numero"]);
-  const nameCol     = detectColumn(headers, ["name","nome","fullname","contactname","cliente"]);
+  const phoneCol    = detectColumn(headers, ["telefone","phone","whatsapp","celular","mobile","fone","numero","phone_number"]);
+  const nameCol     = detectColumn(headers, ["nome_completo","nome","name","fullname","contactname","cliente","full_name"]);
   const campaignCol = detectColumn(headers, ["campaignname","campaign","campanha","adname","anuncio"]);
 
   const results = {
