@@ -23,7 +23,8 @@ import {
   Globe,
   Sparkles,
   History,
-  Activity
+  Activity,
+  FileSpreadsheet
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
