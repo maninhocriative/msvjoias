@@ -75,6 +75,7 @@ const App = () => (
                   <Route path="/seller-monitor" element={<SellerMonitor />} />
                   <Route path="/pedidos/pendentes" element={<PendingOrders />} />
                   <Route path="/campaigns" element={<CampaignBroadcast />} />
+                  <Route path="/importar-leads" element={<ImportarLeads />} />
                 </Route>
               </Route>
               <Route path="*" element={<NotFound />} />

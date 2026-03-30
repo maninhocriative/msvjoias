@@ -58,6 +58,7 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
     { to: '/ai', label: 'IA', icon: Bot },
     { to: '/ai/config', label: 'Config. IA', icon: Sparkles },
     { to: '/ai/followups', label: 'Follow-ups', icon: History },
+    { to: '/importar-leads', label: 'Importar Leads', icon: FileSpreadsheet },
   ];
 
   const adminNavItems = [
