@@ -7,7 +7,8 @@ const corsHeaders = {
 
 function normalizePhone(raw: string): string | null {
   if (!raw) return null;
-  let p = raw.replace(/\D/g, "");
+  let cleaned = raw.replace(/^p:/i, "").trim();
+  let p = cleaned.replace(/\D/g, "");
   if (p.length === 0) return null;
   p = p.replace(/^0+/, "");
   if (!p.startsWith("55") && p.length <= 11) p = "55" + p;
