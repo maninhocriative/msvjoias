@@ -32,6 +32,7 @@ import PendingOrders from "./pages/PendingOrders";
 import FollowupMonitor from "./pages/FollowupMonitor";
 import SellerMonitor from "./pages/SellerMonitor";
 import CampaignBroadcast from "./pages/CampaignBroadcast";
+import ImportarLeads from "./pages/ImportarLeads";
 import NotFound from "./pages/NotFound";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 const queryClient = new QueryClient();
