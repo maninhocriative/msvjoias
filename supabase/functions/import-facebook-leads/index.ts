@@ -24,7 +24,7 @@ function normalizeName(raw: string): string {
 function detectColumn(headers: string[], candidates: string[]): string | null {
   for (const c of candidates) {
     const found = headers.find((h) =>
-      h.toLowerCase().replace(/[\s_\-]/g, "").includes(c.toLowerCase())
+      h.toLowerCase().replace(/[\s_\-]/g, "").includes(c.toLowerCase().replace(/[\s_\-]/g, ""))
     );
     if (found) return found;
   }
@@ -131,9 +131,14 @@ Deno.serve(async (req) => {
   }
 
   const headers = Object.keys(rows[0]);
-  const phoneCol    = detectColumn(headers, ["telefone","phone","whatsapp","celular","mobile","fone","numero","phone_number"]);
-  const nameCol     = detectColumn(headers, ["nome_completo","nome","name","fullname","contactname","cliente","full_name"]);
-  const campaignCol = detectColumn(headers, ["campaignname","campaign","campanha","adname","anuncio"]);
+  const phoneCol    = detectColumn(headers, ["telefone", "phone", "whatsapp", "celular", "mobile", "phone_number"]);
+  const nameCol     = detectColumn(headers, ["nome_completo", "nome", "name", "fullname", "full_name"]);
+  const campaignCol = detectColumn(headers, ["campaign_name", "campanha", "campaign", "adname"]);
+  const adNameCol   = detectColumn(headers, ["ad_name", "anuncio", "ad"]);
+  const whenCol     = detectColumn(headers, ["quando_pretende_comprar", "quando", "pretende_comprar"]);
+  const intentCol   = detectColumn(headers, ["o_migo", "intencao", "interesse"]);
+  const platformCol = detectColumn(headers, ["plataforma", "platform"]);
+  const formNameCol = detectColumn(headers, ["form_name", "formulario"]);
 
   const results = {
     total: rows.length,
@@ -141,6 +146,7 @@ Deno.serve(async (req) => {
     skipped: 0,
     errors: 0,
     details: [] as string[],
+    leads: [] as any[],
     ran_at: new Date().toISOString(),
   };
 
@@ -173,7 +179,9 @@ Deno.serve(async (req) => {
       contact_name:    name,
       platform:        "whatsapp",
       lead_status:     "novo",
-      last_message:    campaign ? `Lead via campanha: ${campaign}` : "Lead importado do Facebook Ads",
+      last_message:    campaign
+        ? `Lead via campanha: ${campaign}`
+        : "Lead importado do Facebook Ads",
       last_message_at: new Date().toISOString(),
       unread_count:    1,
     });
@@ -184,6 +192,17 @@ Deno.serve(async (req) => {
     } else {
       results.imported++;
       results.details.push(`OK: ${name} (${phone})`);
+      results.leads.push({
+        name,
+        phone,
+        campaign: campaignCol ? row[campaignCol] : "",
+        ad_name:  adNameCol   ? row[adNameCol]   : "",
+        when:     whenCol     ? row[whenCol]      : "",
+        intent:   intentCol   ? row[intentCol]    : "",
+        platform: platformCol ? row[platformCol]  : "",
+        form:     formNameCol ? row[formNameCol]  : "",
+        imported_at: new Date().toISOString(),
+      });
     }
   }
 
