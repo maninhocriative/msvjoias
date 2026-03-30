@@ -32,6 +32,7 @@ import PendingOrders from "./pages/PendingOrders";
 import FollowupMonitor from "./pages/FollowupMonitor";
 import SellerMonitor from "./pages/SellerMonitor";
 import CampaignBroadcast from "./pages/CampaignBroadcast";
+import ImportarLeads from "./pages/ImportarLeads";
 import NotFound from "./pages/NotFound";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 const queryClient = new QueryClient();
@@ -74,6 +75,7 @@ const App = () => (
                   <Route path="/seller-monitor" element={<SellerMonitor />} />
                   <Route path="/pedidos/pendentes" element={<PendingOrders />} />
                   <Route path="/campaigns" element={<CampaignBroadcast />} />
+                  <Route path="/importar-leads" element={<ImportarLeads />} />
                 </Route>
               </Route>
               <Route path="*" element={<NotFound />} />
