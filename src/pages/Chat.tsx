@@ -835,7 +835,7 @@ const Chat = () => {
     <div className="h-screen flex bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 overflow-hidden">
       {/* Sidebar de Conversas */}
       <div className={cn(
-        'w-full md:w-[380px] lg:w-[420px] flex flex-col shrink-0 bg-slate-900/80 backdrop-blur-xl border-r border-white/5',
+        'w-full md:w-[340px] lg:w-[380px] flex flex-col shrink-0 bg-slate-900/80 backdrop-blur-xl border-r border-white/5',
         selectedConversation && 'hidden md:flex'
       )}>
         {/* Header */}
@@ -933,47 +933,56 @@ const Chat = () => {
           </div>
         </div>
 
-        {/* Status Filter Pills */}
-        <div className="px-3 py-2 grid grid-cols-5 gap-1.5 border-b border-white/5">
-          {statusFilters.map(({ key, label, emoji }) => (
-            <button
-              key={key}
-              onClick={() => setFilterStatus(key)}
-              className={cn(
-                'px-2 py-2 rounded-lg text-[10px] font-medium transition-all flex flex-col items-center gap-0.5',
-                filterStatus === key 
-                  ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/25' 
-                  : 'bg-slate-800/50 text-slate-400 hover:bg-slate-700/50 hover:text-white'
-              )}
-            >
-              <span className="text-base">{emoji}</span>
-              <span className="truncate w-full text-center">{statusCounts[key]}</span>
-            </button>
-          ))}
-        </div>
+        {/* Filtros combinados: status + atendente */}
+        <div className="px-3 py-2 space-y-1.5 border-b border-white/5">
+          {/* Status — horizontal scroll pills */}
+          <div className="flex gap-1 overflow-x-auto scrollbar-none pb-0.5">
+            {statusFilters.map(({ key, label, emoji }) => (
+              <button
+                key={key}
+                onClick={() => setFilterStatus(key)}
+                className={cn(
+                  'flex-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all whitespace-nowrap',
+                  filterStatus === key
+                    ? 'bg-emerald-500 text-white'
+                    : 'bg-slate-800/60 text-slate-400 hover:text-white hover:bg-slate-700/60'
+                )}
+              >
+                <span className="text-sm leading-none">{emoji}</span>
+                <span>{label}</span>
+                <span className={cn(
+                  'text-[10px] px-1 rounded-md',
+                  filterStatus === key ? 'bg-emerald-600 text-emerald-100' : 'text-slate-600'
+                )}>
+                  {statusCounts[key]}
+                </span>
+              </button>
+            ))}
+          </div>
 
-        {/* Attendant Filter */}
-        <div className="px-3 py-2 flex gap-2 border-b border-white/5">
-          {attendantFilters.map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              onClick={() => setFilterAttendant(key)}
-              className={cn(
-                'flex-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5',
-                filterAttendant === key 
-                  ? key === 'aline' 
-                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                    : key === 'vendedor'
-                    ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                    : 'bg-slate-700 text-white border border-white/10'
-                  : 'bg-slate-800/50 text-slate-400 hover:bg-slate-700/50 hover:text-white border border-transparent'
-              )}
-            >
-              {Icon && <Icon className="w-3.5 h-3.5" />}
-              <span>{label}</span>
-              <span className="ml-1 text-[10px] opacity-70">({attendantCounts[key]})</span>
-            </button>
-          ))}
+          {/* Atendente */}
+          <div className="flex gap-1">
+            {attendantFilters.map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                onClick={() => setFilterAttendant(key)}
+                className={cn(
+                  'flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-all',
+                  filterAttendant === key
+                    ? key === 'aline'
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                      : key === 'vendedor'
+                      ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                      : 'bg-slate-700 text-white border border-white/10'
+                    : 'bg-slate-800/50 text-slate-500 hover:text-slate-300 border border-transparent'
+                )}
+              >
+                {Icon && <Icon className="w-3 h-3" />}
+                <span>{label}</span>
+                <span className="opacity-50">({attendantCounts[key]})</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Conversations List */}
@@ -1329,14 +1338,21 @@ const Chat = () => {
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center bg-slate-900/50">
-            <div className="text-center">
-              <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-emerald-500/20 to-cyan-500/20 flex items-center justify-center mx-auto mb-6">
-                <MessageCircle className="w-12 h-12 text-emerald-500" />
+          <div className="flex-1 flex items-center justify-center bg-[#0b141a]" style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.02'%3E%3Ccircle cx='30' cy='30' r='1'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`
+          }}>
+            <div className="text-center px-6">
+              <div className="relative w-20 h-20 mx-auto mb-6">
+                <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-emerald-500/15 to-cyan-500/15 border border-emerald-500/10 flex items-center justify-center">
+                  <MessageCircle className="w-9 h-9 text-emerald-500/60" />
+                </div>
+                <span className="absolute -top-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center">
+                  <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                </span>
               </div>
-              <h2 className="text-2xl font-bold text-white mb-2">Chat CRM</h2>
-              <p className="text-slate-400 max-w-sm">
-                Selecione uma conversa para começar a atender seus leads
+              <p className="text-base font-semibold text-slate-300 mb-1">Selecione uma conversa</p>
+              <p className="text-sm text-slate-600 max-w-[220px] mx-auto leading-relaxed">
+                Escolha um contato na lista para começar a atender
               </p>
             </div>
           </div>
