@@ -1,102 +1,107 @@
-import { useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { useLocation, NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { 
-  LayoutDashboard, 
-  MessageSquare, 
-  Package, 
-  Settings, 
-  LogOut, 
-  Users, 
-  BarChart3, 
-  Code, 
-  FileText, 
-  TestTube, 
-  UsersRound, 
-  Gift, 
-  Cog, 
-  Bot,
-  ChevronLeft,
-  ChevronRight,
-  ExternalLink,
-  ClipboardList,
-  Globe,
-  Sparkles,
-  History,
-  Activity,
-  FileSpreadsheet
+import {
+  LayoutDashboard, MessageSquare, Package, Settings, LogOut,
+  Users, BarChart3, FileText, TestTube, UsersRound, Gift,
+  Cog, Bot, ChevronLeft, ChevronRight, ExternalLink,
+  ClipboardList, Globe, Sparkles, History, Activity,
+  FileSpreadsheet, X,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
-import { Button } from '@/components/ui/button';
+
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Separator } from '@/components/ui/separator';
 
 interface AppSidebarProps {
   collapsed: boolean;
   onToggle: () => void;
+  onMobileClose: () => void;
 }
 
-const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
+// Grupos de navegação
+const NAV_GROUPS = [
+  {
+    id: 'main',
+    label: null, // sem cabeçalho no primeiro grupo
+    items: [
+      { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+      { to: '/chat', label: 'Chat', icon: MessageSquare },
+    ],
+  },
+  {
+    id: 'commerce',
+    label: 'Vendas',
+    items: [
+      { to: '/products', label: 'Produtos', icon: Package },
+      { to: '/customers', label: 'Clientes', icon: UsersRound },
+      { to: '/offers', label: 'Ofertas', icon: Gift },
+      { to: '/pedidos/pendentes', label: 'Pedidos', icon: ClipboardList },
+      { to: '/reports', label: 'Relatórios', icon: BarChart3 },
+      { to: '/seller-monitor', label: 'Monitor Vendedores', icon: Activity },
+      { to: '/importar-leads', label: 'Importar Leads', icon: FileSpreadsheet },
+    ],
+  },
+  {
+    id: 'ai',
+    label: 'Inteligência',
+    items: [
+      { to: '/ai', label: 'IA', icon: Bot },
+      { to: '/ai/config', label: 'Config. IA', icon: Sparkles },
+      { to: '/ai/followups', label: 'Follow-ups', icon: History },
+    ],
+  },
+] as const;
+
+// Itens apenas admin
+const ADMIN_ITEMS = [
+  { to: '/users', label: 'Usuários', icon: Users },
+] as const;
+
+// Itens de API (admin/gerente)
+const API_ITEMS = [
+  { to: '/api-docs', label: 'Documentação', icon: FileText },
+  { to: '/docs', label: 'Doc. Pública', icon: Globe },
+  { to: '/webhook-tester', label: 'Webhook Tester', icon: TestTube },
+] as const;
+
+// Configurações
+const SETTINGS_ITEMS = [
+  { to: '/settings', label: 'Configurações', icon: Settings },
+  { to: '/store-settings', label: 'Config. Loja', icon: Cog },
+] as const;
+
+const ROLE_LABELS: Record<string, string> = {
+  admin: 'Admin',
+  gerente: 'Gerente',
+  vendedor: 'Vendedor',
+};
+
+const AppSidebar = ({ collapsed, onToggle, onMobileClose }: AppSidebarProps) => {
   const { user, profile, signOut } = useAuth();
-  const { isAdmin, role } = useUserRole();
+  const { isAdmin, isGerente } = useUserRole();
+  const { role } = useUserRole();
   const location = useLocation();
 
   const displayName = profile?.full_name || user?.email?.split('@')[0] || 'Usuário';
-  const initials = displayName.charAt(0).toUpperCase();
-
-  const mainNavItems = [
-    { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-    { to: '/chat', label: 'Chat', icon: MessageSquare },
-    { to: '/products', label: 'Produtos', icon: Package },
-    { to: '/customers', label: 'Clientes', icon: UsersRound },
-    { to: '/offers', label: 'Ofertas', icon: Gift },
-    { to: '/pedidos/pendentes', label: 'Pedidos', icon: ClipboardList },
-    { to: '/reports', label: 'Relatórios', icon: BarChart3 },
-    { to: '/seller-monitor', label: 'Monitor Vendedores', icon: Activity },
-    { to: '/ai', label: 'IA', icon: Bot },
-    { to: '/ai/config', label: 'Config. IA', icon: Sparkles },
-    { to: '/ai/followups', label: 'Follow-ups', icon: History },
-    { to: '/importar-leads', label: 'Importar Leads', icon: FileSpreadsheet },
-  ];
-
-  const adminNavItems = [
-    { to: '/users', label: 'Usuários', icon: Users },
-  ];
-
-  const apiNavItems = [
-    { to: '/api-docs', label: 'Documentação', icon: FileText },
-    { to: '/docs', label: 'Doc. Pública', icon: Globe },
-    { to: '/webhook-tester', label: 'Webhook Tester', icon: TestTube },
-  ];
-
-  const settingsNavItems = [
-    { to: '/settings', label: 'Configurações', icon: Settings },
-    { to: '/store-settings', label: 'Config. Loja', icon: Cog },
-  ];
-
-  const roleLabels: Record<string, string> = {
-    admin: 'Admin',
-    gerente: 'Gerente',
-    vendedor: 'Vendedor',
-  };
+  const initials = displayName.split(' ').map((n: string) => n[0]).slice(0, 2).join('').toUpperCase();
 
   const NavItem = ({ to, label, icon: Icon }: { to: string; label: string; icon: any }) => {
-    const isActive = location.pathname === to;
-    
-    const content = (
+    const isActive = location.pathname === to || (to !== '/' && location.pathname.startsWith(to));
+
+    const inner = (
       <NavLink
         to={to}
+        onClick={onMobileClose}
         className={cn(
-          'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
+          'flex items-center gap-2.5 rounded-lg text-sm font-medium transition-all duration-150',
+          collapsed ? 'justify-center p-2.5' : 'px-3 py-2',
           isActive
             ? 'bg-foreground text-background'
-            : 'text-muted-foreground hover:text-foreground hover:bg-muted',
-          collapsed && 'justify-center px-2'
+            : 'text-muted-foreground hover:text-foreground hover:bg-muted/70',
         )}
       >
-        <Icon className={cn('shrink-0', collapsed ? 'w-5 h-5' : 'w-4 h-4')} />
+        <Icon className="w-4 h-4 shrink-0" />
         {!collapsed && <span className="truncate">{label}</span>}
       </NavLink>
     );
@@ -104,155 +109,176 @@ const AppSidebar = ({ collapsed, onToggle }: AppSidebarProps) => {
     if (collapsed) {
       return (
         <Tooltip delayDuration={0}>
-          <TooltipTrigger asChild>{content}</TooltipTrigger>
-          <TooltipContent side="right" className="font-medium">
-            {label}
-          </TooltipContent>
+          <TooltipTrigger asChild>{inner}</TooltipTrigger>
+          <TooltipContent side="right" className="font-medium text-xs">{label}</TooltipContent>
         </Tooltip>
       );
     }
+    return inner;
+  };
 
-    return content;
+  const SectionLabel = ({ label }: { label: string }) => {
+    if (collapsed) return <div className="h-px bg-border mx-2 my-2" />;
+    return (
+      <p className="px-3 pt-4 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 select-none">
+        {label}
+      </p>
+    );
   };
 
   return (
     <aside
       className={cn(
-        'h-screen bg-sidebar-background border-r border-sidebar-border flex flex-col transition-all duration-300 shrink-0',
-        collapsed ? 'w-[68px]' : 'w-64'
+        'h-screen bg-sidebar-background border-r border-sidebar-border flex flex-col shrink-0 transition-all duration-300',
+        collapsed ? 'w-[60px]' : 'w-56',
       )}
     >
-      {/* Logo & Toggle */}
+      {/* Logo + toggle */}
       <div className={cn(
-        'h-16 flex items-center border-b border-sidebar-border shrink-0',
-        collapsed ? 'justify-center px-2' : 'justify-between px-4'
+        'h-14 flex items-center border-b border-sidebar-border shrink-0',
+        collapsed ? 'justify-center px-2' : 'justify-between px-3',
       )}>
         {!collapsed && (
-          <span className="text-lg font-semibold tracking-[0.2em] text-sidebar-foreground">
+          <span className="text-sm font-bold tracking-[0.25em] text-sidebar-foreground select-none">
             MSV
           </span>
         )}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onToggle}
-          className="h-8 w-8 text-sidebar-foreground hover:bg-sidebar-accent"
-        >
-          {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-        </Button>
+        <div className="flex items-center gap-1">
+          {/* Botão fechar mobile */}
+          <button
+            onClick={onMobileClose}
+            className="lg:hidden p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+          {/* Botão collapse desktop */}
+          <button
+            onClick={onToggle}
+            className="hidden lg:flex p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            {collapsed
+              ? <ChevronRight className="w-3.5 h-3.5" />
+              : <ChevronLeft className="w-3.5 h-3.5" />}
+          </button>
+        </div>
       </div>
 
-      {/* Navigation */}
-      <ScrollArea className="flex-1 py-4">
-        <nav className={cn('space-y-1', collapsed ? 'px-2' : 'px-3')}>
-          {/* Main Navigation */}
-          {mainNavItems.map((item) => (
-            <NavItem key={item.to} {...item} />
-          ))}
+      {/* Nav */}
+      <ScrollArea className="flex-1">
+        <nav className={cn('py-3', collapsed ? 'px-1.5 space-y-0.5' : 'px-2 space-y-0.5')}>
 
-          {/* Admin Items */}
-          {isAdmin && adminNavItems.map((item) => (
-            <NavItem key={item.to} {...item} />
-          ))}
-
-          {!collapsed && (
-            <div className="pt-4 pb-2">
-              <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                API
-              </p>
+          {/* Grupos principais */}
+          {NAV_GROUPS.map((group) => (
+            <div key={group.id}>
+              {group.label && <SectionLabel label={group.label} />}
+              {group.items.map((item) => (
+                <NavItem key={item.to} {...item} />
+              ))}
             </div>
-          )}
-          {collapsed && <Separator className="my-3" />}
-
-          {apiNavItems.map((item) => (
-            <NavItem key={item.to} {...item} />
           ))}
 
-          {!collapsed ? (
-            <a
-              href="https://supabase.com/dashboard/project/ahbjwpkpxqqrpvpzmqwa/functions"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-all duration-200"
-            >
-              <ExternalLink className="w-4 h-4 shrink-0" />
-              <span className="truncate">Logs</span>
-            </a>
-          ) : (
-            <Tooltip delayDuration={0}>
-              <TooltipTrigger asChild>
+          {/* Admin: Usuários */}
+          {isAdmin && (
+            <>
+              <SectionLabel label="Admin" />
+              {ADMIN_ITEMS.map((item) => (
+                <NavItem key={item.to} {...item} />
+              ))}
+            </>
+          )}
+
+          {/* API — só admin e gerente */}
+          {(isAdmin || isGerente) && (
+            <>
+              <SectionLabel label="API" />
+              {API_ITEMS.map((item) => (
+                <NavItem key={item.to} {...item} />
+              ))}
+              {/* Logs externos */}
+              {collapsed ? (
+                <Tooltip delayDuration={0}>
+                  <TooltipTrigger asChild>
+                    <a
+                      href="https://supabase.com/dashboard/project/ahbjwpkpxqqrpvpzmqwa/functions"
+                      target="_blank" rel="noopener noreferrer"
+                      className="flex items-center justify-center p-2.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/70 transition-all"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="font-medium text-xs">Logs (Supabase)</TooltipContent>
+                </Tooltip>
+              ) : (
                 <a
                   href="https://supabase.com/dashboard/project/ahbjwpkpxqqrpvpzmqwa/functions"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center px-2 py-2.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-all duration-200"
+                  target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/70 transition-all"
                 >
-                  <ExternalLink className="w-5 h-5" />
+                  <ExternalLink className="w-4 h-4 shrink-0" />
+                  <span className="truncate">Logs</span>
                 </a>
-              </TooltipTrigger>
-              <TooltipContent side="right" className="font-medium">
-                Logs (Supabase)
-              </TooltipContent>
-            </Tooltip>
+              )}
+            </>
           )}
 
-          {!collapsed && (
-            <div className="pt-4 pb-2">
-              <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Configurações
-              </p>
-            </div>
-          )}
-          {collapsed && <Separator className="my-3" />}
-
-          {settingsNavItems.map((item) => (
+          {/* Configurações */}
+          <SectionLabel label="Config." />
+          {SETTINGS_ITEMS.map((item) => (
             <NavItem key={item.to} {...item} />
           ))}
         </nav>
       </ScrollArea>
 
-      {/* User Section */}
+      {/* Footer: usuário + sair */}
       <div className={cn(
-        'border-t border-sidebar-border p-3',
-        collapsed && 'flex flex-col items-center'
+        'border-t border-sidebar-border shrink-0',
+        collapsed ? 'p-2 flex flex-col items-center gap-1' : 'p-2',
       )}>
-        {!collapsed ? (
-          <div className="flex items-center gap-3 mb-3 px-2">
-            <div className="w-9 h-9 rounded-full bg-sidebar-primary text-sidebar-primary-foreground flex items-center justify-center text-sm font-semibold shrink-0">
+        {collapsed ? (
+          <>
+            <Tooltip delayDuration={0}>
+              <TooltipTrigger asChild>
+                <div className="w-8 h-8 rounded-full bg-foreground text-background flex items-center justify-center text-xs font-bold cursor-default select-none">
+                  {initials}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                <p className="font-medium text-xs">{displayName}</p>
+                {role && <p className="text-[10px] text-muted-foreground">{ROLE_LABELS[role]}</p>}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip delayDuration={0}>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={signOut}
+                  className="p-2 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-all"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="text-xs">Sair</TooltipContent>
+            </Tooltip>
+          </>
+        ) : (
+          <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg">
+            <div className="w-7 h-7 rounded-full bg-foreground text-background flex items-center justify-center text-[11px] font-bold shrink-0 select-none">
               {initials}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-sidebar-foreground truncate">{displayName}</p>
+              <p className="text-xs font-medium text-foreground truncate">{displayName}</p>
               {role && (
-                <p className="text-[10px] text-muted-foreground">{roleLabels[role]}</p>
+                <p className="text-[10px] text-muted-foreground leading-tight">{ROLE_LABELS[role]}</p>
               )}
             </div>
+            <button
+              onClick={signOut}
+              className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-all shrink-0"
+              title="Sair"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
           </div>
-        ) : (
-          <Tooltip delayDuration={0}>
-            <TooltipTrigger asChild>
-              <div className="w-9 h-9 rounded-full bg-sidebar-primary text-sidebar-primary-foreground flex items-center justify-center text-sm font-semibold mb-2">
-                {initials}
-              </div>
-            </TooltipTrigger>
-            <TooltipContent side="right" className="font-medium">
-              {displayName}
-              {role && <span className="block text-xs text-muted-foreground">{roleLabels[role]}</span>}
-            </TooltipContent>
-          </Tooltip>
         )}
-
-        <Button
-          variant="ghost"
-          onClick={signOut}
-          className={cn(
-            'w-full text-destructive hover:text-destructive hover:bg-destructive/10',
-            collapsed ? 'px-2 justify-center' : 'justify-start gap-3'
-          )}
-        >
-          <LogOut className={cn(collapsed ? 'w-5 h-5' : 'w-4 h-4')} />
-          {!collapsed && <span>Sair</span>}
-        </Button>
       </div>
     </aside>
   );
