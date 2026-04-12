@@ -445,8 +445,7 @@ const Chat = () => {
 
       {/* ── Painel esquerdo: lista de conversas ──────────────────────────── */}
       <div className={cn(
-        'flex flex-col shrink-0 border-r border-white/5 bg-slate-950',
-        // Mobile: ocupa tudo quando sem conversa selecionada, some quando tem
+        'flex flex-col shrink-0 border-r border-white/5 bg-slate-950 overflow-hidden',
         'w-full md:w-[320px] lg:w-[360px]',
         selectedConversation ? 'hidden md:flex' : 'flex',
       )}>
@@ -524,15 +523,15 @@ const Chat = () => {
         </div>
 
         {/* Filtros */}
-        <div className="px-3 py-2 border-b border-white/5 space-y-2 shrink-0">
+        <div className="px-3 py-2 border-b border-white/5 space-y-2 shrink-0 overflow-hidden">
           {/* Status — scroll horizontal sem scrollbar */}
-          <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
+          <div className="-mx-3 px-3 flex gap-1.5 overflow-x-auto scrollbar-hide">
             {statusFilters.map(({ key, label, color }) => (
               <button
                 key={key}
                 onClick={() => setFilterStatus(key)}
                 className={cn(
-                  'flex-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all',
+                  'flex-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all whitespace-nowrap',
                   filterStatus === key
                     ? 'bg-emerald-500 text-white'
                     : 'bg-slate-800/50 text-slate-500 hover:text-slate-300',
@@ -558,7 +557,7 @@ const Chat = () => {
                 key={key}
                 onClick={() => setFilterAttendant(key)}
                 className={cn(
-                  'flex-1 py-1 rounded-lg text-[11px] font-medium transition-all',
+                  'flex-1 py-1 rounded-lg text-[11px] font-medium transition-all truncate',
                   filterAttendant === key
                     ? key === 'aline' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                       : key === 'vendedor' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
