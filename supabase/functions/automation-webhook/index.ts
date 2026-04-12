@@ -252,6 +252,26 @@ serve(async (req) => {
       console.log('Nova conversa:', conversationId)
     }
 
+    // DEDUPLICACAO: Verificar se mensagem ja existe nos ultimos 2 minutos
+    // Evita duplicacao quando zapi-unified e automation-webhook recebem o mesmo evento
+    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString()
+    const { data: existingMsg } = await supabase
+      .from('messages')
+      .select('id')
+      .eq('conversation_id', conversationId)
+      .eq('is_from_me', isFromMe)
+      .eq('content', messageContent)
+      .gte('created_at', twoMinutesAgo)
+      .maybeSingle()
+
+    if (existingMsg) {
+      console.log('[AUTOMATION-WEBHOOK] Mensagem duplicada detectada, ignorando:', existingMsg.id)
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'duplicate' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      })
+    }
+
     // Salvar mensagem
     const { error: msgError } = await supabase
       .from('messages')
@@ -272,8 +292,11 @@ serve(async (req) => {
 
     console.log('Mensagem salva! isFromMe:', isFromMe, 'tipo:', messageType)
 
-    // Chamar Aline para processar mensagens de clientes (não enviadas por nós)
-    if (!isFromMe && messageContent) {
+    // Chamar Aline APENAS se zapi-unified nao estiver ativo (evita dupla chamada)
+    // zapi-unified ja chama aline-reply diretamente com deduplicacao via processed_messages
+    // automation-webhook so chama aline quando recebe do Fiqon (sem zapi_message_id)
+    const veioDoFiqon = !payload.messageId && !payload.zaapId && !(payload.text?.messageId)
+    if (!isFromMe && messageContent && veioDoFiqon) {
       const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
       const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
       
