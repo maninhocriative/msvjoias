@@ -3,21 +3,18 @@ import { Outlet } from 'react-router-dom';
 import AppSidebar from './AppSidebar';
 
 const MainLayout = () => {
-  // Desktop: começa expandido. Mobile: começa fechado.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window !== 'undefined' && window.innerWidth < 1024) return true;
     const saved = localStorage.getItem('sidebar-collapsed');
     return saved ? JSON.parse(saved) : false;
   });
 
-  // Mobile overlay aberto separado do collapsed
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     localStorage.setItem('sidebar-collapsed', JSON.stringify(sidebarCollapsed));
   }, [sidebarCollapsed]);
 
-  // Fecha overlay mobile ao redimensionar para desktop
   useEffect(() => {
     const onResize = () => {
       if (window.innerWidth >= 1024) setMobileOpen(false);
@@ -27,48 +24,55 @@ const MainLayout = () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background flex w-full">
+    <div className="h-screen bg-background flex overflow-hidden w-full">
 
-      {/* Overlay mobile */}
+      {/* Overlay escuro no mobile */}
       {mobileOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          className="fixed inset-0 z-40 bg-black/60 lg:hidden"
           onClick={() => setMobileOpen(false)}
         />
       )}
 
-      {/* Sidebar — desktop sempre visível, mobile overlay */}
-      <div className={[
-        'fixed inset-y-0 left-0 z-50 lg:relative lg:z-auto lg:flex',
-        'transition-transform duration-300',
-        mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
-      ].join(' ')}>
+      {/* Sidebar desktop — sempre no flow, nunca fixed */}
+      <div className="hidden lg:flex h-screen shrink-0">
         <AppSidebar
           collapsed={sidebarCollapsed}
-          onToggle={() => setSidebarCollapsed(p => !p)}
+          onToggle={() => setSidebarCollapsed((p: boolean) => !p)}
           onMobileClose={() => setMobileOpen(false)}
         />
       </div>
 
-      {/* Main content */}
-      <main className="flex-1 min-w-0 overflow-auto flex flex-col">
-        {/* Mobile topbar */}
-        <div className="lg:hidden flex items-center gap-3 h-14 px-4 border-b border-border bg-background shrink-0">
+      {/* Sidebar mobile — overlay fixed */}
+      <div className={[
+        'fixed inset-y-0 left-0 z-50 lg:hidden',
+        'transition-transform duration-300 ease-in-out',
+        mobileOpen ? 'translate-x-0' : '-translate-x-full',
+      ].join(' ')}>
+        <AppSidebar
+          collapsed={false}
+          onToggle={() => {}}
+          onMobileClose={() => setMobileOpen(false)}
+        />
+      </div>
+
+      {/* Conteúdo principal */}
+      <main className="flex-1 min-w-0 h-screen overflow-y-auto overflow-x-hidden flex flex-col">
+        {/* Topbar mobile */}
+        <div className="lg:hidden flex items-center gap-3 h-12 px-4 border-b border-border bg-background shrink-0 sticky top-0 z-30">
           <button
             onClick={() => setMobileOpen(true)}
             className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             aria-label="Abrir menu"
           >
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <path d="M2 4.5h14M2 9h14M2 13.5h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M1.5 4h13M1.5 8h13M1.5 12h13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
           </button>
-          <span className="text-base font-semibold tracking-[0.15em] text-foreground">MSV</span>
+          <span className="text-sm font-bold tracking-[0.2em] text-foreground">MSV</span>
         </div>
 
-        <div className="flex-1 min-h-0">
-          <Outlet />
-        </div>
+        <Outlet />
       </main>
     </div>
   );
