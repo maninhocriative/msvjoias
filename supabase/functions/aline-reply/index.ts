@@ -1129,40 +1129,43 @@ serve(async (req) => {
     }
     
     // Detectar COR em qualquer mensagem
+    // CRITICO: Permitir MUDANCA de cor quando cliente pede explicitamente
     const detectedFinalidade = newCollectedData.finalidade;
     const canDetectColor = detectedCategoria === 'pingente' || detectedCategoria === 'aneis' || (detectedCategoria === 'aliancas' && detectedFinalidade);
-    
-    if (!hasCor && (canDetectColor || !detectedCategoria)) {
+
+    // Detectar se cliente esta TROCANDO de cor explicitamente
+    const clientePedeCorExplicita = /quero\s*(ver\s*)?(a\s*)?(dourada|dourado|prata|preta|preto|azul|rose)|ver\s*(a\s*)?(dourada|prata|preta|azul|rose)|prefer.*\s*(dourada|prata|preta|azul)|me\s*mostra\s*(dourada|prata|preta|azul)/i.test(normalizedMsg);
+    const podeAtualizarCor = !hasCor || clientePedeCorExplicita;
+
+    if (podeAtualizarCor && (canDetectColor || !detectedCategoria)) {
+      let novaCor: string | null = null;
       if (/dourada|dourado|ouro|gold|amarela|amarelo/i.test(normalizedMsg)) {
-        newCollectedData.cor = 'dourada';
-        console.log(`[ALINE-REPLY] [NLU] Cor: dourada`);
-        // Se já tem categoria, forçar catálogo
-        if (detectedCategoria) {
-          newCollectedData.quer_ver_catalogo = true;
-        }
-      } else if (/prata|prateada|prateado|aço|aco|silver|cinza/i.test(normalizedMsg)) {
-        newCollectedData.cor = 'prata';
-        console.log(`[ALINE-REPLY] [NLU] Cor: prata`);
-        if (detectedCategoria) {
-          newCollectedData.quer_ver_catalogo = true;
-        }
+        novaCor = 'dourada';
+      } else if (/prata|prateada|prateado|aco|silver|cinza/i.test(normalizedMsg)) {
+        novaCor = 'prata';
       } else if (/preta|preto|black|escura|escuro/i.test(normalizedMsg)) {
-        newCollectedData.cor = 'preta';
-        console.log(`[ALINE-REPLY] [NLU] Cor: preta`);
-        if (detectedCategoria) {
-          newCollectedData.quer_ver_catalogo = true;
-        }
+        novaCor = 'preta';
       } else if (/azul|blue/i.test(normalizedMsg)) {
-        newCollectedData.cor = 'azul';
-        console.log(`[ALINE-REPLY] [NLU] Cor: azul`);
+        novaCor = 'azul';
+      } else if (/rose|rosa/i.test(normalizedMsg)) {
+        novaCor = 'rose';
+      }
+
+      if (novaCor) {
+        const corAnterior = newCollectedData.cor as string | undefined;
+        newCollectedData.cor = novaCor;
+        console.log(`[ALINE-REPLY] [NLU] Cor: ${novaCor}${corAnterior && corAnterior !== novaCor ? ` (mudou de ${corAnterior})` : ''}`);
         if (detectedCategoria) {
           newCollectedData.quer_ver_catalogo = true;
-        }
-      } else if (/rose|rosé|rosa/i.test(normalizedMsg)) {
-        newCollectedData.cor = 'rose';
-        console.log(`[ALINE-REPLY] [NLU] Cor: rose`);
-        if (detectedCategoria) {
-          newCollectedData.quer_ver_catalogo = true;
+          // Se mudou de cor, limpar produto e cores anteriores
+          if (corAnterior && corAnterior !== novaCor) {
+            delete newCollectedData.selected_sku;
+            delete newCollectedData.selected_name;
+            delete newCollectedData.selected_price;
+            delete newCollectedData.selected_product;
+            delete newCollectedData.cores_mostradas;
+            console.log(`[ALINE-REPLY] [NLU] Cor mudou ${corAnterior} -> ${novaCor}, produto resetado`);
+          }
         }
       }
     }
@@ -2060,6 +2063,10 @@ Vocês preferem retirar na nossa loja no Shopping Sumaúma ou receber em casa?`;
     let cleanMessage = responseText
       .replace(/#node:\s*\w+/gi, "")
       .replace(/\[SYSTEM_ACTION[^\]]*\]/gi, "")
+      // Remover markdown de imagem que a IA gera erroneamente: ![texto](url)
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+      // Remover links markdown: [texto](url)
+      .replace(/\[[^\]]+\]\(https?:\/\/[^)]+\)/g, "")
       .trim();
 
     // Remover linhas duplicadas
