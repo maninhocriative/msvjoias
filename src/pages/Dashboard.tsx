@@ -3,12 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Package, MessageSquare, TrendingUp, Users, RefreshCw, Clock,
   Bot, ShoppingBag, Timer, Send, CheckCircle2, AlertCircle,
-  ArrowRight, Phone, BarChart3, ArrowUpRight, Activity
+  ArrowRight, Phone, BarChart3, ArrowUpRight
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatDistanceToNow, format, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -21,54 +20,29 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface DashboardStats {
-  totalProducts: number;
-  activeConversations: number;
-  totalStock: number;
-  totalCustomers: number;
-  alineOrders: number;
-  activeFollowups: number;
+  totalProducts: number; activeConversations: number; totalStock: number;
+  totalCustomers: number; alineOrders: number; activeFollowups: number;
   ordersForwardedToAcium: number;
 }
 interface WaitingConversation {
-  id: string;
-  contact_name: string | null;
-  contact_number: string;
-  platform: string | null;
-  last_message: string | null;
-  waiting_since: Date;
-  waiting_seconds: number;
+  id: string; contact_name: string | null; contact_number: string;
+  platform: string | null; last_message: string | null;
+  waiting_since: Date; waiting_seconds: number;
 }
 interface AlineOrder {
-  id: string;
-  customer_name: string | null;
-  customer_phone: string;
-  selected_name: string | null;
-  selected_sku: string | null;
-  total_price: number;
-  status: string;
-  created_at: string;
+  id: string; customer_name: string | null; customer_phone: string;
+  selected_name: string | null; selected_sku: string | null;
+  total_price: number; status: string; created_at: string;
 }
 interface ConversionData {
-  followup_count: number;
-  total: number;
-  converted: number;
-  conversionRate: number;
+  followup_count: number; total: number; converted: number; conversionRate: number;
 }
 interface FollowupConversation {
-  id: string;
-  phone: string;
-  status: string;
-  followup_count: number;
-  last_message_at: string | null;
-  created_at: string | null;
-  current_node: string;
+  id: string; phone: string; status: string; followup_count: number;
+  last_message_at: string | null; created_at: string | null; current_node: string;
 }
 interface DailyOrderData {
-  date: string;
-  dateLabel: string;
-  total: number;
-  aline: number;
-  forwarded: number;
+  date: string; dateLabel: string; total: number; aline: number; forwarded: number;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -79,57 +53,55 @@ const PERIOD_OPTIONS = [
   { value: 7, label: '7d' }, { value: 15, label: '15d' }, { value: 30, label: '30d' },
 ];
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Chart Tooltip ────────────────────────────────────────────────────────────
 const ChartTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
   return (
     <div className="bg-card border border-border rounded-lg px-3 py-2 text-xs shadow-lg">
-      <p className="font-medium text-foreground mb-1">{label}</p>
+      <p className="font-medium text-foreground mb-1.5">{label}</p>
       {payload.map((p: any) => (
-        <div key={p.dataKey} className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full inline-block" style={{ background: p.color }} />
+        <div key={p.dataKey} className="flex items-center gap-2 py-0.5">
+          <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.color }} />
           <span className="text-muted-foreground">{p.name}:</span>
-          <span className="font-medium text-foreground">{p.value}</span>
+          <span className="font-semibold text-foreground ml-auto pl-3">{p.value}</span>
         </div>
       ))}
     </div>
   );
 };
 
+// ─── Stat Card — sem caixinha, ícone pequeno inline com label ─────────────────
 const StatCard = ({
-  label, value, icon: Icon, color, bgColor, highlight, onClick
+  label, value, icon: Icon, accent, onClick,
 }: {
-  label: string; value: number | string; icon: React.ElementType;
-  color: string; bgColor: string; highlight?: boolean; onClick?: () => void;
+  label: string; value: number; icon: React.ElementType;
+  accent: string; onClick?: () => void;
 }) => (
-  <Card
-    className={`border-border bg-card transition-all duration-200 hover:shadow-md ${highlight ? 'ring-1 ring-amber-500/30' : ''} ${onClick ? 'cursor-pointer' : ''}`}
+  <div
     onClick={onClick}
+    className={`bg-card border border-border rounded-xl p-4 transition-all duration-150 ${onClick ? 'cursor-pointer hover:bg-muted/30 active:scale-[0.98]' : ''}`}
   >
-    <CardContent className="p-4">
-      <div className="flex items-start justify-between">
-        <div className="space-y-0.5">
-          <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">{label}</p>
-          <p className="text-2xl font-bold text-foreground tabular-nums leading-none mt-1">
-            {typeof value === 'number' ? value.toLocaleString('pt-BR') : value}
-          </p>
-        </div>
-        <div className={`p-2.5 rounded-xl ${bgColor} shrink-0`}>
-          <Icon className={`w-4 h-4 ${color}`} />
-        </div>
-      </div>
-    </CardContent>
-  </Card>
+    <div className="flex items-center gap-1.5 mb-2">
+      <Icon className={`w-3.5 h-3.5 shrink-0 ${accent}`} />
+      <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide truncate">{label}</span>
+    </div>
+    <p className="text-2xl font-bold text-foreground tabular-nums leading-none">
+      {value.toLocaleString('pt-BR')}
+    </p>
+  </div>
 );
 
+// ─── Period Selector ──────────────────────────────────────────────────────────
 const PeriodSelector = ({ value, onChange }: { value: number; onChange: (v: number) => void }) => (
-  <div className="flex rounded-md border border-border overflow-hidden">
+  <div className="flex rounded-lg border border-border overflow-hidden shrink-0">
     {PERIOD_OPTIONS.map((o) => (
       <button
         key={o.value}
         onClick={() => onChange(o.value)}
-        className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
-          value === o.value ? 'bg-foreground text-background' : 'bg-transparent text-muted-foreground hover:bg-muted'
+        className={`px-2.5 py-1 text-[11px] font-medium transition-all ${
+          value === o.value
+            ? 'bg-foreground text-background'
+            : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
         }`}
       >
         {o.label}
@@ -155,11 +127,9 @@ const Dashboard = () => {
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [chartPeriod, setChartPeriod] = useState(7);
   const [conversionPeriod, setConversionPeriod] = useState(7);
-
-  // Debounce ref: evita re-fetch a cada msg do realtime
   const realtimeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Timer de 1s só para os contadores de espera
+  // Tick a cada 1s só para os contadores de espera
   useEffect(() => {
     const t = setInterval(() => setCurrentTime(Date.now()), 1000);
     return () => clearInterval(t);
@@ -179,11 +149,14 @@ const Dashboard = () => {
         supabase.from('product_variants').select('stock'),
         supabase.from('conversations').select('*', { count: 'exact', head: true }),
         supabase.from('conversations').select('contact_number'),
-        supabase.from('orders').select('id, customer_name, customer_phone, selected_name, selected_sku, total_price, status, created_at')
+        supabase.from('orders')
+          .select('id, customer_name, customer_phone, selected_name, selected_sku, total_price, status, created_at')
           .eq('source', 'aline').order('created_at', { ascending: false }).limit(20),
-        supabase.from('aline_conversations').select('id, phone, status, followup_count, last_message_at, created_at, current_node')
+        supabase.from('aline_conversations')
+          .select('id, phone, status, followup_count, last_message_at, created_at, current_node')
           .eq('status', 'active').order('last_message_at', { ascending: false }).limit(50),
-        supabase.from('conversations').select('id, contact_name, contact_number, platform, last_message, created_at')
+        supabase.from('conversations')
+          .select('id, contact_name, contact_number, platform, last_message, created_at')
           .order('created_at', { ascending: false }).limit(30),
         supabase.from('aline_conversations').select('phone, followup_count, created_at').gte('created_at', convFrom),
         supabase.from('orders').select('customer_phone, created_at').eq('source', 'aline').gte('created_at', convFrom),
@@ -198,8 +171,7 @@ const Dashboard = () => {
       setStats({
         totalProducts: productsResult.count || 0,
         activeConversations: conversationsCountResult.count || 0,
-        totalStock,
-        totalCustomers: uniqueCustomers,
+        totalStock, totalCustomers: uniqueCustomers,
         alineOrders: alineOrdersResult.data?.length || 0,
         activeFollowups,
         ordersForwardedToAcium: forwardedOrdersResult.data?.length || 0,
@@ -215,7 +187,8 @@ const Dashboard = () => {
         if (dailyData[d]) {
           dailyData[d].total++;
           if (order.source === 'aline') dailyData[d].aline++;
-          if (order.source === 'aline' && (order.status === 'pending' || order.status === 'confirmed')) dailyData[d].forwarded++;
+          if (order.source === 'aline' && (order.status === 'pending' || order.status === 'confirmed'))
+            dailyData[d].forwarded++;
         }
       });
       setDailyOrderData(
@@ -231,7 +204,7 @@ const Dashboard = () => {
       setAlineOrders(alineOrdersResult.data || []);
       setFollowupConversations(followupsResult.data || []);
 
-      // Conversion data
+      // Conversion
       if (allAlineConversations.data && allAlineOrders.data) {
         const orderedPhones = new Set(allAlineOrders.data.map(o => o.customer_phone));
         const byFU: Record<number, { total: number; converted: number }> = {};
@@ -245,8 +218,7 @@ const Dashboard = () => {
           Object.entries(byFU)
             .map(([count, data]) => ({
               followup_count: parseInt(count),
-              total: data.total,
-              converted: data.converted,
+              total: data.total, converted: data.converted,
               conversionRate: data.total > 0 ? Math.round((data.converted / data.total) * 100) : 0,
             }))
             .sort((a, b) => a.followup_count - b.followup_count)
@@ -267,14 +239,14 @@ const Dashboard = () => {
 
         const waitingList: WaitingConversation[] = [];
         waitingResult.data.forEach(conv => {
-          const lastMsg = lastMsgMap[conv.id];
-          if (lastMsg && !lastMsg.is_from_me) {
-            const waitingSince = new Date(lastMsg.created_at);
+          const lm = lastMsgMap[conv.id];
+          if (lm && !lm.is_from_me) {
+            const ws = new Date(lm.created_at);
             waitingList.push({
               id: conv.id, contact_name: conv.contact_name,
               contact_number: conv.contact_number, platform: conv.platform,
-              last_message: conv.last_message, waiting_since: waitingSince,
-              waiting_seconds: Math.floor((Date.now() - waitingSince.getTime()) / 1000),
+              last_message: conv.last_message, waiting_since: ws,
+              waiting_seconds: Math.floor((Date.now() - ws.getTime()) / 1000),
             });
           }
         });
@@ -291,7 +263,7 @@ const Dashboard = () => {
     }
   }, [chartPeriod, conversionPeriod]);
 
-  // Debounced realtime handler — 1.5s de espera antes de re-fetch
+  // Debounce realtime — 1.5s de espera antes de re-fetch
   const debouncedFetch = useCallback(() => {
     if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
     realtimeDebounceRef.current = setTimeout(() => fetchDashboardData(), 1500);
@@ -311,7 +283,7 @@ const Dashboard = () => {
     };
   }, [fetchDashboardData, debouncedFetch]);
 
-  // Helpers
+  // ─── Helpers ──────────────────────────────────────────────────────────────
   const formatPhone = (phone: string) => {
     if (!phone) return '';
     const c = phone.replace(/\D/g, '');
@@ -327,23 +299,32 @@ const Dashboard = () => {
     return `${sec}s`;
   }, [currentTime]);
 
-  const getWaitingVariant = (ws: Date): 'default' | 'secondary' | 'destructive' => {
+  // Urgência: verde < 5min, âmbar < 15min, vermelho >= 15min
+  const getWaitingUrgency = (ws: Date) => {
     const m = Math.floor((currentTime - ws.getTime()) / 60000);
-    if (m < 5) return 'secondary';
-    if (m < 15) return 'default';
-    return 'destructive';
+    if (m < 5) return 'bg-emerald-500';
+    if (m < 15) return 'bg-amber-500';
+    return 'bg-red-500';
+  };
+
+  const getWaitingTimeColor = (ws: Date) => {
+    const m = Math.floor((currentTime - ws.getTime()) / 60000);
+    if (m < 5) return 'text-emerald-500';
+    if (m < 15) return 'text-amber-500';
+    return 'text-red-500';
   };
 
   const getFollowupStatus = useCallback((count: number, lastAt: string | null) => {
-    if (count >= 5) return { label: 'Concluído', color: 'bg-muted text-muted-foreground', icon: CheckCircle2 };
+    if (count >= 5) return { label: 'Concluído', color: 'bg-muted/60 text-muted-foreground', icon: CheckCircle2 };
     const next = FOLLOWUP_INTERVALS[count];
-    if (!next) return { label: 'Completo', color: 'bg-muted text-muted-foreground', icon: CheckCircle2 };
-    if (!lastAt) return { label: 'Aguardando', color: 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400', icon: Clock };
+    if (!next) return { label: 'Completo', color: 'bg-muted/60 text-muted-foreground', icon: CheckCircle2 };
+    if (!lastAt) return { label: 'Aguardando', color: 'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400', icon: Clock };
     const elapsed = (currentTime - new Date(lastAt).getTime()) / 60000;
-    if (elapsed >= next.minutes) return { label: 'Pronto', color: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400', icon: Send };
-    return { label: `${Math.ceil(next.minutes - elapsed)}min`, color: 'bg-blue-500/15 text-blue-700 dark:text-blue-400', icon: Timer };
+    if (elapsed >= next.minutes) return { label: 'Pronto', color: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400', icon: Send };
+    return { label: `${Math.ceil(next.minutes - elapsed)}min`, color: 'bg-blue-500/15 text-blue-600 dark:text-blue-400', icon: Timer };
   }, [currentTime]);
 
+  // ─── Memos ────────────────────────────────────────────────────────────────
   const followupStats = useMemo(() => {
     const active = followupConversations.filter(c => c.followup_count < 5);
     return {
@@ -365,186 +346,167 @@ const Dashboard = () => {
 
   const totalForwarded = useMemo(() => dailyOrderData.reduce((a, d) => a + d.forwarded, 0), [dailyOrderData]);
   const totalAline = useMemo(() => dailyOrderData.reduce((a, d) => a + d.aline, 0), [dailyOrderData]);
+  const totalConvLeads = useMemo(() => conversionData.reduce((a, d) => a + d.total, 0), [conversionData]);
+  const totalConvConverted = useMemo(() => conversionData.reduce((a, d) => a + d.converted, 0), [conversionData]);
 
-  // Loading
+  // ─── Loading ──────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="w-full px-4 sm:px-6 lg:px-8 py-6 max-w-[1920px] mx-auto space-y-5">
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-6 max-w-[1920px] mx-auto space-y-4">
         <div className="flex items-center justify-between">
-          <Skeleton className="h-9 w-44" />
+          <Skeleton className="h-8 w-40" />
           <Skeleton className="h-8 w-24" />
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-3">
-          {Array.from({ length: 7 }).map((_, i) => <Skeleton key={i} className="h-20" />)}
+        <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-2.5">
+          {Array.from({ length: 7 }).map((_, i) => <Skeleton key={i} className="h-[72px]" />)}
         </div>
         <div className="grid lg:grid-cols-5 gap-4">
-          <Skeleton className="lg:col-span-3 h-72" />
-          <Skeleton className="lg:col-span-2 h-72" />
+          <Skeleton className="lg:col-span-3 h-[300px]" />
+          <Skeleton className="lg:col-span-2 h-[300px]" />
         </div>
         <div className="grid lg:grid-cols-3 gap-4">
-          {[1, 2, 3].map(i => <Skeleton key={i} className="h-72" />)}
+          {[1, 2, 3].map(i => <Skeleton key={i} className="h-[300px]" />)}
         </div>
       </div>
     );
   }
 
+  // ─── Render ───────────────────────────────────────────────────────────────
   return (
-    <div className="w-full px-4 sm:px-6 lg:px-8 py-6 max-w-[1920px] mx-auto space-y-5">
+    <div className="w-full px-4 sm:px-6 lg:px-8 py-6 max-w-[1920px] mx-auto space-y-4">
 
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-foreground tracking-tight">Dashboard</h1>
-          <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
+          <div className="flex items-center gap-1.5 mt-0.5">
             <span className="relative flex h-1.5 w-1.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
             </span>
-            Atualização em tempo real
-          </p>
+            <span className="text-xs text-muted-foreground">Atualização em tempo real</span>
+          </div>
         </div>
-        <Button variant="outline" size="sm" onClick={() => { setRefreshing(true); fetchDashboardData(); }} disabled={refreshing} className="gap-2 h-8">
+        <Button
+          variant="outline" size="sm"
+          onClick={() => { setRefreshing(true); fetchDashboardData(); }}
+          disabled={refreshing} className="gap-2 h-8 text-xs"
+        >
           <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
           Atualizar
         </Button>
       </div>
 
-      {/* Alerta: clientes aguardando */}
-      {waitingConversations.length > 0 && (
-        <div className="rounded-xl border border-orange-500/25 bg-orange-500/5 p-3.5">
-          <div className="flex items-center justify-between mb-2.5">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-orange-500/10">
-                <Clock className="w-3.5 h-3.5 text-orange-500" />
-              </div>
-              <span className="text-sm font-medium text-foreground">Aguardando resposta</span>
-              <Badge variant="destructive" className="text-[10px] h-4 px-1.5">{waitingConversations.length}</Badge>
-            </div>
-            <Button variant="ghost" size="sm" onClick={() => navigate('/chat')} className="text-xs h-7 gap-1 text-muted-foreground hover:text-foreground">
-              Abrir Chat <ArrowRight className="w-3 h-3" />
-            </Button>
-          </div>
-          <div className="flex gap-2 overflow-x-auto pb-0.5">
-            {waitingConversations.slice(0, 6).map((conv) => (
-              <div
-                key={conv.id}
-                className="flex-none flex items-center gap-2.5 bg-card border border-border rounded-lg px-3 py-2 cursor-pointer hover:border-orange-500/40 transition-colors min-w-[152px]"
-                onClick={() => navigate('/chat')}
-              >
-                <div className="w-7 h-7 rounded-full bg-orange-500/10 flex items-center justify-center shrink-0">
-                  <Phone className="w-3 h-3 text-orange-500" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs font-medium text-foreground truncate">
-                    {conv.contact_name || formatPhone(conv.contact_number)}
-                  </p>
-                  <Badge variant={getWaitingVariant(conv.waiting_since)} className="text-[10px] font-mono mt-0.5 h-4 px-1">
-                    {formatWaitingTime(conv.waiting_since)}
-                  </Badge>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-3">
-        <StatCard label="Produtos" value={stats.totalProducts} icon={Package} color="text-blue-500" bgColor="bg-blue-500/10" />
-        <StatCard label="Estoque" value={stats.totalStock} icon={TrendingUp} color="text-emerald-500" bgColor="bg-emerald-500/10" />
-        <StatCard label="Conversas" value={stats.activeConversations} icon={MessageSquare} color="text-purple-500" bgColor="bg-purple-500/10" onClick={() => navigate('/chat')} />
-        <StatCard label="Clientes" value={stats.totalCustomers} icon={Users} color="text-orange-500" bgColor="bg-orange-500/10" onClick={() => navigate('/customers')} />
-        <StatCard label="Pedidos Aline" value={stats.alineOrders} icon={Bot} color="text-pink-500" bgColor="bg-pink-500/10" onClick={() => navigate('/pedidos/pendentes')} />
-        <StatCard label="Follow-ups" value={stats.activeFollowups} icon={Timer} color="text-blue-500" bgColor="bg-blue-500/10" onClick={() => navigate('/ai/followups')} />
-        <StatCard label="Encaminhados" value={stats.ordersForwardedToAcium} icon={Send} color="text-amber-500" bgColor="bg-amber-500/10" highlight />
+      <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-2.5">
+        <StatCard label="Produtos" value={stats.totalProducts} icon={Package} accent="text-blue-500" />
+        <StatCard label="Estoque" value={stats.totalStock} icon={TrendingUp} accent="text-emerald-500" />
+        <StatCard label="Conversas" value={stats.activeConversations} icon={MessageSquare} accent="text-violet-500" onClick={() => navigate('/chat')} />
+        <StatCard label="Clientes" value={stats.totalCustomers} icon={Users} accent="text-orange-500" onClick={() => navigate('/customers')} />
+        <StatCard label="Pedidos Aline" value={stats.alineOrders} icon={Bot} accent="text-pink-500" onClick={() => navigate('/pedidos/pendentes')} />
+        <StatCard label="Follow-ups" value={stats.activeFollowups} icon={Timer} accent="text-sky-500" onClick={() => navigate('/ai/followups')} />
+        <StatCard label="Encaminhados" value={stats.ordersForwardedToAcium} icon={Send} accent="text-amber-500" />
       </div>
 
-      {/* Charts */}
+      {/* Gráficos */}
       <div className="grid lg:grid-cols-5 gap-4">
-        {/* Area chart: pedidos */}
-        <Card className="lg:col-span-3 border-border">
-          <CardHeader className="pb-2 px-5 pt-4">
-            <div className="flex items-center justify-between">
+
+        {/* Área: pedidos no período */}
+        <Card className="lg:col-span-3 border-border bg-card">
+          <CardHeader className="px-5 pt-5 pb-0">
+            <div className="flex items-start justify-between gap-4">
               <div>
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Send className="w-4 h-4 text-amber-500" />
+                <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-2">
+                  <Send className="w-3.5 h-3.5 text-amber-500" />
                   Pedidos no Período
                 </CardTitle>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  <span className="text-amber-600 dark:text-amber-400 font-medium">{totalForwarded} encaminhados</span>
-                  {' · '}
-                  <span className="text-emerald-600 dark:text-emerald-400 font-medium">{totalAline} via Aline</span>
-                </p>
+                <div className="flex items-center gap-4 mt-1.5">
+                  <span className="flex items-center gap-1.5 text-xs">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                    <span className="text-muted-foreground">Via Aline</span>
+                    <span className="font-semibold text-foreground">{totalAline}</span>
+                  </span>
+                  <span className="flex items-center gap-1.5 text-xs">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                    <span className="text-muted-foreground">Encaminhados</span>
+                    <span className="font-semibold text-foreground">{totalForwarded}</span>
+                  </span>
+                </div>
               </div>
               <PeriodSelector value={chartPeriod} onChange={setChartPeriod} />
             </div>
           </CardHeader>
-          <CardContent className="px-2 pb-4">
+          <CardContent className="px-2 pt-4 pb-4">
             <div className="h-[220px]">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={dailyOrderData} margin={{ top: 8, right: 8, left: -22, bottom: 0 }}>
+                <AreaChart data={dailyOrderData} margin={{ top: 4, right: 12, left: -18, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gAline" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="hsl(142 76% 36%)" stopOpacity={0.25} />
+                      <stop offset="0%" stopColor="hsl(142 76% 36%)" stopOpacity={0.3} />
                       <stop offset="100%" stopColor="hsl(142 76% 36%)" stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="gFwd" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="hsl(38 92% 50%)" stopOpacity={0.25} />
+                      <stop offset="0%" stopColor="hsl(38 92% 50%)" stopOpacity={0.3} />
                       <stop offset="100%" stopColor="hsl(38 92% 50%)" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                   <XAxis dataKey="dateLabel" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                  <Tooltip content={<ChartTooltip />} />
-                  <Area type="monotone" dataKey="aline" name="Via Aline" stroke="hsl(142 76% 36%)" fill="url(#gAline)" strokeWidth={2} dot={false} />
-                  <Area type="monotone" dataKey="forwarded" name="Encaminhados" stroke="hsl(38 92% 50%)" fill="url(#gFwd)" strokeWidth={2} dot={false} />
+                  <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} width={28} />
+                  <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'hsl(var(--border))', strokeWidth: 1 }} />
+                  <Area type="monotone" dataKey="aline" name="Via Aline" stroke="hsl(142 76% 36%)" fill="url(#gAline)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                  <Area type="monotone" dataKey="forwarded" name="Encaminhados" stroke="hsl(38 92% 50%)" fill="url(#gFwd)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
                 </AreaChart>
               </ResponsiveContainer>
-            </div>
-            <div className="flex items-center gap-5 justify-center mt-2">
-              {[{ color: 'bg-emerald-500', label: 'Via Aline' }, { color: 'bg-amber-500', label: 'Encaminhados' }].map(({ color, label }) => (
-                <div key={label} className="flex items-center gap-1.5">
-                  <div className={`w-2.5 h-2.5 rounded-full ${color}`} />
-                  <span className="text-[11px] text-muted-foreground">{label}</span>
-                </div>
-              ))}
             </div>
           </CardContent>
         </Card>
 
-        {/* Bar chart: conversão */}
-        <Card className="lg:col-span-2 border-border">
-          <CardHeader className="pb-2 px-5 pt-4">
-            <div className="flex items-center justify-between">
+        {/* Bar: conversão por follow-up */}
+        <Card className="lg:col-span-2 border-border bg-card">
+          <CardHeader className="px-5 pt-5 pb-0">
+            <div className="flex items-start justify-between gap-4">
               <div>
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <BarChart3 className="w-4 h-4 text-purple-500" />
+                <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-2">
+                  <BarChart3 className="w-3.5 h-3.5 text-violet-500" />
                   Conversão por Follow-up
                 </CardTitle>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Taxa geral: <span className="text-emerald-600 dark:text-emerald-400 font-medium">{totalConversionRate}%</span>
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  Taxa geral:{' '}
+                  <span className={`font-semibold ${totalConversionRate >= 15 ? 'text-emerald-500' : totalConversionRate >= 5 ? 'text-amber-500' : 'text-foreground'}`}>
+                    {totalConversionRate}%
+                  </span>
+                  {totalConvLeads > 0 && (
+                    <span className="ml-1.5 text-muted-foreground/60">({totalConvConverted}/{totalConvLeads})</span>
+                  )}
                 </p>
               </div>
               <PeriodSelector value={conversionPeriod} onChange={setConversionPeriod} />
             </div>
           </CardHeader>
-          <CardContent className="px-2 pb-4">
+          <CardContent className="px-2 pt-4 pb-4">
             {conversionData.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-[220px] text-muted-foreground gap-2">
-                <BarChart3 className="w-7 h-7 opacity-25" />
+                <BarChart3 className="w-6 h-6 opacity-20" />
                 <p className="text-xs">Sem dados no período</p>
               </div>
             ) : (
               <div className="h-[220px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={conversionData} margin={{ top: 8, right: 8, left: -22, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis dataKey="followup_count" tickFormatter={v => `${v}×`} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                    <Tooltip content={<ChartTooltip />} />
-                    <Bar dataKey="total" name="Total" fill="hsl(var(--muted-foreground))" opacity={0.35} radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="converted" name="Convertidos" fill="hsl(142 76% 36%)" radius={[3, 3, 0, 0]} />
+                  <BarChart data={conversionData} margin={{ top: 4, right: 12, left: -18, bottom: 0 }} barGap={3}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                    <XAxis
+                      dataKey="followup_count" tickFormatter={v => `${v}×`}
+                      tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                      axisLine={false} tickLine={false}
+                    />
+                    <YAxis
+                      tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                      axisLine={false} tickLine={false} allowDecimals={false} width={28}
+                    />
+                    <Tooltip content={<ChartTooltip />} cursor={{ fill: 'hsl(var(--muted))', opacity: 0.4 }} />
+                    <Bar dataKey="total" name="Total" fill="hsl(var(--muted-foreground))" opacity={0.25} radius={[3, 3, 0, 0]} maxBarSize={28} />
+                    <Bar dataKey="converted" name="Convertidos" fill="hsl(142 76% 36%)" radius={[3, 3, 0, 0]} maxBarSize={28} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -553,40 +515,75 @@ const Dashboard = () => {
         </Card>
       </div>
 
-      {/* Detail row */}
+      {/* Alerta de espera — barra fina, só aparece quando há clientes */}
+      {waitingConversations.length > 0 && (
+        <div className="flex items-center gap-3 rounded-xl border border-orange-500/20 bg-orange-500/5 px-4 py-2.5">
+          <div className="flex items-center gap-2 shrink-0">
+            <Clock className="w-3.5 h-3.5 text-orange-500" />
+            <span className="text-xs font-medium text-foreground">Aguardando</span>
+            <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold">
+              {waitingConversations.length}
+            </span>
+          </div>
+          {/* Linha divisória */}
+          <div className="w-px h-4 bg-border shrink-0" />
+          <div className="flex items-center gap-2 flex-1 overflow-x-auto min-w-0 scrollbar-none">
+            {waitingConversations.slice(0, 7).map((conv) => (
+              <button
+                key={conv.id}
+                onClick={() => navigate('/chat')}
+                className="flex-none flex items-center gap-2 bg-card border border-border hover:border-orange-500/30 rounded-lg px-2.5 py-1.5 transition-colors"
+              >
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${getWaitingUrgency(conv.waiting_since)}`} />
+                <span className="text-xs font-medium text-foreground max-w-[90px] truncate">
+                  {conv.contact_name || formatPhone(conv.contact_number)}
+                </span>
+                <span className={`text-[10px] font-mono font-semibold shrink-0 ${getWaitingTimeColor(conv.waiting_since)}`}>
+                  {formatWaitingTime(conv.waiting_since)}
+                </span>
+              </button>
+            ))}
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => navigate('/chat')} className="shrink-0 h-7 text-xs text-muted-foreground hover:text-foreground gap-1 px-2">
+            Chat <ArrowRight className="w-3 h-3" />
+          </Button>
+        </div>
+      )}
+
+      {/* Cards de detalhe */}
       <div className="grid lg:grid-cols-3 gap-4">
 
         {/* Pedidos recentes */}
-        <Card className="border-border">
-          <CardHeader className="pb-2 px-5 pt-4">
+        <Card className="border-border bg-card">
+          <CardHeader className="px-5 pt-4 pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Bot className="w-4 h-4 text-pink-500" />
+                <Bot className="w-3.5 h-3.5 text-pink-500" />
                 Pedidos Recentes
               </CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/pedidos/pendentes')} className="h-7 text-[11px] gap-1 text-muted-foreground hover:text-foreground">
+              <Button variant="ghost" size="sm" onClick={() => navigate('/pedidos/pendentes')} className="h-7 text-[11px] gap-1 text-muted-foreground hover:text-foreground px-2">
                 Ver todos <ArrowUpRight className="w-3 h-3" />
               </Button>
             </div>
           </CardHeader>
           <CardContent className="px-4 pb-4 pt-0">
-            <ScrollArea className="h-[264px] pr-1">
+            <ScrollArea className="h-[280px] pr-1">
               {alineOrders.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-32 gap-2 text-muted-foreground">
-                  <ShoppingBag className="w-6 h-6 opacity-25" />
+                  <ShoppingBag className="w-6 h-6 opacity-20" />
                   <p className="text-xs">Nenhum pedido recente</p>
                 </div>
               ) : (
-                <div className="space-y-1.5">
+                <div className="space-y-px">
                   {alineOrders.slice(0, 10).map((order) => (
-                    <div key={order.id} className="flex items-center justify-between gap-3 p-2.5 rounded-lg bg-muted/40 hover:bg-muted transition-colors">
+                    <div key={order.id} className="flex items-center justify-between gap-3 px-2.5 py-2.5 rounded-lg hover:bg-muted/40 transition-colors">
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-medium text-foreground truncate">{order.selected_name || 'Produto'}</p>
-                        <p className="text-[10px] text-muted-foreground font-mono">{formatPhone(order.customer_phone)}</p>
+                        <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{formatPhone(order.customer_phone)}</p>
                       </div>
                       <div className="text-right shrink-0">
                         <p className="text-xs font-bold text-emerald-500">{formatCurrency(order.total_price)}</p>
-                        <p className="text-[10px] text-muted-foreground">
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
                           {formatDistanceToNow(new Date(order.created_at), { addSuffix: true, locale: ptBR })}
                         </p>
                       </div>
@@ -599,54 +596,56 @@ const Dashboard = () => {
         </Card>
 
         {/* Follow-ups */}
-        <Card className="border-border">
-          <CardHeader className="pb-2 px-5 pt-4">
+        <Card className="border-border bg-card">
+          <CardHeader className="px-5 pt-4 pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Timer className="w-4 h-4 text-blue-500" />
+                <Timer className="w-3.5 h-3.5 text-sky-500" />
                 Follow-ups
               </CardTitle>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/ai/followups')} className="h-7 text-[11px] gap-1 text-muted-foreground hover:text-foreground">
+              <Button variant="ghost" size="sm" onClick={() => navigate('/ai/followups')} className="h-7 text-[11px] gap-1 text-muted-foreground hover:text-foreground px-2">
                 Monitor <ArrowUpRight className="w-3 h-3" />
               </Button>
             </div>
           </CardHeader>
           <CardContent className="px-4 pb-4 pt-0">
+            {/* Mini stats */}
             <div className="grid grid-cols-4 gap-1.5 mb-3">
               {[
-                { v: followupStats.active, l: 'Ativos', c: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-500/10' },
-                { v: followupStats.ready, l: 'Prontos', c: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-500/10' },
-                { v: followupStats.waiting, l: 'Aguard.', c: 'text-yellow-600 dark:text-yellow-400', bg: 'bg-yellow-500/10' },
-                { v: followupStats.completed, l: 'Feitos', c: 'text-muted-foreground', bg: 'bg-muted' },
-              ].map(({ v, l, c, bg }) => (
-                <div key={l} className={`rounded-lg ${bg} p-2 text-center`}>
-                  <p className={`text-sm font-bold ${c}`}>{v}</p>
-                  <p className="text-[9px] text-muted-foreground leading-tight">{l}</p>
+                { v: followupStats.active, l: 'Ativos', bar: 'bg-sky-500', val: 'text-sky-500' },
+                { v: followupStats.ready, l: 'Prontos', bar: 'bg-emerald-500', val: 'text-emerald-500' },
+                { v: followupStats.waiting, l: 'Aguard.', bar: 'bg-amber-500', val: 'text-amber-500' },
+                { v: followupStats.completed, l: 'Feitos', bar: 'bg-muted-foreground/30', val: 'text-muted-foreground' },
+              ].map(({ v, l, bar, val }) => (
+                <div key={l} className="rounded-lg bg-muted/50 p-2 text-center">
+                  <div className={`h-0.5 rounded-full ${bar} mb-2 mx-auto w-5`} />
+                  <p className={`text-sm font-bold ${val}`}>{v}</p>
+                  <p className="text-[9px] text-muted-foreground mt-0.5 leading-tight">{l}</p>
                 </div>
               ))}
             </div>
-            <ScrollArea className="h-[204px] pr-1">
+            <ScrollArea className="h-[216px] pr-1">
               {followupConversations.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-24 gap-2 text-muted-foreground">
-                  <AlertCircle className="w-5 h-5 opacity-25" />
+                  <AlertCircle className="w-5 h-5 opacity-20" />
                   <p className="text-xs">Nenhum follow-up ativo</p>
                 </div>
               ) : (
-                <div className="space-y-1.5">
+                <div className="space-y-px">
                   {followupConversations.slice(0, 8).map((conv) => {
                     const s = getFollowupStatus(conv.followup_count, conv.last_message_at);
                     const Icon = s.icon;
                     return (
-                      <div key={conv.id} className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-muted/40 hover:bg-muted transition-colors">
+                      <div key={conv.id} className="flex items-center justify-between gap-3 px-2.5 py-2.5 rounded-lg hover:bg-muted/40 transition-colors">
                         <div className="min-w-0 flex-1">
                           <p className="text-xs font-mono text-foreground truncate">{formatPhone(conv.phone)}</p>
-                          <div className="flex gap-0.5 mt-1">
+                          <div className="flex gap-0.5 mt-1.5">
                             {Array.from({ length: 5 }).map((_, i) => (
-                              <div key={i} className={`w-1.5 h-1.5 rounded-full ${i < conv.followup_count ? 'bg-foreground' : 'bg-muted-foreground/20'}`} />
+                              <div key={i} className={`w-1.5 h-1.5 rounded-full transition-colors ${i < conv.followup_count ? 'bg-foreground/60' : 'bg-muted-foreground/15'}`} />
                             ))}
                           </div>
                         </div>
-                        <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${s.color}`}>
+                        <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${s.color}`}>
                           <Icon className="w-2.5 h-2.5" />
                           {s.label}
                         </span>
@@ -660,53 +659,73 @@ const Dashboard = () => {
         </Card>
 
         {/* Resumo de conversão */}
-        <Card className="border-border">
-          <CardHeader className="pb-2 px-5 pt-4">
+        <Card className="border-border bg-card">
+          <CardHeader className="px-5 pt-4 pb-3">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-emerald-500" />
+              <BarChart3 className="w-3.5 h-3.5 text-emerald-500" />
               Resumo de Conversão
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4 pt-0">
             {conversionData.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-[264px] gap-2 text-muted-foreground">
-                <BarChart3 className="w-6 h-6 opacity-25" />
+              <div className="flex flex-col items-center justify-center h-[280px] gap-2 text-muted-foreground">
+                <BarChart3 className="w-6 h-6 opacity-20" />
                 <p className="text-xs">Sem dados</p>
               </div>
             ) : (
               <div className="space-y-3">
-                <div className="p-4 rounded-xl bg-muted/50 text-center">
-                  <p className="text-3xl font-bold text-foreground tabular-nums">{totalConversionRate}%</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Taxa geral de conversão</p>
-                  <div className="mt-3 h-1.5 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-emerald-500 to-blue-500 rounded-full transition-all duration-700"
-                      style={{ width: `${totalConversionRate}%` }}
-                    />
+                {/* Taxa geral */}
+                <div className="flex items-end gap-4 pb-3 border-b border-border">
+                  <div>
+                    <p className="text-3xl font-bold text-foreground tabular-nums">{totalConversionRate}%</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">taxa geral</p>
+                  </div>
+                  <div className="flex-1 pb-1">
+                    <div className="h-1.5 bg-muted rounded-full overflow-hidden mb-1">
+                      <div
+                        className={`h-full rounded-full transition-all duration-700 ${
+                          totalConversionRate >= 20 ? 'bg-emerald-500'
+                            : totalConversionRate >= 10 ? 'bg-amber-500'
+                            : 'bg-muted-foreground/40'
+                        }`}
+                        style={{ width: `${Math.min(totalConversionRate, 100)}%` }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground text-right">
+                      {totalConvConverted} / {totalConvLeads} leads
+                    </p>
                   </div>
                 </div>
-                <ScrollArea className="h-[176px] pr-1">
-                  <div className="space-y-2">
+
+                {/* Por follow-up */}
+                <ScrollArea className="h-[200px] pr-1">
+                  <div className="space-y-px">
                     {conversionData.map((data) => (
-                      <div key={data.followup_count} className="p-2.5 rounded-lg bg-muted/40">
+                      <div key={data.followup_count} className="px-2.5 py-2.5 rounded-lg hover:bg-muted/40 transition-colors">
                         <div className="flex items-center justify-between mb-1.5">
                           <span className="text-[11px] text-muted-foreground">
                             {data.followup_count === 0 ? 'Sem follow-up' : `${data.followup_count}× follow-up`}
                           </span>
-                          <span className={`text-[11px] font-semibold tabular-nums ${
-                            data.conversionRate >= 20 ? 'text-emerald-600 dark:text-emerald-400'
-                              : data.conversionRate >= 10 ? 'text-yellow-600 dark:text-yellow-400'
-                              : 'text-muted-foreground'
-                          }`}>
-                            {data.conversionRate}%
+                          <span className="flex items-center gap-1.5">
+                            <span className="text-[11px] text-muted-foreground/60">{data.converted}/{data.total}</span>
+                            <span className={`text-[11px] font-semibold tabular-nums ${
+                              data.conversionRate >= 20 ? 'text-emerald-500'
+                                : data.conversionRate >= 10 ? 'text-amber-500'
+                                : 'text-muted-foreground'
+                            }`}>
+                              {data.conversionRate}%
+                            </span>
                           </span>
                         </div>
-                        <div className="flex items-baseline gap-1 mb-1.5">
-                          <span className="text-sm font-bold text-emerald-500">{data.converted}</span>
-                          <span className="text-[11px] text-muted-foreground">/ {data.total} leads</span>
-                        </div>
                         <div className="h-1 bg-muted rounded-full overflow-hidden">
-                          <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${data.conversionRate}%` }} />
+                          <div
+                            className={`h-full rounded-full transition-all ${
+                              data.conversionRate >= 20 ? 'bg-emerald-500'
+                                : data.conversionRate >= 10 ? 'bg-amber-500'
+                                : 'bg-muted-foreground/30'
+                            }`}
+                            style={{ width: `${data.conversionRate}%` }}
+                          />
                         </div>
                       </div>
                     ))}
