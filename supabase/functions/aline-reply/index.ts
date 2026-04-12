@@ -625,28 +625,76 @@ serve(async (req) => {
     }
 
     if (existingConv) {
-      // Se atendimento humano assumiu, NÃO responder
+      // Se atendimento humano assumiu — verificar se já passou tempo suficiente para reativar
       if (existingConv.status === 'human_takeover') {
-        console.log(`[ALINE-REPLY] Atendimento humano ativo para ${phone}, ignorando`);
-        return new Response(JSON.stringify({
-          success: true,
-          skipped: true,
-          reason: 'human_takeover',
-          message: 'Atendimento humano ativo, Aline não responde',
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        const lastMsg = existingConv.last_message_at ? new Date(existingConv.last_message_at) : null;
+        const horasSemResposta = lastMsg
+          ? (Date.now() - lastMsg.getTime()) / (1000 * 60 * 60)
+          : 999;
+
+        // Reativar automaticamente se vendedor não respondeu em 4h
+        const HORAS_TIMEOUT = 4;
+        if (horasSemResposta < HORAS_TIMEOUT) {
+          console.log(`[ALINE-REPLY] Atendimento humano ativo para ${phone} (${horasSemResposta.toFixed(1)}h), ignorando`);
+          return new Response(JSON.stringify({
+            success: true,
+            skipped: true,
+            reason: 'human_takeover',
+            message: 'Atendimento humano ativo, Aline não responde',
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Passou do timeout → reativar Aline, limpar estado completamente
+        console.log(`[ALINE-REPLY] human_takeover expirou (${horasSemResposta.toFixed(1)}h > ${HORAS_TIMEOUT}h) → reativando Aline`);
+
+        const { data: reactivatedConv } = await supabase
+          .from('aline_conversations')
+          .update({
+            status: 'active',
+            current_node: 'abertura',
+            last_node: null,
+            collected_data: { contact_name: contact_name || 'Cliente' },
+            last_message_at: new Date().toISOString(),
+            followup_count: 0,
+            assigned_seller_id: null,
+            assigned_seller_name: null,
+          })
+          .eq('id', existingConv.id)
+          .select()
+          .single();
+
+        // Limpar conversation_state para evitar que Aline use dados antigos
+        await supabase.from('conversation_state').upsert({
+          phone,
+          categoria: null,
+          cor_preferida: null,
+          selected_sku: null,
+          selected_name: null,
+          selected_price: null,
+          finalidade: null,
+          tipo_alianca: null,
+          stage: null,
+          last_step: null,
+          crm_entrega: null,
+          crm_pagamento: null,
+          crm_finalizar: null,
+          last_catalog_session_id: null,
+          last_catalog: null,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'phone' });
+
+        conversation = reactivatedConv;
+        console.log(`[ALINE-REPLY] Aline reativada após timeout para ${phone}`);
       }
-      
-      // Reativar conversa finalizada ou atualizar ativa
-      if (existingConv.status === 'finished') {
-        // Preserve campaign context if it exists
+      // Reativar conversa finalizada
+      else if (existingConv.status === 'finished') {
+        // Preservar apenas campaign_origin se vier de campanha
         const prevData = existingConv.collected_data || {};
         const reactivateData: Record<string, unknown> = {
-          contact_name: contact_name || prevData.contact_name || 'Cliente'
+          contact_name: contact_name || prevData.contact_name || 'Cliente',
         };
-        // Keep categoria and campaign_origin if set by campaign-broadcast
-        if (prevData.categoria) reactivateData.categoria = prevData.categoria;
         if (prevData.campaign_origin) reactivateData.campaign_origin = prevData.campaign_origin;
 
         const { data: reactivatedConv } = await supabase
@@ -662,8 +710,29 @@ serve(async (req) => {
           .eq('id', existingConv.id)
           .select()
           .single();
+
+        // Limpar conversation_state ao reativar conversa finalizada
+        await supabase.from('conversation_state').upsert({
+          phone,
+          categoria: null,
+          cor_preferida: null,
+          selected_sku: null,
+          selected_name: null,
+          selected_price: null,
+          finalidade: null,
+          tipo_alianca: null,
+          stage: null,
+          last_step: null,
+          crm_entrega: null,
+          crm_pagamento: null,
+          crm_finalizar: null,
+          last_catalog_session_id: null,
+          last_catalog: null,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'phone' });
+
         conversation = reactivatedConv;
-        console.log(`[ALINE-REPLY] Conversa reativada: id=${conversation.id}, categoria_preservada=${reactivateData.categoria || 'nenhuma'}`);
+        console.log(`[ALINE-REPLY] Conversa finalizada reativada: ${conversation.id}`);
       } else {
         await supabase
           .from('aline_conversations')
