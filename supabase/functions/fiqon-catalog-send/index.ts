@@ -813,6 +813,30 @@ serve(async (req) => {
             });
           }
           console.log(`[ZAPI-SEND] ✅ Sessão de catálogo registrada: ${session}`);
+
+          // CRÍTICO: Atualizar conversation_state com o novo session_id
+          // e limpar o produto selecionado anteriormente (era de outra categoria/sessão)
+          try {
+            const { error: stateError } = await supabase
+              .from('conversation_state')
+              .upsert({
+                phone,
+                last_catalog_session_id: session,
+                // Limpar produto selecionado — novo catálogo = nova escolha
+                selected_sku: null,
+                selected_name: null,
+                selected_price: null,
+                updated_at: new Date().toISOString(),
+              }, { onConflict: 'phone' });
+
+            if (stateError) {
+              console.warn(`[ZAPI-SEND] Aviso ao atualizar conversation_state:`, stateError);
+            } else {
+              console.log(`[ZAPI-SEND] ✅ conversation_state atualizado: session_id=${session}, selected_sku=null`);
+            }
+          } catch (stateErr) {
+            console.warn(`[ZAPI-SEND] Erro ao atualizar conversation_state:`, stateErr);
+          }
         }
       } catch (dbError) {
         console.warn(`[ZAPI-SEND] Aviso ao salvar sessão:`, dbError);
