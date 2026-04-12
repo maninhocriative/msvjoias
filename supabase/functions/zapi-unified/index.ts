@@ -594,6 +594,52 @@ serve(async (req) => {
       }
     }
 
+    // Registrar sessão de catálogo e atualizar conversation_state
+    if (productsSent > 0 && alineResponse) {
+      try {
+        const { data: session } = await supabase.rpc('create_catalog_session', {
+          p_phone: phone,
+          p_thread_id: alineResponse.thread_id || null,
+          p_categoria: alineResponse.categoria_crm || null,
+          p_tipo_alianca: null,
+          p_cor_preferida: alineResponse.cor_crm || null,
+        });
+
+        if (session) {
+          // Registrar cada produto na sessão
+          for (const product of products.slice(0, productsSent)) {
+            const sku = product.sku || '';
+            const name = product.name || product.nome || '';
+            const price = product.price || 0;
+            const imageUrl = product.image_url || product.url_imagem || null;
+            const videoUrl = product.video_url || product.url_video || null;
+            await supabase.rpc('add_catalog_item', {
+              p_session_id: session,
+              p_sku: sku,
+              p_name: name,
+              p_price: price || null,
+              p_image_url: imageUrl,
+              p_video_url: videoUrl,
+            });
+          }
+
+          // CRÍTICO: Atualizar conversation_state com novo session_id e limpar produto anterior
+          await supabase.from('conversation_state').upsert({
+            phone,
+            last_catalog_session_id: session,
+            selected_sku: null,
+            selected_name: null,
+            selected_price: null,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'phone' });
+
+          console.log(`[ZAPI-UNIFIED] ✅ Sessão de catálogo salva: ${session}`);
+        }
+      } catch (dbErr) {
+        console.warn(`[ZAPI-UNIFIED] Aviso ao salvar sessão de catálogo:`, dbErr);
+      }
+    }
+
     console.log('[ZAPI-UNIFIED] ====== FIM ======');
     console.log(`[ZAPI-UNIFIED] Texto: ${textSent}, Produtos: ${productsSent}/${products.length}`);
 
