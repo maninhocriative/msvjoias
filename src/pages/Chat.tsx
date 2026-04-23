@@ -60,6 +60,14 @@ interface CustomerProfile {
   profile_pic_url?: string;
 }
 
+const statusFilters = [
+  { key: 'all', label: 'Todos', color: 'bg-slate-400' },
+  { key: 'novo', label: 'Novos', color: 'bg-slate-400' },
+  { key: 'frio', label: 'Frios', color: 'bg-blue-400' },
+  { key: 'quente', label: 'Quentes', color: 'bg-orange-400' },
+  { key: 'vendido', label: 'Vendidos', color: 'bg-emerald-400' },
+];
+
 const Chat = () => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
@@ -96,6 +104,29 @@ const Chat = () => {
   const { isAdmin, isGerente } = useUserRole();
 
   useAssignmentNotification();
+
+  const getIsHumanTakeover = useCallback(
+    (phone: string) => alineStatusMap[phone]?.status === 'human_takeover',
+    [alineStatusMap],
+  );
+
+  const matchesStatusFilter = useCallback((conv: Conversation, status: string) => {
+    const leadStatus = conv.lead_status || 'novo';
+    return status === 'all' || leadStatus === status;
+  }, []);
+
+  const matchesAttendantFilter = useCallback(
+    (conv: Conversation, attendant: string) => {
+      const isHuman = getIsHumanTakeover(conv.contact_number);
+
+      if (attendant === 'all') return true;
+      if (attendant === 'vendedor') return isHuman;
+      if (attendant === 'aline') return !isHuman;
+
+      return true;
+    },
+    [getIsHumanTakeover],
+  );
 
   const updateLeadStatus = async (conversationId: string, status: LeadStatus) => {
     setUpdatingLeadStatus(true);
@@ -855,45 +886,68 @@ const Chat = () => {
   const formatRecordingTime = (seconds: number) =>
     `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, '0')}`;
 
-  const filteredConversations = useMemo(() => {
+  const searchedConversations = useMemo(() => {
     const searchLower = debouncedSearchTerm.toLowerCase();
 
-    return conversations
-      .filter((conv) => {
-        const displayName =
-          customerProfiles[conv.contact_number]?.name || conv.contact_name || '';
+    return conversations.filter((conv) => {
+      const displayName =
+        customerProfiles[conv.contact_number]?.name || conv.contact_name || '';
 
-        const matchesSearch =
-          !debouncedSearchTerm ||
-          displayName.toLowerCase().includes(searchLower) ||
-          conv.contact_number?.includes(debouncedSearchTerm);
+      return (
+        !debouncedSearchTerm ||
+        displayName.toLowerCase().includes(searchLower) ||
+        conv.contact_number?.includes(debouncedSearchTerm)
+      );
+    });
+  }, [conversations, debouncedSearchTerm, customerProfiles]);
 
-        const matchesStatus =
-          filterStatus === 'all' || conv.lead_status === filterStatus;
-
-        const convStatus = alineStatusMap[conv.contact_number]?.status;
-        const isHuman = convStatus === 'human_takeover';
-
-        const matchesAttendant =
-          filterAttendant === 'all' ||
-          (filterAttendant === 'vendedor' && isHuman) ||
-          (filterAttendant === 'aline' && !isHuman);
-
-        return matchesSearch && matchesStatus && matchesAttendant;
-      })
+  const filteredConversations = useMemo(() => {
+    return searchedConversations
+      .filter((conv) => matchesStatusFilter(conv, filterStatus))
+      .filter((conv) => matchesAttendantFilter(conv, filterAttendant))
       .sort((a, b) => {
         const dateA = new Date((a as any).last_message_at || a.created_at || 0).getTime();
         const dateB = new Date((b as any).last_message_at || b.created_at || 0).getTime();
         return dateB - dateA;
       });
   }, [
-    conversations,
-    debouncedSearchTerm,
+    searchedConversations,
     filterStatus,
     filterAttendant,
-    alineStatusMap,
-    customerProfiles,
+    matchesStatusFilter,
+    matchesAttendantFilter,
   ]);
+
+  const statusCounts = useMemo(() => {
+    const source =
+      filterAttendant === 'all'
+        ? searchedConversations
+        : searchedConversations.filter((conv) =>
+            matchesAttendantFilter(conv, filterAttendant),
+          );
+
+    return {
+      all: source.length,
+      novo: source.filter((c) => (c.lead_status || 'novo') === 'novo').length,
+      frio: source.filter((c) => c.lead_status === 'frio').length,
+      quente: source.filter((c) => c.lead_status === 'quente').length,
+      vendido: source.filter((c) => c.lead_status === 'vendido').length,
+    };
+  }, [searchedConversations, filterAttendant, matchesAttendantFilter]);
+
+  const attendantCounts = useMemo(() => {
+    const source =
+      filterStatus === 'all'
+        ? searchedConversations
+        : searchedConversations.filter((conv) =>
+            matchesStatusFilter(conv, filterStatus),
+          );
+
+    return {
+      aline: source.filter((conv) => !getIsHumanTakeover(conv.contact_number)).length,
+      vendedor: source.filter((conv) => getIsHumanTakeover(conv.contact_number)).length,
+    };
+  }, [searchedConversations, filterStatus, matchesStatusFilter, getIsHumanTakeover]);
 
   const groupedMessages = useMemo(() => {
     return messages.reduce((groups, message) => {
@@ -928,32 +982,6 @@ const Chat = () => {
     0,
   );
 
-  const statusFilters = [
-    { key: 'all', label: 'Todos', color: 'bg-slate-500' },
-    { key: 'novo', label: 'Novos', color: 'bg-slate-400' },
-    { key: 'frio', label: 'Frios', color: 'bg-blue-400' },
-    { key: 'quente', label: 'Quentes', color: 'bg-orange-400' },
-    { key: 'vendido', label: 'Vendidos', color: 'bg-emerald-400' },
-  ];
-
-  const statusCounts: Record<string, number> = {
-    all: conversations.length,
-    novo: conversations.filter((c) => c.lead_status === 'novo' || !c.lead_status).length,
-    frio: conversations.filter((c) => c.lead_status === 'frio').length,
-    quente: conversations.filter((c) => c.lead_status === 'quente').length,
-    vendido: conversations.filter((c) => c.lead_status === 'vendido').length,
-  };
-
-  const attendantCounts = {
-    all: conversations.length,
-    aline: conversations.filter(
-      (c) => alineStatusMap[c.contact_number]?.status !== 'human_takeover',
-    ).length,
-    vendedor: conversations.filter(
-      (c) => alineStatusMap[c.contact_number]?.status === 'human_takeover',
-    ).length,
-  };
-
   const currentAlineData = selectedConversation
     ? alineStatusMap[selectedConversation.contact_number]
     : null;
@@ -964,12 +992,24 @@ const Chat = () => {
   const currentSellerInitial = currentSellerName.charAt(0).toUpperCase() || 'V';
   const isSaleFinalized = selectedConversation?.lead_status === 'vendido';
 
+  const activeStatusLabel =
+    statusFilters.find((item) => item.key === filterStatus)?.label || 'Todos';
+
+  const activeAttendantLabel =
+    filterAttendant === 'all'
+      ? 'Todos os atendimentos'
+      : filterAttendant === 'aline'
+        ? 'Aline'
+        : 'Vendedor';
+
+  const hasActiveFilters = filterStatus !== 'all' || filterAttendant !== 'all';
+
   return (
     <div className="h-full min-h-0 min-w-0 flex bg-[#0d1117] overflow-hidden">
       <div
         className={cn(
-          'flex flex-col shrink-0 min-h-0 border-r border-white/5 bg-slate-950 overflow-hidden',
-          'w-full md:w-[380px] lg:w-[420px] xl:w-[460px]',
+          'flex flex-col shrink-0 min-h-0 border-r border-white/5 bg-slate-950 overflow-x-hidden',
+          'w-full md:w-[400px] lg:w-[460px] xl:w-[500px] 2xl:w-[540px]',
           selectedConversation ? 'hidden md:flex' : 'flex',
         )}
       >
@@ -1059,62 +1099,157 @@ const Chat = () => {
           </div>
         </div>
 
-        <div className="px-3 py-2 border-b border-white/5 space-y-2 shrink-0">
-          <div className="flex flex-wrap gap-1.5">
-            {statusFilters.map(({ key, label, color }) => (
-              <button
-                key={key}
-                onClick={() => setFilterStatus(key)}
-                className={cn(
-                  'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all whitespace-nowrap',
-                  filterStatus === key
-                    ? 'bg-emerald-500 text-white'
-                    : 'bg-slate-800/50 text-slate-500 hover:text-slate-300',
-                )}
-              >
-                <span
-                  className={cn(
-                    'w-1.5 h-1.5 rounded-full shrink-0',
-                    filterStatus === key ? 'bg-white/70' : color,
-                  )}
-                />
-                {label}
-                <span
-                  className={cn(
-                    'text-[10px]',
-                    filterStatus === key ? 'text-emerald-100' : 'text-slate-700',
-                  )}
-                >
-                  {statusCounts[key]}
-                </span>
-              </button>
-            ))}
-          </div>
+        <div className="px-3 py-3 border-b border-white/5 shrink-0 bg-slate-950/80">
+          <div className="rounded-xl border border-white/5 bg-slate-900/45 p-3 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Filtros
+                </p>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  <span className="text-slate-300">{activeStatusLabel}</span>
+                  <span className="text-slate-600"> • </span>
+                  <span className="text-slate-300">{activeAttendantLabel}</span>
+                </p>
+              </div>
 
-          <div className="flex flex-wrap gap-1.5">
-            {[
-              { key: 'all', label: `Todos (${attendantCounts.all})` },
-              { key: 'aline', label: `Aline (${attendantCounts.aline})` },
-              { key: 'vendedor', label: `Vendedor (${attendantCounts.vendedor})` },
-            ].map(({ key, label }) => (
-              <button
-                key={key}
-                onClick={() => setFilterAttendant(key)}
-                className={cn(
-                  'px-2.5 py-1 rounded-lg text-[10px] sm:text-[11px] font-medium transition-all whitespace-nowrap',
-                  filterAttendant === key
-                    ? key === 'aline'
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                      : key === 'vendedor'
-                        ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                        : 'bg-slate-700 text-white'
-                    : 'bg-slate-800/30 text-slate-500 hover:text-slate-300',
+              {hasActiveFilters && (
+                <button
+                  onClick={() => {
+                    setFilterStatus('all');
+                    setFilterAttendant('all');
+                  }}
+                  className="shrink-0 px-2 py-1 rounded-lg border border-white/5 bg-slate-800/70 text-[10px] font-medium text-slate-400 hover:text-white hover:border-white/10 transition-colors"
+                >
+                  Limpar
+                </button>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <p className="px-1 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-600">
+                Status
+              </p>
+
+              <div className="grid grid-cols-2 xl:grid-cols-3 gap-1.5">
+                {statusFilters.map(({ key, label, color }) => {
+                  const active = filterStatus === key;
+
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => setFilterStatus(key)}
+                      className={cn(
+                        'w-full min-w-0 rounded-xl border px-3 py-2 transition-all text-left',
+                        active
+                          ? 'border-emerald-500/35 bg-emerald-500/14 text-white shadow-[0_0_0_1px_rgba(16,185,129,0.08)]'
+                          : 'border-white/5 bg-slate-800/45 text-slate-400 hover:text-slate-200 hover:border-white/10',
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span
+                            className={cn(
+                              'w-1.5 h-1.5 rounded-full shrink-0',
+                              active ? 'bg-emerald-300' : color,
+                            )}
+                          />
+                          <span className="truncate text-[10px] sm:text-[11px] font-medium">
+                            {label}
+                          </span>
+                        </div>
+
+                        <span
+                          className={cn(
+                            'shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
+                            active
+                              ? 'bg-white/12 text-white'
+                              : 'bg-white/5 text-slate-500',
+                          )}
+                        >
+                          {statusCounts[key]}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2 px-1">
+                <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-slate-600">
+                  Atendimento
+                </p>
+
+                {filterAttendant !== 'all' && (
+                  <button
+                    onClick={() => setFilterAttendant('all')}
+                    className="text-[10px] text-slate-500 hover:text-white transition-colors"
+                  >
+                    Remover filtro
+                  </button>
                 )}
-                title={label}
-              >
-                {label}
-              </button>
-            ))}
+              </div>
+
+              <div className="grid grid-cols-2 gap-1.5">
+                {[
+                  {
+                    key: 'aline',
+                    label: 'Aline',
+                    count: attendantCounts.aline,
+                    icon: Bot,
+                    activeClass:
+                      'border-emerald-500/35 bg-emerald-500/14 text-emerald-300',
+                  },
+                  {
+                    key: 'vendedor',
+                    label: 'Vendedor',
+                    count: attendantCounts.vendedor,
+                    icon: UserCheck,
+                    activeClass:
+                      'border-amber-500/35 bg-amber-500/14 text-amber-300',
+                  },
+                ].map(({ key, label, count, icon: Icon, activeClass }) => {
+                  const active = filterAttendant === key;
+
+                  return (
+                    <button
+                      key={key}
+                      onClick={() =>
+                        setFilterAttendant((prev) => (prev === key ? 'all' : key))
+                      }
+                      className={cn(
+                        'w-full min-w-0 rounded-xl border px-3 py-2 transition-all text-left',
+                        active
+                          ? activeClass
+                          : 'border-white/5 bg-slate-800/45 text-slate-400 hover:text-slate-200 hover:border-white/10',
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Icon className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate text-[10px] sm:text-[11px] font-medium">
+                            {label}
+                          </span>
+                        </div>
+
+                        <span
+                          className={cn(
+                            'shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
+                            active
+                              ? 'bg-white/12 text-current'
+                              : 'bg-white/5 text-slate-500',
+                          )}
+                        >
+                          {count}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1128,7 +1263,9 @@ const Chat = () => {
             <div className="flex flex-col items-center justify-center h-32 gap-2 text-slate-600">
               <MessageSquare className="w-6 h-6 opacity-30" />
               <p className="text-xs">
-                {searchTerm ? 'Nenhum resultado' : 'Nenhuma conversa'}
+                {searchTerm || hasActiveFilters
+                  ? 'Nenhuma conversa encontrada'
+                  : 'Nenhuma conversa'}
               </p>
             </div>
           ) : (
