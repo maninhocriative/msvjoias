@@ -7,6 +7,7 @@ import {
   Send, Paperclip, Search, MessageSquare, Mic, Bot, User, Phone,
   ArrowLeft, MoreVertical, UserCheck, RefreshCw, MessageCircle,
   Sparkles, X, Loader2, Users, UserPlus, Camera, Square,
+  CheckCircle2, Trophy, ShoppingBag,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -58,6 +59,7 @@ const Chat = () => {
   const [alineStatusMap, setAlineStatusMap] = useState<Record<string, AlineConversation>>({});
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [customerProfiles, setCustomerProfiles] = useState<Record<string, CustomerProfile>>({});
+  const [finalizingSale, setFinalizingSale] = useState(false);
   const audioStreamRef = useRef<MediaStream | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -84,6 +86,32 @@ const Chat = () => {
       toast({ title: 'Erro', description: 'Não foi possível atualizar o status.', variant: 'destructive' });
     } finally {
       setUpdatingLeadStatus(false);
+    }
+  };
+
+  // ─── Finalizar venda ───────────────────────────────────────────────────────
+  const handleFinalizeSale = async () => {
+    if (!selectedConversation || finalizingSale) return;
+    const alreadyFinalized = selectedConversation.lead_status === 'vendido';
+
+    // Toggle: se já vendido, volta para 'qualificado'; senão marca como vendido
+    const newStatus: LeadStatus = alreadyFinalized ? 'qualificado' : 'vendido';
+    setFinalizingSale(true);
+    try {
+      const { error } = await supabase.from('conversations').update({ lead_status: newStatus }).eq('id', selectedConversation.id);
+      if (error) throw error;
+      setConversations(prev => prev.map(c => c.id === selectedConversation.id ? { ...c, lead_status: newStatus } : c));
+      setSelectedConversation(prev => prev ? { ...prev, lead_status: newStatus } : null);
+      toast({
+        title: alreadyFinalized ? '↩️ Venda desmarcada' : '🏆 Venda finalizada!',
+        description: alreadyFinalized
+          ? 'Status voltou para qualificado.'
+          : 'Parabéns! Conversa marcada como venda concluída.',
+      });
+    } catch {
+      toast({ title: 'Erro', description: 'Não foi possível finalizar a venda.', variant: 'destructive' });
+    } finally {
+      setFinalizingSale(false);
     }
   };
 
@@ -418,26 +446,36 @@ const Chat = () => {
   const unreadTotal = conversations.reduce((s, c) => s + (c.unread_count || 0), 0);
 
   const statusFilters = [
-    { key: 'all', label: 'Todos', color: 'bg-slate-500' },
-    { key: 'novo', label: 'Novos', color: 'bg-slate-400' },
-    { key: 'frio', label: 'Frios', color: 'bg-blue-400' },
-    { key: 'quente', label: 'Quentes', color: 'bg-orange-400' },
-    { key: 'comprador', label: 'Compradores', color: 'bg-emerald-400' },
+    { key: 'all',      label: 'Todos',       color: 'bg-slate-500'   },
+    { key: 'novo',     label: 'Novos',       color: 'bg-slate-400'   },
+    { key: 'frio',     label: 'Frios',       color: 'bg-blue-400'    },
+    { key: 'quente',   label: 'Quentes',     color: 'bg-orange-400'  },
+    { key: 'vendido',  label: 'Vendidos',    color: 'bg-emerald-400' },
   ];
 
   const statusCounts: Record<string, number> = {
-    all: conversations.length,
-    novo: conversations.filter(c => c.lead_status === 'novo' || !c.lead_status).length,
-    frio: conversations.filter(c => c.lead_status === 'frio').length,
-    quente: conversations.filter(c => c.lead_status === 'quente').length,
-    comprador: conversations.filter(c => c.lead_status === 'comprador').length,
+    all:     conversations.length,
+    novo:    conversations.filter(c => c.lead_status === 'novo' || !c.lead_status).length,
+    frio:    conversations.filter(c => c.lead_status === 'frio').length,
+    quente:  conversations.filter(c => c.lead_status === 'quente').length,
+    vendido: conversations.filter(c => c.lead_status === 'vendido').length,
   };
 
   const attendantCounts = {
-    all: conversations.length,
-    aline: conversations.filter(c => alineStatusMap[c.contact_number]?.status !== 'human_takeover').length,
+    all:      conversations.length,
+    aline:    conversations.filter(c => alineStatusMap[c.contact_number]?.status !== 'human_takeover').length,
     vendedor: conversations.filter(c => alineStatusMap[c.contact_number]?.status === 'human_takeover').length,
   };
+
+  // ─── Dados do atendente atual ──────────────────────────────────────────────
+  const currentAlineData = selectedConversation
+    ? alineStatusMap[selectedConversation.contact_number]
+    : null;
+  const isCurrentHumanTakeover = currentAlineData?.status === 'human_takeover';
+  const currentSellerName = currentAlineData?.assigned_seller_name || '';
+  const currentSellerFirstName = currentSellerName.split(' ')[0];
+  const currentSellerInitial = currentSellerName.charAt(0).toUpperCase() || 'V';
+  const isSaleFinalized = selectedConversation?.lead_status === 'vendido';
 
   // ─── Render ────────────────────────────────────────────────────────────────
   return (
@@ -549,9 +587,9 @@ const Chat = () => {
           {/* Atendente */}
           <div className="flex gap-1.5">
             {[
-              { key: 'all', label: `Todos (${attendantCounts.all})` },
-              { key: 'aline', label: `Aline (${attendantCounts.aline})` },
-              { key: 'vendedor', label: `Vendedor (${attendantCounts.vendedor})` },
+              { key: 'all',      label: `Todos (${attendantCounts.all})`          },
+              { key: 'aline',    label: `Aline (${attendantCounts.aline})`        },
+              { key: 'vendedor', label: `Vendedor (${attendantCounts.vendedor})`  },
             ].map(({ key, label }) => (
               <button
                 key={key}
@@ -605,102 +643,174 @@ const Chat = () => {
       )}>
         {selectedConversation ? (
           <>
-            {/* Chat Header */}
-            <div className="h-14 px-4 border-b border-white/5 flex items-center justify-between bg-slate-950/90 backdrop-blur-xl shrink-0 gap-3">
-              {/* Voltar mobile + info do contato */}
-              <div className="flex items-center gap-3 min-w-0 flex-1">
-                <button
-                  className="md:hidden shrink-0 p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition-colors"
-                  onClick={() => setSelectedConversation(null)}
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                </button>
+            {/* ── Chat Header ─────────────────────────────────────────────── */}
+            <div className={cn(
+              'px-4 border-b border-white/5 flex flex-col justify-center bg-slate-950/90 backdrop-blur-xl shrink-0 gap-0',
+              // Altura dinâmica: menor quando tem banner de venda finalizada
+              isSaleFinalized ? 'h-auto py-2' : 'h-14',
+            )}>
 
-                {/* Avatar */}
-                <div className="relative shrink-0">
-                  {customerProfiles[selectedConversation.contact_number]?.profile_pic_url ? (
-                    <img
-                      src={customerProfiles[selectedConversation.contact_number].profile_pic_url}
-                      alt=""
-                      className="w-8 h-8 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className={cn(
-                      'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white',
-                      selectedConversation.platform === 'instagram'
-                        ? 'bg-gradient-to-br from-fuchsia-500 to-orange-400'
-                        : 'bg-gradient-to-br from-emerald-400 to-cyan-500'
-                    )}>
-                      {(selectedConversation.contact_name || selectedConversation.contact_number).charAt(0).toUpperCase()}
-                    </div>
-                  )}
-                  <span className={cn(
-                    'absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-slate-950',
-                    alineStatus === 'human_takeover' ? 'bg-amber-500' : 'bg-emerald-500'
-                  )} />
+              {/* Banner de venda finalizada */}
+              {isSaleFinalized && (
+                <div className="flex items-center gap-2 mb-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+                  <Trophy className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span className="text-[11px] text-emerald-400 font-semibold flex-1">Venda finalizada com sucesso!</span>
+                  <button
+                    onClick={handleFinalizeSale}
+                    disabled={finalizingSale}
+                    className="text-[10px] text-emerald-600 hover:text-emerald-400 transition-colors"
+                  >
+                    Desfazer
+                  </button>
                 </div>
+              )}
 
-                {/* Nome e info */}
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-semibold text-white truncate">
-                      {customerProfiles[selectedConversation.contact_number]?.name || selectedConversation.contact_name || selectedConversation.contact_number}
-                    </p>
-                    {alineStatusMap[selectedConversation.contact_number]?.assigned_seller_name && (
-                      <span className="hidden sm:flex items-center gap-1 text-[10px] text-amber-400 shrink-0">
-                        <UserCheck className="w-3 h-3" />
-                        {alineStatusMap[selectedConversation.contact_number]?.assigned_seller_name?.split(' ')[0]}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[10px] text-slate-600 truncate">{selectedConversation.contact_number}</p>
-                </div>
-              </div>
+              <div className="flex items-center justify-between gap-3">
+                {/* Voltar mobile + info do contato */}
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <button
+                    className="md:hidden shrink-0 p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition-colors"
+                    onClick={() => setSelectedConversation(null)}
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                  </button>
 
-              {/* Ações do header */}
-              <div className="flex items-center gap-1.5 shrink-0">
-                <div className="hidden sm:block">
-                  <LeadStatusSelect
-                    value={(selectedConversation.lead_status as LeadStatus) || 'novo'}
-                    onChange={status => updateLeadStatus(selectedConversation.id, status)}
-                    disabled={updatingLeadStatus}
-                  />
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition-colors">
-                      <MoreVertical className="w-4 h-4" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-52 bg-slate-800 border-white/10">
-                    {/* Status no mobile */}
-                    <div className="sm:hidden px-2 py-1.5 border-b border-white/10">
-                      <LeadStatusSelect
-                        value={(selectedConversation.lead_status as LeadStatus) || 'novo'}
-                        onChange={status => updateLeadStatus(selectedConversation.id, status)}
-                        disabled={updatingLeadStatus}
+                  {/* Avatar */}
+                  <div className="relative shrink-0">
+                    {customerProfiles[selectedConversation.contact_number]?.profile_pic_url ? (
+                      <img
+                        src={customerProfiles[selectedConversation.contact_number].profile_pic_url}
+                        alt=""
+                        className="w-8 h-8 rounded-full object-cover"
                       />
-                    </div>
-                    <DropdownMenuItem onClick={() => handleTakeover('takeover')} disabled={takingOver} className="text-slate-200 focus:bg-white/10 focus:text-white">
-                      <UserCheck className="w-4 h-4 mr-2" /> Assumir atendimento
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleTakeover('release')} disabled={takingOver} className="text-slate-200 focus:bg-white/10 focus:text-white">
-                      <Bot className="w-4 h-4 mr-2" /> Devolver para Aline
-                    </DropdownMenuItem>
-                    {(isAdmin || isGerente) && (
-                      <>
-                        <DropdownMenuSeparator className="bg-white/10" />
-                        <DropdownMenuItem onClick={() => setAssignDialogOpen(true)} className="text-emerald-400 focus:bg-emerald-500/10">
-                          <UserPlus className="w-4 h-4 mr-2" /> Atribuir vendedor
-                        </DropdownMenuItem>
-                      </>
+                    ) : (
+                      <div className={cn(
+                        'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white',
+                        selectedConversation.platform === 'instagram'
+                          ? 'bg-gradient-to-br from-fuchsia-500 to-orange-400'
+                          : isSaleFinalized
+                            ? 'bg-gradient-to-br from-emerald-500 to-teal-600'
+                            : 'bg-gradient-to-br from-emerald-400 to-cyan-500'
+                      )}>
+                        {(selectedConversation.contact_name || selectedConversation.contact_number).charAt(0).toUpperCase()}
+                      </div>
                     )}
-                    <DropdownMenuSeparator className="bg-white/10" />
-                    <DropdownMenuItem className="text-slate-200 focus:bg-white/10 focus:text-white">
-                      <Phone className="w-4 h-4 mr-2" /> Ligar
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                    <span className={cn(
+                      'absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-slate-950',
+                      isCurrentHumanTakeover ? 'bg-amber-500' : 'bg-emerald-500'
+                    )} />
+                  </div>
+
+                  {/* Nome e info */}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-semibold text-white truncate">
+                        {customerProfiles[selectedConversation.contact_number]?.name || selectedConversation.contact_name || selectedConversation.contact_number}
+                      </p>
+
+                      {/* Badge do atendente atual — destaque visual */}
+                      {isCurrentHumanTakeover && currentSellerName ? (
+                        <span className="hidden sm:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/25">
+                          <span className="w-4 h-4 rounded-full bg-amber-500 text-amber-950 text-[9px] font-bold flex items-center justify-center shrink-0">
+                            {currentSellerInitial}
+                          </span>
+                          {currentSellerFirstName}
+                        </span>
+                      ) : (
+                        <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                          <Bot className="w-3 h-3 shrink-0" />
+                          Aline
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-slate-600 truncate">{selectedConversation.contact_number}</p>
+                  </div>
+                </div>
+
+                {/* Ações do header */}
+                <div className="flex items-center gap-1.5 shrink-0">
+
+                  {/* Botão Finalizar Venda — visível no desktop */}
+                  <button
+                    onClick={handleFinalizeSale}
+                    disabled={finalizingSale}
+                    className={cn(
+                      'hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all',
+                      isSaleFinalized
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30'
+                        : 'bg-slate-800/80 text-slate-400 border border-white/5 hover:bg-emerald-500/10 hover:text-emerald-400 hover:border-emerald-500/20',
+                      finalizingSale && 'opacity-50 cursor-not-allowed',
+                    )}
+                  >
+                    {finalizingSale ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : isSaleFinalized ? (
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                    ) : (
+                      <ShoppingBag className="w-3.5 h-3.5" />
+                    )}
+                    {isSaleFinalized ? 'Venda finalizada' : 'Finalizar venda'}
+                  </button>
+
+                  <div className="hidden sm:block">
+                    <LeadStatusSelect
+                      value={(selectedConversation.lead_status as LeadStatus) || 'novo'}
+                      onChange={status => updateLeadStatus(selectedConversation.id, status)}
+                      disabled={updatingLeadStatus}
+                    />
+                  </div>
+
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition-colors">
+                        <MoreVertical className="w-4 h-4" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-52 bg-slate-800 border-white/10">
+                      {/* Status no mobile */}
+                      <div className="sm:hidden px-2 py-1.5 border-b border-white/10">
+                        <LeadStatusSelect
+                          value={(selectedConversation.lead_status as LeadStatus) || 'novo'}
+                          onChange={status => updateLeadStatus(selectedConversation.id, status)}
+                          disabled={updatingLeadStatus}
+                        />
+                      </div>
+                      {/* Finalizar venda no mobile */}
+                      <DropdownMenuItem
+                        onClick={handleFinalizeSale}
+                        disabled={finalizingSale}
+                        className={cn(
+                          'sm:hidden focus:bg-white/10',
+                          isSaleFinalized ? 'text-emerald-400 focus:text-emerald-300' : 'text-slate-200 focus:text-white',
+                        )}
+                      >
+                        {isSaleFinalized
+                          ? <><CheckCircle2 className="w-4 h-4 mr-2" /> Venda finalizada</>
+                          : <><ShoppingBag className="w-4 h-4 mr-2" /> Finalizar venda</>
+                        }
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator className="sm:hidden bg-white/10" />
+                      <DropdownMenuItem onClick={() => handleTakeover('takeover')} disabled={takingOver} className="text-slate-200 focus:bg-white/10 focus:text-white">
+                        <UserCheck className="w-4 h-4 mr-2" /> Assumir atendimento
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleTakeover('release')} disabled={takingOver} className="text-slate-200 focus:bg-white/10 focus:text-white">
+                        <Bot className="w-4 h-4 mr-2" /> Devolver para Aline
+                      </DropdownMenuItem>
+                      {(isAdmin || isGerente) && (
+                        <>
+                          <DropdownMenuSeparator className="bg-white/10" />
+                          <DropdownMenuItem onClick={() => setAssignDialogOpen(true)} className="text-emerald-400 focus:bg-emerald-500/10">
+                            <UserPlus className="w-4 h-4 mr-2" /> Atribuir vendedor
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                      <DropdownMenuSeparator className="bg-white/10" />
+                      <DropdownMenuItem className="text-slate-200 focus:bg-white/10 focus:text-white">
+                        <Phone className="w-4 h-4 mr-2" /> Ligar
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
             </div>
 
