@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { cn } from '@/lib/utils';
-import { Bot, UserCheck, Instagram } from 'lucide-react';
+import { Bot, UserCheck, Instagram, CheckCircle2, Clock } from 'lucide-react';
 import type { Conversation, LeadStatus } from '@/lib/supabase';
 
 interface CustomerProfile {
@@ -41,28 +41,26 @@ const formatTime = (date: string) => {
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 };
 
-const STATUS_DOT: Record<string, string> = {
-  novo: 'bg-slate-400',
-  frio: 'bg-blue-400',
-  quente: 'bg-orange-400',
-  comprador: 'bg-emerald-400',
-  sem_interesse: 'bg-red-400',
-};
-
-const STATUS_LABEL: Record<string, string> = {
-  novo: 'Novo',
-  frio: 'Frio',
-  quente: 'Quente',
-  comprador: 'Comprador',
-  sem_interesse: 'Sem interesse',
+const STATUS_CONFIG: Record<string, { dot: string; label: string; bg: string; text: string }> = {
+  novo:          { dot: 'bg-slate-400',   label: 'Novo',          bg: 'bg-slate-500/10',   text: 'text-slate-400'   },
+  frio:          { dot: 'bg-blue-400',    label: 'Frio',          bg: 'bg-blue-500/10',    text: 'text-blue-400'    },
+  quente:        { dot: 'bg-orange-400',  label: 'Quente',        bg: 'bg-orange-500/10',  text: 'text-orange-400'  },
+  comprador:     { dot: 'bg-emerald-400', label: 'Comprador',     bg: 'bg-emerald-500/10', text: 'text-emerald-400' },
+  sem_interesse: { dot: 'bg-red-400',     label: 'Sem interesse', bg: 'bg-red-500/10',     text: 'text-red-400'     },
+  vendido:       { dot: 'bg-emerald-400', label: 'Vendido',       bg: 'bg-emerald-500/15', text: 'text-emerald-300' },
+  perdido:       { dot: 'bg-red-400',     label: 'Perdido',       bg: 'bg-red-500/10',     text: 'text-red-400'     },
 };
 
 const ConversationItem = memo(({ conv, isSelected, customerProfile, alineData, onClick }: ConversationItemProps) => {
   const hasUnread = (conv.unread_count ?? 0) > 0;
   const isInstagram = conv.platform === 'instagram';
   const isHumanTakeover = alineData?.status === 'human_takeover';
-  const sellerFirstName = alineData?.assigned_seller_name?.split(' ')[0];
+  const isSaleFinalized = conv.lead_status === 'vendido';
+  const sellerName = alineData?.assigned_seller_name || '';
+  const sellerFirstName = sellerName.split(' ')[0];
+  const sellerInitial = sellerName.charAt(0).toUpperCase() || 'V';
   const leadStatus = (conv.lead_status as LeadStatus) || 'novo';
+  const statusCfg = STATUS_CONFIG[leadStatus] ?? STATUS_CONFIG['novo'];
   const displayName = customerProfile?.name || conv.contact_name || conv.contact_number;
   const lastMsgTime = (conv as any).last_message_at || conv.created_at;
 
@@ -70,80 +68,117 @@ const ConversationItem = memo(({ conv, isSelected, customerProfile, alineData, o
     <button
       onClick={onClick}
       className={cn(
-        'w-full px-4 py-3 flex items-center gap-3 text-left transition-colors border-b border-white/5',
+        'w-full px-3 py-2.5 flex items-start gap-3 text-left transition-all border-b border-white/[0.04] relative group',
         isSelected
           ? 'bg-emerald-500/10 border-l-2 border-l-emerald-500'
           : 'hover:bg-white/[0.03] border-l-2 border-l-transparent',
+        isSaleFinalized && !isSelected && 'bg-emerald-500/[0.04]',
       )}
     >
-      {/* Avatar */}
-      <div className="relative shrink-0">
+      {/* ── Avatar ── */}
+      <div className="relative shrink-0 mt-0.5">
         {customerProfile?.profile_pic_url ? (
           <img
             src={customerProfile.profile_pic_url}
             alt={displayName}
-            className="w-10 h-10 rounded-full object-cover"
+            className="w-10 h-10 rounded-full object-cover ring-1 ring-white/10"
             loading="lazy"
           />
         ) : (
           <div className={cn(
-            'w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white',
+            'w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white ring-1 ring-white/10',
             isInstagram
               ? 'bg-gradient-to-br from-fuchsia-500 to-orange-400'
-              : 'bg-gradient-to-br from-emerald-400 to-cyan-500'
+              : isSaleFinalized
+                ? 'bg-gradient-to-br from-emerald-500 to-teal-600'
+                : 'bg-gradient-to-br from-emerald-400 to-cyan-500'
           )}>
             {displayName.charAt(0).toUpperCase()}
           </div>
         )}
-        {/* Status do atendente — ponto no canto */}
+
+        {/* Ponto de status do atendente */}
         <span className={cn(
-          'absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-slate-900',
-          isHumanTakeover ? 'bg-amber-500' : 'bg-emerald-500'
-        )} />
+          'absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-slate-950 flex items-center justify-center',
+          isHumanTakeover ? 'bg-amber-500' : 'bg-emerald-500',
+        )}>
+          {isHumanTakeover
+            ? <UserCheck className="w-2 h-2 text-amber-950" />
+            : <Bot className="w-2 h-2 text-emerald-950" />
+          }
+        </span>
       </div>
 
-      {/* Conteúdo — ocupa todo o espaço restante */}
+      {/* ── Conteúdo ── */}
       <div className="flex-1 min-w-0">
-        {/* Linha 1: nome + hora */}
-        <div className="flex items-baseline justify-between gap-2 mb-0.5">
+
+        {/* Linha 1: nome + hora + unread */}
+        <div className="flex items-center justify-between gap-1.5 mb-1">
           <p className={cn(
-            'text-sm font-semibold truncate leading-tight',
+            'text-[13px] font-semibold truncate leading-tight',
             hasUnread ? 'text-white' : 'text-slate-300',
           )}>
             {displayName}
           </p>
-          <span className="text-[10px] text-slate-600 shrink-0 leading-tight">
-            {formatTime(lastMsgTime)}
-          </span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {hasUnread && (
+              <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-emerald-500 text-white text-[9px] font-bold flex items-center justify-center">
+                {(conv.unread_count ?? 0) > 99 ? '99+' : conv.unread_count}
+              </span>
+            )}
+            <span className="text-[10px] text-slate-600 leading-tight flex items-center gap-0.5">
+              <Clock className="w-2.5 h-2.5" />
+              {formatTime(lastMsgTime)}
+            </span>
+          </div>
         </div>
 
-        {/* Linha 2: badges compactos */}
-        <div className="flex items-center gap-1.5 mb-0.5">
-          <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', STATUS_DOT[leadStatus])} />
-          <span className="text-[10px] text-slate-500 shrink-0">{STATUS_LABEL[leadStatus]}</span>
-          <span className="text-[10px] text-slate-700 shrink-0">·</span>
+        {/* Linha 2: badges de status + atendente */}
+        <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+
+          {/* Badge de lead status */}
+          <span className={cn(
+            'inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium',
+            statusCfg.bg, statusCfg.text,
+          )}>
+            <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', statusCfg.dot)} />
+            {statusCfg.label}
+          </span>
+
+          {/* Badge do atendente */}
           {isHumanTakeover ? (
-            <span className="flex items-center gap-0.5 text-[10px] text-amber-400 shrink-0">
-              <UserCheck className="w-2.5 h-2.5" />
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-amber-500/15 text-amber-300 border border-amber-500/20">
+              {/* Mini avatar do vendedor */}
+              <span className="w-3.5 h-3.5 rounded-full bg-amber-500 text-amber-950 text-[8px] font-bold flex items-center justify-center shrink-0">
+                {sellerInitial}
+              </span>
               {sellerFirstName || 'Vendedor'}
             </span>
           ) : (
-            <span className="flex items-center gap-0.5 text-[10px] text-emerald-500 shrink-0">
-              <Bot className="w-2.5 h-2.5" />
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-emerald-500/10 text-emerald-400">
+              <Bot className="w-2.5 h-2.5 shrink-0" />
               Aline
             </span>
           )}
-          {hasUnread && (
-            <>
-              <span className="text-[10px] text-slate-700 shrink-0">·</span>
-              <span className="min-w-[16px] h-4 px-1 rounded-full bg-emerald-500 text-white text-[9px] font-bold flex items-center justify-center shrink-0">
-                {(conv.unread_count ?? 0) > 99 ? '99+' : conv.unread_count}
-              </span>
-            </>
+
+          {/* Badge Venda Finalizada */}
+          {isSaleFinalized && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+              <CheckCircle2 className="w-2.5 h-2.5 shrink-0" />
+              Venda finalizada
+            </span>
+          )}
+
+          {/* Ícone Instagram */}
+          {isInstagram && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-fuchsia-500/10 text-fuchsia-400">
+              <Instagram className="w-2.5 h-2.5 shrink-0" />
+              IG
+            </span>
           )}
         </div>
 
-        {/* Linha 3: preview */}
+        {/* Linha 3: preview da última mensagem */}
         <p className={cn(
           'text-[11px] truncate leading-tight',
           hasUnread ? 'text-slate-300' : 'text-slate-600',
