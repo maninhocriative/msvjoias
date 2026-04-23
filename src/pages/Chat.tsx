@@ -969,7 +969,7 @@ const Chat = () => {
       <div
         className={cn(
           'flex flex-col shrink-0 min-h-0 border-r border-white/5 bg-slate-950 overflow-hidden',
-          'w-full md:w-[360px] lg:w-[400px] xl:w-[440px]',
+          'w-full md:w-[380px] lg:w-[420px] xl:w-[460px]',
           selectedConversation ? 'hidden md:flex' : 'flex',
         )}
       >
@@ -1059,14 +1059,14 @@ const Chat = () => {
           </div>
         </div>
 
-        <div className="px-3 py-2 border-b border-white/5 space-y-2 shrink-0 overflow-hidden">
-          <div className="-mx-3 px-3 flex gap-1.5 overflow-x-auto scrollbar-hide">
+        <div className="px-3 py-2 border-b border-white/5 space-y-2 shrink-0">
+          <div className="flex flex-wrap gap-1.5">
             {statusFilters.map(({ key, label, color }) => (
               <button
                 key={key}
                 onClick={() => setFilterStatus(key)}
                 className={cn(
-                  'flex-none flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all whitespace-nowrap',
+                  'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all whitespace-nowrap',
                   filterStatus === key
                     ? 'bg-emerald-500 text-white'
                     : 'bg-slate-800/50 text-slate-500 hover:text-slate-300',
@@ -1091,7 +1091,7 @@ const Chat = () => {
             ))}
           </div>
 
-          <div className="flex gap-1.5">
+          <div className="flex flex-wrap gap-1.5">
             {[
               { key: 'all', label: `Todos (${attendantCounts.all})` },
               { key: 'aline', label: `Aline (${attendantCounts.aline})` },
@@ -1101,14 +1101,14 @@ const Chat = () => {
                 key={key}
                 onClick={() => setFilterAttendant(key)}
                 className={cn(
-                  'flex-1 min-w-0 px-2 py-1 rounded-lg text-[10px] sm:text-[11px] font-medium transition-all whitespace-nowrap',
+                  'px-2.5 py-1 rounded-lg text-[10px] sm:text-[11px] font-medium transition-all whitespace-nowrap',
                   filterAttendant === key
                     ? key === 'aline'
                       ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                       : key === 'vendedor'
                         ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
                         : 'bg-slate-700 text-white'
-                    : 'text-slate-600 hover:text-slate-400',
+                    : 'bg-slate-800/30 text-slate-500 hover:text-slate-300',
                 )}
                 title={label}
               >
