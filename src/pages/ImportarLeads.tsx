@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,14 +12,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import {
   Select,
   SelectContent,
@@ -50,6 +42,7 @@ import {
   Filter,
   Target,
   Clock3,
+  Layers3,
 } from 'lucide-react';
 
 /* ── Types ── */
@@ -135,8 +128,7 @@ const LEAD_STATUS_OPTIONS: Array<{
 ];
 
 const MARKETING_SETTING_KEY = 'facebook_leads_marketing_state';
-const MARKETING_SETTING_DESCRIPTION =
-  'Ações de marketing e status dos leads importados do Facebook';
+const MARKETING_LOCAL_KEY = 'facebook_leads_marketing_state_local';
 
 /* ── Helpers ── */
 function normalizePhone(phone: string) {
@@ -159,7 +151,7 @@ function campaignShort(raw: string) {
   if (!raw) return '';
   const m = raw.match(/\[([^\]]+)\]\s*$/);
   const text = m ? m[1] : raw.replace(/^\[+|\]+$/g, '');
-  return text.length > 30 ? text.slice(0, 30) + '…' : text;
+  return text.length > 42 ? text.slice(0, 42) + '…' : text;
 }
 
 function intentBadge(value: string) {
@@ -168,10 +160,11 @@ function intentBadge(value: string) {
   const mapped = INTENT_MAP[key] || INTENT_MAP[value.toLowerCase()];
   const label = mapped
     ? mapped.label
-    : value.length > 14
-      ? value.slice(0, 14) + '…'
+    : value.length > 16
+      ? value.slice(0, 16) + '…'
       : value;
   const cls = mapped ? mapped.cls : 'bg-muted text-muted-foreground';
+
   return (
     <span
       className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${cls}`}
@@ -209,9 +202,7 @@ function getDefaultLeadMarketingState(phone: string): LeadMarketingState {
   };
 }
 
-function parseMarketingState(
-  rawValue?: string | null,
-): Record<string, LeadMarketingState> {
+function parseMarketingState(rawValue?: string | null): Record<string, LeadMarketingState> {
   if (!rawValue) return {};
 
   try {
@@ -283,9 +274,7 @@ const ImportarLeads = () => {
   const [logOpen, setLogOpen] = useState(false);
   const [cronOpen, setCronOpen] = useState(false);
 
-  const [marketingStateMap, setMarketingStateMap] = useState<
-    Record<string, LeadMarketingState>
-  >({});
+  const [marketingStateMap, setMarketingStateMap] = useState<Record<string, LeadMarketingState>>({});
   const [persistingMarketing, setPersistingMarketing] = useState(false);
 
   const [selectedPhones, setSelectedPhones] = useState<string[]>([]);
@@ -330,21 +319,22 @@ const ImportarLeads = () => {
     nextState: Record<string, LeadMarketingState>,
     successMessage?: string,
   ) => {
-    const previousState = marketingStateMap;
     setMarketingStateMap(nextState);
+    localStorage.setItem(MARKETING_LOCAL_KEY, JSON.stringify(nextState));
     setPersistingMarketing(true);
 
     try {
       await saveStoreSetting(
         MARKETING_SETTING_KEY,
         JSON.stringify(nextState),
-        MARKETING_SETTING_DESCRIPTION,
+        'Ações de marketing dos leads importados',
       );
 
       if (successMessage) toast.success(successMessage);
     } catch (error: any) {
-      setMarketingStateMap(previousState);
-      toast.error('Erro ao salvar ações de marketing: ' + error.message);
+      toast.error(
+        `Ação aplicada localmente, mas não foi possível salvar no banco: ${error.message}`,
+      );
     } finally {
       setPersistingMarketing(false);
     }
@@ -358,6 +348,10 @@ const ImportarLeads = () => {
   useEffect(() => {
     (async () => {
       try {
+        const localMarketing = parseMarketingState(
+          localStorage.getItem(MARKETING_LOCAL_KEY),
+        );
+
         const { data, error } = await supabase
           .from('store_settings')
           .select('key, value')
@@ -371,12 +365,11 @@ const ImportarLeads = () => {
 
         if (data) {
           const urlSetting = data.find((r) => r.key === 'facebook_leads_sheet_url');
-          const lastImportSetting = data.find(
-            (r) => r.key === 'facebook_leads_last_import',
-          );
+          const lastImportSetting = data.find((r) => r.key === 'facebook_leads_last_import');
           const marketingSetting = data.find((r) => r.key === MARKETING_SETTING_KEY);
 
           if (urlSetting?.value) setSheetUrl(urlSetting.value);
+
           if (lastImportSetting?.value) {
             try {
               setLastResult(JSON.parse(lastImportSetting.value));
@@ -384,7 +377,15 @@ const ImportarLeads = () => {
               // ignore malformed cached value
             }
           }
-          setMarketingStateMap(parseMarketingState(marketingSetting?.value));
+
+          const dbMarketing = parseMarketingState(marketingSetting?.value);
+          const mergedMarketing = {
+            ...localMarketing,
+            ...dbMarketing,
+          };
+
+          setMarketingStateMap(mergedMarketing);
+          localStorage.setItem(MARKETING_LOCAL_KEY, JSON.stringify(mergedMarketing));
         }
       } catch (e: any) {
         toast.error('Erro ao carregar: ' + e.message);
@@ -487,18 +488,13 @@ const ImportarLeads = () => {
 
   const stats = useMemo(() => {
     const leads = leadsWithState;
-    const totalLeads = leads.length;
-    const inFollowups = leads.filter((lead) => lead.marketing.in_followups).length;
-    const inBroadcasts = leads.filter((lead) => lead.marketing.in_broadcasts).length;
-    const hotLeads = leads.filter((lead) =>
-      ['quente', 'qualificado', 'comprador'].includes(lead.marketing.status),
-    ).length;
-
     return {
-      totalLeads,
-      inFollowups,
-      inBroadcasts,
-      hotLeads,
+      totalLeads: leads.length,
+      inFollowups: leads.filter((lead) => lead.marketing.in_followups).length,
+      inBroadcasts: leads.filter((lead) => lead.marketing.in_broadcasts).length,
+      hotLeads: leads.filter((lead) =>
+        ['quente', 'qualificado', 'comprador'].includes(lead.marketing.status),
+      ).length,
     };
   }, [leadsWithState]);
 
@@ -800,11 +796,12 @@ const ImportarLeads = () => {
         </Card>
       </div>
 
-      <Card className="border-white/10 bg-card/70 overflow-hidden">
+      <Card className="border-white/10 bg-card/70">
         <CardHeader className="pb-4 space-y-4">
           <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-3">
             <div>
               <CardTitle className="text-base flex items-center gap-2">
+                <Layers3 className="w-4 h-4 text-emerald-400" />
                 Leads Importados
                 {lastResult?.leads && (
                   <Badge variant="outline" className="text-[10px]">
@@ -813,7 +810,7 @@ const ImportarLeads = () => {
                 )}
               </CardTitle>
               <p className="text-sm text-muted-foreground mt-1">
-                Organize status, follow-ups e disparos diretamente daqui.
+                Ajuste status e prepare os leads para marketing.
               </p>
             </div>
 
@@ -895,7 +892,7 @@ const ImportarLeads = () => {
                     Ações em lote para {selectedPhones.length} lead(s)
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Marque follow-ups, disparos ou ajuste o status de vários leads de uma vez.
+                    Atualize status, follow-ups e disparos em vários leads ao mesmo tempo.
                   </p>
                 </div>
 
@@ -924,7 +921,7 @@ const ImportarLeads = () => {
                     onClick={() =>
                       applyBulkPatch(
                         { status: bulkStatus },
-                        `Status atualizado para ${getStatusMeta(bulkStatus).label.toLowerCase()}.`,
+                        `Status aplicado para ${selectedPhones.length} lead(s).`,
                       )
                     }
                   >
@@ -941,7 +938,7 @@ const ImportarLeads = () => {
                     }
                     className="bg-blue-600 hover:bg-blue-700 text-white"
                   >
-                    Enviar para Follow-ups
+                    Enviar p/ Follow-ups
                   </Button>
 
                   <Button
@@ -970,7 +967,7 @@ const ImportarLeads = () => {
           )}
         </CardHeader>
 
-        <CardContent className="p-0">
+        <CardContent className="pt-0">
           {!lastResult?.leads || lastResult.leads.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <Inbox className="w-10 h-10 text-muted-foreground/30 mb-3" />
@@ -982,110 +979,120 @@ const ImportarLeads = () => {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto" style={{ maxHeight: 620, overflowY: 'auto' }}>
-              <Table style={{ tableLayout: 'fixed', width: '100%' }}>
-                <TableHeader>
-                  <TableRow className="bg-muted/20">
-                    <TableHead style={{ width: '4%' }}>
+            <ScrollArea className="h-[620px] pr-2">
+              <div className="space-y-3">
+                <div className="sticky top-0 z-10 rounded-2xl border border-white/10 bg-background/95 backdrop-blur px-4 py-3">
+                  <div className="grid gap-3 grid-cols-[32px_1.4fr_1.1fr_0.8fr_0.9fr_1fr_56px] items-center text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                    <div className="flex justify-center">
                       <Checkbox
                         checked={allVisibleSelected}
                         onCheckedChange={toggleSelectAllVisible}
                         aria-label="Selecionar todos"
                       />
-                    </TableHead>
-                    <TableHead style={{ width: '24%' }}>Lead</TableHead>
-                    <TableHead style={{ width: '24%' }}>Origem</TableHead>
-                    <TableHead style={{ width: '12%' }}>Intenção</TableHead>
-                    <TableHead style={{ width: '14%' }}>Status</TableHead>
-                    <TableHead style={{ width: '16%' }}>Marketing</TableHead>
-                    <TableHead className="text-right" style={{ width: '6%' }}>
-                      Ação
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
+                    </div>
+                    <div>Lead</div>
+                    <div>Origem</div>
+                    <div>Intenção</div>
+                    <div>Status</div>
+                    <div>Marketing</div>
+                    <div className="text-right">Ação</div>
+                  </div>
+                </div>
 
-                <TableBody>
-                  {filtered.map((lead, i) => {
+                {filtered.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-white/10 px-4 py-10 text-center">
+                    <p className="text-sm font-medium text-muted-foreground">
+                      Nenhum lead encontrado com os filtros atuais
+                    </p>
+                    <p className="text-xs text-muted-foreground/70 mt-1">
+                      Ajuste a busca ou os filtros de status e marketing.
+                    </p>
+                  </div>
+                ) : (
+                  filtered.map((lead, i) => {
                     const statusMeta = getStatusMeta(lead.marketing.status);
                     const isSelected = selectedPhones.includes(lead.phone_key);
 
                     return (
-                      <TableRow key={`${lead.phone}-${i}`} className="group">
-                        <TableCell className="align-top pt-4">
-                          <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={() => togglePhoneSelection(lead.phone)}
-                            aria-label={`Selecionar ${lead.name}`}
-                          />
-                        </TableCell>
+                      <div
+                        key={`${lead.phone}-${i}`}
+                        className="rounded-2xl border border-white/10 bg-white/[0.02] px-4 py-4"
+                      >
+                        <div className="grid gap-3 grid-cols-[32px_1.4fr_1.1fr_0.8fr_0.9fr_1fr_56px] items-start">
+                          <div className="flex justify-center pt-1">
+                            <Checkbox
+                              checked={isSelected}
+                              onCheckedChange={() => togglePhoneSelection(lead.phone)}
+                              aria-label={`Selecionar ${lead.name}`}
+                            />
+                          </div>
 
-                        <TableCell className="py-3 align-top overflow-hidden">
-                          <div className="flex items-start gap-3 min-w-0">
-                            <div
-                              className={`w-9 h-9 rounded-full ${avatarColor(lead.name)} text-white flex items-center justify-center text-[11px] font-semibold shrink-0`}
-                            >
-                              {lead.name.substring(0, 2).toUpperCase()}
-                            </div>
-
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium truncate">{lead.name}</p>
-
-                              <a
-                                href={`https://wa.me/${lead.phone_key}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-[12px] text-muted-foreground hover:text-emerald-500 transition-colors"
+                          <div className="min-w-0">
+                            <div className="flex items-start gap-3 min-w-0">
+                              <div
+                                className={`w-10 h-10 rounded-full ${avatarColor(lead.name)} text-white flex items-center justify-center text-[11px] font-semibold shrink-0`}
                               >
-                                +{lead.phone_key}
-                              </a>
+                                {lead.name.substring(0, 2).toUpperCase()}
+                              </div>
 
-                              {lead.imported_at && (
-                                <div className="flex items-center gap-1 mt-1 text-[10px] text-muted-foreground">
-                                  <Clock3 className="w-3 h-3" />
-                                  {fmtDate(lead.imported_at)}
-                                </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium truncate">{lead.name}</p>
+
+                                <a
+                                  href={`https://wa.me/${lead.phone_key}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[12px] text-muted-foreground hover:text-emerald-500 transition-colors"
+                                >
+                                  +{lead.phone_key}
+                                </a>
+
+                                {lead.imported_at && (
+                                  <div className="flex items-center gap-1 mt-1 text-[10px] text-muted-foreground">
+                                    <Clock3 className="w-3 h-3" />
+                                    {fmtDate(lead.imported_at)}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="min-w-0">
+                            {lead.campaign ? (
+                              <p className="text-sm truncate" title={lead.campaign}>
+                                {campaignShort(lead.campaign)}
+                              </p>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+
+                            {lead.ad_name && (
+                              <p
+                                className="text-[11px] text-muted-foreground truncate mt-1"
+                                title={lead.ad_name}
+                              >
+                                {lead.ad_name}
+                              </p>
+                            )}
+
+                            <div className="flex gap-2 mt-2 flex-wrap">
+                              {lead.platform && (
+                                <Badge variant="outline" className="text-[10px]">
+                                  {lead.platform}
+                                </Badge>
+                              )}
+                              {lead.form && (
+                                <Badge variant="secondary" className="text-[10px]">
+                                  {lead.form}
+                                </Badge>
                               )}
                             </div>
                           </div>
-                        </TableCell>
 
-                        <TableCell className="py-3 align-top overflow-hidden">
-                          {lead.campaign ? (
-                            <p className="text-sm truncate" title={lead.campaign}>
-                              {campaignShort(lead.campaign)}
-                            </p>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
-
-                          {lead.ad_name && (
-                            <p
-                              className="text-[11px] text-muted-foreground truncate mt-1"
-                              title={lead.ad_name}
-                            >
-                              {lead.ad_name}
-                            </p>
-                          )}
-
-                          <div className="flex gap-2 mt-2 flex-wrap">
-                            {lead.platform && (
-                              <Badge variant="outline" className="text-[10px]">
-                                {lead.platform}
-                              </Badge>
-                            )}
-                            {lead.form && (
-                              <Badge variant="secondary" className="text-[10px]">
-                                {lead.form}
-                              </Badge>
-                            )}
+                          <div className="pt-1">
+                            {intentBadge(lead.when || lead.intent)}
                           </div>
-                        </TableCell>
 
-                        <TableCell className="py-3 align-top">
-                          {intentBadge(lead.when || lead.intent)}
-                        </TableCell>
-
-                        <TableCell className="py-3 align-top">
                           <div className="space-y-2">
                             <Select
                               value={lead.marketing.status}
@@ -1115,24 +1122,20 @@ const ImportarLeads = () => {
                               {statusMeta.label}
                             </span>
                           </div>
-                        </TableCell>
 
-                        <TableCell className="py-3 align-top">
-                          <div className="flex flex-col gap-2">
+                          <div className="space-y-2">
                             <Button
                               variant={lead.marketing.in_followups ? 'default' : 'outline'}
                               size="sm"
                               className={
                                 lead.marketing.in_followups
-                                  ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                                  : ''
+                                  ? 'w-full bg-blue-600 hover:bg-blue-700 text-white'
+                                  : 'w-full'
                               }
                               onClick={() =>
                                 updateLeadMarketing(
                                   lead.phone,
-                                  {
-                                    in_followups: !lead.marketing.in_followups,
-                                  },
+                                  { in_followups: !lead.marketing.in_followups },
                                   lead.marketing.in_followups
                                     ? 'Lead removido da fila de follow-ups.'
                                     : 'Lead enviado para a fila de follow-ups.',
@@ -1142,7 +1145,7 @@ const ImportarLeads = () => {
                               <Send className="w-3.5 h-3.5 mr-1.5" />
                               {lead.marketing.in_followups
                                 ? 'Em follow-up'
-                                : 'Enviar p/ Follow-ups'}
+                                : 'Follow-ups'}
                             </Button>
 
                             <Button
@@ -1150,15 +1153,13 @@ const ImportarLeads = () => {
                               size="sm"
                               className={
                                 lead.marketing.in_broadcasts
-                                  ? 'bg-fuchsia-600 hover:bg-fuchsia-700 text-white'
-                                  : ''
+                                  ? 'w-full bg-fuchsia-600 hover:bg-fuchsia-700 text-white'
+                                  : 'w-full'
                               }
                               onClick={() =>
                                 updateLeadMarketing(
                                   lead.phone,
-                                  {
-                                    in_broadcasts: !lead.marketing.in_broadcasts,
-                                  },
+                                  { in_broadcasts: !lead.marketing.in_broadcasts },
                                   lead.marketing.in_broadcasts
                                     ? 'Lead removido da fila de disparos.'
                                     : 'Lead adicionado à fila de disparos.',
@@ -1168,33 +1169,33 @@ const ImportarLeads = () => {
                               <RadioTower className="w-3.5 h-3.5 mr-1.5" />
                               {lead.marketing.in_broadcasts
                                 ? 'Em disparos'
-                                : 'Adicionar a Disparos'}
+                                : 'Disparos'}
                             </Button>
                           </div>
-                        </TableCell>
 
-                        <TableCell className="py-3 align-top text-right">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 opacity-70 group-hover:opacity-100 transition-opacity"
-                            asChild
-                          >
-                            <a
-                              href={`https://wa.me/${lead.phone_key}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                          <div className="flex justify-end pt-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              asChild
                             >
-                              <MessageCircle className="w-4 h-4 text-emerald-500" />
-                            </a>
-                          </Button>
-                        </TableCell>
-                      </TableRow>
+                              <a
+                                href={`https://wa.me/${lead.phone_key}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                <MessageCircle className="w-4 h-4 text-emerald-500" />
+                              </a>
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
                     );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+                  })
+                )}
+              </div>
+            </ScrollArea>
           )}
         </CardContent>
       </Card>
@@ -1271,8 +1272,7 @@ const ImportarLeads = () => {
             <CardContent className="pt-0 space-y-3">
               <p className="text-xs text-muted-foreground">
                 Ative <Badge variant="secondary">pg_cron</Badge> e{' '}
-                <Badge variant="secondary">pg_net</Badge> no Supabase e execute o
-                SQL abaixo.
+                <Badge variant="secondary">pg_net</Badge> no Supabase e execute o SQL abaixo.
               </p>
 
               <div className="relative">
