@@ -1,11 +1,30 @@
 import { useLocation, NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import {
-  LayoutDashboard, MessageSquare, Package, Settings, LogOut,
-  Users, BarChart3, FileText, TestTube, UsersRound, Gift,
-  Cog, Bot, ChevronLeft, ChevronRight, ExternalLink,
-  ClipboardList, Globe, Sparkles, History, Activity,
-  FileSpreadsheet, X,
+  LayoutDashboard,
+  MessageSquare,
+  Package,
+  Settings,
+  LogOut,
+  Users,
+  BarChart3,
+  FileText,
+  TestTube,
+  UsersRound,
+  Gift,
+  Cog,
+  Bot,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  ClipboardList,
+  Globe,
+  Sparkles,
+  History,
+  Activity,
+  FileSpreadsheet,
+  X,
+  Trophy,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -18,7 +37,6 @@ interface AppSidebarProps {
   onMobileClose: () => void;
 }
 
-// ─── Navegação agrupada ───────────────────────────────────────────────────────
 const NAV_GROUPS = [
   {
     id: 'core',
@@ -36,6 +54,7 @@ const NAV_GROUPS = [
       { to: '/customers', label: 'Clientes', icon: UsersRound },
       { to: '/offers', label: 'Ofertas', icon: Gift },
       { to: '/pedidos/pendentes', label: 'Pedidos', icon: ClipboardList },
+      { to: '/sales', label: 'Vendas', icon: Trophy },
       { to: '/reports', label: 'Relatórios', icon: BarChart3 },
       { to: '/seller-monitor', label: 'Monitor', icon: Activity },
       { to: '/importar-leads', label: 'Importar Leads', icon: FileSpreadsheet },
@@ -73,7 +92,6 @@ const ROLE_LABELS: Record<string, string> = {
   vendedor: 'Vendedor',
 };
 
-// ─── Component ────────────────────────────────────────────────────────────────
 const AppSidebar = ({ collapsed, onToggle, onMobileClose }: AppSidebarProps) => {
   const { user, profile, signOut } = useAuth();
   const { isAdmin, isGerente, role } = useUserRole();
@@ -87,9 +105,16 @@ const AppSidebar = ({ collapsed, onToggle, onMobileClose }: AppSidebarProps) => 
     .join('')
     .toUpperCase();
 
-  // ── NavItem ────────────────────────────────────────────────────────────────
-  const NavItem = ({ to, label, icon: Icon, exact }: {
-    to: string; label: string; icon: any; exact?: boolean;
+  const NavItem = ({
+    to,
+    label,
+    icon: Icon,
+    exact,
+  }: {
+    to: string;
+    label: string;
+    icon: any;
+    exact?: boolean;
   }) => {
     const isActive = exact
       ? location.pathname === to
@@ -118,14 +143,16 @@ const AppSidebar = ({ collapsed, onToggle, onMobileClose }: AppSidebarProps) => 
       return (
         <Tooltip delayDuration={0}>
           <TooltipTrigger asChild>{inner}</TooltipTrigger>
-          <TooltipContent side="right" className="text-xs font-medium">{label}</TooltipContent>
+          <TooltipContent side="right" className="text-xs font-medium">
+            {label}
+          </TooltipContent>
         </Tooltip>
       );
     }
+
     return inner;
   };
 
-  // ── Section separator ──────────────────────────────────────────────────────
   const Section = ({ label }: { label: string | null }) => {
     if (!label) return null;
     if (collapsed) return <div className="h-px bg-border/60 mx-2 my-1.5" />;
@@ -137,50 +164,53 @@ const AppSidebar = ({ collapsed, onToggle, onMobileClose }: AppSidebarProps) => 
   };
 
   return (
-    <aside className={cn(
-      'h-screen bg-sidebar-background border-r border-sidebar-border',
-      'flex flex-col shrink-0 transition-all duration-300',
-      collapsed ? 'w-[56px]' : 'w-52',
-    )}>
-
-      {/* Logo + botões */}
-      <div className={cn(
-        'h-14 flex items-center border-b border-sidebar-border shrink-0 gap-1',
-        collapsed ? 'justify-center px-1.5' : 'justify-between px-3',
-      )}>
+    <aside
+      className={cn(
+        'h-screen bg-sidebar-background border-r border-sidebar-border',
+        'flex flex-col shrink-0 transition-all duration-300',
+        collapsed ? 'w-[56px]' : 'w-52',
+      )}
+    >
+      <div
+        className={cn(
+          'h-14 flex items-center border-b border-sidebar-border shrink-0 gap-1',
+          collapsed ? 'justify-center px-1.5' : 'justify-between px-3',
+        )}
+      >
         {!collapsed && (
           <span className="text-sm font-bold tracking-[0.25em] text-sidebar-foreground select-none">
             MSV
           </span>
         )}
+
         <div className="flex items-center gap-0.5">
-          {/* Fechar no mobile */}
           <button
             onClick={onMobileClose}
             className="lg:hidden p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
           >
             <X className="w-3.5 h-3.5" />
           </button>
-          {/* Collapse no desktop */}
+
           <button
             onClick={onToggle}
             className="hidden lg:flex p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
           >
-            {collapsed
-              ? <ChevronRight className="w-3.5 h-3.5" />
-              : <ChevronLeft className="w-3.5 h-3.5" />}
+            {collapsed ? (
+              <ChevronRight className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronLeft className="w-3.5 h-3.5" />
+            )}
           </button>
         </div>
       </div>
 
-      {/* Itens de navegação */}
       <ScrollArea className="flex-1">
-        <nav className={cn(
-          'py-2',
-          collapsed ? 'px-1.5 space-y-0.5' : 'px-2 space-y-0.5',
-        )}>
-
-          {/* Grupos principais */}
+        <nav
+          className={cn(
+            'py-2',
+            collapsed ? 'px-1.5 space-y-0.5' : 'px-2 space-y-0.5',
+          )}
+        >
           {NAV_GROUPS.map((group) => (
             <div key={group.id}>
               <Section label={group.label} />
@@ -190,7 +220,6 @@ const AppSidebar = ({ collapsed, onToggle, onMobileClose }: AppSidebarProps) => 
             </div>
           ))}
 
-          {/* Admin */}
           {isAdmin && (
             <div>
               <Section label="Admin" />
@@ -200,7 +229,6 @@ const AppSidebar = ({ collapsed, onToggle, onMobileClose }: AppSidebarProps) => 
             </div>
           )}
 
-          {/* API — só admin/gerente */}
           {(isAdmin || isGerente) && (
             <div>
               <Section label="API" />
@@ -208,24 +236,27 @@ const AppSidebar = ({ collapsed, onToggle, onMobileClose }: AppSidebarProps) => 
                 <NavItem key={item.to} {...item} />
               ))}
 
-              {/* Link externo: Logs */}
               {collapsed ? (
                 <Tooltip delayDuration={0}>
                   <TooltipTrigger asChild>
                     <a
                       href="https://supabase.com/dashboard/project/ahbjwpkpxqqrpvpzmqwa/functions"
-                      target="_blank" rel="noopener noreferrer"
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="flex items-center justify-center w-9 h-9 mx-auto rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all"
                     >
                       <ExternalLink className="w-4 h-4" />
                     </a>
                   </TooltipTrigger>
-                  <TooltipContent side="right" className="text-xs font-medium">Logs (Supabase)</TooltipContent>
+                  <TooltipContent side="right" className="text-xs font-medium">
+                    Logs (Supabase)
+                  </TooltipContent>
                 </Tooltip>
               ) : (
                 <a
                   href="https://supabase.com/dashboard/project/ahbjwpkpxqqrpvpzmqwa/functions"
-                  target="_blank" rel="noopener noreferrer"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all w-full"
                 >
                   <ExternalLink className="w-4 h-4 shrink-0" />
@@ -235,7 +266,6 @@ const AppSidebar = ({ collapsed, onToggle, onMobileClose }: AppSidebarProps) => 
             </div>
           )}
 
-          {/* Configurações */}
           <div>
             <Section label="Config." />
             {SETTINGS_ITEMS.map((item) => (
@@ -245,11 +275,12 @@ const AppSidebar = ({ collapsed, onToggle, onMobileClose }: AppSidebarProps) => 
         </nav>
       </ScrollArea>
 
-      {/* Footer: usuário + sair */}
-      <div className={cn(
-        'border-t border-sidebar-border shrink-0 p-2',
-        collapsed ? 'flex flex-col items-center gap-1' : '',
-      )}>
+      <div
+        className={cn(
+          'border-t border-sidebar-border shrink-0 p-2',
+          collapsed ? 'flex flex-col items-center gap-1' : '',
+        )}
+      >
         {collapsed ? (
           <>
             <Tooltip delayDuration={0}>
@@ -260,9 +291,12 @@ const AppSidebar = ({ collapsed, onToggle, onMobileClose }: AppSidebarProps) => 
               </TooltipTrigger>
               <TooltipContent side="right">
                 <p className="text-xs font-medium">{displayName}</p>
-                {role && <p className="text-[10px] text-muted-foreground">{ROLE_LABELS[role]}</p>}
+                {role && (
+                  <p className="text-[10px] text-muted-foreground">{ROLE_LABELS[role]}</p>
+                )}
               </TooltipContent>
             </Tooltip>
+
             <Tooltip delayDuration={0}>
               <TooltipTrigger asChild>
                 <button
@@ -272,7 +306,9 @@ const AppSidebar = ({ collapsed, onToggle, onMobileClose }: AppSidebarProps) => 
                   <LogOut className="w-3.5 h-3.5" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="right" className="text-xs">Sair</TooltipContent>
+              <TooltipContent side="right" className="text-xs">
+                Sair
+              </TooltipContent>
             </Tooltip>
           </>
         ) : (
@@ -280,12 +316,18 @@ const AppSidebar = ({ collapsed, onToggle, onMobileClose }: AppSidebarProps) => 
             <div className="w-7 h-7 rounded-full bg-foreground text-background flex items-center justify-center text-[11px] font-bold shrink-0 select-none">
               {initials}
             </div>
+
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-sidebar-foreground truncate leading-tight">{displayName}</p>
+              <p className="text-xs font-medium text-sidebar-foreground truncate leading-tight">
+                {displayName}
+              </p>
               {role && (
-                <p className="text-[10px] text-muted-foreground leading-tight">{ROLE_LABELS[role]}</p>
+                <p className="text-[10px] text-muted-foreground leading-tight">
+                  {ROLE_LABELS[role]}
+                </p>
               )}
             </div>
+
             <button
               onClick={signOut}
               className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-all shrink-0"
