@@ -2,7 +2,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 const supabaseUrl = 'https://ahbjwpkpxqqrpvpzmqwa.supabase.co';
 const supabaseAnonKey =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFoYmp3cGtweHFxcnB2cHptcXdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU1NTY5NzUsImV4cCI6MjA4MTEzMjk3NX0.jdH0gleC9mcB1ezewdobxCp-yKmM37dixfkMyzzhhaQ';
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFoYmp3cGtweHFxcnB2cHptcXdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU1NTY5NzUsImV4cCI6MjA4MTEzMjk3NX0.jdH0gleC9mcB1ezewdobxCp-yKmM37dixfkMyzzhhaQ';
 
 const isConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
@@ -17,19 +17,27 @@ export const isSupabaseConfigured = isConfigured;
 export type Product = {
   id: string;
   name: string;
-  sku?: string;
+  sku?: string | null;
   description: string;
   price: number;
   category: string;
   image_url: string;
-  video_url?: string;
+  video_url?: string | null;
   images?: string[];
   active: boolean;
   created_at?: string;
   updated_at?: string;
 };
 
-export type LeadStatus = 'novo' | 'frio' | 'quente' | 'comprador' | 'sem_interesse';
+export type LeadStatus =
+  | 'novo'
+  | 'frio'
+  | 'quente'
+  | 'comprador'
+  | 'sem_interesse'
+  | 'qualificado'
+  | 'vendido'
+  | 'perdido';
 
 export type Conversation = {
   id: string;
@@ -69,4 +77,21 @@ export type UserRole = {
   user_id: string;
   role: 'admin' | 'moderator' | 'user';
   created_at: string;
+};
+
+export type ChatSaleRecord = {
+  id: string;
+  customer_name: string | null;
+  customer_phone: string;
+  selected_name: string | null;
+  selected_sku: string | null;
+  quantity: number;
+  total_price: number | null;
+  assigned_to: string | null;
+  created_at: string;
+  source?: string | null;
+  status?: string | null;
+  external_reference?: string | null;
+  notes?: string | null;
+  summary_text?: string | null;
 };
