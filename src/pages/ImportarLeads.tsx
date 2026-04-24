@@ -43,6 +43,10 @@ import {
   Target,
   Clock3,
   Layers3,
+  Megaphone,
+  Flame,
+  UserCheck,
+  CircleDot,
 } from 'lucide-react';
 
 /* ── Types ── */
@@ -77,11 +81,27 @@ type LeadMarketingStatus =
   | 'sem_interesse'
   | 'perdido';
 
+type FollowupQueue =
+  | 'none'
+  | 'followup_imediato'
+  | 'followup_24h'
+  | 'followup_3dias'
+  | 'followup_7dias';
+
+type BroadcastCampaign =
+  | 'none'
+  | 'campanha_quentes'
+  | 'campanha_nutricao'
+  | 'campanha_remarketing'
+  | 'campanha_oferta';
+
 interface LeadMarketingState {
   phone: string;
   status: LeadMarketingStatus;
   in_followups: boolean;
   in_broadcasts: boolean;
+  followup_queue: FollowupQueue;
+  broadcast_campaign: BroadcastCampaign;
   updated_at: string;
 }
 
@@ -100,6 +120,9 @@ const CRON_SQL = `select cron.schedule(
   );
   $$
 );`;
+
+const MARKETING_SETTING_KEY = 'facebook_leads_marketing_state';
+const MARKETING_LOCAL_KEY = 'facebook_leads_marketing_state_local';
 
 const INTENT_MAP: Record<string, { label: string; cls: string }> = {
   essa_semana: { label: 'Esta semana', cls: 'bg-emerald-600 text-white' },
@@ -127,8 +150,27 @@ const LEAD_STATUS_OPTIONS: Array<{
   { value: 'perdido', label: 'Perdido', cls: 'bg-rose-500/15 text-rose-300 border-rose-500/20' },
 ];
 
-const MARKETING_SETTING_KEY = 'facebook_leads_marketing_state';
-const MARKETING_LOCAL_KEY = 'facebook_leads_marketing_state_local';
+const FOLLOWUP_QUEUE_OPTIONS: Array<{
+  value: FollowupQueue;
+  label: string;
+}> = [
+  { value: 'none', label: 'Sem fila' },
+  { value: 'followup_imediato', label: 'Imediato' },
+  { value: 'followup_24h', label: '24 horas' },
+  { value: 'followup_3dias', label: '3 dias' },
+  { value: 'followup_7dias', label: '7 dias' },
+];
+
+const BROADCAST_OPTIONS: Array<{
+  value: BroadcastCampaign;
+  label: string;
+}> = [
+  { value: 'none', label: 'Sem campanha' },
+  { value: 'campanha_quentes', label: 'Leads quentes' },
+  { value: 'campanha_nutricao', label: 'Nutrição' },
+  { value: 'campanha_remarketing', label: 'Remarketing' },
+  { value: 'campanha_oferta', label: 'Oferta especial' },
+];
 
 /* ── Helpers ── */
 function normalizePhone(phone: string) {
@@ -151,7 +193,7 @@ function campaignShort(raw: string) {
   if (!raw) return '';
   const m = raw.match(/\[([^\]]+)\]\s*$/);
   const text = m ? m[1] : raw.replace(/^\[+|\]+$/g, '');
-  return text.length > 42 ? text.slice(0, 42) + '…' : text;
+  return text.length > 48 ? text.slice(0, 48) + '…' : text;
 }
 
 function intentBadge(value: string) {
@@ -198,6 +240,8 @@ function getDefaultLeadMarketingState(phone: string): LeadMarketingState {
     status: 'novo',
     in_followups: false,
     in_broadcasts: false,
+    followup_queue: 'none',
+    broadcast_campaign: 'none',
     updated_at: new Date().toISOString(),
   };
 }
@@ -208,36 +252,22 @@ function parseMarketingState(rawValue?: string | null): Record<string, LeadMarke
   try {
     const parsed = JSON.parse(rawValue);
 
-    if (Array.isArray(parsed)) {
-      return parsed.reduce(
-        (acc: Record<string, LeadMarketingState>, item: LeadMarketingState) => {
-          const phone = normalizePhone(item.phone);
-          if (!phone) return acc;
-          acc[phone] = {
-            phone,
-            status: item.status || 'novo',
-            in_followups: Boolean(item.in_followups),
-            in_broadcasts: Boolean(item.in_broadcasts),
-            updated_at: item.updated_at || new Date().toISOString(),
-          };
-          return acc;
-        },
-        {},
-      );
-    }
-
     if (parsed && typeof parsed === 'object') {
       return Object.entries(parsed).reduce(
         (acc: Record<string, LeadMarketingState>, [phoneKey, item]: any) => {
           const phone = normalizePhone(phoneKey || item?.phone || '');
           if (!phone) return acc;
+
           acc[phone] = {
             phone,
             status: item?.status || 'novo',
             in_followups: Boolean(item?.in_followups),
             in_broadcasts: Boolean(item?.in_broadcasts),
+            followup_queue: item?.followup_queue || 'none',
+            broadcast_campaign: item?.broadcast_campaign || 'none',
             updated_at: item?.updated_at || new Date().toISOString(),
           };
+
           return acc;
         },
         {},
@@ -257,6 +287,18 @@ function getStatusMeta(status: LeadMarketingStatus) {
   );
 }
 
+function getFollowupLabel(value: FollowupQueue) {
+  return (
+    FOLLOWUP_QUEUE_OPTIONS.find((item) => item.value === value)?.label || 'Sem fila'
+  );
+}
+
+function getBroadcastLabel(value: BroadcastCampaign) {
+  return (
+    BROADCAST_OPTIONS.find((item) => item.value === value)?.label || 'Sem campanha'
+  );
+}
+
 /* ── Page component ── */
 const ImportarLeads = () => {
   const [sheetUrl, setSheetUrl] = useState('');
@@ -268,8 +310,9 @@ const ImportarLeads = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | LeadMarketingStatus>('all');
   const [queueFilter, setQueueFilter] = useState<
-    'all' | 'followups' | 'broadcasts' | 'with_actions' | 'without_actions'
+    'all' | 'followups' | 'broadcasts' | 'both' | 'without_actions'
   >('all');
+  const [campaignFilter, setCampaignFilter] = useState('all');
 
   const [logOpen, setLogOpen] = useState(false);
   const [cronOpen, setCronOpen] = useState(false);
@@ -279,14 +322,13 @@ const ImportarLeads = () => {
 
   const [selectedPhones, setSelectedPhones] = useState<string[]>([]);
   const [bulkStatus, setBulkStatus] = useState<LeadMarketingStatus>('qualificado');
+  const [bulkFollowupQueue, setBulkFollowupQueue] = useState<FollowupQueue>('followup_24h');
+  const [bulkBroadcastCampaign, setBulkBroadcastCampaign] =
+    useState<BroadcastCampaign>('campanha_nutricao');
 
   const urlOk = sheetUrl.trim().length > 0;
 
-  const saveStoreSetting = async (
-    key: string,
-    value: string,
-    description?: string,
-  ) => {
+  const saveStoreSetting = async (key: string, value: string, description?: string) => {
     const { data: existing, error: existingError } = await supabase
       .from('store_settings')
       .select('id')
@@ -374,7 +416,7 @@ const ImportarLeads = () => {
             try {
               setLastResult(JSON.parse(lastImportSetting.value));
             } catch {
-              // ignore malformed cached value
+              // ignore
             }
           }
 
@@ -449,6 +491,16 @@ const ImportarLeads = () => {
     }));
   }, [lastResult?.leads, marketingStateMap]);
 
+  const campaignOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        leadsWithState
+          .map((lead) => lead.campaign)
+          .filter((campaign) => Boolean(campaign?.trim())),
+      ),
+    ).sort((a, b) => a.localeCompare(b));
+  }, [leadsWithState]);
+
   const filtered = useMemo(() => {
     return leadsWithState.filter((lead) => {
       const q = search.trim().toLowerCase();
@@ -467,15 +519,19 @@ const ImportarLeads = () => {
         queueFilter === 'all' ||
         (queueFilter === 'followups' && lead.marketing.in_followups) ||
         (queueFilter === 'broadcasts' && lead.marketing.in_broadcasts) ||
-        (queueFilter === 'with_actions' &&
-          (lead.marketing.in_followups || lead.marketing.in_broadcasts)) ||
+        (queueFilter === 'both' &&
+          lead.marketing.in_followups &&
+          lead.marketing.in_broadcasts) ||
         (queueFilter === 'without_actions' &&
           !lead.marketing.in_followups &&
           !lead.marketing.in_broadcasts);
 
-      return matchesSearch && matchesStatus && matchesQueue;
+      const matchesCampaign =
+        campaignFilter === 'all' || lead.campaign === campaignFilter;
+
+      return matchesSearch && matchesStatus && matchesQueue && matchesCampaign;
     });
-  }, [leadsWithState, search, statusFilter, queueFilter]);
+  }, [leadsWithState, search, statusFilter, queueFilter, campaignFilter]);
 
   const visiblePhoneKeys = useMemo(
     () => Array.from(new Set(filtered.map((lead) => lead.phone_key))),
@@ -488,13 +544,14 @@ const ImportarLeads = () => {
 
   const stats = useMemo(() => {
     const leads = leadsWithState;
+
     return {
       totalLeads: leads.length,
-      inFollowups: leads.filter((lead) => lead.marketing.in_followups).length,
-      inBroadcasts: leads.filter((lead) => lead.marketing.in_broadcasts).length,
-      hotLeads: leads.filter((lead) =>
-        ['quente', 'qualificado', 'comprador'].includes(lead.marketing.status),
-      ).length,
+      novos: leads.filter((lead) => lead.marketing.status === 'novo').length,
+      quentes: leads.filter((lead) => lead.marketing.status === 'quente').length,
+      qualificados: leads.filter((lead) => lead.marketing.status === 'qualificado').length,
+      followups: leads.filter((lead) => lead.marketing.in_followups).length,
+      broadcasts: leads.filter((lead) => lead.marketing.in_broadcasts).length,
     };
   }, [leadsWithState]);
 
@@ -543,7 +600,7 @@ const ImportarLeads = () => {
   };
 
   const applyBulkPatch = async (
-    patch: Partial<LeadMarketingState>,
+    patchFactory: (current: LeadMarketingState) => LeadMarketingState,
     successMessage: string,
   ) => {
     if (selectedPhones.length === 0) return;
@@ -551,13 +608,7 @@ const ImportarLeads = () => {
     const nextMap = { ...marketingStateMap };
 
     selectedPhones.forEach((phone) => {
-      const current = getLeadState(phone);
-      nextMap[phone] = {
-        ...current,
-        ...patch,
-        phone,
-        updated_at: new Date().toISOString(),
-      };
+      nextMap[phone] = patchFactory(getLeadState(phone));
     });
 
     await persistMarketingState(nextMap, successMessage);
@@ -736,14 +787,14 @@ const ImportarLeads = () => {
         </Card>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         <Card className="border-white/10 bg-card/70">
-          <CardContent className="p-5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 flex items-center justify-center">
               <Users className="w-5 h-5 text-emerald-400" />
             </div>
             <div>
-              <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
                 Leads
               </p>
               <p className="text-2xl font-bold">{stats.totalLeads}</p>
@@ -752,45 +803,73 @@ const ImportarLeads = () => {
         </Card>
 
         <Card className="border-white/10 bg-card/70">
-          <CardContent className="p-5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-slate-500/10 flex items-center justify-center">
+              <CircleDot className="w-5 h-5 text-slate-300" />
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                Novos
+              </p>
+              <p className="text-2xl font-bold">{stats.novos}</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-white/10 bg-card/70">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-orange-500/10 flex items-center justify-center">
+              <Flame className="w-5 h-5 text-orange-400" />
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                Quentes
+              </p>
+              <p className="text-2xl font-bold text-orange-500">{stats.quentes}</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-white/10 bg-card/70">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 flex items-center justify-center">
+              <UserCheck className="w-5 h-5 text-emerald-400" />
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                Qualificados
+              </p>
+              <p className="text-2xl font-bold text-emerald-500">
+                {stats.qualificados}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-white/10 bg-card/70">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-blue-500/10 flex items-center justify-center">
               <Send className="w-5 h-5 text-blue-400" />
             </div>
             <div>
-              <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
                 Follow-ups
               </p>
-              <p className="text-2xl font-bold text-blue-500">{stats.inFollowups}</p>
+              <p className="text-2xl font-bold text-blue-500">{stats.followups}</p>
             </div>
           </CardContent>
         </Card>
 
         <Card className="border-white/10 bg-card/70">
-          <CardContent className="p-5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-fuchsia-500/10 flex items-center justify-center">
-              <RadioTower className="w-5 h-5 text-fuchsia-400" />
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-fuchsia-500/10 flex items-center justify-center">
+              <Megaphone className="w-5 h-5 text-fuchsia-400" />
             </div>
             <div>
-              <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
                 Disparos
               </p>
-              <p className="text-2xl font-bold text-fuchsia-500">
-                {stats.inBroadcasts}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-white/10 bg-card/70">
-          <CardContent className="p-5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-orange-500/10 flex items-center justify-center">
-              <Sparkles className="w-5 h-5 text-orange-400" />
-            </div>
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                Quentes
-              </p>
-              <p className="text-2xl font-bold text-orange-500">{stats.hotLeads}</p>
+              <p className="text-2xl font-bold text-fuchsia-500">{stats.broadcasts}</p>
             </div>
           </CardContent>
         </Card>
@@ -810,7 +889,7 @@ const ImportarLeads = () => {
                 )}
               </CardTitle>
               <p className="text-sm text-muted-foreground mt-1">
-                Ajuste status e prepare os leads para marketing.
+                Ajuste status, campanha e filas de marketing sem sair da importação.
               </p>
             </div>
 
@@ -826,7 +905,7 @@ const ImportarLeads = () => {
             </div>
           </div>
 
-          <div className="grid gap-3 lg:grid-cols-[1.3fr_220px_220px]">
+          <div className="grid gap-3 xl:grid-cols-[1.2fr_220px_220px_240px]">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
@@ -836,6 +915,24 @@ const ImportarLeads = () => {
                 className="pl-9 h-10"
               />
             </div>
+
+            <Select
+              value={campaignFilter}
+              onValueChange={setCampaignFilter}
+            >
+              <SelectTrigger className="h-10">
+                <Target className="w-4 h-4 mr-2" />
+                <SelectValue placeholder="Campanha" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as campanhas</SelectItem>
+                {campaignOptions.map((campaign) => (
+                  <SelectItem key={campaign} value={campaign}>
+                    {campaignShort(campaign)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
             <Select
               value={statusFilter}
@@ -865,20 +962,20 @@ const ImportarLeads = () => {
                     | 'all'
                     | 'followups'
                     | 'broadcasts'
-                    | 'with_actions'
+                    | 'both'
                     | 'without_actions',
                 )
               }
             >
               <SelectTrigger className="h-10">
-                <Target className="w-4 h-4 mr-2" />
-                <SelectValue placeholder="Fila de marketing" />
+                <Sparkles className="w-4 h-4 mr-2" />
+                <SelectValue placeholder="Marketing" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas as filas</SelectItem>
                 <SelectItem value="followups">Somente follow-ups</SelectItem>
                 <SelectItem value="broadcasts">Somente disparos</SelectItem>
-                <SelectItem value="with_actions">Com ações</SelectItem>
+                <SelectItem value="both">Nos dois</SelectItem>
                 <SelectItem value="without_actions">Sem ações</SelectItem>
               </SelectContent>
             </Select>
@@ -886,13 +983,13 @@ const ImportarLeads = () => {
 
           {selectedPhones.length > 0 && (
             <div className="rounded-2xl border border-emerald-500/15 bg-emerald-500/5 p-4">
-              <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div className="flex flex-col gap-3">
                 <div>
                   <p className="text-sm font-medium">
                     Ações em lote para {selectedPhones.length} lead(s)
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Atualize status, follow-ups e disparos em vários leads ao mesmo tempo.
+                    Ajuste em massa o status, follow-up e disparos.
                   </p>
                 </div>
 
@@ -904,7 +1001,7 @@ const ImportarLeads = () => {
                     }
                   >
                     <SelectTrigger className="w-[180px] h-9 bg-background/70">
-                      <SelectValue placeholder="Escolher status" />
+                      <SelectValue placeholder="Status" />
                     </SelectTrigger>
                     <SelectContent>
                       {LEAD_STATUS_OPTIONS.map((option) => (
@@ -920,38 +1017,92 @@ const ImportarLeads = () => {
                     size="sm"
                     onClick={() =>
                       applyBulkPatch(
-                        { status: bulkStatus },
-                        `Status aplicado para ${selectedPhones.length} lead(s).`,
+                        (current) => ({
+                          ...current,
+                          status: bulkStatus,
+                          updated_at: new Date().toISOString(),
+                        }),
+                        `Status atualizado para ${selectedPhones.length} lead(s).`,
                       )
                     }
                   >
                     Aplicar status
                   </Button>
 
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      applyBulkPatch(
-                        { in_followups: true },
-                        'Leads enviados para a fila de follow-ups.',
-                      )
+                  <Select
+                    value={bulkFollowupQueue}
+                    onValueChange={(value) =>
+                      setBulkFollowupQueue(value as FollowupQueue)
                     }
-                    className="bg-blue-600 hover:bg-blue-700 text-white"
                   >
-                    Enviar p/ Follow-ups
-                  </Button>
+                    <SelectTrigger className="w-[180px] h-9 bg-background/70">
+                      <SelectValue placeholder="Fila follow-up" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {FOLLOWUP_QUEUE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
 
                   <Button
                     size="sm"
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
                     onClick={() =>
                       applyBulkPatch(
-                        { in_broadcasts: true },
-                        'Leads adicionados à fila de disparos.',
+                        (current) => ({
+                          ...current,
+                          in_followups: bulkFollowupQueue !== 'none',
+                          followup_queue: bulkFollowupQueue,
+                          updated_at: new Date().toISOString(),
+                        }),
+                        bulkFollowupQueue === 'none'
+                          ? 'Leads removidos da fila de follow-up.'
+                          : 'Leads enviados para follow-ups.',
                       )
                     }
-                    className="bg-fuchsia-600 hover:bg-fuchsia-700 text-white"
                   >
-                    Adicionar a Disparos
+                    {bulkFollowupQueue === 'none' ? 'Remover de Follow-ups' : 'Enviar p/ Follow-ups'}
+                  </Button>
+
+                  <Select
+                    value={bulkBroadcastCampaign}
+                    onValueChange={(value) =>
+                      setBulkBroadcastCampaign(value as BroadcastCampaign)
+                    }
+                  >
+                    <SelectTrigger className="w-[180px] h-9 bg-background/70">
+                      <SelectValue placeholder="Campanha disparo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {BROADCAST_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Button
+                    size="sm"
+                    className="bg-fuchsia-600 hover:bg-fuchsia-700 text-white"
+                    onClick={() =>
+                      applyBulkPatch(
+                        (current) => ({
+                          ...current,
+                          in_broadcasts: bulkBroadcastCampaign !== 'none',
+                          broadcast_campaign: bulkBroadcastCampaign,
+                          updated_at: new Date().toISOString(),
+                        }),
+                        bulkBroadcastCampaign === 'none'
+                          ? 'Leads removidos de disparos.'
+                          : 'Leads adicionados à campanha de disparo.',
+                      )
+                    }
+                  >
+                    {bulkBroadcastCampaign === 'none' ? 'Remover de Disparos' : 'Adicionar a Disparos'}
                   </Button>
 
                   <Button
@@ -979,33 +1130,15 @@ const ImportarLeads = () => {
               </p>
             </div>
           ) : (
-            <ScrollArea className="h-[620px] pr-2">
+            <ScrollArea className="h-[640px] pr-2">
               <div className="space-y-3">
-                <div className="sticky top-0 z-10 rounded-2xl border border-white/10 bg-background/95 backdrop-blur px-4 py-3">
-                  <div className="grid gap-3 grid-cols-[32px_1.4fr_1.1fr_0.8fr_0.9fr_1fr_56px] items-center text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-                    <div className="flex justify-center">
-                      <Checkbox
-                        checked={allVisibleSelected}
-                        onCheckedChange={toggleSelectAllVisible}
-                        aria-label="Selecionar todos"
-                      />
-                    </div>
-                    <div>Lead</div>
-                    <div>Origem</div>
-                    <div>Intenção</div>
-                    <div>Status</div>
-                    <div>Marketing</div>
-                    <div className="text-right">Ação</div>
-                  </div>
-                </div>
-
                 {filtered.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-white/10 px-4 py-10 text-center">
                     <p className="text-sm font-medium text-muted-foreground">
                       Nenhum lead encontrado com os filtros atuais
                     </p>
                     <p className="text-xs text-muted-foreground/70 mt-1">
-                      Ajuste a busca ou os filtros de status e marketing.
+                      Ajuste a busca, a campanha ou os filtros de marketing.
                     </p>
                   </div>
                 ) : (
@@ -1016,178 +1149,273 @@ const ImportarLeads = () => {
                     return (
                       <div
                         key={`${lead.phone}-${i}`}
-                        className="rounded-2xl border border-white/10 bg-white/[0.02] px-4 py-4"
+                        className="rounded-2xl border border-white/10 bg-white/[0.02] p-4"
                       >
-                        <div className="grid gap-3 grid-cols-[32px_1.4fr_1.1fr_0.8fr_0.9fr_1fr_56px] items-start">
-                          <div className="flex justify-center pt-1">
-                            <Checkbox
-                              checked={isSelected}
-                              onCheckedChange={() => togglePhoneSelection(lead.phone)}
-                              aria-label={`Selecionar ${lead.name}`}
-                            />
-                          </div>
+                        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                          <div className="flex items-start gap-4 min-w-0 flex-1">
+                            <div className="pt-2">
+                              <Checkbox
+                                checked={isSelected}
+                                onCheckedChange={() => togglePhoneSelection(lead.phone)}
+                                aria-label={`Selecionar ${lead.name}`}
+                              />
+                            </div>
 
-                          <div className="min-w-0">
-                            <div className="flex items-start gap-3 min-w-0">
-                              <div
-                                className={`w-10 h-10 rounded-full ${avatarColor(lead.name)} text-white flex items-center justify-center text-[11px] font-semibold shrink-0`}
-                              >
-                                {lead.name.substring(0, 2).toUpperCase()}
+                            <div
+                              className={`w-11 h-11 rounded-full ${avatarColor(lead.name)} text-white flex items-center justify-center text-[11px] font-semibold shrink-0`}
+                            >
+                              {lead.name.substring(0, 2).toUpperCase()}
+                            </div>
+
+                            <div className="min-w-0 flex-1 space-y-3">
+                              <div className="min-w-0">
+                                <p className="text-base font-semibold truncate">{lead.name}</p>
+
+                                <div className="flex flex-wrap items-center gap-3 mt-1 text-sm text-muted-foreground">
+                                  <a
+                                    href={`https://wa.me/${lead.phone_key}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="hover:text-emerald-500 transition-colors"
+                                  >
+                                    +{lead.phone_key}
+                                  </a>
+
+                                  {lead.imported_at && (
+                                    <span className="inline-flex items-center gap-1">
+                                      <Clock3 className="w-3 h-3" />
+                                      {fmtDate(lead.imported_at)}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
 
-                              <div className="min-w-0">
-                                <p className="text-sm font-medium truncate">{lead.name}</p>
+                              <div className="grid gap-3 lg:grid-cols-[1.1fr_0.7fr]">
+                                <div className="rounded-xl border border-white/8 bg-muted/15 p-3">
+                                  <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                                    Origem
+                                  </p>
+                                  <p
+                                    className="text-sm font-medium mt-2 truncate"
+                                    title={lead.campaign}
+                                  >
+                                    {lead.campaign ? campaignShort(lead.campaign) : 'Sem campanha'}
+                                  </p>
 
+                                  {lead.ad_name && (
+                                    <p
+                                      className="text-xs text-muted-foreground truncate mt-1"
+                                      title={lead.ad_name}
+                                    >
+                                      {lead.ad_name}
+                                    </p>
+                                  )}
+
+                                  <div className="flex gap-2 mt-3 flex-wrap">
+                                    {lead.platform && (
+                                      <Badge variant="outline" className="text-[10px]">
+                                        {lead.platform}
+                                      </Badge>
+                                    )}
+                                    {lead.form && (
+                                      <Badge variant="secondary" className="text-[10px]">
+                                        {lead.form}
+                                      </Badge>
+                                    )}
+                                    {intentBadge(lead.when || lead.intent)}
+                                  </div>
+                                </div>
+
+                                <div className="rounded-xl border border-white/8 bg-muted/15 p-3">
+                                  <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                                    Situação atual
+                                  </p>
+
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    <span
+                                      className={`inline-flex rounded-full border px-2 py-1 text-[11px] font-medium ${statusMeta.cls}`}
+                                    >
+                                      {statusMeta.label}
+                                    </span>
+
+                                    {lead.marketing.in_followups && (
+                                      <Badge className="bg-blue-600 text-white border-0 text-[10px]">
+                                        {getFollowupLabel(lead.marketing.followup_queue)}
+                                      </Badge>
+                                    )}
+
+                                    {lead.marketing.in_broadcasts && (
+                                      <Badge className="bg-fuchsia-600 text-white border-0 text-[10px]">
+                                        {getBroadcastLabel(lead.marketing.broadcast_campaign)}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="xl:w-[420px] shrink-0 space-y-3">
+                            <div className="rounded-xl border border-white/8 bg-muted/15 p-3">
+                              <Label className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                                Status do lead
+                              </Label>
+
+                              <Select
+                                value={lead.marketing.status}
+                                onValueChange={(value) =>
+                                  updateLeadMarketing(
+                                    lead.phone,
+                                    { status: value as LeadMarketingStatus },
+                                    'Status do lead atualizado.',
+                                  )
+                                }
+                              >
+                                <SelectTrigger className="mt-2 h-10">
+                                  <SelectValue placeholder="Status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {LEAD_STATUS_OPTIONS.map((option) => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                      {option.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+
+                            <div className="grid gap-3 md:grid-cols-2">
+                              <div className="rounded-xl border border-blue-500/10 bg-blue-500/[0.04] p-3 space-y-3">
+                                <div>
+                                  <p className="text-[11px] uppercase tracking-[0.16em] text-blue-300/80">
+                                    Follow-ups
+                                  </p>
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    Escolha a fila e envie.
+                                  </p>
+                                </div>
+
+                                <Select
+                                  value={lead.marketing.followup_queue}
+                                  onValueChange={(value) =>
+                                    updateLeadMarketing(lead.phone, {
+                                      followup_queue: value as FollowupQueue,
+                                      in_followups: value !== 'none'
+                                        ? lead.marketing.in_followups
+                                        : false,
+                                    })
+                                  }
+                                >
+                                  <SelectTrigger className="h-9 bg-background/70">
+                                    <SelectValue placeholder="Fila de follow-up" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {FOLLOWUP_QUEUE_OPTIONS.map((option) => (
+                                      <SelectItem key={option.value} value={option.value}>
+                                        {option.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+
+                                <Button
+                                  className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                                  size="sm"
+                                  onClick={() =>
+                                    updateLeadMarketing(
+                                      lead.phone,
+                                      {
+                                        in_followups: lead.marketing.followup_queue !== 'none',
+                                        followup_queue: lead.marketing.followup_queue,
+                                      },
+                                      lead.marketing.followup_queue === 'none'
+                                        ? 'Lead removido de follow-ups.'
+                                        : 'Lead enviado para a fila de follow-ups.',
+                                    )
+                                  }
+                                >
+                                  <Send className="w-3.5 h-3.5 mr-1.5" />
+                                  {lead.marketing.followup_queue === 'none'
+                                    ? 'Remover da fila'
+                                    : 'Enviar para Follow-ups'}
+                                </Button>
+                              </div>
+
+                              <div className="rounded-xl border border-fuchsia-500/10 bg-fuchsia-500/[0.04] p-3 space-y-3">
+                                <div>
+                                  <p className="text-[11px] uppercase tracking-[0.16em] text-fuchsia-300/80">
+                                    Disparos
+                                  </p>
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    Escolha a campanha e adicione.
+                                  </p>
+                                </div>
+
+                                <Select
+                                  value={lead.marketing.broadcast_campaign}
+                                  onValueChange={(value) =>
+                                    updateLeadMarketing(lead.phone, {
+                                      broadcast_campaign: value as BroadcastCampaign,
+                                      in_broadcasts: value !== 'none'
+                                        ? lead.marketing.in_broadcasts
+                                        : false,
+                                    })
+                                  }
+                                >
+                                  <SelectTrigger className="h-9 bg-background/70">
+                                    <SelectValue placeholder="Campanha de disparo" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {BROADCAST_OPTIONS.map((option) => (
+                                      <SelectItem key={option.value} value={option.value}>
+                                        {option.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+
+                                <Button
+                                  className="w-full bg-fuchsia-600 hover:bg-fuchsia-700 text-white"
+                                  size="sm"
+                                  onClick={() =>
+                                    updateLeadMarketing(
+                                      lead.phone,
+                                      {
+                                        in_broadcasts:
+                                          lead.marketing.broadcast_campaign !== 'none',
+                                        broadcast_campaign:
+                                          lead.marketing.broadcast_campaign,
+                                      },
+                                      lead.marketing.broadcast_campaign === 'none'
+                                        ? 'Lead removido de disparos.'
+                                        : 'Lead adicionado à campanha de disparo.',
+                                    )
+                                  }
+                                >
+                                  <Megaphone className="w-3.5 h-3.5 mr-1.5" />
+                                  {lead.marketing.broadcast_campaign === 'none'
+                                    ? 'Remover de Disparos'
+                                    : 'Adicionar a Disparos'}
+                                </Button>
+                              </div>
+                            </div>
+
+                            <div className="flex justify-end">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-9 w-9"
+                                asChild
+                              >
                                 <a
                                   href={`https://wa.me/${lead.phone_key}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-[12px] text-muted-foreground hover:text-emerald-500 transition-colors"
                                 >
-                                  +{lead.phone_key}
+                                  <MessageCircle className="w-4 h-4 text-emerald-500" />
                                 </a>
-
-                                {lead.imported_at && (
-                                  <div className="flex items-center gap-1 mt-1 text-[10px] text-muted-foreground">
-                                    <Clock3 className="w-3 h-3" />
-                                    {fmtDate(lead.imported_at)}
-                                  </div>
-                                )}
-                              </div>
+                              </Button>
                             </div>
-                          </div>
-
-                          <div className="min-w-0">
-                            {lead.campaign ? (
-                              <p className="text-sm truncate" title={lead.campaign}>
-                                {campaignShort(lead.campaign)}
-                              </p>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">—</span>
-                            )}
-
-                            {lead.ad_name && (
-                              <p
-                                className="text-[11px] text-muted-foreground truncate mt-1"
-                                title={lead.ad_name}
-                              >
-                                {lead.ad_name}
-                              </p>
-                            )}
-
-                            <div className="flex gap-2 mt-2 flex-wrap">
-                              {lead.platform && (
-                                <Badge variant="outline" className="text-[10px]">
-                                  {lead.platform}
-                                </Badge>
-                              )}
-                              {lead.form && (
-                                <Badge variant="secondary" className="text-[10px]">
-                                  {lead.form}
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="pt-1">
-                            {intentBadge(lead.when || lead.intent)}
-                          </div>
-
-                          <div className="space-y-2">
-                            <Select
-                              value={lead.marketing.status}
-                              onValueChange={(value) =>
-                                updateLeadMarketing(
-                                  lead.phone,
-                                  { status: value as LeadMarketingStatus },
-                                  'Status do lead atualizado.',
-                                )
-                              }
-                            >
-                              <SelectTrigger className="h-9 text-xs">
-                                <SelectValue placeholder="Status" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {LEAD_STATUS_OPTIONS.map((option) => (
-                                  <SelectItem key={option.value} value={option.value}>
-                                    {option.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-
-                            <span
-                              className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-medium ${statusMeta.cls}`}
-                            >
-                              {statusMeta.label}
-                            </span>
-                          </div>
-
-                          <div className="space-y-2">
-                            <Button
-                              variant={lead.marketing.in_followups ? 'default' : 'outline'}
-                              size="sm"
-                              className={
-                                lead.marketing.in_followups
-                                  ? 'w-full bg-blue-600 hover:bg-blue-700 text-white'
-                                  : 'w-full'
-                              }
-                              onClick={() =>
-                                updateLeadMarketing(
-                                  lead.phone,
-                                  { in_followups: !lead.marketing.in_followups },
-                                  lead.marketing.in_followups
-                                    ? 'Lead removido da fila de follow-ups.'
-                                    : 'Lead enviado para a fila de follow-ups.',
-                                )
-                              }
-                            >
-                              <Send className="w-3.5 h-3.5 mr-1.5" />
-                              {lead.marketing.in_followups
-                                ? 'Em follow-up'
-                                : 'Follow-ups'}
-                            </Button>
-
-                            <Button
-                              variant={lead.marketing.in_broadcasts ? 'default' : 'outline'}
-                              size="sm"
-                              className={
-                                lead.marketing.in_broadcasts
-                                  ? 'w-full bg-fuchsia-600 hover:bg-fuchsia-700 text-white'
-                                  : 'w-full'
-                              }
-                              onClick={() =>
-                                updateLeadMarketing(
-                                  lead.phone,
-                                  { in_broadcasts: !lead.marketing.in_broadcasts },
-                                  lead.marketing.in_broadcasts
-                                    ? 'Lead removido da fila de disparos.'
-                                    : 'Lead adicionado à fila de disparos.',
-                                )
-                              }
-                            >
-                              <RadioTower className="w-3.5 h-3.5 mr-1.5" />
-                              {lead.marketing.in_broadcasts
-                                ? 'Em disparos'
-                                : 'Disparos'}
-                            </Button>
-                          </div>
-
-                          <div className="flex justify-end pt-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              asChild
-                            >
-                              <a
-                                href={`https://wa.me/${lead.phone_key}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                <MessageCircle className="w-4 h-4 text-emerald-500" />
-                              </a>
-                            </Button>
                           </div>
                         </div>
                       </div>
