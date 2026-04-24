@@ -38,7 +38,6 @@ import {
   Inbox,
   Sparkles,
   Send,
-  RadioTower,
   Filter,
   Target,
   Clock3,
@@ -916,10 +915,7 @@ const ImportarLeads = () => {
               />
             </div>
 
-            <Select
-              value={campaignFilter}
-              onValueChange={setCampaignFilter}
-            >
+            <Select value={campaignFilter} onValueChange={setCampaignFilter}>
               <SelectTrigger className="h-10">
                 <Target className="w-4 h-4 mr-2" />
                 <SelectValue placeholder="Campanha" />
@@ -1284,119 +1280,134 @@ const ImportarLeads = () => {
                               </Select>
                             </div>
 
-                            <div className="grid gap-3 md:grid-cols-2">
-                              <div className="rounded-xl border border-blue-500/10 bg-blue-500/[0.04] p-3 space-y-3">
-                                <div>
-                                  <p className="text-[11px] uppercase tracking-[0.16em] text-blue-300/80">
-                                    Follow-ups
-                                  </p>
-                                  <p className="text-xs text-muted-foreground mt-1">
-                                    Escolha a fila e envie.
-                                  </p>
+                            <div className="grid gap-3 md:grid-cols-2 items-stretch">
+                              <div className="rounded-xl border border-blue-500/10 bg-blue-500/[0.04] p-3 h-full">
+                                <div className="flex h-full flex-col">
+                                  <div className="min-h-[52px]">
+                                    <p className="text-[11px] uppercase tracking-[0.16em] text-blue-300/80">
+                                      Follow-ups
+                                    </p>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                      Escolha a fila e envie.
+                                    </p>
+                                  </div>
+
+                                  <div className="mt-3">
+                                    <Select
+                                      value={lead.marketing.followup_queue}
+                                      onValueChange={(value) =>
+                                        updateLeadMarketing(lead.phone, {
+                                          followup_queue: value as FollowupQueue,
+                                          in_followups:
+                                            value !== 'none'
+                                              ? lead.marketing.in_followups
+                                              : false,
+                                        })
+                                      }
+                                    >
+                                      <SelectTrigger className="h-10 w-full bg-background/70">
+                                        <SelectValue placeholder="Fila de follow-up" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {FOLLOWUP_QUEUE_OPTIONS.map((option) => (
+                                          <SelectItem key={option.value} value={option.value}>
+                                            {option.label}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+
+                                  <Button
+                                    className="mt-3 h-10 w-full justify-center bg-blue-600 hover:bg-blue-700 text-white text-center leading-tight px-3"
+                                    size="sm"
+                                    onClick={() =>
+                                      updateLeadMarketing(
+                                        lead.phone,
+                                        {
+                                          in_followups:
+                                            lead.marketing.followup_queue !== 'none',
+                                          followup_queue: lead.marketing.followup_queue,
+                                        },
+                                        lead.marketing.followup_queue === 'none'
+                                          ? 'Lead removido de follow-ups.'
+                                          : 'Lead enviado para a fila de follow-ups.',
+                                      )
+                                    }
+                                  >
+                                    <Send className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                                    <span className="truncate">
+                                      {lead.marketing.followup_queue === 'none'
+                                        ? 'Remover da fila'
+                                        : 'Enviar para Follow-ups'}
+                                    </span>
+                                  </Button>
                                 </div>
-
-                                <Select
-                                  value={lead.marketing.followup_queue}
-                                  onValueChange={(value) =>
-                                    updateLeadMarketing(lead.phone, {
-                                      followup_queue: value as FollowupQueue,
-                                      in_followups: value !== 'none'
-                                        ? lead.marketing.in_followups
-                                        : false,
-                                    })
-                                  }
-                                >
-                                  <SelectTrigger className="h-9 bg-background/70">
-                                    <SelectValue placeholder="Fila de follow-up" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {FOLLOWUP_QUEUE_OPTIONS.map((option) => (
-                                      <SelectItem key={option.value} value={option.value}>
-                                        {option.label}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-
-                                <Button
-                                  className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                                  size="sm"
-                                  onClick={() =>
-                                    updateLeadMarketing(
-                                      lead.phone,
-                                      {
-                                        in_followups: lead.marketing.followup_queue !== 'none',
-                                        followup_queue: lead.marketing.followup_queue,
-                                      },
-                                      lead.marketing.followup_queue === 'none'
-                                        ? 'Lead removido de follow-ups.'
-                                        : 'Lead enviado para a fila de follow-ups.',
-                                    )
-                                  }
-                                >
-                                  <Send className="w-3.5 h-3.5 mr-1.5" />
-                                  {lead.marketing.followup_queue === 'none'
-                                    ? 'Remover da fila'
-                                    : 'Enviar para Follow-ups'}
-                                </Button>
                               </div>
 
-                              <div className="rounded-xl border border-fuchsia-500/10 bg-fuchsia-500/[0.04] p-3 space-y-3">
-                                <div>
-                                  <p className="text-[11px] uppercase tracking-[0.16em] text-fuchsia-300/80">
-                                    Disparos
-                                  </p>
-                                  <p className="text-xs text-muted-foreground mt-1">
-                                    Escolha a campanha e adicione.
-                                  </p>
+                              <div className="rounded-xl border border-fuchsia-500/10 bg-fuchsia-500/[0.04] p-3 h-full">
+                                <div className="flex h-full flex-col">
+                                  <div className="min-h-[52px]">
+                                    <p className="text-[11px] uppercase tracking-[0.16em] text-fuchsia-300/80">
+                                      Disparos
+                                    </p>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                      Escolha a campanha e adicione.
+                                    </p>
+                                  </div>
+
+                                  <div className="mt-3">
+                                    <Select
+                                      value={lead.marketing.broadcast_campaign}
+                                      onValueChange={(value) =>
+                                        updateLeadMarketing(lead.phone, {
+                                          broadcast_campaign: value as BroadcastCampaign,
+                                          in_broadcasts:
+                                            value !== 'none'
+                                              ? lead.marketing.in_broadcasts
+                                              : false,
+                                        })
+                                      }
+                                    >
+                                      <SelectTrigger className="h-10 w-full bg-background/70">
+                                        <SelectValue placeholder="Campanha de disparo" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {BROADCAST_OPTIONS.map((option) => (
+                                          <SelectItem key={option.value} value={option.value}>
+                                            {option.label}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+
+                                  <Button
+                                    className="mt-3 h-10 w-full justify-center bg-fuchsia-600 hover:bg-fuchsia-700 text-white text-center leading-tight px-3"
+                                    size="sm"
+                                    onClick={() =>
+                                      updateLeadMarketing(
+                                        lead.phone,
+                                        {
+                                          in_broadcasts:
+                                            lead.marketing.broadcast_campaign !== 'none',
+                                          broadcast_campaign:
+                                            lead.marketing.broadcast_campaign,
+                                        },
+                                        lead.marketing.broadcast_campaign === 'none'
+                                          ? 'Lead removido de disparos.'
+                                          : 'Lead adicionado à campanha de disparo.',
+                                      )
+                                    }
+                                  >
+                                    <Megaphone className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                                    <span className="truncate">
+                                      {lead.marketing.broadcast_campaign === 'none'
+                                        ? 'Remover de Disparos'
+                                        : 'Adicionar a Disparos'}
+                                    </span>
+                                  </Button>
                                 </div>
-
-                                <Select
-                                  value={lead.marketing.broadcast_campaign}
-                                  onValueChange={(value) =>
-                                    updateLeadMarketing(lead.phone, {
-                                      broadcast_campaign: value as BroadcastCampaign,
-                                      in_broadcasts: value !== 'none'
-                                        ? lead.marketing.in_broadcasts
-                                        : false,
-                                    })
-                                  }
-                                >
-                                  <SelectTrigger className="h-9 bg-background/70">
-                                    <SelectValue placeholder="Campanha de disparo" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {BROADCAST_OPTIONS.map((option) => (
-                                      <SelectItem key={option.value} value={option.value}>
-                                        {option.label}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-
-                                <Button
-                                  className="w-full bg-fuchsia-600 hover:bg-fuchsia-700 text-white"
-                                  size="sm"
-                                  onClick={() =>
-                                    updateLeadMarketing(
-                                      lead.phone,
-                                      {
-                                        in_broadcasts:
-                                          lead.marketing.broadcast_campaign !== 'none',
-                                        broadcast_campaign:
-                                          lead.marketing.broadcast_campaign,
-                                      },
-                                      lead.marketing.broadcast_campaign === 'none'
-                                        ? 'Lead removido de disparos.'
-                                        : 'Lead adicionado à campanha de disparo.',
-                                    )
-                                  }
-                                >
-                                  <Megaphone className="w-3.5 h-3.5 mr-1.5" />
-                                  {lead.marketing.broadcast_campaign === 'none'
-                                    ? 'Remover de Disparos'
-                                    : 'Adicionar a Disparos'}
-                                </Button>
                               </div>
                             </div>
 
