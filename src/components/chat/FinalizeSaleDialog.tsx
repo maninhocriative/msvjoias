@@ -63,6 +63,23 @@ const currency = (value: number) =>
     currency: 'BRL',
   });
 
+const CATEGORY_STYLES = [
+  'border-sky-500/20 bg-sky-500/10 text-sky-300',
+  'border-emerald-500/20 bg-emerald-500/10 text-emerald-300',
+  'border-amber-500/20 bg-amber-500/10 text-amber-300',
+  'border-fuchsia-500/20 bg-fuchsia-500/10 text-fuchsia-300',
+  'border-cyan-500/20 bg-cyan-500/10 text-cyan-300',
+  'border-rose-500/20 bg-rose-500/10 text-rose-300',
+];
+
+const hashText = (value: string) =>
+  value.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+
+const getCategoryClass = (category: string | null) => {
+  if (!category) return 'border-white/10 bg-white/5 text-slate-300';
+  return CATEGORY_STYLES[hashText(category) % CATEGORY_STYLES.length];
+};
+
 const FinalizeSaleDialog = ({
   open,
   onOpenChange,
@@ -78,6 +95,8 @@ const FinalizeSaleDialog = ({
   const [submitting, setSubmitting] = useState(false);
   const [notes, setNotes] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [highlightedCatalogId, setHighlightedCatalogId] = useState<string | null>(null);
+  const [highlightedSummaryId, setHighlightedSummaryId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -86,6 +105,8 @@ const FinalizeSaleDialog = ({
     setNotes('');
     setSearchTerm('');
     setLoadError(null);
+    setHighlightedCatalogId(null);
+    setHighlightedSummaryId(null);
 
     const fetchProductsWithStock = async () => {
       try {
@@ -141,6 +162,17 @@ const FinalizeSaleDialog = ({
     fetchProductsWithStock();
   }, [open]);
 
+  useEffect(() => {
+    if (!highlightedCatalogId && !highlightedSummaryId) return;
+
+    const timer = setTimeout(() => {
+      setHighlightedCatalogId(null);
+      setHighlightedSummaryId(null);
+    }, 550);
+
+    return () => clearTimeout(timer);
+  }, [highlightedCatalogId, highlightedSummaryId]);
+
   const filteredProducts = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
 
@@ -150,11 +182,7 @@ const FinalizeSaleDialog = ({
       const name = product.name?.toLowerCase() || '';
       const sku = product.sku?.toLowerCase() || '';
       const category = product.category?.toLowerCase() || '';
-      return (
-        name.includes(term) ||
-        sku.includes(term) ||
-        category.includes(term)
-      );
+      return name.includes(term) || sku.includes(term) || category.includes(term);
     });
   }, [products, searchTerm]);
 
@@ -203,6 +231,9 @@ const FinalizeSaleDialog = ({
 
       return [...prev, { productId: product.id, quantity: 1 }];
     });
+
+    setHighlightedCatalogId(product.id);
+    setHighlightedSummaryId(product.id);
   };
 
   const handleRemoveProduct = (productId: string) => {
@@ -223,6 +254,8 @@ const FinalizeSaleDialog = ({
         };
       }),
     );
+
+    setHighlightedSummaryId(productId);
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -252,77 +285,77 @@ const FinalizeSaleDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={(value) => !submitting && onOpenChange(value)}>
-      <DialogContent className="sm:max-w-[1040px] p-0 overflow-hidden border-white/10 bg-[#0f172a] text-white">
-        <form onSubmit={handleSubmit} className="flex max-h-[88vh] flex-col">
-          <DialogHeader className="px-6 pt-6 pb-5 border-b border-white/5 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.12),_transparent_35%),linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0))]">
-            <DialogTitle className="text-2xl font-semibold text-white">
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-[1140px] overflow-hidden border border-white/10 bg-[#0b1220] p-0 text-white shadow-2xl">
+        <form onSubmit={handleSubmit} className="flex max-h-[90vh] flex-col">
+          <DialogHeader className="border-b border-white/5 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.16),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0))] px-6 pb-5 pt-6">
+            <DialogTitle className="text-[28px] font-semibold tracking-tight text-white">
               Finalizar venda no chat
             </DialogTitle>
-            <p className="text-sm text-slate-400 mt-1">
-              Monte a venda com itens do estoque do CRM e confirme tudo em um só lugar.
+            <p className="mt-1 text-sm text-slate-400">
+              Selecione itens do estoque do CRM e feche a venda com um resumo claro.
             </p>
           </DialogHeader>
 
           <div className="flex-1 overflow-y-auto px-6 py-5">
-            <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-              <div className="space-y-4 min-w-0">
+            <div className="grid gap-5 lg:grid-cols-[1.25fr_0.9fr]">
+              <div className="min-w-0 space-y-4">
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                    <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-slate-500 mb-3">
-                      <User className="w-3.5 h-3.5" />
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
+                    <div className="mb-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                      <User className="h-3.5 w-3.5" />
                       Vendedor
                     </div>
                     <p className="text-base font-semibold text-white">{sellerName}</p>
                   </div>
 
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                    <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-slate-500 mb-3">
-                      <ShoppingBag className="w-3.5 h-3.5" />
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
+                    <div className="mb-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                      <ShoppingBag className="h-3.5 w-3.5" />
                       Cliente
                     </div>
                     <p className="text-base font-semibold text-white">{customerName}</p>
-                    <p className="text-sm text-slate-500 mt-1">{customerPhone}</p>
+                    <p className="mt-1 text-sm text-slate-500">{customerPhone}</p>
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-white/10 bg-white/[0.03] overflow-hidden">
-                  <div className="px-4 py-4 border-b border-white/5">
-                    <div className="flex items-center justify-between gap-3 mb-3">
+                <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
+                  <div className="border-b border-white/5 px-4 py-4">
+                    <div className="mb-3 flex items-center justify-between gap-3">
                       <div>
-                        <p className="text-sm font-semibold text-white">Produtos do estoque</p>
-                        <p className="text-xs text-slate-500 mt-1">
-                          Escolha um ou mais produtos para esta venda.
+                        <p className="text-base font-semibold text-white">Produtos do estoque</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Clique em um item para adicionar na venda.
                         </p>
                       </div>
 
-                      <div className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-300 text-xs font-semibold">
-                        {filteredProducts.length} itens
+                      <div className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">
+                        {filteredProducts.length} disponíveis
                       </div>
                     </div>
 
                     <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                       <Input
                         value={searchTerm}
                         onChange={(event) => setSearchTerm(event.target.value)}
                         placeholder="Buscar por nome, SKU ou categoria..."
-                        className="pl-9 h-11 bg-slate-800/80 border-white/10 text-white placeholder:text-slate-500 rounded-xl"
+                        className="h-11 rounded-2xl border-white/10 bg-slate-800/75 pl-9 text-white placeholder:text-slate-500"
                       />
                     </div>
                   </div>
 
-                  <div className="max-h-[440px] overflow-y-auto p-3 space-y-2">
+                  <div className="max-h-[500px] space-y-3 overflow-y-auto p-4">
                     {loadingProducts ? (
-                      <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-slate-900/50 px-4 py-4 text-sm text-slate-400">
-                        <Loader2 className="w-4 h-4 animate-spin" />
+                      <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/50 px-4 py-5 text-sm text-slate-400">
+                        <Loader2 className="h-4 w-4 animate-spin" />
                         Carregando produtos...
                       </div>
                     ) : loadError ? (
-                      <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-4 text-sm text-amber-300">
+                      <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-5 text-sm text-amber-300">
                         {loadError}
                       </div>
                     ) : filteredProducts.length === 0 ? (
-                      <div className="rounded-xl border border-white/10 bg-slate-900/50 px-4 py-6 text-sm text-slate-400">
+                      <div className="rounded-2xl border border-white/10 bg-slate-900/40 px-4 py-6 text-sm text-slate-400">
                         Nenhum produto encontrado para essa busca.
                       </div>
                     ) : (
@@ -341,45 +374,53 @@ const FinalizeSaleDialog = ({
                             onClick={() => handleAddProduct(product)}
                             disabled={outOfStock}
                             className={cn(
-                              'w-full text-left rounded-2xl border p-3 transition-all',
+                              'w-full rounded-2xl border p-3 text-left transition-all duration-300',
                               outOfStock
-                                ? 'border-white/5 bg-slate-900/40 opacity-60 cursor-not-allowed'
-                                : alreadyAdded
-                                  ? 'border-emerald-500/25 bg-emerald-500/10 hover:bg-emerald-500/15'
-                                  : 'border-white/8 bg-slate-900/55 hover:border-white/15 hover:bg-slate-800/70',
+                                ? 'cursor-not-allowed border-white/5 bg-slate-900/40 opacity-55'
+                                : 'hover:-translate-y-0.5 hover:border-white/15 hover:bg-slate-800/65',
+                              alreadyAdded
+                                ? 'border-emerald-500/20 bg-emerald-500/[0.08]'
+                                : 'border-white/8 bg-slate-900/55',
+                              highlightedCatalogId === product.id &&
+                                'scale-[1.01] border-emerald-400/35 shadow-[0_0_0_1px_rgba(52,211,153,0.08),0_14px_30px_rgba(16,185,129,0.12)]',
                             )}
                           >
-                            <div className="flex items-center gap-3">
-                              <div className="w-14 h-14 rounded-xl overflow-hidden bg-slate-800 border border-white/5 shrink-0">
+                            <div className="flex items-center gap-4">
+                              <div className="h-[72px] w-[72px] shrink-0 overflow-hidden rounded-2xl border border-white/5 bg-slate-800">
                                 {product.image_url ? (
                                   <img
                                     src={product.image_url}
                                     alt={product.name}
-                                    className="w-full h-full object-cover"
+                                    className="h-full w-full object-cover"
                                   />
                                 ) : (
-                                  <div className="w-full h-full flex items-center justify-center text-slate-500">
-                                    <Package className="w-6 h-6" />
+                                  <div className="flex h-full w-full items-center justify-center text-slate-500">
+                                    <Package className="h-7 w-7" />
                                   </div>
                                 )}
                               </div>
 
-                              <div className="flex-1 min-w-0">
+                              <div className="min-w-0 flex-1">
                                 <div className="flex items-start justify-between gap-3">
                                   <div className="min-w-0">
-                                    <p className="text-sm font-semibold text-white truncate">
+                                    <p className="truncate text-sm font-semibold text-white">
                                       {product.name}
                                     </p>
 
-                                    <div className="flex items-center gap-2 flex-wrap mt-1">
+                                    <div className="mt-1 flex items-center gap-2 flex-wrap">
                                       {product.sku && (
-                                        <span className="text-[11px] text-slate-400 font-mono">
+                                        <span className="font-mono text-[11px] text-slate-400">
                                           {product.sku}
                                         </span>
                                       )}
 
                                       {product.category && (
-                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-slate-400 border border-white/5">
+                                        <span
+                                          className={cn(
+                                            'rounded-full border px-2 py-0.5 text-[10px] font-medium',
+                                            getCategoryClass(product.category),
+                                          )}
+                                        >
                                           {product.category}
                                         </span>
                                       )}
@@ -387,13 +428,13 @@ const FinalizeSaleDialog = ({
                                   </div>
 
                                   {alreadyAdded && (
-                                    <span className="px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-300 text-[11px] font-semibold shrink-0">
+                                    <span className="shrink-0 rounded-full border border-emerald-500/20 bg-emerald-500/12 px-2.5 py-1 text-[11px] font-semibold text-emerald-300">
                                       {selectedItem?.quantity} un.
                                     </span>
                                   )}
                                 </div>
 
-                                <div className="flex items-center justify-between gap-3 mt-3">
+                                <div className="mt-3 flex items-center justify-between gap-3">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span className="text-sm font-semibold text-emerald-300">
                                       {currency(Number(product.price || 0))}
@@ -401,10 +442,10 @@ const FinalizeSaleDialog = ({
 
                                     <span
                                       className={cn(
-                                        'text-[10px] px-2 py-0.5 rounded-full border',
+                                        'rounded-full border px-2 py-0.5 text-[10px] font-medium',
                                         outOfStock
-                                          ? 'bg-rose-500/10 text-rose-300 border-rose-500/20'
-                                          : 'bg-cyan-500/10 text-cyan-300 border-cyan-500/20',
+                                          ? 'border-rose-500/20 bg-rose-500/10 text-rose-300'
+                                          : 'border-cyan-500/20 bg-cyan-500/10 text-cyan-300',
                                       )}
                                     >
                                       {product.totalStock === null
@@ -415,7 +456,7 @@ const FinalizeSaleDialog = ({
 
                                   <span
                                     className={cn(
-                                      'text-xs font-medium shrink-0',
+                                      'text-xs font-medium',
                                       outOfStock
                                         ? 'text-rose-300'
                                         : alreadyAdded
@@ -440,44 +481,64 @@ const FinalizeSaleDialog = ({
                 </div>
               </div>
 
-              <div className="space-y-4 min-w-0">
-                <div className="rounded-2xl border border-emerald-500/15 bg-[linear-gradient(180deg,rgba(16,185,129,0.08),rgba(16,185,129,0.03))] p-4">
-                  <div className="flex items-center justify-between gap-3 mb-4">
-                    <div>
-                      <p className="text-sm font-semibold text-white">Resumo da venda</p>
-                      <p className="text-xs text-slate-400 mt-1">
-                        Revise os itens antes de confirmar.
-                      </p>
-                    </div>
+              <div className="min-w-0 space-y-4">
+                <div className="overflow-hidden rounded-3xl border border-emerald-500/15 bg-[linear-gradient(180deg,rgba(16,185,129,0.08),rgba(16,185,129,0.03))] shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
+                  <div className="border-b border-white/5 px-4 py-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-base font-semibold text-white">Resumo da venda</p>
+                        <p className="mt-1 text-xs text-slate-400">
+                          Ajuste quantidades e revise antes de confirmar.
+                        </p>
+                      </div>
 
-                    <div className="px-2.5 py-1 rounded-full bg-white/8 text-white text-xs font-semibold">
-                      {selectedProducts.length} produto(s)
+                      <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white">
+                        {selectedProducts.length} item(ns)
+                      </div>
                     </div>
                   </div>
 
-                  {selectedProducts.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/30 px-4 py-10 text-center">
-                      <Package className="w-8 h-8 text-slate-600 mx-auto mb-3" />
-                      <p className="text-sm text-slate-400">
-                        Adicione produtos do catálogo para montar a venda.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <div className="max-h-[310px] overflow-y-auto pr-1 space-y-3">
+                  <div className="max-h-[360px] overflow-y-auto p-4">
+                    {selectedProducts.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/25 px-4 py-10 text-center">
+                        <Package className="mx-auto mb-3 h-8 w-8 text-slate-600" />
+                        <p className="text-sm text-slate-400">
+                          Adicione produtos do catálogo para montar a venda.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
                         {selectedProducts.map((item) => (
                           <div
                             key={item.id}
-                            className="rounded-2xl border border-white/10 bg-slate-950/35 p-3"
+                            className={cn(
+                              'rounded-2xl border border-white/10 bg-slate-950/35 p-3 transition-all duration-300',
+                              highlightedSummaryId === item.id &&
+                                'scale-[1.01] border-emerald-400/30 shadow-[0_12px_24px_rgba(16,185,129,0.10)]',
+                            )}
                           >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <p className="text-sm font-semibold text-white truncate">
+                            <div className="flex items-center gap-3">
+                              <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/5 bg-slate-800">
+                                {item.image_url ? (
+                                  <img
+                                    src={item.image_url}
+                                    alt={item.name}
+                                    className="h-full w-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="flex h-full w-full items-center justify-center text-slate-500">
+                                    <Package className="h-5 w-5" />
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-semibold text-white">
                                   {item.name}
                                 </p>
-                                <div className="flex items-center gap-2 flex-wrap mt-1">
+                                <div className="mt-1 flex items-center gap-2 flex-wrap">
                                   {item.sku && (
-                                    <span className="text-[11px] text-slate-400 font-mono">
+                                    <span className="font-mono text-[11px] text-slate-400">
                                       {item.sku}
                                     </span>
                                   )}
@@ -490,25 +551,25 @@ const FinalizeSaleDialog = ({
                               <button
                                 type="button"
                                 onClick={() => handleRemoveProduct(item.id)}
-                                className="p-2 rounded-xl text-slate-500 hover:text-rose-300 hover:bg-rose-500/10 transition-colors shrink-0"
+                                className="rounded-xl p-2 text-slate-500 transition-colors hover:bg-rose-500/10 hover:text-rose-300"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="h-4 w-4" />
                               </button>
                             </div>
 
-                            <div className="flex items-center justify-between gap-3 mt-4">
+                            <div className="mt-4 flex items-center justify-between gap-3">
                               <div className="flex items-center gap-2">
                                 <button
                                   type="button"
                                   onClick={() =>
                                     handleChangeQuantity(item.id, item.quantity - 1)
                                   }
-                                  className="w-9 h-9 rounded-xl border border-white/10 bg-slate-800/80 flex items-center justify-center text-slate-300 hover:bg-slate-700 transition-colors"
+                                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-slate-800/80 text-slate-300 transition-colors hover:bg-slate-700"
                                 >
-                                  <Minus className="w-4 h-4" />
+                                  <Minus className="h-4 w-4" />
                                 </button>
 
-                                <div className="min-w-[52px] h-9 rounded-xl border border-white/10 bg-slate-800/80 flex items-center justify-center text-sm font-semibold text-white">
+                                <div className="flex h-9 min-w-[54px] items-center justify-center rounded-xl border border-white/10 bg-slate-800/80 px-3 text-sm font-semibold text-white">
                                   {item.quantity}
                                 </div>
 
@@ -517,9 +578,9 @@ const FinalizeSaleDialog = ({
                                   onClick={() =>
                                     handleChangeQuantity(item.id, item.quantity + 1)
                                   }
-                                  className="w-9 h-9 rounded-xl border border-white/10 bg-slate-800/80 flex items-center justify-center text-slate-300 hover:bg-slate-700 transition-colors"
+                                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-slate-800/80 text-slate-300 transition-colors hover:bg-slate-700"
                                 >
-                                  <Plus className="w-4 h-4" />
+                                  <Plus className="h-4 w-4" />
                                 </button>
                               </div>
 
@@ -533,69 +594,77 @@ const FinalizeSaleDialog = ({
                           </div>
                         ))}
                       </div>
-
-                      <div className="rounded-2xl border border-white/10 bg-slate-950/35 p-4 space-y-2">
-                        <div className="flex items-center justify-between gap-3 text-sm">
-                          <span className="text-slate-400">Quantidade total</span>
-                          <span className="font-semibold text-white">{totalUnits}</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-3 text-sm">
-                          <span className="text-slate-400">Valor da venda</span>
-                          <span className="font-semibold text-emerald-300">
-                            {currency(grandTotal)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
 
-                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
                   <Label
                     htmlFor="sale-notes"
-                    className="text-sm font-semibold text-white mb-3 block"
+                    className="mb-3 block text-sm font-semibold text-white"
                   >
                     Observações
                   </Label>
+
                   <Textarea
                     id="sale-notes"
                     value={notes}
                     onChange={(event) => setNotes(event.target.value)}
                     placeholder="Ex.: cliente confirmou no WhatsApp, entrega retirada na loja, pagamento combinado..."
-                    rows={7}
-                    className="bg-slate-800/80 border-white/10 text-white placeholder:text-slate-500 rounded-xl resize-none"
+                    rows={8}
+                    className="resize-none rounded-2xl border-white/10 bg-slate-800/80 text-white placeholder:text-slate-500"
                   />
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="px-6 py-4 border-t border-white/5 bg-slate-950/90">
-            <div className="flex items-center justify-end gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                disabled={submitting}
-                className="border-white/10 bg-transparent text-slate-300 hover:bg-white/5 hover:text-white rounded-xl"
-              >
-                Cancelar
-              </Button>
+          <div className="border-t border-white/5 bg-[linear-gradient(180deg,rgba(10,14,23,0.88),rgba(10,14,23,0.98))] px-6 py-4 backdrop-blur">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-6">
+                <div>
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                    Itens
+                  </p>
+                  <p className="mt-1 text-lg font-semibold text-white">{totalUnits}</p>
+                </div>
 
-              <Button
-                type="submit"
-                disabled={submitting || loadingProducts || selectedProducts.length === 0}
-                className="min-w-[170px] bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl"
-              >
-                {submitting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Salvando...
-                  </>
-                ) : (
-                  'Confirmar venda'
-                )}
-              </Button>
+                <div>
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                    Total da venda
+                  </p>
+                  <p className="mt-1 text-2xl font-semibold text-emerald-300">
+                    {currency(grandTotal)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => onOpenChange(false)}
+                  disabled={submitting}
+                  className="rounded-2xl border-white/10 bg-transparent text-slate-300 hover:bg-white/5 hover:text-white"
+                >
+                  Cancelar
+                </Button>
+
+                <Button
+                  type="submit"
+                  disabled={submitting || loadingProducts || selectedProducts.length === 0}
+                  className="min-w-[180px] rounded-2xl bg-emerald-600 text-white hover:bg-emerald-500"
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Salvando...
+                    </>
+                  ) : (
+                    'Confirmar venda'
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
         </form>
