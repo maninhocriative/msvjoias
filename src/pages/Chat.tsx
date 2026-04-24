@@ -37,12 +37,14 @@ import {
 import TypingIndicator from '@/components/chat/TypingIndicator';
 import SellerToolsPanel from '@/components/chat/SellerToolsPanel';
 import AssignSellerDialog from '@/components/chat/AssignSellerDialog';
+import FinalizeSaleDialog from '@/components/chat/FinalizeSaleDialog';
 import MessageItem from '@/components/chat/MessageItem';
 import ConversationItem from '@/components/chat/ConversationItem';
 import { useSellerPresence } from '@/hooks/useSellerPresence';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useAssignmentNotification } from '@/hooks/useAssignmentNotification';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface AlineConversation {
   id: string;
@@ -61,7 +63,7 @@ interface CustomerProfile {
 }
 
 const statusFilters = [
-  { key: 'all', label: 'Todos', color: 'bg-slate-400' },
+  { key: 'all', label: 'Todos', color: 'bg-slate-500' },
   { key: 'novo', label: 'Novos', color: 'bg-slate-400' },
   { key: 'frio', label: 'Frios', color: 'bg-blue-400' },
   { key: 'quente', label: 'Quentes', color: 'bg-orange-400' },
@@ -89,6 +91,7 @@ const Chat = () => {
   const [filterAttendant, setFilterAttendant] = useState<string>('all');
   const [alineStatusMap, setAlineStatusMap] = useState<Record<string, AlineConversation>>({});
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [finalizeDialogOpen, setFinalizeDialogOpen] = useState(false);
   const [customerProfiles, setCustomerProfiles] = useState<Record<string, CustomerProfile>>({});
   const [finalizingSale, setFinalizingSale] = useState(false);
 
@@ -102,8 +105,19 @@ const Chat = () => {
   const { toast } = useToast();
   const { onlineSellers, startChatting, stopChatting } = useSellerPresence();
   const { isAdmin, isGerente } = useUserRole();
+  const { profile, user } = useAuth();
 
   useAssignmentNotification();
+
+  const currentLoggedSellerName = useMemo(() => {
+    const profileName = profile?.full_name?.trim();
+    const userMetadataName = typeof user?.user_metadata?.full_name === 'string'
+      ? user.user_metadata.full_name.trim()
+      : '';
+    const emailName = user?.email?.split('@')[0];
+
+    return profileName || userMetadataName || emailName || 'Vendedor';
+  }, [profile?.full_name, user?.user_metadata, user?.email]);
 
   const getIsHumanTakeover = useCallback(
     (phone: string) => alineStatusMap[phone]?.status === 'human_takeover',
@@ -161,44 +175,175 @@ const Chat = () => {
     }
   };
 
-  const handleFinalizeSale = async () => {
+  const handleUndoSale = async () => {
     if (!selectedConversation || finalizingSale) return;
-
-    const alreadyFinalized = selectedConversation.lead_status === 'vendido';
-    const newStatus: LeadStatus = alreadyFinalized ? 'qualificado' : 'vendido';
 
     setFinalizingSale(true);
 
     try {
-      const { error } = await supabase
+      const { data: existingSale, error: fetchSaleError } = await supabase
+        .from('orders')
+        .select('id, notes')
+        .eq('external_reference', selectedConversation.id)
+        .eq('source', 'chat')
+        .eq('status', 'done')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (fetchSaleError) throw fetchSaleError;
+
+      if (existingSale?.id) {
+        const updatedNotes = existingSale.notes
+          ? `${existingSale.notes}\nVenda desfeita pelo chat.`
+          : 'Venda desfeita pelo chat.';
+
+        const { error: cancelOrderError } = await supabase
+          .from('orders')
+          .update({
+            status: 'canceled',
+            notes: updatedNotes,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existingSale.id);
+
+        if (cancelOrderError) throw cancelOrderError;
+      }
+
+      const { error: conversationError } = await supabase
         .from('conversations')
-        .update({ lead_status: newStatus })
+        .update({ lead_status: 'qualificado' })
         .eq('id', selectedConversation.id);
 
-      if (error) throw error;
+      if (conversationError) throw conversationError;
 
       setConversations((prev) =>
         prev.map((c) =>
-          c.id === selectedConversation.id ? { ...c, lead_status: newStatus } : c,
+          c.id === selectedConversation.id ? { ...c, lead_status: 'qualificado' } : c,
         ),
       );
 
       setSelectedConversation((prev) =>
-        prev ? { ...prev, lead_status: newStatus } : null,
+        prev ? { ...prev, lead_status: 'qualificado' } : null,
       );
 
       toast({
-        title: alreadyFinalized ? '↩️ Venda desmarcada' : '🏆 Venda finalizada!',
-        description: alreadyFinalized
-          ? 'Status voltou para qualificado.'
-          : 'Parabéns! Conversa marcada como venda concluída.',
+        title: '↩️ Venda desfeita',
+        description: 'A conversa voltou para qualificado e a venda do chat foi cancelada.',
       });
-    } catch {
+    } catch (error) {
+      console.error('Erro ao desfazer venda:', error);
       toast({
         title: 'Erro',
-        description: 'Não foi possível finalizar a venda.',
+        description: 'Não foi possível desfazer a venda.',
         variant: 'destructive',
       });
+    } finally {
+      setFinalizingSale(false);
+    }
+  };
+
+  const handleFinalizeSale = () => {
+    if (!selectedConversation || finalizingSale) return;
+
+    if (selectedConversation.lead_status === 'vendido') {
+      void handleUndoSale();
+      return;
+    }
+
+    setFinalizeDialogOpen(true);
+  };
+
+  const handleConfirmSale = async (payload: {
+    productId: string;
+    productName: string;
+    productSku: string | null;
+    unitPrice: number;
+    quantity: number;
+    notes: string;
+  }) => {
+    if (!selectedConversation) return;
+
+    setFinalizingSale(true);
+
+    try {
+      const customerName =
+        customerProfiles[selectedConversation.contact_number]?.name ||
+        selectedConversation.contact_name ||
+        null;
+
+      const { data: existingSale, error: existingSaleError } = await supabase
+        .from('orders')
+        .select('id')
+        .eq('external_reference', selectedConversation.id)
+        .eq('source', 'chat')
+        .eq('status', 'done')
+        .limit(1)
+        .maybeSingle();
+
+      if (existingSaleError) throw existingSaleError;
+
+      if (existingSale?.id) {
+        throw new Error('Já existe uma venda ativa registrada para esta conversa.');
+      }
+
+      const totalPrice = Number(payload.unitPrice || 0) * Number(payload.quantity || 1);
+      const summaryText =
+        `Venda finalizada no chat por ${currentLoggedSellerName}: ` +
+        `${payload.productName}` +
+        `${payload.productSku ? ` (${payload.productSku})` : ''}` +
+        ` x${payload.quantity}.`;
+
+      const { error: orderError } = await supabase.from('orders').insert([
+        {
+          customer_phone: selectedConversation.contact_number,
+          customer_name: customerName,
+          product_id: payload.productId,
+          quantity: payload.quantity,
+          unit_price: payload.unitPrice,
+          total_price: totalPrice,
+          status: 'done',
+          source: 'chat',
+          external_reference: selectedConversation.id,
+          selected_sku: payload.productSku,
+          selected_name: payload.productName,
+          assigned_to: currentLoggedSellerName,
+          notes: payload.notes || null,
+          summary_text: summaryText,
+        },
+      ]);
+
+      if (orderError) throw orderError;
+
+      const { error: conversationError } = await supabase
+        .from('conversations')
+        .update({ lead_status: 'vendido' })
+        .eq('id', selectedConversation.id);
+
+      if (conversationError) throw conversationError;
+
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === selectedConversation.id ? { ...c, lead_status: 'vendido' } : c,
+        ),
+      );
+
+      setSelectedConversation((prev) =>
+        prev ? { ...prev, lead_status: 'vendido' } : null,
+      );
+
+      toast({
+        title: '🏆 Venda registrada',
+        description: `${payload.productName} x${payload.quantity} salvo com sucesso.`,
+      });
+    } catch (error: any) {
+      console.error('Erro ao finalizar venda:', error);
+      toast({
+        title: 'Erro',
+        description: error?.message || 'Não foi possível finalizar a venda.',
+        variant: 'destructive',
+      });
+      throw error;
     } finally {
       setFinalizingSale(false);
     }
@@ -1304,7 +1449,7 @@ const Chat = () => {
                     Venda finalizada com sucesso!
                   </span>
                   <button
-                    onClick={handleFinalizeSale}
+                    onClick={handleUndoSale}
                     disabled={finalizingSale}
                     className="text-[10px] text-emerald-600 hover:text-emerald-400 transition-colors"
                   >
@@ -1459,7 +1604,7 @@ const Chat = () => {
                         {isSaleFinalized ? (
                           <>
                             <CheckCircle2 className="w-4 h-4 mr-2" />
-                            Venda finalizada
+                            Desfazer venda
                           </>
                         ) : (
                           <>
@@ -1688,6 +1833,21 @@ const Chat = () => {
             onSendMessage={sendMessageDirect}
           />
         </div>
+      )}
+
+      {selectedConversation && (
+        <FinalizeSaleDialog
+          open={finalizeDialogOpen}
+          onOpenChange={setFinalizeDialogOpen}
+          sellerName={currentLoggedSellerName}
+          customerName={
+            customerProfiles[selectedConversation.contact_number]?.name ||
+            selectedConversation.contact_name ||
+            'Cliente'
+          }
+          customerPhone={selectedConversation.contact_number}
+          onConfirm={handleConfirmSale}
+        />
       )}
 
       {selectedConversation && (isAdmin || isGerente) && (
