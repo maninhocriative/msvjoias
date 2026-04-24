@@ -11,6 +11,7 @@ import Dashboard from "./pages/Dashboard";
 import Products from "./pages/Products";
 import ProductDetail from "./pages/ProductDetail";
 import Chat from "./pages/Chat";
+import Sales from "./pages/Sales";
 import Settings from "./pages/Settings";
 import Users from "./pages/Users";
 import UserDetail from "./pages/UserDetail";
@@ -35,6 +36,7 @@ import CampaignBroadcast from "./pages/CampaignBroadcast";
 import ImportarLeads from "./pages/ImportarLeads";
 import NotFound from "./pages/NotFound";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -53,12 +55,14 @@ const App = () => (
               <Route path="/nomenclatura" element={<DatabaseNomenclature />} />
               <Route path="/fiqon-integration" element={<FiqonIntegrationText />} />
               <Route path="/privacidade" element={<PrivacyPolicy />} />
+
               <Route element={<ProtectedRoute />}>
                 <Route element={<MainLayout />}>
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/products" element={<Products />} />
                   <Route path="/products/:id" element={<ProductDetail />} />
                   <Route path="/chat" element={<Chat />} />
+                  <Route path="/sales" element={<Sales />} />
                   <Route path="/reports" element={<Reports />} />
                   <Route path="/settings" element={<Settings />} />
                   <Route path="/users" element={<Users />} />
@@ -78,6 +82,7 @@ const App = () => (
                   <Route path="/importar-leads" element={<ImportarLeads />} />
                 </Route>
               </Route>
+
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
