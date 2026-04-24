@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Loader2, Package, ShoppingBag, User } from 'lucide-react';
-import { supabase, Product } from '@/lib/supabase';
+import {
+  Check,
+  Loader2,
+  Package,
+  Search,
+  ShoppingBag,
+  User,
+} from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,13 +18,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { cn } from '@/lib/utils';
+
+interface SaleProduct {
+  id: string;
+  name: string;
+  sku: string | null;
+  price: number | null;
+  active: boolean | null;
+}
 
 interface FinalizeSaleDialogProps {
   open: boolean;
@@ -43,12 +52,14 @@ const FinalizeSaleDialog = ({
   customerPhone,
   onConfirm,
 }: FinalizeSaleDialogProps) => {
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<SaleProduct[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [notes, setNotes] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     if (!open) return;
@@ -56,6 +67,8 @@ const FinalizeSaleDialog = ({
     setSelectedProductId('');
     setQuantity('1');
     setNotes('');
+    setSearchTerm('');
+    setLoadError(null);
 
     const fetchProducts = async () => {
       try {
@@ -63,16 +76,22 @@ const FinalizeSaleDialog = ({
 
         const { data, error } = await supabase
           .from('products')
-          .select('id, name, sku, description, price, category, image_url, video_url, images, active, created_at, updated_at')
-          .eq('active', true)
+          .select('id, name, sku, price, active')
           .order('name', { ascending: true });
 
         if (error) throw error;
 
-        setProducts((data || []) as Product[]);
-      } catch (error) {
+        const loadedProducts = (data || []) as SaleProduct[];
+
+        setProducts(loadedProducts);
+
+        if (loadedProducts.length === 0) {
+          setLoadError('Nenhum produto cadastrado foi encontrado.');
+        }
+      } catch (error: any) {
         console.error('Erro ao carregar produtos:', error);
         setProducts([]);
+        setLoadError(error?.message || 'Não foi possível carregar os produtos.');
       } finally {
         setLoadingProducts(false);
       }
@@ -86,8 +105,22 @@ const FinalizeSaleDialog = ({
     [products, selectedProductId],
   );
 
+  const filteredProducts = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+
+    if (!term) return products;
+
+    return products.filter((product) => {
+      const name = product.name?.toLowerCase() || '';
+      const sku = product.sku?.toLowerCase() || '';
+      return name.includes(term) || sku.includes(term);
+    });
+  }, [products, searchTerm]);
+
   const parsedQuantity = Math.max(1, Number(quantity) || 1);
-  const totalPrice = selectedProduct ? selectedProduct.price * parsedQuantity : 0;
+  const totalPrice = selectedProduct
+    ? Number(selectedProduct.price || 0) * parsedQuantity
+    : 0;
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -101,7 +134,7 @@ const FinalizeSaleDialog = ({
         productId: selectedProduct.id,
         productName: selectedProduct.name,
         productSku: selectedProduct.sku || null,
-        unitPrice: Number(selectedProduct.price) || 0,
+        unitPrice: Number(selectedProduct.price || 0),
         quantity: parsedQuantity,
         notes: notes.trim(),
       });
@@ -114,7 +147,7 @@ const FinalizeSaleDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={(value) => !submitting && onOpenChange(value)}>
-      <DialogContent className="sm:max-w-[520px] bg-slate-900 border-white/10 text-white">
+      <DialogContent className="sm:max-w-[620px] bg-slate-900 border-white/10 text-white">
         <DialogHeader>
           <DialogTitle className="text-white">Finalizar venda no chat</DialogTitle>
         </DialogHeader>
@@ -141,18 +174,89 @@ const FinalizeSaleDialog = ({
 
           <div className="space-y-2">
             <Label className="text-slate-300">Produto vendido</Label>
-            <Select value={selectedProductId} onValueChange={setSelectedProductId}>
-              <SelectTrigger className="bg-slate-800/70 border-white/10 text-white">
-                <SelectValue placeholder={loadingProducts ? 'Carregando produtos...' : 'Selecione um produto'} />
-              </SelectTrigger>
-              <SelectContent className="bg-slate-900 border-white/10 text-white">
-                {products.map((product) => (
-                  <SelectItem key={product.id} value={product.id}>
-                    {product.name}{product.sku ? ` (${product.sku})` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+              <Input
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Buscar por nome ou SKU..."
+                className="pl-9 bg-slate-800/70 border-white/10 text-white placeholder:text-slate-500"
+              />
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-slate-800/35 overflow-hidden">
+              <div className="max-h-56 overflow-y-auto">
+                {loadingProducts ? (
+                  <div className="flex items-center gap-2 px-4 py-4 text-sm text-slate-400">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Carregando produtos...
+                  </div>
+                ) : loadError ? (
+                  <div className="px-4 py-4 text-sm text-amber-300">
+                    {loadError}
+                  </div>
+                ) : filteredProducts.length === 0 ? (
+                  <div className="px-4 py-4 text-sm text-slate-400">
+                    Nenhum produto encontrado para essa busca.
+                  </div>
+                ) : (
+                  filteredProducts.map((product) => {
+                    const isSelected = selectedProductId === product.id;
+
+                    return (
+                      <button
+                        key={product.id}
+                        type="button"
+                        onClick={() => setSelectedProductId(product.id)}
+                        className={cn(
+                          'w-full px-4 py-3 text-left border-b border-white/5 transition-colors',
+                          'hover:bg-white/5',
+                          isSelected && 'bg-emerald-500/10',
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-white truncate">
+                              {product.name}
+                            </p>
+
+                            <div className="flex items-center gap-2 flex-wrap mt-1">
+                              {product.sku && (
+                                <span className="text-xs text-slate-400 font-mono">
+                                  {product.sku}
+                                </span>
+                              )}
+
+                              <span className="text-xs text-emerald-300 font-semibold">
+                                R$ {Number(product.price || 0).toFixed(2).replace('.', ',')}
+                              </span>
+
+                              {product.active === false && (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                                  Inativo
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div
+                            className={cn(
+                              'mt-0.5 shrink-0 w-5 h-5 rounded-full border flex items-center justify-center',
+                              isSelected
+                                ? 'border-emerald-400 bg-emerald-500/20 text-emerald-300'
+                                : 'border-slate-600 text-transparent',
+                            )}
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-[140px_1fr]">
@@ -191,7 +295,9 @@ const FinalizeSaleDialog = ({
                   </p>
                 </div>
               ) : (
-                <p className="text-sm text-slate-500">Selecione um produto para ver o resumo.</p>
+                <p className="text-sm text-slate-500">
+                  Selecione um produto para ver o resumo.
+                </p>
               )}
             </div>
           </div>
