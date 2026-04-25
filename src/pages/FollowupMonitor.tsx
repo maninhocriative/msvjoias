@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -199,6 +200,10 @@ function safeWriteLocalStorage(key: string, value: string) {
 
 function normalizePhone(phone: string) {
   return (phone || '').replace(/\D/g, '');
+}
+
+function buildChatHref(phone: string) {
+  return `/chat?phone=${encodeURIComponent(normalizePhone(phone))}`;
 }
 
 function formatPhone(phone: string) {
@@ -1195,15 +1200,11 @@ export default function FollowupMonitor() {
                             </Button>
 
                             <Button variant="ghost" className="w-full justify-center" asChild>
-                              <a
-                                href={`https://wa.me/${item.phone}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
+                              <Link to={buildChatHref(item.phone)}>
                                 <MessageCircle className="w-4 h-4 mr-2 text-emerald-500" />
-                                Abrir WhatsApp
+                                Abrir no Chat
                                 <ArrowUpRight className="w-4 h-4 ml-2" />
-                              </a>
+                              </Link>
                             </Button>
                           </div>
                         </div>
@@ -1250,7 +1251,7 @@ export default function FollowupMonitor() {
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
                     Ele foi enviado para follow-up pela página de importação e pode ser
-                    acionado via WhatsApp.
+                    acionado via chat interno.
                   </p>
 
                   {(selectedItem.campaign || selectedItem.ad_name) && (
