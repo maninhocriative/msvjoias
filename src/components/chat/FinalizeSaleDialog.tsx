@@ -46,13 +46,11 @@ interface FinalizeSaleDialogProps {
   customerName: string;
   customerPhone: string;
   onConfirm: (payload: {
-    items: Array<{
-      productId: string;
-      productName: string;
-      productSku: string | null;
-      unitPrice: number;
-      quantity: number;
-    }>;
+    productId: string;
+    productName: string;
+    productSku: string | null;
+    unitPrice: number;
+    quantity: number;
     notes: string;
   }) => Promise<void>;
 }
@@ -89,7 +87,7 @@ const FinalizeSaleDialog = ({
   onConfirm,
 }: FinalizeSaleDialogProps) => {
   const [products, setProducts] = useState<SaleProduct[]>([]);
-  const [selectedItems, setSelectedItems] = useState<SelectedSaleItem[]>([]);
+  const [selectedItem, setSelectedItem] = useState<SelectedSaleItem | null>(null);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -101,7 +99,7 @@ const FinalizeSaleDialog = ({
   useEffect(() => {
     if (!open) return;
 
-    setSelectedItems([]);
+    setSelectedItem(null);
     setNotes('');
     setSearchTerm('');
     setLoadError(null);
@@ -112,15 +110,17 @@ const FinalizeSaleDialog = ({
       try {
         setLoadingProducts(true);
 
-        const [{ data: productsData, error: productsError }, { data: variantsData, error: variantsError }] =
-          await Promise.all([
-            supabase
-              .from('products')
-              .select('id, name, sku, price, active, image_url, category')
-              .eq('active', true)
-              .order('name', { ascending: true }),
-            supabase.from('product_variants').select('product_id, stock'),
-          ]);
+        const [
+          { data: productsData, error: productsError },
+          { data: variantsData, error: variantsError },
+        ] = await Promise.all([
+          supabase
+            .from('products')
+            .select('id, name, sku, price, active, image_url, category')
+            .eq('active', true)
+            .order('name', { ascending: true }),
+          supabase.from('product_variants').select('product_id, stock'),
+        ]);
 
         if (productsError) throw productsError;
         if (variantsError) throw variantsError;
@@ -134,16 +134,20 @@ const FinalizeSaleDialog = ({
             (stockByProduct[variant.product_id] || 0) + Number(variant.stock || 0);
         });
 
-        const loadedProducts: SaleProduct[] = (productsData || []).map((product: any) => ({
-          id: product.id,
-          name: product.name,
-          sku: product.sku || null,
-          price: Number(product.price || 0),
-          active: product.active ?? true,
-          image_url: product.image_url || null,
-          category: product.category || null,
-          totalStock: hasVariants[product.id] ? stockByProduct[product.id] || 0 : null,
-        }));
+        const loadedProducts: SaleProduct[] = (productsData || []).map(
+          (product: any) => ({
+            id: product.id,
+            name: product.name,
+            sku: product.sku || null,
+            price: Number(product.price || 0),
+            active: product.active ?? true,
+            image_url: product.image_url || null,
+            category: product.category || null,
+            totalStock: hasVariants[product.id]
+              ? stockByProduct[product.id] || 0
+              : null,
+          }),
+        );
 
         setProducts(loadedProducts);
 
@@ -186,23 +190,21 @@ const FinalizeSaleDialog = ({
     });
   }, [products, searchTerm]);
 
-  const selectedProducts = useMemo(() => {
-    return selectedItems
-      .map((item) => {
-        const product = products.find((entry) => entry.id === item.productId);
-        if (!product) return null;
+  const selectedProduct = useMemo(() => {
+    if (!selectedItem) return null;
 
-        return {
-          ...product,
-          quantity: item.quantity,
-          total: Number(product.price || 0) * item.quantity,
-        };
-      })
-      .filter(Boolean) as Array<SaleProduct & { quantity: number; total: number }>;
-  }, [products, selectedItems]);
+    const product = products.find((entry) => entry.id === selectedItem.productId);
+    if (!product) return null;
 
-  const totalUnits = selectedProducts.reduce((sum, item) => sum + item.quantity, 0);
-  const grandTotal = selectedProducts.reduce((sum, item) => sum + item.total, 0);
+    return {
+      ...product,
+      quantity: selectedItem.quantity,
+      total: Number(product.price || 0) * selectedItem.quantity,
+    };
+  }, [products, selectedItem]);
+
+  const totalUnits = selectedProduct?.quantity || 0;
+  const grandTotal = selectedProduct?.total || 0;
 
   const clampQuantity = (product: SaleProduct, value: number) => {
     if (product.totalStock === null) {
@@ -215,45 +217,42 @@ const FinalizeSaleDialog = ({
   const handleAddProduct = (product: SaleProduct) => {
     if (product.totalStock !== null && product.totalStock <= 0) return;
 
-    setSelectedItems((prev) => {
-      const existing = prev.find((item) => item.productId === product.id);
-
-      if (existing) {
-        return prev.map((item) => {
-          if (item.productId !== product.id) return item;
-
-          return {
-            ...item,
-            quantity: clampQuantity(product, item.quantity + 1),
-          };
-        });
+    setSelectedItem((prev) => {
+      if (prev?.productId === product.id) {
+        return {
+          productId: product.id,
+          quantity: clampQuantity(product, prev.quantity + 1),
+        };
       }
 
-      return [...prev, { productId: product.id, quantity: 1 }];
+      return {
+        productId: product.id,
+        quantity: 1,
+      };
     });
 
     setHighlightedCatalogId(product.id);
     setHighlightedSummaryId(product.id);
   };
 
-  const handleRemoveProduct = (productId: string) => {
-    setSelectedItems((prev) => prev.filter((item) => item.productId !== productId));
+  const handleRemoveProduct = () => {
+    setSelectedItem(null);
+    setHighlightedCatalogId(null);
+    setHighlightedSummaryId(null);
   };
 
   const handleChangeQuantity = (productId: string, nextValue: number) => {
     const product = products.find((entry) => entry.id === productId);
     if (!product) return;
 
-    setSelectedItems((prev) =>
-      prev.map((item) => {
-        if (item.productId !== productId) return item;
+    setSelectedItem((prev) => {
+      if (!prev || prev.productId !== productId) return prev;
 
-        return {
-          ...item,
-          quantity: clampQuantity(product, nextValue),
-        };
-      }),
-    );
+      return {
+        ...prev,
+        quantity: clampQuantity(product, nextValue),
+      };
+    });
 
     setHighlightedSummaryId(productId);
   };
@@ -261,19 +260,17 @@ const FinalizeSaleDialog = ({
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
 
-    if (selectedProducts.length === 0) return;
+    if (!selectedProduct) return;
 
     try {
       setSubmitting(true);
 
       await onConfirm({
-        items: selectedProducts.map((item) => ({
-          productId: item.id,
-          productName: item.name,
-          productSku: item.sku || null,
-          unitPrice: Number(item.price || 0),
-          quantity: item.quantity,
-        })),
+        productId: selectedProduct.id,
+        productName: selectedProduct.name,
+        productSku: selectedProduct.sku || null,
+        unitPrice: Number(selectedProduct.price || 0),
+        quantity: selectedProduct.quantity,
         notes: notes.trim(),
       });
 
@@ -292,7 +289,7 @@ const FinalizeSaleDialog = ({
               Finalizar venda no chat
             </DialogTitle>
             <p className="mt-1 text-sm text-slate-400">
-              Selecione itens do estoque do CRM e feche a venda com um resumo claro.
+              Selecione um produto do estoque do CRM e feche a venda com um resumo claro.
             </p>
           </DialogHeader>
 
@@ -324,7 +321,7 @@ const FinalizeSaleDialog = ({
                       <div>
                         <p className="text-base font-semibold text-white">Produtos do estoque</p>
                         <p className="mt-1 text-xs text-slate-500">
-                          Clique em um item para adicionar na venda.
+                          Selecionar outro produto substitui o atual.
                         </p>
                       </div>
 
@@ -360,10 +357,7 @@ const FinalizeSaleDialog = ({
                       </div>
                     ) : (
                       filteredProducts.map((product) => {
-                        const selectedItem = selectedItems.find(
-                          (item) => item.productId === product.id,
-                        );
-                        const alreadyAdded = Boolean(selectedItem);
+                        const alreadyAdded = selectedItem?.productId === product.id;
                         const outOfStock =
                           product.totalStock !== null && product.totalStock <= 0;
 
@@ -428,7 +422,8 @@ const FinalizeSaleDialog = ({
                                   </div>
 
                                   {alreadyAdded && (
-                                    <span className="shrink-0 rounded-full border border-emerald-500/20 bg-emerald-500/12 px-2.5 py-1 text-[11px] font-semibold text-emerald-300">
+                                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/12 px-2.5 py-1 text-[11px] font-semibold text-emerald-300">
+                                      <Check className="h-3 w-3" />
                                       {selectedItem?.quantity} un.
                                     </span>
                                   )}
@@ -468,7 +463,7 @@ const FinalizeSaleDialog = ({
                                       ? 'Sem estoque'
                                       : alreadyAdded
                                         ? 'Adicionar mais'
-                                        : 'Adicionar'}
+                                        : 'Selecionar'}
                                   </span>
                                 </div>
                               </div>
@@ -488,111 +483,112 @@ const FinalizeSaleDialog = ({
                       <div>
                         <p className="text-base font-semibold text-white">Resumo da venda</p>
                         <p className="mt-1 text-xs text-slate-400">
-                          Ajuste quantidades e revise antes de confirmar.
+                          Ajuste a quantidade e revise antes de confirmar.
                         </p>
                       </div>
 
                       <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white">
-                        {selectedProducts.length} item(ns)
+                        {selectedProduct ? '1 produto' : '0 produtos'}
                       </div>
                     </div>
                   </div>
 
                   <div className="max-h-[360px] overflow-y-auto p-4">
-                    {selectedProducts.length === 0 ? (
+                    {!selectedProduct ? (
                       <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/25 px-4 py-10 text-center">
                         <Package className="mx-auto mb-3 h-8 w-8 text-slate-600" />
                         <p className="text-sm text-slate-400">
-                          Adicione produtos do catálogo para montar a venda.
+                          Selecione um produto do catálogo para finalizar a venda.
                         </p>
                       </div>
                     ) : (
-                      <div className="space-y-3">
-                        {selectedProducts.map((item) => (
-                          <div
-                            key={item.id}
-                            className={cn(
-                              'rounded-2xl border border-white/10 bg-slate-950/35 p-3 transition-all duration-300',
-                              highlightedSummaryId === item.id &&
-                                'scale-[1.01] border-emerald-400/30 shadow-[0_12px_24px_rgba(16,185,129,0.10)]',
+                      <div
+                        className={cn(
+                          'rounded-2xl border border-white/10 bg-slate-950/35 p-3 transition-all duration-300',
+                          highlightedSummaryId === selectedProduct.id &&
+                            'scale-[1.01] border-emerald-400/30 shadow-[0_12px_24px_rgba(16,185,129,0.10)]',
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/5 bg-slate-800">
+                            {selectedProduct.image_url ? (
+                              <img
+                                src={selectedProduct.image_url}
+                                alt={selectedProduct.name}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-slate-500">
+                                <Package className="h-5 w-5" />
+                              </div>
                             )}
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/5 bg-slate-800">
-                                {item.image_url ? (
-                                  <img
-                                    src={item.image_url}
-                                    alt={item.name}
-                                    className="h-full w-full object-cover"
-                                  />
-                                ) : (
-                                  <div className="flex h-full w-full items-center justify-center text-slate-500">
-                                    <Package className="h-5 w-5" />
-                                  </div>
-                                )}
-                              </div>
+                          </div>
 
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-semibold text-white">
-                                  {item.name}
-                                </p>
-                                <div className="mt-1 flex items-center gap-2 flex-wrap">
-                                  {item.sku && (
-                                    <span className="font-mono text-[11px] text-slate-400">
-                                      {item.sku}
-                                    </span>
-                                  )}
-                                  <span className="text-[11px] text-slate-400">
-                                    {currency(Number(item.price || 0))} cada
-                                  </span>
-                                </div>
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveProduct(item.id)}
-                                className="rounded-xl p-2 text-slate-500 transition-colors hover:bg-rose-500/10 hover:text-rose-300"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </div>
-
-                            <div className="mt-4 flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleChangeQuantity(item.id, item.quantity - 1)
-                                  }
-                                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-slate-800/80 text-slate-300 transition-colors hover:bg-slate-700"
-                                >
-                                  <Minus className="h-4 w-4" />
-                                </button>
-
-                                <div className="flex h-9 min-w-[54px] items-center justify-center rounded-xl border border-white/10 bg-slate-800/80 px-3 text-sm font-semibold text-white">
-                                  {item.quantity}
-                                </div>
-
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleChangeQuantity(item.id, item.quantity + 1)
-                                  }
-                                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-slate-800/80 text-slate-300 transition-colors hover:bg-slate-700"
-                                >
-                                  <Plus className="h-4 w-4" />
-                                </button>
-                              </div>
-
-                              <div className="text-right">
-                                <p className="text-[11px] text-slate-400">Total do item</p>
-                                <p className="text-sm font-semibold text-emerald-300">
-                                  {currency(item.total)}
-                                </p>
-                              </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-semibold text-white">
+                              {selectedProduct.name}
+                            </p>
+                            <div className="mt-1 flex items-center gap-2 flex-wrap">
+                              {selectedProduct.sku && (
+                                <span className="font-mono text-[11px] text-slate-400">
+                                  {selectedProduct.sku}
+                                </span>
+                              )}
+                              <span className="text-[11px] text-slate-400">
+                                {currency(Number(selectedProduct.price || 0))} cada
+                              </span>
                             </div>
                           </div>
-                        ))}
+
+                          <button
+                            type="button"
+                            onClick={handleRemoveProduct}
+                            className="rounded-xl p-2 text-slate-500 transition-colors hover:bg-rose-500/10 hover:text-rose-300"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+
+                        <div className="mt-4 flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleChangeQuantity(
+                                  selectedProduct.id,
+                                  selectedProduct.quantity - 1,
+                                )
+                              }
+                              className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-slate-800/80 text-slate-300 transition-colors hover:bg-slate-700"
+                            >
+                              <Minus className="h-4 w-4" />
+                            </button>
+
+                            <div className="flex h-9 min-w-[54px] items-center justify-center rounded-xl border border-white/10 bg-slate-800/80 px-3 text-sm font-semibold text-white">
+                              {selectedProduct.quantity}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleChangeQuantity(
+                                  selectedProduct.id,
+                                  selectedProduct.quantity + 1,
+                                )
+                              }
+                              className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-slate-800/80 text-slate-300 transition-colors hover:bg-slate-700"
+                            >
+                              <Plus className="h-4 w-4" />
+                            </button>
+                          </div>
+
+                          <div className="text-right">
+                            <p className="text-[11px] text-slate-400">Total do item</p>
+                            <p className="text-sm font-semibold text-emerald-300">
+                              {currency(selectedProduct.total)}
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -652,7 +648,7 @@ const FinalizeSaleDialog = ({
 
                 <Button
                   type="submit"
-                  disabled={submitting || loadingProducts || selectedProducts.length === 0}
+                  disabled={submitting || loadingProducts || !selectedProduct}
                   className="min-w-[180px] rounded-2xl bg-emerald-600 text-white hover:bg-emerald-500"
                 >
                   {submitting ? (
