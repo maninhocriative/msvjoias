@@ -267,24 +267,115 @@ const Chat = () => {
     setFinalizingSale(true);
 
     try {
-      const productId = String(payload.productId || '').trim();
-      const productName = String(payload.productName || '').trim();
-      const productSku = payload.productSku || null;
-      const notes = String(payload.notes || '').trim();
+      const raw = payload as any;
+      const selectedProduct = raw.selectedProduct || raw.product || null;
+      const selectedItem =
+        Array.isArray(raw.items) && raw.items.length > 0 ? raw.items[0] : null;
 
-      const parsedQuantity = Number(payload.quantity);
+      const productIdCandidate =
+        raw.productId ??
+        raw.product_id ??
+        raw.id ??
+        selectedProduct?.id ??
+        selectedProduct?.product_id ??
+        selectedItem?.id ??
+        selectedItem?.product_id ??
+        null;
+
+      const productNameCandidate =
+        raw.productName ??
+        raw.product_name ??
+        raw.name ??
+        raw.selectedName ??
+        raw.selected_name ??
+        selectedProduct?.name ??
+        selectedProduct?.product_name ??
+        selectedItem?.name ??
+        selectedItem?.product_name ??
+        null;
+
+      const productSkuCandidate =
+        raw.productSku ??
+        raw.product_sku ??
+        raw.sku ??
+        raw.selectedSku ??
+        raw.selected_sku ??
+        selectedProduct?.sku ??
+        selectedProduct?.product_sku ??
+        selectedItem?.sku ??
+        selectedItem?.product_sku ??
+        null;
+
+      const quantityCandidate =
+        raw.quantity ??
+        raw.qty ??
+        raw.selectedQuantity ??
+        raw.selected_quantity ??
+        selectedItem?.quantity ??
+        1;
+
+      const unitPriceCandidate =
+        raw.unitPrice ??
+        raw.unit_price ??
+        raw.price ??
+        raw.selectedPrice ??
+        raw.selected_price ??
+        selectedProduct?.price ??
+        selectedProduct?.unit_price ??
+        selectedItem?.price ??
+        selectedItem?.unit_price ??
+        0;
+
+      const notes = String(
+        raw.notes ?? raw.observations ?? raw.observacao ?? '',
+      ).trim();
+
+      const parseMoney = (value: unknown) => {
+        if (typeof value === 'number') return value;
+
+        if (typeof value === 'string') {
+          const trimmed = value.trim();
+          if (!trimmed) return NaN;
+
+          const normalized = trimmed.includes(',')
+            ? trimmed.replace(/\./g, '').replace(',', '.')
+            : trimmed;
+
+          const numeric = normalized.replace(/[^\d.-]/g, '');
+          return Number(numeric);
+        }
+
+        return Number(value);
+      };
+
+      const productId =
+        productIdCandidate !== null && productIdCandidate !== undefined
+          ? String(productIdCandidate).trim()
+          : '';
+
+      const productName =
+        productNameCandidate !== null && productNameCandidate !== undefined
+          ? String(productNameCandidate).trim()
+          : '';
+
+      const productSku =
+        productSkuCandidate !== null && productSkuCandidate !== undefined
+          ? String(productSkuCandidate).trim()
+          : null;
+
+      const parsedQuantity = Number(quantityCandidate);
       const safeQuantity =
         Number.isFinite(parsedQuantity) && parsedQuantity > 0
           ? Math.floor(parsedQuantity)
           : 1;
 
-      const parsedUnitPrice = Number(payload.unitPrice);
+      const parsedUnitPrice = parseMoney(unitPriceCandidate);
       const safeUnitPrice =
         Number.isFinite(parsedUnitPrice) && parsedUnitPrice >= 0
           ? parsedUnitPrice
           : 0;
 
-      if (!productId || !productName) {
+      if (!productName) {
         throw new Error('Selecione um produto válido antes de confirmar a venda.');
       }
 
@@ -319,7 +410,7 @@ const Chat = () => {
         {
           customer_phone: selectedConversation.contact_number,
           customer_name: customerName,
-          product_id: productId,
+          product_id: productId || null,
           quantity: safeQuantity,
           unit_price: safeUnitPrice,
           total_price: totalPrice,
