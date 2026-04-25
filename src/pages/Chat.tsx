@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase, Conversation, Message, LeadStatus } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import {
@@ -62,6 +63,10 @@ interface CustomerProfile {
   profile_pic_url?: string;
 }
 
+function normalizePhone(phone: string) {
+  return (phone || '').replace(/\D/g, '');
+}
+
 const statusFilters = [
   { key: 'all', label: 'Todos', color: 'bg-slate-500' },
   { key: 'novo', label: 'Novos', color: 'bg-slate-400' },
@@ -101,13 +106,17 @@ const Chat = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const shouldAutoScroll = useRef(true);
   const lastMessageCount = useRef(0);
+  const handledRoutePhoneRef = useRef('');
 
   const { toast } = useToast();
   const { onlineSellers, startChatting, stopChatting } = useSellerPresence();
   const { isAdmin, isGerente } = useUserRole();
   const { profile, user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   useAssignmentNotification();
+
+  const routePhone = normalizePhone(searchParams.get('phone') || '');
 
   const currentLoggedSellerName = useMemo(() => {
     const profileName = profile?.full_name?.trim();
@@ -704,6 +713,42 @@ const Chat = () => {
       supabase.removeChannel(alineChannel);
     };
   }, [fetchConversations]);
+
+  useEffect(() => {
+    if (!routePhone) {
+      handledRoutePhoneRef.current = '';
+      return;
+    }
+
+    if (loading) return;
+    if (handledRoutePhoneRef.current === routePhone) return;
+
+    const matchedConversation = conversations.find(
+      (conv) => normalizePhone(conv.contact_number) === routePhone,
+    );
+
+    handledRoutePhoneRef.current = routePhone;
+
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.delete('phone');
+    setSearchParams(nextParams, { replace: true });
+
+    setFilterStatus('all');
+    setFilterAttendant('all');
+
+    if (matchedConversation) {
+      setSelectedConversation(matchedConversation);
+      setSearchTerm('');
+      return;
+    }
+
+    setSearchTerm(routePhone);
+
+    toast({
+      title: 'Conversa não encontrada',
+      description: 'Esse telefone ainda não existe no chat. A busca foi aberta para você.',
+    });
+  }, [routePhone, loading, conversations, searchParams, setSearchParams, toast]);
 
   const addOptimisticMessage = useCallback(
     (content: string, messageType = 'text', mediaUrl: string | null = null): string => {
