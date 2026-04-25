@@ -38,6 +38,7 @@ import {
   ArrowUpRight,
   Phone,
   UserRound,
+  Clock3,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -212,6 +213,13 @@ function formatPhone(phone: string) {
   }
 
   return phone;
+}
+
+function campaignShort(raw: string) {
+  if (!raw) return '';
+  const match = raw.match(/\[([^\]]+)\]\s*$/);
+  const text = match ? match[1] : raw.replace(/^\[+|\]+$/g, '');
+  return text.length > 48 ? `${text.slice(0, 48)}…` : text;
 }
 
 function parseMarketingState(rawValue?: string | null): Record<string, LeadMarketingState> {
@@ -1073,7 +1081,7 @@ export default function FollowupMonitor() {
                               </p>
 
                               <p className="text-sm font-medium mt-2 truncate">
-                                {item.campaign || 'Sem campanha'}
+                                {item.campaign ? campaignShort(item.campaign) : 'Sem campanha'}
                               </p>
 
                               {item.ad_name && (
