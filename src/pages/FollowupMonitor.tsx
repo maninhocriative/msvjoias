@@ -32,14 +32,12 @@ import {
   Search,
   Sparkles,
   Filter,
-  Phone,
-  ArrowUpRight,
   Bot,
   Megaphone,
-  UserRound,
   CalendarClock,
-  Flame,
-  Clock3,
+  ArrowUpRight,
+  Phone,
+  UserRound,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -118,6 +116,7 @@ interface LeadMarketingState {
 }
 
 type FollowupSource = 'aline' | 'marketing' | 'hybrid';
+type FollowupStateKey = 'ready' | 'waiting' | 'completed';
 
 interface FollowupItem {
   id: string;
@@ -141,13 +140,11 @@ interface FollowupItem {
   source: FollowupSource;
 }
 
-type FollowupStateKey = 'ready' | 'waiting' | 'completed';
-
 interface FollowupStateMeta {
   key: FollowupStateKey;
   label: string;
   helper: string;
-  badgeClass: string;
+  className: string;
   icon: any;
 }
 
@@ -179,6 +176,26 @@ const FOLLOWUP_QUEUE_OPTIONS: Array<{ value: FollowupQueue; label: string }> = [
 ];
 
 /* ── Helpers ── */
+function safeReadLocalStorage(key: string) {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeWriteLocalStorage(key: string, value: string) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // ignore
+  }
+}
+
 function normalizePhone(phone: string) {
   return (phone || '').replace(/\D/g, '');
 }
@@ -275,10 +292,7 @@ function getSourceMeta(source: FollowupSource) {
 }
 
 function getLeadStatusMeta(status: LeadMarketingStatus) {
-  const map: Record<
-    LeadMarketingStatus,
-    { label: string; className: string }
-  > = {
+  const map: Record<LeadMarketingStatus, { label: string; className: string }> = {
     novo: {
       label: 'Novo',
       className: 'bg-slate-500/15 text-slate-300 border border-slate-500/20',
@@ -342,8 +356,7 @@ function getFollowupState(item: FollowupItem): FollowupStateMeta {
       key: 'completed',
       label: 'Encerrado',
       helper: 'Status do lead finalizado',
-      badgeClass:
-        'bg-zinc-500/15 text-zinc-300 border border-zinc-500/20',
+      className: 'bg-zinc-500/15 text-zinc-300 border border-zinc-500/20',
       icon: CheckCircle2,
     };
   }
@@ -353,8 +366,7 @@ function getFollowupState(item: FollowupItem): FollowupStateMeta {
       key: 'completed',
       label: 'Concluído',
       helper: 'Fluxo automático finalizado',
-      badgeClass:
-        'bg-zinc-500/15 text-zinc-300 border border-zinc-500/20',
+      className: 'bg-zinc-500/15 text-zinc-300 border border-zinc-500/20',
       icon: CheckCircle2,
     };
   }
@@ -368,8 +380,7 @@ function getFollowupState(item: FollowupItem): FollowupStateMeta {
         key: 'ready',
         label: 'Pronto para acionar',
         helper: getFollowupQueueLabel(item.marketing_queue),
-        badgeClass:
-          'bg-emerald-500/15 text-emerald-300 border border-emerald-500/20',
+        className: 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/20',
         icon: Send,
       };
     }
@@ -379,8 +390,7 @@ function getFollowupState(item: FollowupItem): FollowupStateMeta {
         key: 'waiting',
         label: 'Aguardando janela',
         helper: getFollowupQueueLabel(item.marketing_queue),
-        badgeClass:
-          'bg-amber-500/15 text-amber-300 border border-amber-500/20',
+        className: 'bg-amber-500/15 text-amber-300 border border-amber-500/20',
         icon: Timer,
       };
     }
@@ -392,8 +402,7 @@ function getFollowupState(item: FollowupItem): FollowupStateMeta {
         key: 'ready',
         label: 'Pronto para acionar',
         helper: getFollowupQueueLabel(item.marketing_queue),
-        badgeClass:
-          'bg-emerald-500/15 text-emerald-300 border border-emerald-500/20',
+        className: 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/20',
         icon: Send,
       };
     }
@@ -402,8 +411,7 @@ function getFollowupState(item: FollowupItem): FollowupStateMeta {
       key: 'waiting',
       label: `${formatRemainingMinutes(delay - elapsed)} restantes`,
       helper: getFollowupQueueLabel(item.marketing_queue),
-      badgeClass:
-        'bg-amber-500/15 text-amber-300 border border-amber-500/20',
+      className: 'bg-amber-500/15 text-amber-300 border border-amber-500/20',
       icon: Timer,
     };
   }
@@ -415,8 +423,7 @@ function getFollowupState(item: FollowupItem): FollowupStateMeta {
       key: 'completed',
       label: 'Concluído',
       helper: 'Sem mais follow-ups',
-      badgeClass:
-        'bg-zinc-500/15 text-zinc-300 border border-zinc-500/20',
+      className: 'bg-zinc-500/15 text-zinc-300 border border-zinc-500/20',
       icon: CheckCircle2,
     };
   }
@@ -426,8 +433,7 @@ function getFollowupState(item: FollowupItem): FollowupStateMeta {
       key: 'waiting',
       label: `Aguardando ${nextFollowup.label}`,
       helper: 'Fluxo automático da Aline',
-      badgeClass:
-        'bg-amber-500/15 text-amber-300 border border-amber-500/20',
+      className: 'bg-amber-500/15 text-amber-300 border border-amber-500/20',
       icon: Clock,
     };
   }
@@ -439,8 +445,7 @@ function getFollowupState(item: FollowupItem): FollowupStateMeta {
       key: 'ready',
       label: 'Pronto para enviar',
       helper: 'Fluxo automático da Aline',
-      badgeClass:
-        'bg-emerald-500/15 text-emerald-300 border border-emerald-500/20',
+      className: 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/20',
       icon: Send,
     };
   }
@@ -449,8 +454,7 @@ function getFollowupState(item: FollowupItem): FollowupStateMeta {
     key: 'waiting',
     label: `${formatRemainingMinutes(nextFollowup.minutes - elapsed)} restantes`,
     helper: 'Fluxo automático da Aline',
-    badgeClass:
-      'bg-blue-500/15 text-blue-300 border border-blue-500/20',
+    className: 'bg-blue-500/15 text-blue-300 border border-blue-500/20',
     icon: Timer,
   };
 }
@@ -514,7 +518,7 @@ export default function FollowupMonitor() {
     successMessage?: string,
   ) => {
     setMarketingStateMap(nextState);
-    localStorage.setItem(MARKETING_LOCAL_KEY, JSON.stringify(nextState));
+    safeWriteLocalStorage(MARKETING_LOCAL_KEY, JSON.stringify(nextState));
     setPersistingMarketing(true);
 
     try {
@@ -549,21 +553,23 @@ export default function FollowupMonitor() {
   const fetchData = async () => {
     try {
       const localMarketing = parseMarketingState(
-        localStorage.getItem(MARKETING_LOCAL_KEY),
+        safeReadLocalStorage(MARKETING_LOCAL_KEY),
       );
 
-      const [{ data: conversationsData, error: conversationsError }, { data: settingsData, error: settingsError }] =
-        await Promise.all([
-          supabase
-            .from('aline_conversations')
-            .select('*')
-            .order('last_message_at', { ascending: false })
-            .limit(300),
-          supabase
-            .from('store_settings')
-            .select('key, value')
-            .in('key', [MARKETING_SETTING_KEY, 'facebook_leads_last_import']),
-        ]);
+      const [
+        { data: conversationsData, error: conversationsError },
+        { data: settingsData, error: settingsError },
+      ] = await Promise.all([
+        supabase
+          .from('aline_conversations')
+          .select('*')
+          .order('last_message_at', { ascending: false })
+          .limit(300),
+        supabase
+          .from('store_settings')
+          .select('key, value')
+          .in('key', [MARKETING_SETTING_KEY, 'facebook_leads_last_import']),
+      ]);
 
       if (conversationsError) throw conversationsError;
       if (settingsError) throw settingsError;
@@ -591,7 +597,7 @@ export default function FollowupMonitor() {
       setConversations((conversationsData || []) as ConversationRow[]);
       setMarketingStateMap(mergedMarketing);
       setImportedLeads(imported);
-      localStorage.setItem(MARKETING_LOCAL_KEY, JSON.stringify(mergedMarketing));
+      safeWriteLocalStorage(MARKETING_LOCAL_KEY, JSON.stringify(mergedMarketing));
     } catch (error) {
       console.error('Erro ao buscar dados de follow-up:', error);
       toast({
@@ -679,7 +685,7 @@ export default function FollowupMonitor() {
       .forEach((item) => phones.add(normalizePhone(item.phone)));
 
     conversations.forEach((conversation) => {
-      if (conversation.status === 'active' || conversation.followup_count > 0) {
+      if (conversation.status === 'active' || (conversation.followup_count || 0) > 0) {
         phones.add(normalizePhone(conversation.phone));
       }
     });
@@ -704,7 +710,7 @@ export default function FollowupMonitor() {
         imported_at: imported?.imported_at || null,
         conversation_id: conversation?.id || null,
         conversation_status: conversation?.status || null,
-        followup_count: conversation?.followup_count || 0,
+        followup_count: Number(conversation?.followup_count || 0),
         last_message_at: conversation?.last_message_at || null,
         created_at: conversation?.created_at || imported?.imported_at || null,
         marketing_status: marketing.status,
@@ -1034,13 +1040,6 @@ export default function FollowupMonitor() {
                                 >
                                   {statusMeta.label}
                                 </span>
-
-                                {item.marketing_status === 'quente' && (
-                                  <Badge className="bg-orange-500/15 text-orange-300 border border-orange-500/20">
-                                    <Flame className="w-3 h-3 mr-1" />
-                                    Prioridade
-                                  </Badge>
-                                )}
                               </div>
 
                               <div className="flex flex-wrap items-center gap-3 mt-2 text-sm text-muted-foreground">
@@ -1051,14 +1050,15 @@ export default function FollowupMonitor() {
 
                                 <span className="inline-flex items-center gap-1">
                                   <Clock3 className="w-3.5 h-3.5" />
-                                  Última atividade {getRelativeDate(item.last_message_at || item.imported_at || item.created_at)}
+                                  Última atividade{' '}
+                                  {getRelativeDate(item.last_message_at || item.imported_at || item.created_at)}
                                 </span>
                               </div>
                             </div>
 
                             <div className="shrink-0">
                               <span
-                                className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium ${followupState.badgeClass}`}
+                                className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium ${followupState.className}`}
                               >
                                 <StateIcon className="w-3.5 h-3.5" />
                                 {followupState.label}
@@ -1073,7 +1073,7 @@ export default function FollowupMonitor() {
                               </p>
 
                               <p className="text-sm font-medium mt-2 truncate">
-                                {item.campaign ? campaignShort(item.campaign) : 'Sem campanha'}
+                                {item.campaign || 'Sem campanha'}
                               </p>
 
                               {item.ad_name && (
@@ -1111,16 +1111,14 @@ export default function FollowupMonitor() {
                                 {followupState.helper}
                               </p>
 
-                              {item.followup_count > 0 && (
-                                <div className="flex items-center gap-2 mt-3">
-                                  <span className="text-sm font-semibold">
-                                    {item.followup_count}
-                                  </span>
-                                  <span className="text-xs text-muted-foreground">
-                                    / 5 enviados
-                                  </span>
-                                </div>
-                              )}
+                              <div className="flex items-center gap-2 mt-3">
+                                <span className="text-sm font-semibold">
+                                  {item.followup_count}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  / 5 enviados
+                                </span>
+                              </div>
                             </div>
 
                             <div className="rounded-xl border border-white/8 bg-muted/15 p-3">
@@ -1129,9 +1127,7 @@ export default function FollowupMonitor() {
                               </p>
 
                               <p className="text-sm font-medium mt-2">
-                                {item.in_broadcasts
-                                  ? 'Em campanha'
-                                  : 'Sem disparo'}
+                                {item.in_broadcasts ? 'Em campanha' : 'Sem disparo'}
                               </p>
 
                               <p className="text-xs text-muted-foreground mt-1">
@@ -1181,25 +1177,14 @@ export default function FollowupMonitor() {
                           </div>
 
                           <div className="grid gap-2">
-                            {item.conversation_id ? (
-                              <Button
-                                variant="outline"
-                                className="w-full justify-center"
-                                onClick={() => setSelectedItem(item)}
-                              >
-                                <History className="w-4 h-4 mr-2" />
-                                Ver conversa
-                              </Button>
-                            ) : (
-                              <Button
-                                variant="outline"
-                                className="w-full justify-center"
-                                onClick={() => setSelectedItem(item)}
-                              >
-                                <AlertCircle className="w-4 h-4 mr-2" />
-                                Ver detalhes
-                              </Button>
-                            )}
+                            <Button
+                              variant="outline"
+                              className="w-full justify-center"
+                              onClick={() => setSelectedItem(item)}
+                            >
+                              <History className="w-4 h-4 mr-2" />
+                              {item.conversation_id ? 'Ver conversa' : 'Ver detalhes'}
+                            </Button>
 
                             <Button variant="ghost" className="w-full justify-center" asChild>
                               <a
