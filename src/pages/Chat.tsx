@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import { supabase, Conversation, Message, LeadStatus } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import {
@@ -63,10 +62,6 @@ interface CustomerProfile {
   profile_pic_url?: string;
 }
 
-function normalizePhone(phone: string) {
-  return (phone || '').replace(/\D/g, '');
-}
-
 const statusFilters = [
   { key: 'all', label: 'Todos', color: 'bg-slate-500' },
   { key: 'novo', label: 'Novos', color: 'bg-slate-400' },
@@ -106,17 +101,13 @@ const Chat = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const shouldAutoScroll = useRef(true);
   const lastMessageCount = useRef(0);
-  const handledRoutePhoneRef = useRef('');
 
   const { toast } = useToast();
   const { onlineSellers, startChatting, stopChatting } = useSellerPresence();
   const { isAdmin, isGerente } = useUserRole();
   const { profile, user } = useAuth();
-  const [searchParams, setSearchParams] = useSearchParams();
 
   useAssignmentNotification();
-
-  const routePhone = normalizePhone(searchParams.get('phone') || '');
 
   const currentLoggedSellerName = useMemo(() => {
     const profileName = profile?.full_name?.trim();
@@ -276,6 +267,27 @@ const Chat = () => {
     setFinalizingSale(true);
 
     try {
+      const productId = String(payload.productId || '').trim();
+      const productName = String(payload.productName || '').trim();
+      const productSku = payload.productSku || null;
+      const notes = String(payload.notes || '').trim();
+
+      const parsedQuantity = Number(payload.quantity);
+      const safeQuantity =
+        Number.isFinite(parsedQuantity) && parsedQuantity > 0
+          ? Math.floor(parsedQuantity)
+          : 1;
+
+      const parsedUnitPrice = Number(payload.unitPrice);
+      const safeUnitPrice =
+        Number.isFinite(parsedUnitPrice) && parsedUnitPrice >= 0
+          ? parsedUnitPrice
+          : 0;
+
+      if (!productId || !productName) {
+        throw new Error('Selecione um produto válido antes de confirmar a venda.');
+      }
+
       const customerName =
         customerProfiles[selectedConversation.contact_number]?.name ||
         selectedConversation.contact_name ||
@@ -296,28 +308,28 @@ const Chat = () => {
         throw new Error('Já existe uma venda ativa registrada para esta conversa.');
       }
 
-      const totalPrice = Number(payload.unitPrice || 0) * Number(payload.quantity || 1);
+      const totalPrice = safeUnitPrice * safeQuantity;
       const summaryText =
         `Venda finalizada no chat por ${currentLoggedSellerName}: ` +
-        `${payload.productName}` +
-        `${payload.productSku ? ` (${payload.productSku})` : ''}` +
-        ` x${payload.quantity}.`;
+        `${productName}` +
+        `${productSku ? ` (${productSku})` : ''}` +
+        ` x${safeQuantity}.`;
 
       const { error: orderError } = await supabase.from('orders').insert([
         {
           customer_phone: selectedConversation.contact_number,
           customer_name: customerName,
-          product_id: payload.productId,
-          quantity: payload.quantity,
-          unit_price: payload.unitPrice,
+          product_id: productId,
+          quantity: safeQuantity,
+          unit_price: safeUnitPrice,
           total_price: totalPrice,
           status: 'done',
           source: 'chat',
           external_reference: selectedConversation.id,
-          selected_sku: payload.productSku,
-          selected_name: payload.productName,
+          selected_sku: productSku,
+          selected_name: productName,
           assigned_to: currentLoggedSellerName,
-          notes: payload.notes || null,
+          notes: notes || null,
           summary_text: summaryText,
         },
       ]);
@@ -343,7 +355,7 @@ const Chat = () => {
 
       toast({
         title: '🏆 Venda registrada',
-        description: `${payload.productName} x${payload.quantity} salvo com sucesso.`,
+        description: `${productName} x${safeQuantity} salvo com sucesso.`,
       });
     } catch (error: any) {
       console.error('Erro ao finalizar venda:', error);
@@ -713,42 +725,6 @@ const Chat = () => {
       supabase.removeChannel(alineChannel);
     };
   }, [fetchConversations]);
-
-  useEffect(() => {
-    if (!routePhone) {
-      handledRoutePhoneRef.current = '';
-      return;
-    }
-
-    if (loading) return;
-    if (handledRoutePhoneRef.current === routePhone) return;
-
-    const matchedConversation = conversations.find(
-      (conv) => normalizePhone(conv.contact_number) === routePhone,
-    );
-
-    handledRoutePhoneRef.current = routePhone;
-
-    const nextParams = new URLSearchParams(searchParams.toString());
-    nextParams.delete('phone');
-    setSearchParams(nextParams, { replace: true });
-
-    setFilterStatus('all');
-    setFilterAttendant('all');
-
-    if (matchedConversation) {
-      setSelectedConversation(matchedConversation);
-      setSearchTerm('');
-      return;
-    }
-
-    setSearchTerm(routePhone);
-
-    toast({
-      title: 'Conversa não encontrada',
-      description: 'Esse telefone ainda não existe no chat. A busca foi aberta para você.',
-    });
-  }, [routePhone, loading, conversations, searchParams, setSearchParams, toast]);
 
   const addOptimisticMessage = useCallback(
     (content: string, messageType = 'text', mediaUrl: string | null = null): string => {
