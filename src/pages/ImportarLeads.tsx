@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -174,6 +175,10 @@ const BROADCAST_OPTIONS: Array<{
 /* ── Helpers ── */
 function normalizePhone(phone: string) {
   return (phone || '').replace(/\D/g, '');
+}
+
+function buildChatHref(phone: string) {
+  return `/chat?phone=${encodeURIComponent(normalizePhone(phone))}`;
 }
 
 function avatarColor(name: string) {
@@ -564,17 +569,6 @@ const ImportarLeads = () => {
     setSelectedPhones((prev) =>
       prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key],
     );
-  };
-
-  const toggleSelectAllVisible = () => {
-    if (allVisibleSelected) {
-      setSelectedPhones((prev) =>
-        prev.filter((phone) => !visiblePhoneKeys.includes(phone)),
-      );
-      return;
-    }
-
-    setSelectedPhones((prev) => Array.from(new Set([...prev, ...visiblePhoneKeys])));
   };
 
   const updateLeadMarketing = async (
@@ -1168,14 +1162,12 @@ const ImportarLeads = () => {
                                 <p className="text-base font-semibold truncate">{lead.name}</p>
 
                                 <div className="flex flex-wrap items-center gap-3 mt-1 text-sm text-muted-foreground">
-                                  <a
-                                    href={`https://wa.me/${lead.phone_key}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
+                                  <Link
+                                    to={buildChatHref(lead.phone_key)}
                                     className="hover:text-emerald-500 transition-colors"
                                   >
                                     +{lead.phone_key}
-                                  </a>
+                                  </Link>
 
                                   {lead.imported_at && (
                                     <span className="inline-flex items-center gap-1">
@@ -1418,13 +1410,9 @@ const ImportarLeads = () => {
                                 className="h-9 w-9"
                                 asChild
                               >
-                                <a
-                                  href={`https://wa.me/${lead.phone_key}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                >
+                                <Link to={buildChatHref(lead.phone_key)}>
                                   <MessageCircle className="w-4 h-4 text-emerald-500" />
-                                </a>
+                                </Link>
                               </Button>
                             </div>
                           </div>
