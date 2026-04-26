@@ -50,6 +50,7 @@ interface AlineConversation {
   id: string;
   phone: string;
   status: string;
+  active_agent?: string;
   assigned_seller_id?: string;
   assigned_seller_name?: string;
   assignment_reason?: string;
@@ -484,6 +485,7 @@ const Chat = () => {
           ...prev[selectedConversation.contact_number],
           phone: selectedConversation.contact_number,
           status: newStatus,
+          active_agent: action === 'release' ? 'aline' : 'human',
         },
       }));
 
@@ -529,6 +531,7 @@ const Chat = () => {
           ...prev[selectedConversation.contact_number],
           phone: selectedConversation.contact_number,
           status: 'human_takeover',
+          active_agent: 'human',
           assigned_seller_id: sellerId,
           assigned_seller_name: sellerName,
         },
@@ -577,7 +580,7 @@ const Chat = () => {
       const { data } = await supabase
         .from('aline_conversations')
         .select(
-          'id, phone, status, assigned_seller_id, assigned_seller_name, assignment_reason, assigned_at',
+          'id, phone, status, active_agent, assigned_seller_id, assigned_seller_name, assignment_reason, assigned_at',
         )
         .eq('phone', phone)
         .order('created_at', { ascending: false })
@@ -710,7 +713,7 @@ const Chat = () => {
             supabase
               .from('aline_conversations')
               .select(
-                'id, phone, status, assigned_seller_id, assigned_seller_name, assignment_reason, assigned_at',
+                'id, phone, status, active_agent, assigned_seller_id, assigned_seller_name, assignment_reason, assigned_at',
               )
               .in('phone', phones),
             supabase
@@ -795,6 +798,7 @@ const Chat = () => {
 
               if (
                 current?.status === updated.status &&
+                current?.active_agent === updated.active_agent &&
                 current?.assigned_seller_id === updated.assigned_seller_id &&
                 current?.assigned_seller_name === updated.assigned_seller_name
               ) {
@@ -1249,6 +1253,33 @@ const Chat = () => {
   const currentSellerInitial = currentSellerName.charAt(0).toUpperCase() || 'V';
   const isSaleFinalized = selectedConversation?.lead_status === 'vendido';
 
+  const currentAgentSlug = isCurrentHumanTakeover
+    ? 'human'
+    : currentAlineData?.active_agent === 'keila'
+      ? 'keila'
+      : 'aline';
+
+  const currentAgentLabel =
+    currentAgentSlug === 'human'
+      ? 'Humano'
+      : currentAgentSlug === 'keila'
+        ? 'Keila'
+        : 'Aline';
+
+  const currentAgentBadgeClass =
+    currentAgentSlug === 'human'
+      ? 'bg-amber-500/15 text-amber-300 border border-amber-500/25'
+      : currentAgentSlug === 'keila'
+        ? 'bg-sky-500/15 text-sky-300 border border-sky-500/25'
+        : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+
+  const currentAgentDotClass =
+    currentAgentSlug === 'human'
+      ? 'bg-amber-500'
+      : currentAgentSlug === 'keila'
+        ? 'bg-sky-500'
+        : 'bg-emerald-500';
+
   const activeStatusLabel =
     statusFilters.find((item) => item.key === filterStatus)?.label || 'Todos';
 
@@ -1453,7 +1484,7 @@ const Chat = () => {
                 {[
                   {
                     key: 'aline',
-                    label: 'Aline',
+                    label: 'IA',
                     count: attendantCounts.aline,
                     icon: Bot,
                     activeClass:
@@ -1597,7 +1628,9 @@ const Chat = () => {
                             ? 'bg-gradient-to-br from-fuchsia-500 to-orange-400'
                             : isSaleFinalized
                               ? 'bg-gradient-to-br from-emerald-500 to-teal-600'
-                              : 'bg-gradient-to-br from-emerald-400 to-cyan-500',
+                              : currentAgentSlug === 'keila'
+                                ? 'bg-gradient-to-br from-sky-500 to-indigo-500'
+                                : 'bg-gradient-to-br from-emerald-400 to-cyan-500',
                         )}
                       >
                         {(
@@ -1612,7 +1645,7 @@ const Chat = () => {
                     <span
                       className={cn(
                         'absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-slate-950',
-                        isCurrentHumanTakeover ? 'bg-amber-500' : 'bg-emerald-500',
+                        currentAgentDotClass,
                       )}
                     />
                   </div>
@@ -1633,9 +1666,12 @@ const Chat = () => {
                           {currentSellerFirstName}
                         </span>
                       ) : (
-                        <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        <span className={cn(
+                          'hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold',
+                          currentAgentBadgeClass,
+                        )}>
                           <Bot className="w-3 h-3 shrink-0" />
-                          Aline
+                          {currentAgentLabel}
                         </span>
                       )}
                     </div>
