@@ -12,53 +12,27 @@ const tools = [
     type: "function",
     function: {
       name: "search_catalog",
-      description: `OBRIGATÓRIO usar para mostrar produtos ao cliente quando já houver informações suficientes.
-      
-REGRAS:
-- Os produtos são enviados como cards visuais pelo sistema.
-- Nunca listar produtos no texto da resposta.
-- Para alianças de casamento, usar somente depois que tiver a cor.
-- Para alianças de namoro, usar somente depois que tiver a cor.
-- Para pingentes, usar somente depois que tiver a cor.
-- Se o cliente pedir "outras cores" ou "mais opções", use exclude_shown_colors=true.
-
-PARÂMETROS:
-- category: "aliancas", "pingente" ou "aneis"
-- color: use quando o cliente especificar cor
-- only_available: use true para mostrar só estoque disponível`,
+      description: `Use para buscar produtos quando já houver contexto suficiente.
+- Nunca listar produtos manualmente na resposta.
+- O sistema envia os cards separadamente.
+- Use color quando o cliente informar a cor.
+- Para alianças de casamento, use quando a Keila já tiver as informações necessárias.`,
       parameters: {
         type: "object",
         properties: {
-          search: {
-            type: "string",
-            description: "Busca livre por nome ou descrição.",
-          },
+          search: { type: "string" },
           category: {
             type: "string",
             enum: ["aliancas", "pingente", "aneis"],
-            description: "Categoria do produto.",
           },
           color: {
             type: "string",
             enum: ["dourada", "prata", "preta", "azul", "rose"],
-            description: "Cor desejada quando o cliente informar uma cor.",
           },
-          min_price: {
-            type: "number",
-            description: "Preço mínimo.",
-          },
-          max_price: {
-            type: "number",
-            description: "Preço máximo.",
-          },
-          only_available: {
-            type: "boolean",
-            description: "Mostrar apenas produtos disponíveis.",
-          },
-          exclude_shown_colors: {
-            type: "boolean",
-            description: "Exclui cores já mostradas quando cliente pedir outras cores/opções.",
-          },
+          min_price: { type: "number" },
+          max_price: { type: "number" },
+          only_available: { type: "boolean" },
+          exclude_shown_colors: { type: "boolean" },
         },
         required: ["category"],
       },
@@ -72,10 +46,7 @@ PARÂMETROS:
       parameters: {
         type: "object",
         properties: {
-          sku: {
-            type: "string",
-            description: "Código SKU do produto.",
-          },
+          sku: { type: "string" },
         },
         required: ["sku"],
       },
@@ -83,14 +54,14 @@ PARÂMETROS:
   },
 ];
 
-const ALINE_SYSTEM_PROMPT = `# Aline e Keila | ACIUM Manaus
+const DEFAULT_MULTI_AGENT_PROMPT = `# Aline e Keila | ACIUM Manaus
 
 ## PAPÉIS
 Você atende como duas especialistas:
 
 ### Aline
-Aline faz a TRIAGEM inicial.
-Ela precisa identificar rapidamente se o cliente quer:
+Aline faz a triagem inicial.
+Ela identifica se o cliente quer:
 - alianças de namoro
 - alianças de casamento
 - pingentes dourados
@@ -98,111 +69,50 @@ Ela precisa identificar rapidamente se o cliente quer:
 
 ### Keila
 Keila é a especialista em alianças de casamento.
-Quando o cliente estiver buscando alianças de casamento, Aline deve dizer que vai transferir para a Keila e, a partir daí, a conversa segue como Keila.
+Quando o assunto for alianças de casamento, o atendimento deve seguir como Keila.
 
 ---
 
 ## TOM
-- Respostas curtas, elegantes e acolhedoras
-- Máximo 2 a 4 linhas por resposta
-- Nunca escrever textão
-- Nunca listar produtos no texto
-- Poucos emojis
+- curto
+- elegante
+- acolhedor
+- comercial
+- nunca escrever textão
+- nunca listar catálogo manualmente
 
 ---
 
-## REGRAS ABSOLUTAS
-1. Nunca invente preço, estoque ou condições.
-2. Nunca descreva catálogo em lista no texto.
-3. Quando houver catálogo, diga só uma introdução curta.
-4. Os cards com foto, cor, código e preço são enviados pelo sistema.
-5. Quando o cliente perguntar sobre preço de aliança, você pode lembrar:
+## REGRAS
+1. Nunca inventar preços.
+2. Nunca listar produtos no texto.
+3. Quando houver cards, usar só uma frase curta de introdução.
+4. Para alianças de casamento, lembrar:
    "O valor do card é da unidade. O par sai pelo dobro. 💍"
-6. Se o cliente perguntar endereço, responda o endereço da loja.
-7. Se o cliente pedir algo ambíguo, pergunte antes de buscar catálogo.
-
----
-
-## FLUXO DA ALINE
-### Se for alianças de casamento
-Aline deve responder algo no estilo:
-"Perfeito! Vou te transferir para a Keila, nossa especialista em alianças de casamento. 💍"
-
-Depois disso, o fluxo segue como Keila.
-
-### Se for alianças de namoro
-Aline conduz assim:
-1. confirmar que é namoro/compromisso
-2. perguntar a cor
-3. quando tiver a cor, buscar catálogo
-
-### Se for pingentes
-Aline conduz assim:
-1. perguntar a cor, se ainda não tiver
-2. quando tiver a cor, buscar catálogo
+5. Aline faz triagem.
+6. Keila conduz casamento com perguntas objetivas.
 
 ---
 
 ## FLUXO DA KEILA
-Keila deve conduzir alianças de casamento nesta ordem:
+Perguntar nesta ordem:
+1. para quando deseja fechar
+2. quanto quer investir
+3. se deseja o par ou a unidade
+4. a numeração
 
-1. perguntar para quando o cliente deseja fechar
-2. perguntar quanto quer investir
-3. perguntar se deseja o par ou a unidade
-4. perguntar a numeração
-5. se o cliente não souber a numeração, tranquilizar:
-   "Tudo bem, se você ainda não souber a numeração agora, eu sigo com você mesmo assim 😊"
+Se não souber a numeração:
+" Tudo bem, se você ainda não souber a numeração agora, eu sigo com você mesmo assim 😊"
 
-Depois que essas respostas estiverem coletadas:
-- buscar os produtos no catálogo
-- enviar cards da cor escolhida
-- sempre informar:
-  "O valor do card é da unidade. O par sai pelo dobro. 💍"
-- depois dos cards, perguntar:
-  "Gostou de algum modelo? 😊"
-
----
-
-## CORES
-### Alianças de namoro
-- dourada
-- prata
-
-Se pedirem preta, azul ou outra:
-"Para namoro temos dourada e prata. Qual você prefere? 💍"
-
-### Alianças de casamento
-- dourada
-- prata
-- preta
-- azul
-
-### Pingentes
-- dourada
-- prata
+Depois:
+- buscar catálogo da cor escolhida
+- informar que o valor do card é da unidade e o par é o dobro
+- perguntar se gostou de algum modelo
 
 ---
 
 ## ENDEREÇO
-Shopping Sumaúma, Av. Noel Nutels, 1762 - Cidade Nova, Manaus - AM
-
----
-
-## NÓS TÉCNICOS
-Use no final da resposta um destes nós:
-- #node: abertura
-- #node: escolha_tipo
-- #node: escolha_finalidade
-- #node: escolha_cor
-- #node: transferencia_keila
-- #node: keila_prazo
-- #node: keila_orcamento
-- #node: keila_par_ou_unidade
-- #node: keila_numeracao
-- #node: catalogo
-- #node: selecao
-- #node: coleta_dados
-- #node: finalizado`;
+Shopping Sumaúma, Av. Noel Nutels, 1762 - Cidade Nova, Manaus - AM.`;
 
 function normalizeText(text: string): string {
   return String(text || "")
@@ -215,16 +125,16 @@ function normalizeText(text: string): string {
 function detectColor(text: string): string | null {
   const normalized = normalizeText(text);
 
-  if (/(dourada|dourado|ouro|gold|amarela|amarelo)/i.test(normalized)) return "dourada";
-  if (/(prata|prateada|prateado|aco|aço|silver|cinza)/i.test(normalized)) return "prata";
-  if (/(preta|preto|black|escura|escuro)/i.test(normalized)) return "preta";
-  if (/(azul|blue)/i.test(normalized)) return "azul";
-  if (/(rose|ros[eé]|rosa)/i.test(normalized)) return "rose";
+  if (/(dourada|dourado|ouro|gold|amarela|amarelo)/.test(normalized)) return "dourada";
+  if (/(prata|prateada|prateado|aco|aço|silver|cinza)/.test(normalized)) return "prata";
+  if (/(preta|preto|black|escura|escuro)/.test(normalized)) return "preta";
+  if (/(azul|blue)/.test(normalized)) return "azul";
+  if (/(rose|ros[eé]|rosa)/.test(normalized)) return "rose";
 
   return null;
 }
 
-function inferCategory(text: string, currentState: any): string | null {
+function detectCategory(text: string, currentState: any): string | null {
   const normalized = normalizeText(text);
 
   if (/pingente|pingentes|medalha|medalhas|medalhinha|colar|cordao|cordão|corrente/.test(normalized)) {
@@ -242,7 +152,7 @@ function inferCategory(text: string, currentState: any): string | null {
   return currentState?.categoria || null;
 }
 
-function inferAllianceType(text: string, currentState: any): string | null {
+function detectAllianceType(text: string, currentState: any): string | null {
   const normalized = normalizeText(text);
 
   if (/casamento|casar|noiva|noivo|noivado|tungsten/.test(normalized)) {
@@ -256,68 +166,42 @@ function inferAllianceType(text: string, currentState: any): string | null {
   return currentState?.tipo_alianca || null;
 }
 
-function inferSuggestedAgent(text: string, currentState: any): "aline" | "keila" {
+function chooseAgent(text: string, currentState: any, agentOverride?: string | null): "aline" | "keila" {
+  if (agentOverride === "keila") return "keila";
+  if (agentOverride === "aline") return "aline";
+
+  const category = detectCategory(text, currentState);
+  const allianceType = detectAllianceType(text, currentState);
   const normalized = normalizeText(text);
-  const category = inferCategory(text, currentState);
-  const allianceType = inferAllianceType(text, currentState);
 
   const explicitMarriage = /casamento|casar|noiva|noivo|noivado|tungsten/.test(normalized);
   const marriageContext =
     category === "aliancas" &&
-    (allianceType === "casamento" || explicitMarriage || currentState?.stage?.includes?.("keila"));
+    (allianceType === "casamento" || explicitMarriage || String(currentState?.stage || "").includes("keila"));
 
   return marriageContext ? "keila" : "aline";
 }
 
-function inferClassification(text: string, currentState: any): string | null {
+function shouldForceCatalog(text: string, currentState: any, agent: "aline" | "keila"): boolean {
   const normalized = normalizeText(text);
-  const category = inferCategory(text, currentState);
-  const color = detectColor(text);
-  const allianceType = inferAllianceType(text, currentState);
-
-  if (category === "aliancas" && allianceType === "casamento") {
-    return "aliancas_casamento";
-  }
-
-  if (category === "aliancas" && allianceType === "namoro") {
-    return "aliancas_namoro";
-  }
-
-  if (category === "pingente" && color === "dourada") {
-    return "pingentes_dourados";
-  }
-
-  if (category === "pingente" && color === "prata") {
-    return "pingentes_prata";
-  }
-
-  if (/casamento/.test(normalized) && /alianc/.test(normalized)) {
-    return "aliancas_casamento";
-  }
-
-  if (/namoro|compromisso/.test(normalized) && /alianc/.test(normalized)) {
-    return "aliancas_namoro";
-  }
-
-  return null;
-}
-
-function shouldForceCatalog(text: string, currentState: any): boolean {
-  const normalized = normalizeText(text);
-  const category = inferCategory(text, currentState);
+  const category = detectCategory(text, currentState);
   const color = detectColor(text) || currentState?.cor_preferida || null;
-  const allianceType = inferAllianceType(text, currentState);
+  const allianceType = detectAllianceType(text, currentState);
 
-  const wantsToSee = /quero ver|mostra|mostrar|manda op|opcoes|opções|catalogo|catálogo|mais opcoes|mais opções/.test(normalized);
-  const asksOtherOptions = /outras cores|outras opcoes|outras opções|mais opcoes|mais opções/.test(normalized);
+  const wantsToSee = /quero ver|mostra|mostrar|manda op|opcoes|opções|catalogo|catálogo|me mostra|mais opções/.test(normalized);
+
+  if (agent === "keila") {
+    const hasBudget = !!currentState?.orcamento_valor || !!currentState?.orcamento_texto;
+    const hasQuantityType = !!currentState?.quantidade_tipo;
+    const hasSize =
+      !!currentState?.tamanho_1 ||
+      currentState?.numeracao_status === "nao_sabe";
+
+    return category === "aliancas" && allianceType === "casamento" && color && hasBudget && hasQuantityType && hasSize;
+  }
 
   if (category === "pingente" && color && wantsToSee) return true;
-  if (category === "pingente" && color && currentState?.stage === "escolha_cor") return true;
-
-  if (category === "aliancas" && allianceType === "namoro" && color && wantsToSee) return true;
-  if (category === "aliancas" && allianceType === "casamento" && color && wantsToSee) return true;
-
-  if (category === "aliancas" && allianceType && color && asksOtherOptions) return true;
+  if (category === "aliancas" && allianceType && color && wantsToSee) return true;
 
   return false;
 }
@@ -336,8 +220,7 @@ function formatProductCaption(
 
   const price = product.current_price || product.price || product.price_current || 0;
   if (options.includePrice && price) {
-    const formatted = `R$ ${Number(price).toFixed(2).replace(".", ",")}`;
-    lines.push(`💰 *${formatted}*`);
+    lines.push(`💰 *R$ ${Number(price).toFixed(2).replace(".", ",")}*`);
   }
 
   if (product.color || product.specs?.color) {
@@ -365,11 +248,7 @@ function formatProductCaption(
   return lines.join("\n");
 }
 
-async function searchCatalog(
-  params: Record<string, any>,
-  supabaseUrl: string,
-  supabaseKey: string,
-): Promise<any> {
+async function callCatalogSearch(params: Record<string, any>, supabaseUrl: string, supabaseKey: string) {
   const searchParams = new URLSearchParams();
 
   Object.entries(params).forEach(([key, value]) => {
@@ -391,6 +270,29 @@ async function searchCatalog(
   return await response.json();
 }
 
+async function getAgentConfig(supabase: any, agent: "aline" | "keila") {
+  const targetName = agent === "keila" ? "Keila" : "Aline";
+
+  const { data } = await supabase
+    .from("ai_agent_config")
+    .select("*")
+    .ilike("name", targetName)
+    .eq("is_active", true)
+    .limit(1)
+    .maybeSingle();
+
+  if (data) return data;
+
+  const { data: fallback } = await supabase
+    .from("ai_agent_config")
+    .select("*")
+    .eq("is_active", true)
+    .limit(1)
+    .maybeSingle();
+
+  return fallback || null;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -408,8 +310,8 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({
           success: true,
-          default_prompt: ALINE_SYSTEM_PROMPT,
-          prompt_length: ALINE_SYSTEM_PROMPT.length,
+          default_prompt: DEFAULT_MULTI_AGENT_PROMPT,
+          prompt_length: DEFAULT_MULTI_AGENT_PROMPT.length,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
@@ -424,13 +326,29 @@ serve(async (req) => {
     const newMessage = body.message || body.text || null;
     const contactName = body.contact_name || body.senderName || null;
     const saveHistory = body.save_history !== false;
+    const agentOverride = body.agent_override || null;
+    const memoryContext = body.memory_context || null;
+    const conversationSnapshot = body.conversation_snapshot || null;
 
-    const { data: aiConfig } = await supabase
-      .from("ai_agent_config")
-      .select("*")
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
+    let currentState: any = null;
+    if (phone) {
+      const { data: state } = await supabase
+        .from("conversation_state")
+        .select("*")
+        .eq("phone", phone)
+        .single();
+
+      currentState = state;
+    }
+
+    const effectiveState = {
+      ...(currentState || {}),
+      ...(conversationSnapshot || {}),
+    };
+
+    const lastUserMessage = String(newMessage || messages[messages.length - 1]?.content || "");
+    const agent = chooseAgent(lastUserMessage, effectiveState, agentOverride);
+    const aiConfig = await getAgentConfig(supabase, agent);
 
     if (phone && newMessage) {
       const { data: alineConversation } = await supabase
@@ -489,83 +407,59 @@ serve(async (req) => {
           payload: {
             text: newMessage,
             senderName: contactName,
+            agente_atual: agent,
           },
         });
       }
     }
 
-    let currentState: any = null;
-    if (phone) {
-      const { data: state } = await supabase
-        .from("conversation_state")
-        .select("*")
-        .eq("phone", phone)
-        .single();
-
-      currentState = state;
-    }
-
-    const lastUserMessage = String(newMessage || messages[messages.length - 1]?.content || "");
-    const normalizedLastUserMessage = normalizeText(lastUserMessage);
-
-    const inferredCategory = inferCategory(lastUserMessage, currentState);
-    const inferredAllianceType = inferAllianceType(lastUserMessage, currentState);
-    const inferredColor = detectColor(lastUserMessage) || currentState?.cor_preferida || null;
-    const inferredAgent = inferSuggestedAgent(lastUserMessage, currentState);
-    const inferredClassification = inferClassification(lastUserMessage, currentState);
+    const inferredCategory = detectCategory(lastUserMessage, effectiveState);
+    const inferredAllianceType = detectAllianceType(lastUserMessage, effectiveState);
+    const inferredColor = detectColor(lastUserMessage) || effectiveState?.cor_preferida || null;
 
     let contextInfo = "";
 
     if (contactName) {
-      contextInfo += `\nNome do cliente: ${contactName}`;
+      contextInfo += `\nCliente: ${contactName}`;
     }
 
-    contextInfo += `\nAgente sugerida para esta etapa: ${inferredAgent}`;
-    if (inferredClassification) {
-      contextInfo += `\nClassificação atual da busca: ${inferredClassification}`;
-    }
-    if (inferredCategory) {
-      contextInfo += `\nCategoria atual inferida: ${inferredCategory}`;
-    }
-    if (inferredAllianceType) {
-      contextInfo += `\nTipo de aliança inferido: ${inferredAllianceType}`;
-    }
-    if (inferredColor) {
-      contextInfo += `\nCor inferida: ${inferredColor}`;
+    contextInfo += `\nAgente em uso: ${agent}`;
+    if (inferredCategory) contextInfo += `\nCategoria: ${inferredCategory}`;
+    if (inferredAllianceType) contextInfo += `\nTipo de aliança: ${inferredAllianceType}`;
+    if (inferredColor) contextInfo += `\nCor: ${inferredColor}`;
+
+    if (effectiveState) {
+      contextInfo += `\n\nEstado atual:`;
+      if (effectiveState.stage) contextInfo += `\n- Etapa: ${effectiveState.stage}`;
+      if (effectiveState.categoria) contextInfo += `\n- Categoria atual: ${effectiveState.categoria}`;
+      if (effectiveState.tipo_alianca) contextInfo += `\n- Tipo atual: ${effectiveState.tipo_alianca}`;
+      if (effectiveState.cor_preferida) contextInfo += `\n- Cor atual: ${effectiveState.cor_preferida}`;
+      if (effectiveState.orcamento_valor) contextInfo += `\n- Orçamento: ${effectiveState.orcamento_valor}`;
+      if (effectiveState.quantidade_tipo) contextInfo += `\n- Par ou unidade: ${effectiveState.quantidade_tipo}`;
+      if (effectiveState.selected_sku) contextInfo += `\n- Produto selecionado: ${effectiveState.selected_sku}`;
     }
 
-    if (currentState) {
-      contextInfo += `\n\nESTADO ATUAL DA CONVERSA:`;
-      if (currentState.stage) contextInfo += `\n- Etapa: ${currentState.stage}`;
-      if (currentState.categoria) contextInfo += `\n- Categoria: ${currentState.categoria}`;
-      if (currentState.tipo_alianca) contextInfo += `\n- Tipo de aliança: ${currentState.tipo_alianca}`;
-      if (currentState.cor_preferida) contextInfo += `\n- Cor preferida: ${currentState.cor_preferida}`;
-      if (currentState.selected_sku) contextInfo += `\n- Produto selecionado: ${currentState.selected_sku}`;
-      if (currentState.selected_name) contextInfo += `\n- Nome selecionado: ${currentState.selected_name}`;
-      if (currentState.crm_entrega) contextInfo += `\n- Entrega: ${currentState.crm_entrega}`;
-      if (currentState.crm_pagamento) contextInfo += `\n- Pagamento: ${currentState.crm_pagamento}`;
+    if (memoryContext) {
+      contextInfo += `\n\nMemória do cliente: ${memoryContext}`;
     }
 
-    if (inferredAgent === "keila") {
-      contextInfo += `\n\nINSTRUÇÃO CRÍTICA:
-- Você está no fluxo da Keila.
-- Se ainda não houve transferência explícita, primeiro diga que Aline vai transferir para a Keila.
-- Depois siga a ordem: prazo, orçamento, par/unidade, numeração.
-- Só busque catálogo quando essas respostas estiverem coletadas ou quando o sistema já tiver esse contexto salvo.`;
+    if (agent === "keila") {
+      contextInfo += `\n\nRegra extra da Keila:
+- manter foco em alianças de casamento
+- usar memória do cliente quando existir
+- sempre lembrar que o valor do card é da unidade e o par sai pelo dobro`;
     }
 
-    if (/endere[cç]o|onde fica|shopping/.test(normalizedLastUserMessage)) {
-      contextInfo += `\n\nINSTRUÇÃO CRÍTICA:
-- O cliente pediu endereço.
-- Responda diretamente com o endereço da loja, sem buscar catálogo.`;
+    if (/endere[cç]o|onde fica|shopping/.test(normalizeText(lastUserMessage))) {
+      contextInfo += `\n\nO cliente pediu endereço. Responda diretamente com o endereço da loja, sem catálogo.`;
     }
 
-    const systemPrompt = aiConfig?.system_prompt || ALINE_SYSTEM_PROMPT;
+    const systemPrompt = aiConfig?.system_prompt || DEFAULT_MULTI_AGENT_PROMPT;
     const model = aiConfig?.model || "gpt-4o-mini";
     const fullSystemPrompt = `${systemPrompt}${contextInfo}`;
 
     let toolChoice: any = "auto";
-    if (shouldForceCatalog(lastUserMessage, currentState)) {
+    if (shouldForceCatalog(lastUserMessage, effectiveState, agent)) {
       toolChoice = { type: "function", function: { name: "search_catalog" } };
     }
 
@@ -603,7 +497,7 @@ serve(async (req) => {
         let result: any = null;
 
         if (functionName === "search_catalog") {
-          result = await searchCatalog(functionArgs, supabaseUrl, supabaseServiceKey);
+          result = await callCatalogSearch(functionArgs, supabaseUrl, supabaseServiceKey);
 
           if (result?.success && result.products) {
             const sendVideoPriority = aiConfig?.send_video_priority ?? true;
@@ -656,7 +550,7 @@ serve(async (req) => {
             });
           }
         } else if (functionName === "get_product_details") {
-          result = await searchCatalog({ sku: functionArgs.sku }, supabaseUrl, supabaseServiceKey);
+          result = await callCatalogSearch({ sku: functionArgs.sku }, supabaseUrl, supabaseServiceKey);
         } else {
           result = { error: "Unknown function" };
         }
@@ -711,23 +605,20 @@ serve(async (req) => {
       .trim();
 
     if (catalogProducts.length > 0) {
-      if (inferredAgent === "keila") {
-        cleanMessage =
-          "Separei opções na cor que você pediu. O valor do card é da unidade e o par sai pelo dobro. 💍";
-      } else {
-        cleanMessage =
-          inferredCategory === "pingente"
-            ? "Vou te mostrar algumas opções lindas! ✨"
-            : "Separei algumas opções para você! 💍";
-      }
+      cleanMessage =
+        agent === "keila"
+          ? "Separei opções na cor que você pediu. O valor do card é da unidade e o par sai pelo dobro. 💍"
+          : inferredCategory === "pingente"
+          ? "Vou te mostrar algumas opções lindas! ✨"
+          : "Separei algumas opções para você! 💍";
     }
 
     const inferredNode =
       nodeMatch?.[1] ||
-      (inferredAgent === "keila" && !currentState?.cor_preferida
-        ? "transferencia_keila"
-        : catalogProducts.length > 0
+      (catalogProducts.length > 0
         ? "catalogo"
+        : agent === "keila"
+        ? "keila"
         : inferredCategory === "aliancas" && !inferredAllianceType
         ? "escolha_finalidade"
         : inferredCategory && !inferredColor
@@ -735,17 +626,9 @@ serve(async (req) => {
         : "abertura");
 
     const intencao =
-      inferredClassification ||
-      (catalogProducts.length > 0 ? "catalogo" : inferredCategory || "conversa");
-
-    const acaoSugerida =
-      inferredAgent === "keila"
-        ? "transferir_keila"
-        : catalogProducts.length > 0
-        ? "enviar_catalogo"
-        : actionMatch?.[1] === "register_lead_crm"
-        ? "finalizar_venda"
-        : "continuar_conversa";
+      agent === "keila"
+        ? "aliancas_casamento"
+        : inferredCategory || "conversa";
 
     if (phone && saveHistory) {
       await supabase.from("conversation_events").insert({
@@ -757,8 +640,7 @@ serve(async (req) => {
           node: inferredNode,
           action: actionMatch?.[1] || null,
           intencao,
-          acao_sugerida: acaoSugerida,
-          agente_atual: inferredAgent,
+          agente_atual: agent,
         },
       });
 
@@ -768,11 +650,11 @@ serve(async (req) => {
         p_categoria: inferredCategory || null,
         p_tipo_alianca: inferredAllianceType || null,
         p_cor_preferida: inferredColor || null,
-        p_selected_sku: currentState?.selected_sku || null,
-        p_selected_name: currentState?.selected_name || null,
-        p_selected_price: currentState?.selected_price || null,
-        p_crm_entrega: currentState?.crm_entrega || null,
-        p_crm_pagamento: currentState?.crm_pagamento || null,
+        p_selected_sku: effectiveState?.selected_sku || null,
+        p_selected_name: effectiveState?.selected_name || null,
+        p_selected_price: effectiveState?.selected_price || null,
+        p_crm_entrega: effectiveState?.crm_entrega || null,
+        p_crm_pagamento: effectiveState?.crm_pagamento || null,
       });
     }
 
@@ -787,11 +669,10 @@ serve(async (req) => {
           categoria: inferredCategory,
           cor: inferredColor,
           tipo_alianca: inferredAllianceType,
-          agente_atual: inferredAgent,
-          transferir_para_keila: inferredAgent === "keila",
-          acao_sugerida: acaoSugerida,
+          agente_atual: agent,
+          transferir_para_keila: agent === "keila",
+          acao_sugerida: catalogProducts.length > 0 ? "enviar_catalogo" : "continuar_conversa",
           enviar_catalogo: catalogProducts.length > 0,
-          finalizar_venda: actionMatch?.[1] === "register_lead_crm",
           node: inferredNode,
           acao_sistema: actionMatch?.[1] || null,
         },
@@ -801,21 +682,21 @@ serve(async (req) => {
         produto_selecionado: null,
         tem_produto_selecionado: false,
         crm: {
-          entrega: currentState?.crm_entrega || null,
-          pagamento: currentState?.crm_pagamento || null,
-          dados_completos: !!(currentState?.crm_entrega && currentState?.crm_pagamento),
+          entrega: effectiveState?.crm_entrega || null,
+          pagamento: effectiveState?.crm_pagamento || null,
+          dados_completos: !!(effectiveState?.crm_entrega && effectiveState?.crm_pagamento),
         },
         memoria: {
           phone,
-          agente_atual: inferredAgent,
+          agente_atual: agent,
           stage: inferredNode,
           categoria: inferredCategory,
           tipo_alianca: inferredAllianceType,
           cor: inferredColor,
-          produto_sku: currentState?.selected_sku || null,
-          produto_nome: currentState?.selected_name || null,
-          entrega: currentState?.crm_entrega || null,
-          pagamento: currentState?.crm_pagamento || null,
+          produto_sku: effectiveState?.selected_sku || null,
+          produto_nome: effectiveState?.selected_name || null,
+          entrega: effectiveState?.crm_entrega || null,
+          pagamento: effectiveState?.crm_pagamento || null,
         },
         node_tecnico: inferredNode,
         acao_nome: actionMatch?.[1] || null,
@@ -824,18 +705,17 @@ serve(async (req) => {
         tem_acao: !!actionMatch?.[1],
         usage: responseData.usage,
         ai_model: model,
-        ai_name: aiConfig?.name || "Aline",
+        ai_name: aiConfig?.name || (agent === "keila" ? "Keila" : "Aline"),
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error) {
     console.error("AI Chat error:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
 
     return new Response(
       JSON.stringify({
         success: false,
-        error: errorMessage,
+        error: error instanceof Error ? error.message : "Unknown error",
         response: "Desculpe, ocorreu um erro ao processar sua mensagem. Por favor, tente novamente.",
         mensagem_whatsapp: "Desculpe, ocorreu um erro. Por favor, tente novamente.",
         filtros: {
