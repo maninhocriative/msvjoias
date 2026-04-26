@@ -7,144 +7,373 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Tools for the AI assistant
 const tools = [
   {
     type: "function",
     function: {
       name: "search_catalog",
-      description: `OBRIGATÓRIO usar para mostrar produtos ao cliente. Busca produtos por categoria, cor, preço e outros filtros.
+      description: `OBRIGATÓRIO usar para mostrar produtos ao cliente quando já houver informações suficientes.
       
-      QUANDO USAR:
-      - Cliente escolheu categoria (alianças ou pingentes) E cor
-      - Cliente pediu para "ver", "mostrar", "quero ver" produtos
-      - Cliente mencionou tipo específico (casamento, namoro, compromisso)
-      
-      PARÂMETROS IMPORTANTES:
-      - category: "aliancas" para todas as alianças, "pingente" para pingentes
-      - color: cor normalizada (dourada, aco, preta, azul)
-      - search: use para buscar por nome ou descrição específica
-      - only_available: sempre use true para mostrar apenas produtos em estoque`,
+REGRAS:
+- Os produtos são enviados como cards visuais pelo sistema.
+- Nunca listar produtos no texto da resposta.
+- Para alianças de casamento, usar somente depois que tiver a cor.
+- Para alianças de namoro, usar somente depois que tiver a cor.
+- Para pingentes, usar somente depois que tiver a cor.
+- Se o cliente pedir "outras cores" ou "mais opções", use exclude_shown_colors=true.
+
+PARÂMETROS:
+- category: "aliancas", "pingente" ou "aneis"
+- color: use quando o cliente especificar cor
+- only_available: use true para mostrar só estoque disponível`,
       parameters: {
         type: "object",
         properties: {
           search: {
             type: "string",
-            description: "Termo de busca livre para nome ou descrição do produto. Use quando cliente mencionar algo específico."
+            description: "Busca livre por nome ou descrição.",
           },
           category: {
             type: "string",
             enum: ["aliancas", "pingente", "aneis"],
-            description: "Categoria do produto. OBRIGATÓRIO."
+            description: "Categoria do produto.",
           },
           color: {
             type: "string",
-            enum: ["dourada", "aco", "preta", "azul", "prata", "rose"],
-            description: "Cor do produto. Use quando o cliente especificar preferência de cor."
+            enum: ["dourada", "prata", "preta", "azul", "rose"],
+            description: "Cor desejada quando o cliente informar uma cor.",
           },
           min_price: {
             type: "number",
-            description: "Preço mínimo para filtrar produtos"
+            description: "Preço mínimo.",
           },
           max_price: {
             type: "number",
-            description: "Preço máximo para filtrar produtos"
+            description: "Preço máximo.",
           },
           only_available: {
             type: "boolean",
-            description: "Mostrar apenas produtos com estoque. Use sempre true."
-          }
+            description: "Mostrar apenas produtos disponíveis.",
+          },
+          exclude_shown_colors: {
+            type: "boolean",
+            description: "Exclui cores já mostradas quando cliente pedir outras cores/opções.",
+          },
         },
-        required: ["category"]
-      }
-    }
+        required: ["category"],
+      },
+    },
   },
   {
     type: "function",
     function: {
       name: "get_product_details",
-      description: "Obter detalhes completos de um produto específico por ID ou SKU. Use quando o cliente perguntar sobre um produto específico ou mencionar um código.",
+      description: "Buscar detalhes de um produto específico por SKU.",
       parameters: {
         type: "object",
         properties: {
-          product_id: {
-            type: "string",
-            description: "UUID do produto"
-          },
           sku: {
             type: "string",
-            description: "Código SKU do produto (ex: AC-001, PG-005)"
-          }
+            description: "Código SKU do produto.",
+          },
         },
-        required: []
-      }
-    }
-  }
+        required: ["sku"],
+      },
+    },
+  },
 ];
 
-// Função para formatar legenda do produto para WhatsApp
+const ALINE_SYSTEM_PROMPT = `# Aline e Keila | ACIUM Manaus
+
+## PAPÉIS
+Você atende como duas especialistas:
+
+### Aline
+Aline faz a TRIAGEM inicial.
+Ela precisa identificar rapidamente se o cliente quer:
+- alianças de namoro
+- alianças de casamento
+- pingentes dourados
+- pingentes prata
+
+### Keila
+Keila é a especialista em alianças de casamento.
+Quando o cliente estiver buscando alianças de casamento, Aline deve dizer que vai transferir para a Keila e, a partir daí, a conversa segue como Keila.
+
+---
+
+## TOM
+- Respostas curtas, elegantes e acolhedoras
+- Máximo 2 a 4 linhas por resposta
+- Nunca escrever textão
+- Nunca listar produtos no texto
+- Poucos emojis
+
+---
+
+## REGRAS ABSOLUTAS
+1. Nunca invente preço, estoque ou condições.
+2. Nunca descreva catálogo em lista no texto.
+3. Quando houver catálogo, diga só uma introdução curta.
+4. Os cards com foto, cor, código e preço são enviados pelo sistema.
+5. Quando o cliente perguntar sobre preço de aliança, você pode lembrar:
+   "O valor do card é da unidade. O par sai pelo dobro. 💍"
+6. Se o cliente perguntar endereço, responda o endereço da loja.
+7. Se o cliente pedir algo ambíguo, pergunte antes de buscar catálogo.
+
+---
+
+## FLUXO DA ALINE
+### Se for alianças de casamento
+Aline deve responder algo no estilo:
+"Perfeito! Vou te transferir para a Keila, nossa especialista em alianças de casamento. 💍"
+
+Depois disso, o fluxo segue como Keila.
+
+### Se for alianças de namoro
+Aline conduz assim:
+1. confirmar que é namoro/compromisso
+2. perguntar a cor
+3. quando tiver a cor, buscar catálogo
+
+### Se for pingentes
+Aline conduz assim:
+1. perguntar a cor, se ainda não tiver
+2. quando tiver a cor, buscar catálogo
+
+---
+
+## FLUXO DA KEILA
+Keila deve conduzir alianças de casamento nesta ordem:
+
+1. perguntar para quando o cliente deseja fechar
+2. perguntar quanto quer investir
+3. perguntar se deseja o par ou a unidade
+4. perguntar a numeração
+5. se o cliente não souber a numeração, tranquilizar:
+   "Tudo bem, se você ainda não souber a numeração agora, eu sigo com você mesmo assim 😊"
+
+Depois que essas respostas estiverem coletadas:
+- buscar os produtos no catálogo
+- enviar cards da cor escolhida
+- sempre informar:
+  "O valor do card é da unidade. O par sai pelo dobro. 💍"
+- depois dos cards, perguntar:
+  "Gostou de algum modelo? 😊"
+
+---
+
+## CORES
+### Alianças de namoro
+- dourada
+- prata
+
+Se pedirem preta, azul ou outra:
+"Para namoro temos dourada e prata. Qual você prefere? 💍"
+
+### Alianças de casamento
+- dourada
+- prata
+- preta
+- azul
+
+### Pingentes
+- dourada
+- prata
+
+---
+
+## ENDEREÇO
+Shopping Sumaúma, Av. Noel Nutels, 1762 - Cidade Nova, Manaus - AM
+
+---
+
+## NÓS TÉCNICOS
+Use no final da resposta um destes nós:
+- #node: abertura
+- #node: escolha_tipo
+- #node: escolha_finalidade
+- #node: escolha_cor
+- #node: transferencia_keila
+- #node: keila_prazo
+- #node: keila_orcamento
+- #node: keila_par_ou_unidade
+- #node: keila_numeracao
+- #node: catalogo
+- #node: selecao
+- #node: coleta_dados
+- #node: finalizado`;
+
+function normalizeText(text: string): string {
+  return String(text || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+}
+
+function detectColor(text: string): string | null {
+  const normalized = normalizeText(text);
+
+  if (/(dourada|dourado|ouro|gold|amarela|amarelo)/i.test(normalized)) return "dourada";
+  if (/(prata|prateada|prateado|aco|aço|silver|cinza)/i.test(normalized)) return "prata";
+  if (/(preta|preto|black|escura|escuro)/i.test(normalized)) return "preta";
+  if (/(azul|blue)/i.test(normalized)) return "azul";
+  if (/(rose|ros[eé]|rosa)/i.test(normalized)) return "rose";
+
+  return null;
+}
+
+function inferCategory(text: string, currentState: any): string | null {
+  const normalized = normalizeText(text);
+
+  if (/pingente|pingentes|medalha|medalhas|medalhinha|colar|cordao|cordão|corrente/.test(normalized)) {
+    return "pingente";
+  }
+
+  if (/alianc/.test(normalized)) {
+    return "aliancas";
+  }
+
+  if (/anel|aneis|an[eé]is/.test(normalized)) {
+    return "aneis";
+  }
+
+  return currentState?.categoria || null;
+}
+
+function inferAllianceType(text: string, currentState: any): string | null {
+  const normalized = normalizeText(text);
+
+  if (/casamento|casar|noiva|noivo|noivado|tungsten/.test(normalized)) {
+    return "casamento";
+  }
+
+  if (/namoro|compromisso|namorada|namorado/.test(normalized)) {
+    return "namoro";
+  }
+
+  return currentState?.tipo_alianca || null;
+}
+
+function inferSuggestedAgent(text: string, currentState: any): "aline" | "keila" {
+  const normalized = normalizeText(text);
+  const category = inferCategory(text, currentState);
+  const allianceType = inferAllianceType(text, currentState);
+
+  const explicitMarriage = /casamento|casar|noiva|noivo|noivado|tungsten/.test(normalized);
+  const marriageContext =
+    category === "aliancas" &&
+    (allianceType === "casamento" || explicitMarriage || currentState?.stage?.includes?.("keila"));
+
+  return marriageContext ? "keila" : "aline";
+}
+
+function inferClassification(text: string, currentState: any): string | null {
+  const normalized = normalizeText(text);
+  const category = inferCategory(text, currentState);
+  const color = detectColor(text);
+  const allianceType = inferAllianceType(text, currentState);
+
+  if (category === "aliancas" && allianceType === "casamento") {
+    return "aliancas_casamento";
+  }
+
+  if (category === "aliancas" && allianceType === "namoro") {
+    return "aliancas_namoro";
+  }
+
+  if (category === "pingente" && color === "dourada") {
+    return "pingentes_dourados";
+  }
+
+  if (category === "pingente" && color === "prata") {
+    return "pingentes_prata";
+  }
+
+  if (/casamento/.test(normalized) && /alianc/.test(normalized)) {
+    return "aliancas_casamento";
+  }
+
+  if (/namoro|compromisso/.test(normalized) && /alianc/.test(normalized)) {
+    return "aliancas_namoro";
+  }
+
+  return null;
+}
+
+function shouldForceCatalog(text: string, currentState: any): boolean {
+  const normalized = normalizeText(text);
+  const category = inferCategory(text, currentState);
+  const color = detectColor(text) || currentState?.cor_preferida || null;
+  const allianceType = inferAllianceType(text, currentState);
+
+  const wantsToSee = /quero ver|mostra|mostrar|manda op|opcoes|opções|catalogo|catálogo|mais opcoes|mais opções/.test(normalized);
+  const asksOtherOptions = /outras cores|outras opcoes|outras opções|mais opcoes|mais opções/.test(normalized);
+
+  if (category === "pingente" && color && wantsToSee) return true;
+  if (category === "pingente" && color && currentState?.stage === "escolha_cor") return true;
+
+  if (category === "aliancas" && allianceType === "namoro" && color && wantsToSee) return true;
+  if (category === "aliancas" && allianceType === "casamento" && color && wantsToSee) return true;
+
+  if (category === "aliancas" && allianceType && color && asksOtherOptions) return true;
+
+  return false;
+}
+
 function formatProductCaption(
-  product: any, 
-  options: { includePrice: boolean; includeSizes: boolean; includeStock: boolean }
+  product: any,
+  options: { includePrice: boolean; includeSizes: boolean; includeStock: boolean },
 ): string {
   const lines: string[] = [];
-  
-  // Nome em negrito
+
   lines.push(`*${product.name}*`);
-  
-  // Descrição
+
   if (product.description) {
-    lines.push(`${product.description}`);
+    lines.push(product.description);
   }
-  
-  // Preço
-  if (options.includePrice && (product.current_price || product.price)) {
-    const price = product.current_price || product.price;
-    const priceFormatted = `R$ ${price.toFixed(2).replace('.', ',')}`;
-    
-    if (product.on_sale && product.original_price) {
-      const originalFormatted = `R$ ${product.original_price.toFixed(2).replace('.', ',')}`;
-      lines.push(`💰 ~${originalFormatted}~ *${priceFormatted}*`);
-      if (product.discount_percent) {
-        lines.push(`🏷️ ${product.discount_percent}% OFF`);
-      }
-    } else {
-      lines.push(`💰 *${priceFormatted}*`);
-    }
+
+  const price = product.current_price || product.price || product.price_current || 0;
+  if (options.includePrice && price) {
+    const formatted = `R$ ${Number(price).toFixed(2).replace(".", ",")}`;
+    lines.push(`💰 *${formatted}*`);
   }
-  
-  // Tamanhos
-  if (options.includeSizes && product.available_sizes?.length > 0) {
-    lines.push(`📏 Tamanhos: ${product.available_sizes.join(', ')}`);
+
+  if (product.color || product.specs?.color) {
+    lines.push(`🎨 Cor: ${product.color || product.specs?.color}`);
   }
-  
-  // Cor
-  if (product.color) {
-    lines.push(`🎨 Cor: ${product.color}`);
+
+  const sizes =
+    product.available_sizes ||
+    product.sizes?.map((item: any) => item.size || item) ||
+    [];
+
+  if (options.includeSizes && Array.isArray(sizes) && sizes.length > 0) {
+    lines.push(`📏 Tamanhos: ${sizes.join(", ")}`);
   }
-  
-  // Estoque
+
   if (options.includeStock) {
-    const stock = product.total_stock || 0;
-    if (stock > 0) {
-      lines.push(`✅ Em estoque`);
-    } else {
-      lines.push(`⚠️ Sob consulta`);
-    }
+    const stock = Number(product.total_stock || product.stock_available || 0);
+    lines.push(stock > 0 ? "✅ Em estoque" : "⚠️ Sob consulta");
   }
-  
-  // Código
+
   if (product.sku) {
     lines.push(`📦 Cód: ${product.sku}`);
   }
-  
-  return lines.join('\n');
+
+  return lines.join("\n");
 }
 
-async function searchCatalog(params: Record<string, any>, supabaseUrl: string, supabaseKey: string): Promise<any> {
+async function searchCatalog(
+  params: Record<string, any>,
+  supabaseUrl: string,
+  supabaseKey: string,
+): Promise<any> {
   const searchParams = new URLSearchParams();
+
   Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null) {
+    if (value !== undefined && value !== null && value !== "") {
       searchParams.set(key, String(value));
     }
   });
@@ -153,287 +382,14 @@ async function searchCatalog(params: Record<string, any>, supabaseUrl: string, s
     `${supabaseUrl}/functions/v1/ai-catalog-search?${searchParams.toString()}`,
     {
       headers: {
-        "Authorization": `Bearer ${supabaseKey}`,
+        Authorization: `Bearer ${supabaseKey}`,
         "Content-Type": "application/json",
       },
-    }
+    },
   );
 
   return await response.json();
 }
-
-// System prompt da Aline - VERSÃO HUMANIZADA E INTELIGENTE
-const ALINE_SYSTEM_PROMPT = `# PROMPT OFICIAL — ALINE | ACIUM MANAUS
-(Versão Inteligente, Humanizada e com Memória)
-
----
-
-## 1. IDENTIDADE E PAPEL
-
-Você é **Aline**, Consultora Especialista em Joias da **ACIUM Manaus**.
-
-Seu papel é exclusivamente de **atendimento ao cliente no WhatsApp**.  
-Você NÃO executa vendas finais.  
-Você NÃO recebe pagamentos.  
-Você coleta e organiza informações para o vendedor humano dar continuidade.
-
-Você trabalha com as seguintes categorias:
-- **Alianças de Namoro ou Compromisso** (referentes às peças de aço)
-- **Alianças de Casamento** (referentes às peças de tungstênio)
-- **Pingentes** (com opção de fotogravação)
-
-**Tom de voz:**  
-Elegante, profissional, segura e acessível.  
-Utilize frases curtas, bem pontuadas e separadas.  
-Evite parágrafos grandes.  
-Nunca seja robótica.  
-Nunca apresse o cliente.
-Seja empática e compreensiva.
-Use emojis com moderação (💍✨🎁).
-
----
-
-## 2. MEMÓRIA E CONTEXTO
-
-Você tem MEMÓRIA da conversa. Use as informações já coletadas:
-- Não pergunte novamente o que o cliente já informou
-- Lembre do nome do cliente se ele disse
-- Lembre das preferências já mencionadas
-- Seja natural: "Como você mencionou que prefere dourada..."
-
----
-
-## 3. REGRA DE OURO (ANTI-DUPLICAÇÃO / ANTI-SPAM)
-
-- Você deve enviar **APENAS 1 mensagem por vez**.
-- É **PROIBIDO** repetir o mesmo menu duas vezes seguidas.
-- É **PROIBIDO** enviar menu "sobrando" no final do catálogo.
-- Quando precisar de escolha do cliente, você envia **SÓ o menu da etapa** e para.
-- Só continue após a resposta do cliente.
-- **🚨 NUNCA chame search_catalog na mesma mensagem em que faz uma pergunta.** Se perguntou a cor, PARE e ESPERE. Se perguntou a finalidade, PARE e ESPERE.
-
----
-
-## 4. COMPORTAMENTO INTELIGENTE
-
-### Se o cliente já sabe o que quer:
-Se na primeira mensagem ele mencionar categoria + finalidade (se aliança) + cor (ex: "quero aliança dourada de casamento"):
-1. Cumprimente brevemente
-2. Chame search_catalog IMEDIATAMENTE
-3. Apresente os produtos
-
-### Se o cliente precisa de orientação:
-Siga o fluxo guiado com perguntas naturais.
-
-### 🚨 Se o cliente enviar IMAGEM, PRINT ou ANÚNCIO:
-- Se a imagem parece ser de ALIANÇA → Pergunte: "Que linda! Você está procurando alianças? É para namoro ou casamento? 💍"
-- Se a imagem parece ser de PINGENTE → Pergunte: "Lindo! Você está procurando pingentes? Qual cor prefere? 💫"
-- Se NÃO conseguir identificar → Pergunte: "Vi sua imagem! Me conta, o que você está procurando? Alianças ou pingentes? 😊"
-- **NUNCA** envie catálogo direto após receber imagem. SEMPRE pergunte primeiro.
-
-## 4.1 💰 REGRA DE PREÇO - VALOR UNITÁRIO vs PAR:
-- **SEMPRE** informe ao cliente que o valor exibido nos cards é de **UMA ÚNICA aliança**.
-- O valor do **PAR é sempre o DOBRO** do valor mostrado.
-- Quando o cliente perguntar sobre preço ou demonstrar interesse, diga algo como: "Lembrando que o valor no card é por unidade, o par sai pelo dobro! 💍"
-- Se o cliente perguntar "quanto custa o par?" → Calcule: valor do card × 2.
-
----
-
-## 4.2 🚨 APÓS ENVIAR CATÁLOGO - NÃO REENVIE!
-
-**Quando o catálogo JÁ FOI ENVIADO e o cliente faz uma PERGUNTA:**
-- "Fazem tamanho ajustado?" → RESPONDA a pergunta. **NÃO reenvie catálogo!**
-- "Tem espessura maior?" → RESPONDA. **NÃO reenvie catálogo!**
-- "Gostei desse modelo" → AVANCE no fluxo (peça tamanho, dados). **NÃO reenvie catálogo!**
-- "Quero esse" → AVANCE no fluxo. **NÃO reenvie catálogo!**
-
-**Só chame search_catalog novamente se o cliente pedir EXPLICITAMENTE outras cores/opções ou mudar de categoria.**
-**Se o cliente fez uma PERGUNTA (contém "?") → RESPONDA e continue o fluxo. NUNCA dispare catálogo como resposta a pergunta!**
-
----
-
-## 5. ABERTURA OBRIGATÓRIA (APRESENTAÇÃO)
-
-Sempre que iniciar uma conversa, se apresente de forma acolhedora:
-
-"Olá! 😊
-
-Sou a Aline, consultora da ACIUM Manaus.  
-Vou te ajudar a encontrar a joia perfeita para esse momento especial!
-
-Me conta: você está procurando...
-1️⃣ Alianças  
-2️⃣ Pingentes
-
-Pode responder com o número ou o nome!"
-
-Nunca pule esta etapa.  
-Nunca dispare catálogo nesta fase.
-
----
-
-## 6. FLUXO PARA ALIANÇAS
-
-Se o cliente escolher **Alianças**, pergunte o objetivo:
-
-"Que lindo! 💍 Qual o momento especial que vocês estão celebrando?
-
-1️⃣ Namoro ou Compromisso  
-2️⃣ Casamento"
-
-Depois pergunte a cor:
-- **NAMORO**: "Qual cor vocês preferem? 1️⃣ Dourada 2️⃣ Prata" (APENAS essas duas! NÃO temos preta/azul para namoro)
-- **CASAMENTO**: "Qual cor vocês preferem? 1️⃣ Dourada 2️⃣ Prata 3️⃣ Preta 4️⃣ Azul"
-
-🚫 **RESTRIÇÕES DE COR:**
-- NAMORO: APENAS dourada e prata. Se pedirem preta/azul → "Para namoro temos apenas dourada e prata. Qual prefere? 💍"
-- NÃO TEMOS rosé como cor separada
-- AZUL: temos apenas 1 modelo (casamento)
-- NÃO TEMOS anéis em estoque atualmente
-
-### ALIANÇA LISA / TIPOS DE ALIANÇA:
-- Quando cliente perguntar "tem aliança lisa?", "aliança lisa", "modelo liso" → CONFIRME: "Sim, temos modelos lisos lindos! 💍"
-- Em seguida PERGUNTE A COR (respeitando as cores da finalidade)
-- Após escolher cor → USE search_catalog com category="aliancas" e color="[cor escolhida]"
-- NÃO envie catálogo antes de confirmar a cor!
-
----
-
-## 7. FLUXO PARA PINGENTES
-
-Se o cliente escolher **Pingentes**, pergunte a cor:
-
-"Ótima escolha! 💫 Nossos pingentes são lindos!
-
-Qual cor você prefere?
-1️⃣ Dourada  
-2️⃣ Prata (Aço)"
-
----
-
-## 7.1. FLUXO PARA "COLAR" / "CORDÃO" / "CORRENTE"
-
-Quando cliente mencionar "colar", "cordão" ou "corrente":
-1. PERGUNTE se quis dizer pingente fotogravado: "Você está procurando um pingente fotogravado? Nossos pingentes são lindos e a gravação de uma foto é gratuita! 💫"
-2. Se confirmar → PERGUNTE A COR: "Qual cor você prefere? 1️⃣ Dourada 2️⃣ Prata (Aço)"
-3. Após escolher cor → USE search_catalog com category="pingente" e color="[cor escolhida]"
-4. Se disser que quer APENAS corrente sem pingente → "No momento trabalhamos com correntes como complemento dos pingentes. Posso te mostrar nossos pingentes com fotogravação? A gravação é gratuita! 😊"
-
----
-
-## 8. REGRA DE DISPARO DE CATÁLOGO (OBRIGATÓRIO)
-
-Somente APÓS o cliente informar Categoria, Finalidade (se aliança) e Cor.
-
-Antes de mostrar produtos, você DEVE chamar a ferramenta **search_catalog**.
-
-Texto após buscar produtos:
-
-"Perfeito! ✨ Vou te mostrar algumas opções maravilhosas!
-
-Os produtos serão enviados a seguir. Veja com calma e me diz qual chamou mais sua atenção! 💍"
-
-[SYSTEM_ACTION action:"show_catalog"]
-
----
-
-## 9. PINGENTES COM FOTOGRAVAÇÃO
-
-**REGRA IMPORTANTE:**
-- A gravação de **UM LADO é GRATUITA** (já inclusa no preço)
-- A gravação nos **DOIS LADOS tem custo adicional**
-
-Quando o cliente escolher um pingente:
-
-"Ótima escolha! Esse pingente permite fotogravação personalizada! 📸
-
-A gravação de um lado é **gratuita** (já inclusa no valor).
-Se quiser gravar nos dois lados, há um pequeno acréscimo.
-
-Para um resultado perfeito, me envie a foto que você quer gravar.
-Pode ser direto aqui pelo WhatsApp! 📷"
-
-Aguarde a foto antes de prosseguir.
-
----
-
-## 10. SELEÇÃO DE PRODUTO
-
-Quando o cliente escolher (por número, nome ou código):
-- Confirme a escolha com entusiasmo
-- Para alianças: pergunte os tamanhos de cada pessoa
-- Para pingentes: confirme sobre a fotogravação e peça a foto
-
-Exemplo:
-"Excelente escolha! Esse modelo é lindo mesmo! 💍
-
-Me diz: qual o tamanho da aliança de cada um?"
-
----
-
-## 11. PRÉ-FECHAMENTO (COLETA DE DADOS)
-
-Após confirmar produto e tamanhos:
-
-"Maravilha! Só preciso de duas informações rápidas para organizar tudo:
-
-📦 Prefere receber em casa (delivery) ou buscar na nossa loja no Shopping Sumaúma?
-
-💳 Vai pagar com Pix ou Cartão?"
-
----
-
-## 12. FINALIZAÇÃO
-
-Quando tiver todas as informações:
-
-"Perfeito! Já tenho todas as informações! 🎉
-
-Vou passar seu pedido para nosso vendedor finalizar.
-Ele entrará em contato em instantes para confirmar os detalhes! 🙏
-
-Foi um prazer te atender! 💍"
-
-[SYSTEM_ACTION action:"register_lead_crm"]
-
----
-
-## 13. SAÍDA TÉCNICA (#node)
-
-No final de CADA resposta, adicione o nó correspondente:
-- #node: abertura
-- #node: escolha_tipo
-- #node: escolha_finalidade
-- #node: escolha_cor
-- #node: catalogo
-- #node: aguardando_foto (para pingentes)
-- #node: selecao
-- #node: coleta_dados
-- #node: finalizado
-
----
-
-## 14. INFORMAÇÕES IMPORTANTES DA LOJA
-
-**ENDEREÇO:** Shopping Sumaúma - Av. Noel Nutels - Cidade Nova, Manaus - AM, 69090-970
-- NUNCA invente outros endereços
-
-**PRAZO DE ENTREGA:** 10 HORAS após fechamento do pedido
-- Isso é nosso diferencial! Entrega super rápida!
-- NUNCA diga prazos como "7 a 10 dias úteis"
-
-**HORÁRIO DE FUNCIONAMENTO:** Segunda a Sábado, 10h às 22h
-
----
-
-## 15. COMPORTAMENTO HUMANIZADO
-
-- Use o nome do cliente se souber
-- Demonstre interesse genuíno ("Que momento especial!")
-- Celebre as escolhas ("Excelente gosto!")
-- Seja paciente com dúvidas
-- Ofereça ajuda adicional quando apropriado
-- Evite respostas genéricas ou robóticas`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -447,171 +403,181 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    
-    // Ação especial: retornar o prompt padrão do sistema
-    if (body.action === 'get_default_prompt') {
+
+    if (body.action === "get_default_prompt") {
       return new Response(
         JSON.stringify({
           success: true,
           default_prompt: ALINE_SYSTEM_PROMPT,
           prompt_length: ALINE_SYSTEM_PROMPT.length,
         }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     if (!openAIApiKey) {
       throw new Error("OPENAI_API_KEY is not configured");
     }
-    
-    // Suporta dois formatos:
-    // 1. { messages: [...], contact_name } - formato original
-    // 2. { phone, message, contact_name } - formato FiqOn (busca histórico automaticamente)
-    
+
     let messages = body.messages || [];
-    const phone = body.phone?.replace(/\D/g, '') || null;
+    const phone = body.phone?.replace(/\D/g, "") || null;
     const newMessage = body.message || body.text || null;
     const contactName = body.contact_name || body.senderName || null;
-    const saveHistory = body.save_history !== false; // Default: true
+    const saveHistory = body.save_history !== false;
 
-    console.log("AI Chat request:", { phone, newMessage, messagesCount: messages.length, contactName });
-
-    // Buscar configuração da IA do banco de dados
     const { data: aiConfig } = await supabase
-      .from('ai_agent_config')
-      .select('*')
-      .eq('is_active', true)
+      .from("ai_agent_config")
+      .select("*")
+      .eq("is_active", true)
       .limit(1)
       .maybeSingle();
 
-    console.log("AI Config loaded:", aiConfig?.name, "Model:", aiConfig?.model);
-
-    // Se recebeu phone + message, buscar histórico COMPLETO e montar mensagens
     if (phone && newMessage) {
-      // Primeiro, buscar a conversa da Aline para pegar o histórico
-      const { data: alineConv } = await supabase
-        .from('aline_conversations')
-        .select('id')
-        .eq('phone', phone)
+      const { data: alineConversation } = await supabase
+        .from("aline_conversations")
+        .select("id")
+        .eq("phone", phone)
         .single();
 
       let historyMessages: { role: string; content: string }[] = [];
 
-      // Buscar histórico da tabela aline_messages (mais completo e confiável)
-      if (alineConv?.id) {
+      if (alineConversation?.id) {
         const { data: alineHistory } = await supabase
-          .from('aline_messages')
-          .select('role, message, created_at')
-          .eq('conversation_id', alineConv.id)
-          .order('created_at', { ascending: true })
-          .limit(50); // Aumentado para 50 mensagens - contexto completo
+          .from("aline_messages")
+          .select("role, message, created_at")
+          .eq("conversation_id", alineConversation.id)
+          .order("created_at", { ascending: true })
+          .limit(50);
 
-        if (alineHistory && alineHistory.length > 0) {
-          historyMessages = alineHistory.map(msg => ({
-            role: msg.role === 'user' ? 'user' : 'assistant',
-            content: msg.message
-          })).filter(m => m.content);
+        if (alineHistory?.length) {
+          historyMessages = alineHistory
+            .map((msg: any) => ({
+              role: msg.role === "user" ? "user" : "assistant",
+              content: msg.message,
+            }))
+            .filter((msg: any) => msg.content);
         }
       }
 
-      // Se não tem histórico na aline_messages, buscar do conversation_events como fallback
-      if (historyMessages.length === 0) {
+      if (!historyMessages.length) {
         const { data: history } = await supabase
-          .from('conversation_events')
-          .select('*')
-          .eq('phone', phone)
-          .in('type', ['text', 'message'])
-          .order('ts', { ascending: true })
-          .limit(50); // Aumentado para 50 mensagens
+          .from("conversation_events")
+          .select("*")
+          .eq("phone", phone)
+          .in("type", ["text", "message"])
+          .order("ts", { ascending: true })
+          .limit(50);
 
-        if (history && history.length > 0) {
-          historyMessages = history.map(event => ({
-            role: event.direction === 'in' ? 'user' : 'assistant',
-            content: (event.payload as any)?.text || (event.payload as any)?.message || ''
-          })).filter(m => m.content);
+        if (history?.length) {
+          historyMessages = history
+            .map((event: any) => ({
+              role: event.direction === "in" ? "user" : "assistant",
+              content: event.payload?.text || event.payload?.message || "",
+            }))
+            .filter((msg: any) => msg.content);
         }
       }
 
       messages = historyMessages;
+      messages.push({ role: "user", content: newMessage });
 
-      // Adicionar a nova mensagem do usuário
-      messages.push({ role: 'user', content: newMessage });
-
-      // Log para debug
-      console.log(`[AI-CHAT] Histórico carregado: ${messages.length} mensagens para ${phone}`);
-
-      // Salvar a mensagem do usuário no histórico
       if (saveHistory) {
-        await supabase.from('conversation_events').insert({
+        await supabase.from("conversation_events").insert({
           phone,
-          type: 'text',
-          direction: 'in',
-          payload: { text: newMessage, senderName: contactName }
+          type: "text",
+          direction: "in",
+          payload: {
+            text: newMessage,
+            senderName: contactName,
+          },
         });
       }
     }
 
-    // Buscar estado atual da conversa
-    let currentState = null;
+    let currentState: any = null;
     if (phone) {
       const { data: state } = await supabase
-        .from('conversation_state')
-        .select('*')
-        .eq('phone', phone)
+        .from("conversation_state")
+        .select("*")
+        .eq("phone", phone)
         .single();
+
       currentState = state;
     }
 
-    // Montar contexto adicional
+    const lastUserMessage = String(newMessage || messages[messages.length - 1]?.content || "");
+    const normalizedLastUserMessage = normalizeText(lastUserMessage);
+
+    const inferredCategory = inferCategory(lastUserMessage, currentState);
+    const inferredAllianceType = inferAllianceType(lastUserMessage, currentState);
+    const inferredColor = detectColor(lastUserMessage) || currentState?.cor_preferida || null;
+    const inferredAgent = inferSuggestedAgent(lastUserMessage, currentState);
+    const inferredClassification = inferClassification(lastUserMessage, currentState);
+
     let contextInfo = "";
+
     if (contactName) {
-      contextInfo += `\nO nome do cliente é: ${contactName}`;
+      contextInfo += `\nNome do cliente: ${contactName}`;
     }
+
+    contextInfo += `\nAgente sugerida para esta etapa: ${inferredAgent}`;
+    if (inferredClassification) {
+      contextInfo += `\nClassificação atual da busca: ${inferredClassification}`;
+    }
+    if (inferredCategory) {
+      contextInfo += `\nCategoria atual inferida: ${inferredCategory}`;
+    }
+    if (inferredAllianceType) {
+      contextInfo += `\nTipo de aliança inferido: ${inferredAllianceType}`;
+    }
+    if (inferredColor) {
+      contextInfo += `\nCor inferida: ${inferredColor}`;
+    }
+
     if (currentState) {
       contextInfo += `\n\nESTADO ATUAL DA CONVERSA:`;
       if (currentState.stage) contextInfo += `\n- Etapa: ${currentState.stage}`;
-      if (currentState.categoria) contextInfo += `\n- Categoria escolhida: ${currentState.categoria}`;
+      if (currentState.categoria) contextInfo += `\n- Categoria: ${currentState.categoria}`;
       if (currentState.tipo_alianca) contextInfo += `\n- Tipo de aliança: ${currentState.tipo_alianca}`;
       if (currentState.cor_preferida) contextInfo += `\n- Cor preferida: ${currentState.cor_preferida}`;
       if (currentState.selected_sku) contextInfo += `\n- Produto selecionado: ${currentState.selected_sku}`;
+      if (currentState.selected_name) contextInfo += `\n- Nome selecionado: ${currentState.selected_name}`;
+      if (currentState.crm_entrega) contextInfo += `\n- Entrega: ${currentState.crm_entrega}`;
+      if (currentState.crm_pagamento) contextInfo += `\n- Pagamento: ${currentState.crm_pagamento}`;
     }
 
-    // Usar prompt do banco se disponível, senão usar o padrão
+    if (inferredAgent === "keila") {
+      contextInfo += `\n\nINSTRUÇÃO CRÍTICA:
+- Você está no fluxo da Keila.
+- Se ainda não houve transferência explícita, primeiro diga que Aline vai transferir para a Keila.
+- Depois siga a ordem: prazo, orçamento, par/unidade, numeração.
+- Só busque catálogo quando essas respostas estiverem coletadas ou quando o sistema já tiver esse contexto salvo.`;
+    }
+
+    if (/endere[cç]o|onde fica|shopping/.test(normalizedLastUserMessage)) {
+      contextInfo += `\n\nINSTRUÇÃO CRÍTICA:
+- O cliente pediu endereço.
+- Responda diretamente com o endereço da loja, sem buscar catálogo.`;
+    }
+
     const systemPrompt = aiConfig?.system_prompt || ALINE_SYSTEM_PROMPT;
     const model = aiConfig?.model || "gpt-4o-mini";
-    const fullSystemPrompt = systemPrompt + contextInfo;
+    const fullSystemPrompt = `${systemPrompt}${contextInfo}`;
 
-    // Detectar se deve forçar busca de catálogo
-    const lastUserMessage = (newMessage || messages[messages.length - 1]?.content || "").toLowerCase();
-    const hasCategoryKeyword = /aliança|alianca|pingente|anel|aneis/i.test(lastUserMessage);
-    const hasColorKeyword = /dourada|dourado|prata|aço|aco|preta|preto|azul/i.test(lastUserMessage);
-    const hasActionKeyword = /quero|ver|mostrar|mostra|catálogo|catalogo|opções|opcoes/i.test(lastUserMessage);
-    
-    // Se tem categoria + cor OU tem ação + categoria, forçar tool call
-    const shouldForceCatalog = (hasCategoryKeyword && hasColorKeyword) || 
-                               (hasActionKeyword && hasCategoryKeyword) ||
-                               (currentState?.cor_preferida && hasColorKeyword);
-    
-    // Configurar tool_choice baseado na detecção
     let toolChoice: any = "auto";
-    if (shouldForceCatalog) {
-      console.log("Forcing catalog search - detected keywords:", { hasCategoryKeyword, hasColorKeyword, hasActionKeyword });
+    if (shouldForceCatalog(lastUserMessage, currentState)) {
       toolChoice = { type: "function", function: { name: "search_catalog" } };
     }
 
-    // First API call to get the assistant's response
     const initialResponse = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${openAIApiKey}`,
+        Authorization: `Bearer ${openAIApiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: model,
-        messages: [
-          { role: "system", content: fullSystemPrompt },
-          ...messages
-        ],
+        model,
+        messages: [{ role: "system", content: fullSystemPrompt }, ...messages],
         tools,
         tool_choice: toolChoice,
         max_tokens: 1000,
@@ -620,113 +586,80 @@ serve(async (req) => {
 
     if (!initialResponse.ok) {
       const errorText = await initialResponse.text();
-      console.error("OpenAI API error:", errorText);
-      throw new Error(`OpenAI API error: ${initialResponse.status}`);
+      throw new Error(`OpenAI API error: ${initialResponse.status} - ${errorText}`);
     }
 
     let responseData = await initialResponse.json();
     let assistantMessage = responseData.choices[0].message;
-
-    console.log("Initial response:", JSON.stringify(assistantMessage, null, 2));
-
-    // Variável para guardar os produtos do catálogo
     let catalogProducts: any[] = [];
-    
-    // Handle tool calls if present
-    if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+
+    if (assistantMessage.tool_calls?.length) {
       const toolResults: any[] = [];
 
       for (const toolCall of assistantMessage.tool_calls) {
         const functionName = toolCall.function.name;
-        const functionArgs = JSON.parse(toolCall.function.arguments);
+        const functionArgs = JSON.parse(toolCall.function.arguments || "{}");
 
-        console.log(`Executing tool: ${functionName}`, functionArgs);
+        let result: any = null;
 
-        let result;
-        if (functionName === "search_catalog" || functionName === "get_product_details") {
+        if (functionName === "search_catalog") {
           result = await searchCatalog(functionArgs, supabaseUrl, supabaseServiceKey);
-          
-          // Guardar os produtos para retornar no response
-          if (result.success && result.products) {
-            // Buscar configurações de exibição
+
+          if (result?.success && result.products) {
             const sendVideoPriority = aiConfig?.send_video_priority ?? true;
             const includeSizes = aiConfig?.include_sizes ?? true;
             const includeStock = aiConfig?.include_stock ?? true;
             const includePrice = aiConfig?.include_price ?? true;
-            
-            catalogProducts = result.products.map((p: any, index: number) => {
-              // Extrair URLs de mídia (podem estar em p.media ou diretamente em p)
-              const imageUrl = p.media?.image_url || p.image_url || null;
-              const videoUrl = p.media?.video_url || p.video_url || null;
-              
-              // Determinar mídia: priorizar vídeo se configurado
-              const hasVideo = !!videoUrl;
-              const useVideo = sendVideoPriority && hasVideo;
-              
-              // Extrair preço (pode estar em price_current ou price)
-              const currentPrice = p.price_current || p.current_price || p.price || 0;
-              const originalPrice = p.price_original || p.original_price || p.price || 0;
-              
-              // Extrair tamanhos disponíveis
-              const availableSizes = p.sizes?.map((s: any) => s.size || s) || [];
-              const totalStock = p.stock_available || p.total_stock || 0;
-              
+
+            catalogProducts = result.products.map((product: any, index: number) => {
+              const imageUrl = product.media?.image_url || product.image_url || null;
+              const videoUrl = product.media?.video_url || product.video_url || null;
+              const useVideo = sendVideoPriority && !!videoUrl;
+              const currentPrice = product.price_current || product.current_price || product.price || 0;
+              const availableSizes =
+                product.sizes?.map((size: any) => size.size || size) ||
+                product.available_sizes ||
+                [];
+
               return {
-                // Identificação
                 index: index + 1,
-                sku: p.sku,
-                product_id: p.id,
-                
-                // Informações básicas
-                name: p.name,
-                description: p.description || '',
-                color: p.specs?.color || p.color || '',
-                category: p.specs?.category || p.category || '',
-                
-                // Preço (condicional)
+                product_id: product.id,
+                id: product.id,
+                sku: product.sku,
+                name: product.name,
+                description: product.description || "",
+                color: product.specs?.color || product.color || "",
+                category: product.specs?.category || product.category || "",
                 price: includePrice ? currentPrice : null,
-                price_formatted: includePrice ? `R$ ${currentPrice.toFixed(2).replace('.', ',')}` : null,
-                original_price: includePrice ? originalPrice : null,
-                discount_percent: p.discount_percentage,
-                has_promotion: p.is_on_sale || p.on_sale || false,
-                
-                // Mídia - campos separados para FiqOn usar no Z-API
+                price_formatted: includePrice
+                  ? `R$ ${Number(currentPrice).toFixed(2).replace(".", ",")}`
+                  : null,
                 image_url: imageUrl,
                 video_url: videoUrl,
-                has_video: hasVideo,
-                // Mídia principal baseada na configuração
                 media_url: useVideo ? videoUrl : imageUrl,
-                media_type: useVideo ? 'video' : 'image',
-                
-                // Estoque e tamanhos (condicional)
+                media_type: useVideo ? "video" : "image",
+                has_video: !!videoUrl,
                 sizes: includeSizes ? availableSizes : [],
-                sizes_formatted: includeSizes ? availableSizes.join(', ') : '',
-                stock_total: includeStock ? totalStock : null,
-                in_stock: totalStock > 0 || p.is_available,
-                
-                // Legenda formatada para WhatsApp
-                caption: formatProductCaption({
-                  name: p.name,
-                  description: p.description,
-                  current_price: currentPrice,
-                  price: currentPrice,
-                  original_price: originalPrice,
-                  on_sale: p.is_on_sale,
-                  discount_percent: p.discount_percentage,
-                  available_sizes: availableSizes,
-                  color: p.specs?.color || p.color,
-                  total_stock: totalStock,
-                  sku: p.sku,
-                }, { includePrice, includeSizes, includeStock }),
+                sizes_formatted: includeSizes ? availableSizes.join(", ") : "",
+                total_stock: includeStock ? (product.stock_available || product.total_stock || 0) : null,
+                in_stock: (product.stock_available || product.total_stock || 0) > 0 || product.is_available,
+                caption: formatProductCaption(
+                  {
+                    ...product,
+                    price: currentPrice,
+                    color: product.specs?.color || product.color || "",
+                    available_sizes: availableSizes,
+                  },
+                  { includePrice, includeSizes, includeStock },
+                ),
               };
             });
-            console.log(`Catalog products extracted: ${catalogProducts.length} items`);
           }
+        } else if (functionName === "get_product_details") {
+          result = await searchCatalog({ sku: functionArgs.sku }, supabaseUrl, supabaseServiceKey);
         } else {
           result = { error: "Unknown function" };
         }
-
-        console.log(`Tool result for ${functionName}:`, JSON.stringify(result, null, 2).slice(0, 500));
 
         toolResults.push({
           tool_call_id: toolCall.id,
@@ -735,260 +668,170 @@ serve(async (req) => {
         });
       }
 
-      // Second API call with tool results
-      console.log("Making second API call with tool results...");
-      console.log("Tool results count:", toolResults.length);
-      
-      const secondCallMessages = [
-        { role: "system", content: fullSystemPrompt },
-        ...messages,
-        {
-          role: "assistant",
-          content: assistantMessage.content || null,
-          tool_calls: assistantMessage.tool_calls
-        },
-        ...toolResults,
-      ];
-      
-      console.log("Second call messages structure:", secondCallMessages.map(m => ({ role: m.role, hasContent: !!m.content, hasTool: !!(m as any).tool_calls })));
-      
       const finalResponse = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${openAIApiKey}`,
+          Authorization: `Bearer ${openAIApiKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: model,
-          messages: secondCallMessages,
-          max_tokens: 1500,
+          model,
+          messages: [
+            { role: "system", content: fullSystemPrompt },
+            ...messages,
+            {
+              role: "assistant",
+              content: assistantMessage.content || null,
+              tool_calls: assistantMessage.tool_calls,
+            },
+            ...toolResults,
+          ],
+          max_tokens: 1200,
         }),
       });
 
       if (!finalResponse.ok) {
         const errorText = await finalResponse.text();
-        console.error("OpenAI API error (final):", errorText);
-        throw new Error(`OpenAI API error: ${finalResponse.status}`);
+        throw new Error(`OpenAI API error: ${finalResponse.status} - ${errorText}`);
       }
 
       responseData = await finalResponse.json();
       assistantMessage = responseData.choices[0].message;
-      
-      console.log("Second API call response:", JSON.stringify(assistantMessage, null, 2).slice(0, 500));
-      
-      if (!assistantMessage.content || assistantMessage.content.length < 50) {
-        console.error("Warning: Second API call returned empty or short response");
-      }
     }
 
-    const responseText = assistantMessage.content || "Desculpe, não consegui processar sua mensagem.";
+    const responseText =
+      assistantMessage.content || "Desculpe, não consegui processar sua mensagem.";
 
-    console.log("Final response:", responseText.slice(0, 200));
-
-    // Extrair dados técnicos da resposta
-    const nodeMatch = responseText.match(/#node:\s*(\w+)/i);
-    const nodeValue = nodeMatch ? nodeMatch[1] : "abertura";
-
+    const nodeMatch = responseText.match(/#node:\s*([\w-]+)/i);
     const actionMatch = responseText.match(/\[SYSTEM_ACTION\s+action:"([^"]+)"\]/i);
-    const actionValue = actionMatch ? actionMatch[1] : null;
 
-    // Limpar mensagem de tags técnicas
-    const cleanMessage = responseText
-      .replace(/#node:\s*\w+/gi, "")
+    let cleanMessage = responseText
+      .replace(/#node:\s*[\w-]+/gi, "")
       .replace(/\[SYSTEM_ACTION[^\]]*\]/gi, "")
       .trim();
 
-    // ===== DETECÇÃO DE INTENÇÃO (para filtros FiqOn) =====
-    const lowerMessage = (newMessage || messages[messages.length - 1]?.content || "").toLowerCase();
-    const lowerResponse = responseText.toLowerCase();
-    
-    // Detectar intenção do cliente
-    let intencao = "conversa";
-    if (lowerMessage.match(/comprar|quero|gostei|esse|essa|escolho|levo/)) intencao = "comprar";
-    else if (lowerMessage.match(/preço|valor|quanto|custa|promoção|desconto/)) intencao = "preco";
-    else if (lowerMessage.match(/tamanho|medida|numero|cabe/)) intencao = "tamanho";
-    else if (lowerMessage.match(/troca|devolução|problema|reclamação|defeito/)) intencao = "reclamacao";
-    else if (lowerMessage.match(/entrega|prazo|frete|envio/)) intencao = "entrega";
-    else if (lowerMessage.match(/pix|cartão|pagamento|parcela/)) intencao = "pagamento";
-    else if (lowerMessage.match(/olá|oi|bom dia|boa tarde|boa noite|opa/)) intencao = "saudacao";
-    else if (catalogProducts.length > 0) intencao = "catalogo";
-
-    // Extrair categoria e cor da conversa
-    let categoria = currentState?.categoria || "";
-    if (lowerResponse.includes("pingente") || lowerMessage.includes("pingente")) categoria = "pingente";
-    else if (lowerResponse.includes("aliança") || lowerResponse.includes("alianca") || 
-             lowerMessage.includes("aliança") || lowerMessage.includes("alianca")) categoria = "aliancas";
-
-    let cor = currentState?.cor_preferida || "";
-    if (lowerMessage.includes("dourada") || lowerResponse.includes("dourada")) cor = "dourada";
-    else if (lowerMessage.includes("prata") || lowerMessage.includes("aço") || 
-             lowerResponse.includes("prata") || lowerResponse.includes("aço")) cor = "aco";
-    else if (lowerMessage.includes("preta") || lowerResponse.includes("preta")) cor = "preta";
-    else if (lowerMessage.includes("azul") || lowerResponse.includes("azul")) cor = "azul";
-
-    // Detectar tipo de aliança
-    let tipoAlianca = currentState?.tipo_alianca || "";
-    if (lowerMessage.includes("namoro") || lowerMessage.includes("compromisso")) tipoAlianca = "namoro";
-    else if (lowerMessage.includes("casamento") || lowerMessage.includes("noivado")) tipoAlianca = "casamento";
-
-    // Detectar se cliente selecionou produto (por número ou SKU)
-    let produtoSelecionado = null;
-    const numMatch = lowerMessage.match(/^(\d)$/);
-    if (numMatch && catalogProducts.length > 0) {
-      const idx = parseInt(numMatch[1]) - 1;
-      if (idx >= 0 && idx < catalogProducts.length) {
-        produtoSelecionado = catalogProducts[idx];
+    if (catalogProducts.length > 0) {
+      if (inferredAgent === "keila") {
+        cleanMessage =
+          "Separei opções na cor que você pediu. O valor do card é da unidade e o par sai pelo dobro. 💍";
+      } else {
+        cleanMessage =
+          inferredCategory === "pingente"
+            ? "Vou te mostrar algumas opções lindas! ✨"
+            : "Separei algumas opções para você! 💍";
       }
     }
-    // Buscar por SKU mencionado
-    const skuMatch = lowerMessage.match(/(?:ac|al|pg)-?\d+/i);
-    if (skuMatch && catalogProducts.length > 0) {
-      const found = catalogProducts.find(p => p.sku?.toLowerCase() === skuMatch[0].toLowerCase());
-      if (found) produtoSelecionado = found;
-    }
 
-    // Detectar dados de CRM (entrega e pagamento)
-    let crmEntrega = currentState?.crm_entrega || null;
-    let crmPagamento = currentState?.crm_pagamento || null;
-    if (lowerMessage.includes("delivery") || lowerMessage.includes("entrega")) crmEntrega = "delivery";
-    else if (lowerMessage.includes("retirada") || lowerMessage.includes("buscar")) crmEntrega = "retirada";
-    if (lowerMessage.includes("pix")) crmPagamento = "pix";
-    else if (lowerMessage.includes("cartão") || lowerMessage.includes("cartao")) crmPagamento = "cartao";
+    const inferredNode =
+      nodeMatch?.[1] ||
+      (inferredAgent === "keila" && !currentState?.cor_preferida
+        ? "transferencia_keila"
+        : catalogProducts.length > 0
+        ? "catalogo"
+        : inferredCategory === "aliancas" && !inferredAllianceType
+        ? "escolha_finalidade"
+        : inferredCategory && !inferredColor
+        ? "escolha_cor"
+        : "abertura");
 
-    // Ação sugerida baseada no estado
-    let acaoSugerida = "continuar_conversa";
-    if (actionValue === "show_catalog" || catalogProducts.length > 0) acaoSugerida = "enviar_catalogo";
-    else if (actionValue === "register_lead_crm") acaoSugerida = "finalizar_venda";
-    else if (intencao === "reclamacao") acaoSugerida = "transferir_humano";
-    else if (nodeValue === "coleta_dados") acaoSugerida = "coletar_dados";
-    else if (nodeValue === "selecao" && produtoSelecionado) acaoSugerida = "confirmar_produto";
+    const intencao =
+      inferredClassification ||
+      (catalogProducts.length > 0 ? "catalogo" : inferredCategory || "conversa");
 
-    // Salvar resposta da Aline no histórico
+    const acaoSugerida =
+      inferredAgent === "keila"
+        ? "transferir_keila"
+        : catalogProducts.length > 0
+        ? "enviar_catalogo"
+        : actionMatch?.[1] === "register_lead_crm"
+        ? "finalizar_venda"
+        : "continuar_conversa";
+
     if (phone && saveHistory) {
-      await supabase.from('conversation_events').insert({
+      await supabase.from("conversation_events").insert({
         phone,
-        type: 'text',
-        direction: 'out',
-        payload: { 
-          text: cleanMessage, 
-          node: nodeValue, 
-          action: actionValue,
+        type: "text",
+        direction: "out",
+        payload: {
+          text: cleanMessage,
+          node: inferredNode,
+          action: actionMatch?.[1] || null,
           intencao,
-          acao_sugerida: acaoSugerida
-        }
+          acao_sugerida: acaoSugerida,
+          agente_atual: inferredAgent,
+        },
       });
 
-      // Atualizar estado da conversa
-      await supabase.rpc('upsert_conversation_state', {
+      await supabase.rpc("upsert_conversation_state", {
         p_phone: phone,
-        p_stage: nodeValue,
-        p_categoria: categoria || null,
-        p_tipo_alianca: tipoAlianca || null,
-        p_cor_preferida: cor || null,
-        p_selected_sku: produtoSelecionado?.sku || currentState?.selected_sku || null,
-        p_selected_name: produtoSelecionado?.name || currentState?.selected_name || null,
-        p_selected_price: produtoSelecionado?.price || currentState?.selected_price || null,
-        p_crm_entrega: crmEntrega,
-        p_crm_pagamento: crmPagamento,
+        p_stage: inferredNode,
+        p_categoria: inferredCategory || null,
+        p_tipo_alianca: inferredAllianceType || null,
+        p_cor_preferida: inferredColor || null,
+        p_selected_sku: currentState?.selected_sku || null,
+        p_selected_name: currentState?.selected_name || null,
+        p_selected_price: currentState?.selected_price || null,
+        p_crm_entrega: currentState?.crm_entrega || null,
+        p_crm_pagamento: currentState?.crm_pagamento || null,
       });
     }
 
-    // ===== RESPOSTA ESTRUTURADA PARA FIQON =====
     return new Response(
       JSON.stringify({
         success: true,
-        
-        // ===== MENSAGEM PRINCIPAL =====
         response: cleanMessage,
         mensagem_whatsapp: cleanMessage,
-        message: responseText, // Versão com tags (debug)
-        
-        // ===== FILTROS PARA ROTEAMENTO FIQON =====
+        message: responseText,
         filtros: {
-          // Intenção detectada
           intencao,
-          intencao_comprar: intencao === "comprar",
-          intencao_preco: intencao === "preco",
-          intencao_reclamacao: intencao === "reclamacao",
-          intencao_saudacao: intencao === "saudacao",
-          
-          // Categoria
-          categoria,
-          categoria_aliancas: categoria === "aliancas",
-          categoria_pingente: categoria === "pingente",
-          
-          // Cor
-          cor,
-          
-          // Tipo aliança
-          tipo_alianca: tipoAlianca,
-          
-          // Ação sugerida
+          categoria: inferredCategory,
+          cor: inferredColor,
+          tipo_alianca: inferredAllianceType,
+          agente_atual: inferredAgent,
+          transferir_para_keila: inferredAgent === "keila",
           acao_sugerida: acaoSugerida,
-          enviar_catalogo: acaoSugerida === "enviar_catalogo",
-          finalizar_venda: acaoSugerida === "finalizar_venda",
-          transferir_humano: acaoSugerida === "transferir_humano",
-          
-          // Node técnico
-          node: nodeValue,
-          acao_sistema: actionValue,
+          enviar_catalogo: catalogProducts.length > 0,
+          finalizar_venda: actionMatch?.[1] === "register_lead_crm",
+          node: inferredNode,
+          acao_sistema: actionMatch?.[1] || null,
         },
-        
-        // ===== PRODUTOS PARA FOR EACH (Z-API) =====
         produtos: catalogProducts,
         total_produtos: catalogProducts.length,
         tem_produtos: catalogProducts.length > 0,
-        
-        // ===== PRODUTO SELECIONADO (se houver) =====
-        produto_selecionado: produtoSelecionado ? {
-          sku: produtoSelecionado.sku,
-          name: produtoSelecionado.name,
-          price: produtoSelecionado.price,
-          price_formatted: produtoSelecionado.price_formatted,
-          image_url: produtoSelecionado.image_url,
-          video_url: produtoSelecionado.video_url,
-          sizes: produtoSelecionado.sizes,
-        } : null,
-        tem_produto_selecionado: produtoSelecionado !== null,
-        
-        // ===== ESTADO DO CRM =====
+        produto_selecionado: null,
+        tem_produto_selecionado: false,
         crm: {
-          entrega: crmEntrega,
-          pagamento: crmPagamento,
-          dados_completos: !!(crmEntrega && crmPagamento),
+          entrega: currentState?.crm_entrega || null,
+          pagamento: currentState?.crm_pagamento || null,
+          dados_completos: !!(currentState?.crm_entrega && currentState?.crm_pagamento),
         },
-        
-        // ===== MEMÓRIA / ESTADO DA CONVERSA =====
         memoria: {
           phone,
-          stage: nodeValue,
-          categoria,
-          tipo_alianca: tipoAlianca,
-          cor,
-          produto_sku: produtoSelecionado?.sku || currentState?.selected_sku || null,
-          produto_nome: produtoSelecionado?.name || currentState?.selected_name || null,
-          entrega: crmEntrega,
-          pagamento: crmPagamento,
+          agente_atual: inferredAgent,
+          stage: inferredNode,
+          categoria: inferredCategory,
+          tipo_alianca: inferredAllianceType,
+          cor: inferredColor,
+          produto_sku: currentState?.selected_sku || null,
+          produto_nome: currentState?.selected_name || null,
+          entrega: currentState?.crm_entrega || null,
+          pagamento: currentState?.crm_pagamento || null,
         },
-        
-        // ===== CAMPOS LEGADOS (compatibilidade) =====
-        node_tecnico: nodeValue,
-        acao_nome: actionValue,
-        categoria_crm: categoria,
-        cor_crm: cor,
-        tem_acao: actionValue !== null,
-        
-        // ===== DEBUG/USAGE =====
+        node_tecnico: inferredNode,
+        acao_nome: actionMatch?.[1] || null,
+        categoria_crm: inferredCategory,
+        cor_crm: inferredColor,
+        tem_acao: !!actionMatch?.[1],
         usage: responseData.usage,
-        ai_model: aiConfig?.model || "gpt-4o-mini",
+        ai_model: model,
         ai_name: aiConfig?.name || "Aline",
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
-
   } catch (error) {
     console.error("AI Chat error:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
+
     return new Response(
       JSON.stringify({
         success: false,
@@ -997,8 +840,8 @@ serve(async (req) => {
         mensagem_whatsapp: "Desculpe, ocorreu um erro. Por favor, tente novamente.",
         filtros: {
           intencao: "erro",
-          acao_sugerida: "transferir_humano",
-          transferir_humano: true,
+          acao_sugerida: "continuar_conversa",
+          transferir_para_keila: false,
           node: "erro",
         },
         produtos: [],
@@ -1006,7 +849,10 @@ serve(async (req) => {
         memoria: null,
         crm: null,
       }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   }
 });
