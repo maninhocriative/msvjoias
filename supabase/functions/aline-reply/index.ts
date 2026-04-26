@@ -6,7 +6,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-type AgentSlug = "aline" | "keila";
+type MemoryAgent = "aline" | "keila";
+type ConversationAgent = "aline" | "keila" | "human";
 type AnyRecord = Record<string, any>;
 
 interface CatalogProduct {
@@ -123,10 +124,7 @@ function extractTimelineAnswer(text: string, currentNode: string): string | null
       normalized,
     );
 
-  if (!String(currentNode || "").includes("prazo") && !hasDateHint) {
-    return null;
-  }
-
+  if (!String(currentNode || "").includes("prazo") && !hasDateHint) return null;
   return text.trim() || null;
 }
 
@@ -154,6 +152,29 @@ function extractPairOrUnit(text: string): "par" | "unidade" | null {
   if (/\bunidade\b|uma so|uma só|apenas uma|avulsa|avulso|so uma|só uma/.test(normalized)) {
     return "unidade";
   }
+
+  return null;
+}
+
+function extractDeliveryMethod(text: string): "retirada" | "entrega" | null {
+  const normalized = normalizeText(text);
+
+  if (/retirada|retirar|buscar|pegar na loja|vou na loja|shopping|sumauma|sumaúma/.test(normalized)) {
+    return "retirada";
+  }
+
+  if (/entrega|delivery|receber em casa|enviar|envio|frete/.test(normalized)) {
+    return "entrega";
+  }
+
+  return null;
+}
+
+function extractPaymentMethod(text: string): "pix" | "cartao" | null {
+  const normalized = normalizeText(text);
+
+  if (/\bpix\b/.test(normalized)) return "pix";
+  if (/cartao|cartão|credito|crédito|debito|débito/.test(normalized)) return "cartao";
 
   return null;
 }
@@ -215,12 +236,14 @@ function buildSummary(data: AnyRecord): string {
   if (data.quantidade_tipo) parts.push(`tipo=${data.quantidade_tipo}`);
   if (data.tamanho_1) parts.push(`tam1=${data.tamanho_1}`);
   if (data.tamanho_2) parts.push(`tam2=${data.tamanho_2}`);
+  if (data.delivery_method) parts.push(`entrega=${data.delivery_method}`);
+  if (data.payment_method) parts.push(`pagamento=${data.payment_method}`);
   if (data.selected_name) parts.push(`produto=${data.selected_name}`);
 
   return parts.join(" | ");
 }
 
-async function loadAgentMemory(supabase: any, phone: string, agentSlug: AgentSlug) {
+async function loadAgentMemory(supabase: any, phone: string, agentSlug: MemoryAgent) {
   const { data } = await supabase
     .from("customer_agent_memory")
     .select("*")
@@ -234,7 +257,7 @@ async function loadAgentMemory(supabase: any, phone: string, agentSlug: AgentSlu
 async function saveAgentMemory(
   supabase: any,
   phone: string,
-  agentSlug: AgentSlug,
+  agentSlug: MemoryAgent,
   customerName: string,
   data: AnyRecord,
 ) {
@@ -249,6 +272,8 @@ async function saveAgentMemory(
     tamanho_1: data.tamanho_1 || null,
     tamanho_2: data.tamanho_2 || null,
     numeracao_status: data.numeracao_status || null,
+    delivery_method: data.delivery_method || null,
+    payment_method: data.payment_method || null,
   };
 
   await supabase.from("customer_agent_memory").upsert(
@@ -283,6 +308,8 @@ function hydrateDataWithMemory(data: AnyRecord, memory: AnyRecord | null) {
   if (!data.tamanho_1 && preferences.tamanho_1) data.tamanho_1 = preferences.tamanho_1;
   if (!data.tamanho_2 && preferences.tamanho_2) data.tamanho_2 = preferences.tamanho_2;
   if (!data.numeracao_status && preferences.numeracao_status) data.numeracao_status = preferences.numeracao_status;
+  if (!data.delivery_method && preferences.delivery_method) data.delivery_method = preferences.delivery_method;
+  if (!data.payment_method && preferences.payment_method) data.payment_method = preferences.payment_method;
   if (!data.selected_sku && memory.last_product_sku) data.selected_sku = memory.last_product_sku;
   if (!data.selected_name && memory.last_product_name) data.selected_name = memory.last_product_name;
 
@@ -471,7 +498,7 @@ function buildResponsePayload(args: {
   products?: CatalogProduct[];
   selectedProduct?: any | null;
   collectedData: AnyRecord;
-  agent: AgentSlug;
+  agent: ConversationAgent;
   useProductButtons?: boolean;
   postCatalogMessage?: string | null;
 }) {
@@ -522,6 +549,8 @@ function buildResponsePayload(args: {
       tamanho_1: collectedData.tamanho_1 || null,
       tamanho_2: collectedData.tamanho_2 || null,
       numeracao_status: collectedData.numeracao_status || null,
+      entrega: collectedData.delivery_method || null,
+      pagamento: collectedData.payment_method || null,
     },
     use_product_buttons: useProductButtons,
     agente_atual: agent,
@@ -633,7 +662,7 @@ async function resolveConversation(supabase: any, phone: string, contactName: st
 async function persistConversation(
   supabase: any,
   conversationId: string,
-  activeAgent: AgentSlug,
+  activeAgent: ConversationAgent,
   currentNode: string,
   lastNode: string | null,
   data: AnyRecord,
@@ -657,7 +686,7 @@ async function persistConversation(
 async function saveAssistantMessage(
   supabase: any,
   conversationId: string,
-  role: AgentSlug,
+  role: string,
   message: string,
   node: string,
 ) {
@@ -669,8 +698,91 @@ async function saveAssistantMessage(
   });
 }
 
+async function handoffKeilaToHuman(args: {
+  supabase: any;
+  supabaseUrl: string;
+  supabaseServiceKey: string;
+  conversation: any;
+  phone: string;
+  contactName: string;
+  data: AnyRecord;
+}) {
+  const { supabase, supabaseUrl, supabaseServiceKey, conversation, phone, contactName, data } = args;
+
+  data.keila_store_handoff_done = true;
+
+  await supabase
+    .from("aline_conversations")
+    .update({
+      status: "human_takeover",
+      active_agent: "human",
+      assignment_reason: "Retirada na loja após atendimento da Keila",
+      collected_data: {
+        ...data,
+        agente_atual: "human",
+      },
+      last_message_at: new Date().toISOString(),
+      agent_handoff_at: new Date().toISOString(),
+    })
+    .eq("id", conversation.id);
+
+  const { data: crmConversation } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("contact_number", phone)
+    .maybeSingle();
+
+  if (crmConversation?.id) {
+    await supabase
+      .from("conversations")
+      .update({ lead_status: "comprador" })
+      .eq("id", crmConversation.id);
+  }
+
+  try {
+    await fetch(`${supabaseUrl}/functions/v1/aline-takeover`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${supabaseServiceKey}`,
+      },
+      body: JSON.stringify({
+        phone,
+        action: "auto_forward",
+        reason: `Keila finalizou retirada na loja: ${data.selected_name || data.selected_sku || "aliança casamento"}`,
+        send_intro: true,
+      }),
+    });
+  } catch (error) {
+    console.error("[ALINE-REPLY] Erro ao encaminhar para atendimento humano:", error);
+  }
+
+  const reply = `Perfeito! Como você vai retirar na loja, vou te encaminhar agora para nosso atendimento humano finalizar com você e acionar os vendedores. 💍`;
+
+  await saveAssistantMessage(
+    supabase,
+    conversation.id,
+    "keila",
+    reply,
+    "human_handoff_retirada",
+  );
+
+  await saveAgentMemory(supabase, phone, "keila", contactName, data);
+
+  return buildResponsePayload({
+    phone,
+    message: reply,
+    node: "human_handoff_retirada",
+    selectedProduct: data.selected_product || null,
+    collectedData: data,
+    agent: "human",
+  });
+}
+
 async function handleKeilaFlow(args: {
   supabase: any;
+  supabaseUrl: string;
+  supabaseServiceKey: string;
   conversation: any;
   phone: string;
   message: string;
@@ -678,7 +790,18 @@ async function handleKeilaFlow(args: {
   buttonResponseId: string | null;
   keilaMemory: AnyRecord | null;
 }) {
-  const { supabase, conversation, phone, message, contactName, buttonResponseId, keilaMemory } = args;
+  const {
+    supabase,
+    supabaseUrl,
+    supabaseServiceKey,
+    conversation,
+    phone,
+    message,
+    contactName,
+    buttonResponseId,
+    keilaMemory,
+  } = args;
+
   const data: AnyRecord = hydrateDataWithMemory(
     {
       ...(conversation.collected_data || {}),
@@ -700,28 +823,6 @@ async function handleKeilaFlow(args: {
     data.selected_sku = selectedFromCatalog.sku;
     data.selected_name = selectedFromCatalog.name;
     data.selected_price = selectedFromCatalog.price;
-
-    const reply = `Perfeito! Já identifiquei o modelo *${selectedFromCatalog.name}*. 💍`;
-
-    await persistConversation(
-      supabase,
-      conversation.id,
-      "keila",
-      "keila_modelo_escolhido",
-      conversation.current_node || null,
-      data,
-    );
-    await saveAssistantMessage(supabase, conversation.id, "keila", reply, "keila_modelo_escolhido");
-    await saveAgentMemory(supabase, phone, "keila", contactName, data);
-
-    return buildResponsePayload({
-      phone,
-      message: reply,
-      node: "keila_modelo_escolhido",
-      selectedProduct: selectedFromCatalog,
-      collectedData: data,
-      agent: "keila",
-    });
   }
 
   const prazo = extractTimelineAnswer(message, currentNode);
@@ -740,6 +841,16 @@ async function handleKeilaFlow(args: {
   if (pairOrUnit && data.quantidade_tipo !== pairOrUnit) {
     data.quantidade_tipo = pairOrUnit;
     resetCatalogChoice(data);
+  }
+
+  const deliveryMethod = extractDeliveryMethod(message);
+  if (deliveryMethod) {
+    data.delivery_method = deliveryMethod;
+  }
+
+  const paymentMethod = extractPaymentMethod(message);
+  if (paymentMethod) {
+    data.payment_method = paymentMethod;
   }
 
   if (customerDoesNotKnowSize(message)) {
@@ -767,6 +878,9 @@ async function handleKeilaFlow(args: {
   const hasQuantityType = !!data.quantidade_tipo;
   const hasSizeInfo = !!data.tamanho_1 || data.numeracao_status === "nao_sabe";
   const hasColor = !!data.cor;
+  const hasSelectedProduct = !!data.selected_sku;
+  const hasDelivery = !!data.delivery_method;
+  const hasPayment = !!data.payment_method;
 
   if (!hasTimeline) {
     const reply = `Perfeito! Vou te transferir para a Keila, nossa especialista em alianças de casamento. 💍
@@ -944,6 +1058,96 @@ O valor do card é da unidade. O par sai pelo dobro.`;
     });
   }
 
+  if (hasSelectedProduct && !hasDelivery) {
+    const reply = `Perfeito! Você escolheu *${data.selected_name}*. 💍
+
+Você vai retirar na loja ou prefere entrega?`;
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "keila",
+      "keila_entrega",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "keila", reply, "keila_entrega");
+    await saveAgentMemory(supabase, phone, "keila", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "keila_entrega",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "keila",
+    });
+  }
+
+  if (
+    hasSelectedProduct &&
+    data.delivery_method === "retirada" &&
+    !data.keila_store_handoff_done
+  ) {
+    return await handoffKeilaToHuman({
+      supabase,
+      supabaseUrl,
+      supabaseServiceKey,
+      conversation,
+      phone,
+      contactName,
+      data,
+    });
+  }
+
+  if (hasSelectedProduct && data.delivery_method === "entrega" && !hasPayment) {
+    const reply = "Perfeito! E o pagamento vai ser no Pix ou cartão? 💳";
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "keila",
+      "keila_pagamento",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "keila", reply, "keila_pagamento");
+    await saveAgentMemory(supabase, phone, "keila", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "keila_pagamento",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "keila",
+    });
+  }
+
+  if (hasSelectedProduct && data.delivery_method === "entrega" && hasPayment) {
+    const reply = `Perfeito! Já deixei tudo anotado para seguir com seu atendimento. 💍`;
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "keila",
+      "finalizado",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "keila", reply, "finalizado");
+    await saveAgentMemory(supabase, phone, "keila", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "finalizado",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "keila",
+    });
+  }
+
   const reply =
     "Lembrando que o valor do card é da unidade e o par sai pelo dobro. Gostou de algum modelo? 😊";
 
@@ -1019,13 +1223,15 @@ serve(async (req) => {
     baseData.finalidade = detectAllianceType(message, baseData) || baseData.finalidade || null;
     baseData.triagem_categoria = detectClassification(message, baseData) || baseData.triagem_categoria || null;
 
-    const activeAgent = (conversation.active_agent || baseData.agente_atual || "aline") as AgentSlug;
+    const activeAgent = (conversation.active_agent || baseData.agente_atual || "aline") as ConversationAgent;
     const keilaMemory = await loadAgentMemory(supabase, phone, "keila");
     const alineMemory = await loadAgentMemory(supabase, phone, "aline");
 
     if (activeAgent === "keila" || detectMarriageIntent(message, baseData, conversation.current_node || "")) {
       const keilaResponse = await handleKeilaFlow({
         supabase,
+        supabaseUrl,
+        supabaseServiceKey,
         conversation: {
           ...conversation,
           active_agent: "keila",
