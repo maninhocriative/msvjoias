@@ -2,344 +2,359 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-/**
- * ZAPI-UNIFIED: Endpoint único para:
- * 1. Receber mensagens do Z-API (webhook)
- * 2. Processar com Aline
- * 3. Responder via Z-API
- * 4. Salvar tudo no banco
- */
 
 interface ZAPIMessage {
   phone?: string;
   isFromMe?: boolean;
+  fromMe?: boolean;
   senderName?: string;
   pushName?: string;
-  text?: { message?: string };
+  text?: { phone?: string; message?: string; senderName?: string };
   message?: string;
   image?: { imageUrl?: string; caption?: string };
   audio?: { audioUrl?: string };
   video?: { videoUrl?: string; caption?: string };
   document?: { documentUrl?: string; fileName?: string };
-  messageId?: string;
   event?: string;
+  type?: string;
   status?: string;
+  messageId?: string;
+  zaapId?: string;
+  buttonResponseId?: string;
+  buttonId?: string;
+  listResponseId?: string;
+  buttonResponse?: {
+    buttonId?: string;
+    message?: string;
+  };
+  buttonsResponseMessage?: {
+    buttonId?: string;
+    message?: string;
+  };
 }
 
-// Gerar hash para deduplicação
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function generateHash(phone: string, message: string): string {
   const now = new Date();
   const minuteKey = `${now.getFullYear()}${now.getMonth()}${now.getDate()}${now.getHours()}${now.getMinutes()}`;
-  const msgKey = message.toLowerCase().replace(/\s+/g, '').substring(0, 100);
+  const msgKey = message.toLowerCase().replace(/\s+/g, "").substring(0, 100);
   return `${phone}_${msgKey}_${minuteKey}`;
 }
 
-// Enviar texto via Z-API
-async function sendText(phone: string, message: string, instanceId: string, token: string, clientToken?: string) {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (clientToken) headers['Client-Token'] = clientToken;
+function buildHeaders(clientToken?: string) {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
 
+  if (clientToken) {
+    headers["Client-Token"] = clientToken;
+  }
+
+  return headers;
+}
+
+async function sendText(
+  phone: string,
+  message: string,
+  instanceId: string,
+  token: string,
+  clientToken?: string,
+) {
   const response = await fetch(`https://api.z-api.io/instances/${instanceId}/token/${token}/send-text`, {
-    method: 'POST',
-    headers,
+    method: "POST",
+    headers: buildHeaders(clientToken),
     body: JSON.stringify({ phone, message }),
   });
 
   const result = await response.json();
-  return { success: response.ok && (result.messageId || result.zaapId), messageId: result.messageId || result.zaapId, error: result };
+  return {
+    success: response.ok && !!(result.messageId || result.zaapId),
+    messageId: result.messageId || result.zaapId || null,
+    error: response.ok ? null : result,
+  };
 }
 
-// Enviar mídia via Z-API
 async function sendMedia(
-  phone: string, 
-  type: 'image' | 'video', 
-  url: string, 
-  caption: string, 
-  instanceId: string, 
-  token: string, 
-  clientToken?: string
+  phone: string,
+  type: "image" | "video",
+  url: string,
+  caption: string,
+  instanceId: string,
+  token: string,
+  clientToken?: string,
 ) {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (clientToken) headers['Client-Token'] = clientToken;
+  const endpoint =
+    type === "video"
+      ? `https://api.z-api.io/instances/${instanceId}/token/${token}/send-video`
+      : `https://api.z-api.io/instances/${instanceId}/token/${token}/send-image`;
 
-  const endpoint = type === 'video' 
-    ? `https://api.z-api.io/instances/${instanceId}/token/${token}/send-video`
-    : `https://api.z-api.io/instances/${instanceId}/token/${token}/send-image`;
-  
-  const body = type === 'video' 
-    ? { phone, video: url, caption }
-    : { phone, image: url, caption };
+  const body =
+    type === "video"
+      ? { phone, video: url, caption }
+      : { phone, image: url, caption };
 
   const response = await fetch(endpoint, {
-    method: 'POST',
-    headers,
+    method: "POST",
+    headers: buildHeaders(clientToken),
     body: JSON.stringify(body),
   });
 
   const result = await response.json();
-  return { success: response.ok && (result.messageId || result.zaapId), messageId: result.messageId || result.zaapId };
+  return {
+    success: response.ok && !!(result.messageId || result.zaapId),
+    messageId: result.messageId || result.zaapId || null,
+    error: response.ok ? null : result,
+  };
+}
+
+async function sendInteractiveProductCard(
+  phone: string,
+  product: any,
+  instanceId: string,
+  token: string,
+  clientToken?: string,
+) {
+  const buttonId = product.button_id || `select_${product.sku || product.id}`;
+  const buttonLabel = product.button_label || "Quero esta";
+  const message = product.caption || product.name || "Produto";
+  const buttonList: Record<string, unknown> = {
+    buttons: [
+      {
+        id: buttonId,
+        label: buttonLabel,
+      },
+    ],
+  };
+
+  if (product.video_url) {
+    buttonList.video = product.video_url;
+  } else if (product.image_url) {
+    buttonList.image = product.image_url;
+  }
+
+  const response = await fetch(`https://api.z-api.io/instances/${instanceId}/token/${token}/send-button-list`, {
+    method: "POST",
+    headers: buildHeaders(clientToken),
+    body: JSON.stringify({
+      phone,
+      message,
+      buttonList,
+    }),
+  });
+
+  const result = await response.json();
+  return {
+    success: response.ok && !!(result.messageId || result.zaapId),
+    messageId: result.messageId || result.zaapId || null,
+    error: response.ok ? null : result,
+  };
 }
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const ZAPI_INSTANCE_ID = Deno.env.get('ZAPI_INSTANCE_ID');
-    const ZAPI_TOKEN = Deno.env.get('ZAPI_TOKEN');
-    const ZAPI_CLIENT_TOKEN = Deno.env.get('ZAPI_CLIENT_TOKEN');
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const ZAPI_INSTANCE_ID = Deno.env.get("ZAPI_INSTANCE_ID");
+    const ZAPI_TOKEN = Deno.env.get("ZAPI_TOKEN");
+    const ZAPI_CLIENT_TOKEN = Deno.env.get("ZAPI_CLIENT_TOKEN");
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
     if (!ZAPI_INSTANCE_ID || !ZAPI_TOKEN) {
-      throw new Error('Z-API credentials not configured');
+      throw new Error("Z-API credentials not configured");
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
     const payload: ZAPIMessage = await req.json();
-    
-    console.log('[ZAPI-UNIFIED] ====== NOVA REQUISIÇÃO ======');
-    console.log('[ZAPI-UNIFIED] Payload:', JSON.stringify(payload, null, 2));
 
-    // ========================================
-    // FILTRAR EVENTOS QUE NÃO SÃO MENSAGENS
-    // ========================================
-    const eventType = (payload as any).type || payload.event || '';
+    console.log("[ZAPI-UNIFIED] ====== NOVA REQUISIÇÃO ======");
+    console.log("[ZAPI-UNIFIED] Payload:", JSON.stringify(payload).substring(0, 1000));
+
+    const eventType = payload.type || payload.event || "";
     const hasError = !!(payload as any).error;
-    
-    // ReceivedCallback É uma mensagem real recebida - NÃO filtrar!
-    // Apenas filtrar callbacks de status (Delivery, Read, Sent)
-    const isStatusCallback = eventType === 'DeliveryCallback' ||
-                             eventType === 'ReadCallback' ||
-                             eventType === 'SentCallback' ||
-                             eventType === 'MessageStatusCallback' ||
-                             eventType === 'message-status-update' ||
-                             hasError;
-    
-    if (isStatusCallback) {
-      console.log(`[ZAPI-UNIFIED] Evento de status callback ignorado: ${eventType || 'error'}`);
-      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'status_callback' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-    
-    console.log(`[ZAPI-UNIFIED] Processando evento: ${eventType || 'mensagem'}`)
+    const isStatusCallback =
+      eventType === "DeliveryCallback" ||
+      eventType === "ReadCallback" ||
+      eventType === "SentCallback" ||
+      eventType === "MessageStatusCallback" ||
+      eventType === "message-status-update" ||
+      hasError;
 
-    // ========================================
-    // PROCESSAR EVENTOS DE STATUS (delivered, read, etc.)
-    // ========================================
-    if (payload.event === 'message-status-update' && payload.messageId) {
-      console.log(`[ZAPI-UNIFIED] Status update: ${payload.status} para ${payload.messageId}`);
-      
-      await supabase
-        .from('messages')
-        .update({ status: payload.status })
-        .eq('zapi_message_id', payload.messageId);
-      
-      return new Response(JSON.stringify({ success: true, type: 'status_update' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    if (isStatusCallback && eventType !== "message-status-update") {
+      return new Response(
+        JSON.stringify({ success: true, skipped: true, reason: "status_callback" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
-    // ========================================
-    // EXTRAIR DADOS DA MENSAGEM - SUPORTE A MÚLTIPLOS FORMATOS
-    // ========================================
-    // Formato 1: payload.phone (ZAPI padrão)
-    // Formato 2: payload.text?.phone (Fiqon wrapper)
-    // Formato 3: campo phone com @c.us/@g.us
-    const rawPhone = payload.phone || (payload as any).text?.phone || '';
-    const phone = rawPhone.replace(/\D/g, '').replace(/@[cg]\.us$/, '');
-    
-    const isFromMe = payload.isFromMe === true || (payload as any).fromMe === true;
-    const contactName = payload.senderName || payload.pushName || (payload as any).text?.senderName || phone;
-    
-    // Extrair conteúdo da mensagem - SUPORTE A MÚLTIPLOS FORMATOS
-    let messageContent = '';
-    let messageType = 'text';
+
+    if (eventType === "message-status-update" && payload.messageId) {
+      await supabase
+        .from("messages")
+        .update({ status: payload.status })
+        .eq("zapi_message_id", payload.messageId);
+
+      return new Response(
+        JSON.stringify({ success: true, type: "status_update" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const rawPhone = payload.phone || payload.text?.phone || "";
+    const phone = rawPhone.replace(/@[cg]\.us$/, "").replace(/\D/g, "");
+    const isFromMe = payload.isFromMe === true || payload.fromMe === true;
+    const contactName = payload.senderName || payload.pushName || payload.text?.senderName || phone;
+
+    const buttonResponseId =
+      payload.buttonResponseId ||
+      payload.buttonId ||
+      payload.listResponseId ||
+      payload.buttonResponse?.buttonId ||
+      payload.buttonsResponseMessage?.buttonId ||
+      "";
+
+    const buttonResponseLabel =
+      payload.buttonResponse?.message ||
+      payload.buttonsResponseMessage?.message ||
+      "";
+
+    let messageContent = "";
+    let messageType = "text";
     let mediaUrl: string | null = null;
 
-    // Formato ZAPI padrão: text.message
     if (payload.text?.message) {
       messageContent = payload.text.message;
-    } 
-    // Formato Fiqon: text.message diretamente
-    else if ((payload as any).text?.message) {
-      messageContent = (payload as any).text.message;
-    }
-    // Formato direto: message string
-    else if (typeof payload.message === 'string' && payload.message) {
+    } else if (typeof payload.message === "string" && payload.message) {
       messageContent = payload.message;
-    }
-    // Fallback: procurar em qualquer lugar
-    else if ((payload as any).message) {
-      messageContent = String((payload as any).message);
-    }
-    // Mídia
-    else if (payload.image) {
-      messageType = 'image';
+    } else if (payload.image) {
+      messageType = "image";
       mediaUrl = payload.image.imageUrl || null;
-      messageContent = payload.image.caption || '';
+      messageContent = payload.image.caption || "";
     } else if (payload.audio) {
-      messageType = 'audio';
+      messageType = "audio";
       mediaUrl = payload.audio.audioUrl || null;
-      // Transcrição será feita depois
-      messageContent = '[Áudio - aguardando transcrição]';
+      messageContent = "[Áudio recebido]";
     } else if (payload.video) {
-      messageType = 'video';
+      messageType = "video";
       mediaUrl = payload.video.videoUrl || null;
-      messageContent = payload.video.caption || '';
+      messageContent = payload.video.caption || "";
     } else if (payload.document) {
-      messageType = 'document';
+      messageType = "document";
       mediaUrl = payload.document.documentUrl || null;
-      messageContent = payload.document.fileName || '';
+      messageContent = payload.document.fileName || "";
     }
 
-    // Fallback final - tentar extrair de payload.text como string
-    if (!messageContent && typeof (payload as any).text === 'string') {
-      messageContent = (payload as any).text;
+    if (!messageContent && buttonResponseLabel) {
+      messageContent = buttonResponseLabel;
+      messageType = "button_reply";
+    }
+
+    if (!messageContent && buttonResponseId) {
+      messageContent = buttonResponseId;
+      messageType = "button_reply";
     }
 
     if (!phone) {
-      console.log('[ZAPI-UNIFIED] Phone vazio, ignorando');
-      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'no_phone' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return new Response(
+        JSON.stringify({ success: true, skipped: true, reason: "no_phone" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
-    console.log(`[ZAPI-UNIFIED] Phone: ${phone}, isFromMe: ${isFromMe}, type: ${messageType}`);
-    console.log(`[ZAPI-UNIFIED] Content extraído: "${messageContent.substring(0, 100)}"`);
+    const isFinalizarButton = buttonResponseId === "retomar_atendimento";
 
-    // ========================================
-    // DETECTAR CLIQUE EM BOTÃO DE FINALIZAR PEDIDO
-    // ========================================
-    const buttonResponseId = (payload as any).buttonResponseId || (payload as any).buttonId || '';
-    const isFinalizarButton = buttonResponseId === 'retomar_atendimento' || 
-                               (payload as any).listResponseId === 'retomar_atendimento' ||
-                               (payload as any).buttonResponse?.buttonId === 'retomar_atendimento';
-    
     if (isFinalizarButton) {
-      console.log(`[ZAPI-UNIFIED] 🔥 Cliente ${phone} clicou no botão de FINALIZAR PEDIDO!`);
-      
-      // Chamar aline-followup para processar o botão (marcar comprador + notificar equipe)
-      const followupEndpoint = `${supabaseUrl}/functions/v1/aline-followup`;
       try {
-        await fetch(followupEndpoint, {
-          method: 'POST',
+        await fetch(`${supabaseUrl}/functions/v1/aline-followup`, {
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabaseKey}`,
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseKey}`,
           },
-          body: JSON.stringify({ 
-            buttonResponse: true, 
-            phone: phone 
+          body: JSON.stringify({
+            buttonResponse: true,
+            phone,
           }),
         });
-        console.log(`[ZAPI-UNIFIED] ✅ Notificação de comprador enviada para equipe`);
-      } catch (notifErr) {
-        console.error(`[ZAPI-UNIFIED] Erro ao notificar equipe:`, notifErr);
+      } catch (error) {
+        console.error("[ZAPI-UNIFIED] Erro ao notificar equipe:", error);
       }
-      
-      // Continuar processando a mensagem normalmente para a Aline responder
     }
-    // ========================================
-    // IGNORAR MENSAGENS ENVIADAS POR NÓS
-    // ========================================
+
     if (isFromMe) {
-      console.log('[ZAPI-UNIFIED] Mensagem enviada por nós, ignorando processamento');
-      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'from_me' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return new Response(
+        JSON.stringify({ success: true, skipped: true, reason: "from_me" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
-    // ========================================
-    // IGNORAR MENSAGENS SEM CONTEÚDO (eventos vazios)
-    // ========================================
-    if (!messageContent && messageType === 'text') {
-      console.log('[ZAPI-UNIFIED] Mensagem sem conteúdo, ignorando');
-      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'empty_content' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    if (!messageContent && messageType === "text") {
+      return new Response(
+        JSON.stringify({ success: true, skipped: true, reason: "empty_content" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
-    // ========================================
-    // DEDUPLICAÇÃO USANDO HASH (MAIS RÁPIDO) E MESSAGE_ID
-    // ========================================
-    const zapiMessageId = payload.messageId || (payload as any).zaapId;
-    
-    // Criar hash único para deduplicação rápida
-    const dedupeKey = zapiMessageId || generateHash(phone, messageContent || 'no-content');
-    console.log(`[ZAPI-UNIFIED] Dedupe key: ${dedupeKey}`);
-    
-    // Tentar inserir o hash PRIMEIRO (upsert atômico)
-    const { error: insertError } = await supabase
-      .from('processed_messages')
+    const dedupeKey = payload.messageId || payload.zaapId || generateHash(phone, messageContent || "no-content");
+    const { error: dedupeInsertError } = await supabase
+      .from("processed_messages")
       .insert({ message_id: dedupeKey, phone });
 
-    if (insertError?.code === '23505') {
-      console.log('[ZAPI-UNIFIED] Duplicata detectada (constraint), ignorando');
-      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'duplicate' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    if (dedupeInsertError?.code === "23505") {
+      return new Response(
+        JSON.stringify({ success: true, skipped: true, reason: "duplicate" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
-    
-    // Se deu outro erro que não é constraint, verificar manualmente
-    if (insertError) {
-      console.log(`[ZAPI-UNIFIED] Erro ao inserir hash: ${insertError.message}`);
-      
-      // Verificar se já existe
+
+    if (dedupeInsertError) {
       const { data: existing } = await supabase
-        .from('processed_messages')
-        .select('id')
-        .eq('message_id', dedupeKey)
+        .from("processed_messages")
+        .select("id")
+        .eq("message_id", dedupeKey)
         .maybeSingle();
 
       if (existing) {
-        console.log('[ZAPI-UNIFIED] Duplicata detectada (manual check), ignorando');
-        return new Response(JSON.stringify({ success: true, skipped: true, reason: 'duplicate' }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        return new Response(
+          JSON.stringify({ success: true, skipped: true, reason: "duplicate" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
       }
     }
-    
-    console.log('[ZAPI-UNIFIED] Hash inserido, processando mensagem...');
 
-    // ========================================
-    // BUSCAR OU CRIAR CONVERSA (para UI do Chat)
-    // ========================================
     let conversationId: string;
-    
-    const { data: existingConv } = await supabase
-      .from('conversations')
-      .select('id, unread_count')
-      .eq('contact_number', phone)
+    const { data: existingConversation } = await supabase
+      .from("conversations")
+      .select("id, unread_count")
+      .eq("contact_number", phone)
       .maybeSingle();
 
-    if (existingConv) {
-      conversationId = existingConv.id;
-      
-      // Atualizar conversa
+    if (existingConversation?.id) {
+      conversationId = existingConversation.id;
+
       await supabase
-        .from('conversations')
+        .from("conversations")
         .update({
           contact_name: contactName,
           last_message: messageContent || `[${messageType}]`,
-          unread_count: (existingConv.unread_count || 0) + 1,
-          last_message_at: new Date().toISOString(), // Isso faz aparecer no topo!
+          unread_count: Number(existingConversation.unread_count || 0) + 1,
+          last_message_at: new Date().toISOString(),
         })
-        .eq('id', conversationId);
-      
-      console.log(`[ZAPI-UNIFIED] Conversa atualizada: ${conversationId}`);
+        .eq("id", conversationId);
     } else {
-      const { data: newConv, error: convError } = await supabase
-        .from('conversations')
+      const { data: createdConversation, error: createConversationError } = await supabase
+        .from("conversations")
         .insert({
           contact_number: phone,
           contact_name: contactName,
-          platform: 'whatsapp',
+          platform: "whatsapp",
           last_message: messageContent || `[${messageType}]`,
           last_message_at: new Date().toISOString(),
           unread_count: 1,
@@ -347,319 +362,303 @@ serve(async (req) => {
         .select()
         .single();
 
-      if (convError) throw convError;
-      conversationId = newConv.id;
-      console.log(`[ZAPI-UNIFIED] Nova conversa criada: ${conversationId}`);
+      if (createConversationError || !createdConversation) {
+        throw createConversationError || new Error("Unable to create conversation");
+      }
+
+      conversationId = createdConversation.id;
     }
 
-    // ========================================
-    // SALVAR MENSAGEM DO CLIENTE
-    // ========================================
-    const { error: msgError } = await supabase
-      .from('messages')
-      .insert({
-        conversation_id: conversationId,
-        content: messageContent,
-        message_type: messageType,
-        media_url: mediaUrl,
-        is_from_me: false,
-        status: 'received',
-        zapi_message_id: zapiMessageId,
-      });
+    const zapiMessageId = payload.messageId || payload.zaapId || null;
 
-    if (msgError) {
-      console.error('[ZAPI-UNIFIED] Erro ao salvar mensagem:', msgError);
-    } else {
-      console.log('[ZAPI-UNIFIED] Mensagem do cliente salva');
-    }
+    await supabase.from("messages").insert({
+      conversation_id: conversationId,
+      content: messageContent,
+      message_type: messageType,
+      media_url: mediaUrl,
+      is_from_me: false,
+      status: "received",
+      zapi_message_id: zapiMessageId,
+    });
 
-    // ========================================
-    // TRANSCREVER ÁUDIO SE NECESSÁRIO
-    // ========================================
     let messageForAline = messageContent;
-    
-    if (messageType === 'audio' && mediaUrl) {
-      console.log(`[ZAPI-UNIFIED] 🎤 Transcrevendo áudio: ${mediaUrl.substring(0, 120)}...`);
 
+    if (messageType === "audio" && mediaUrl) {
       try {
-        const transcribeEndpoint = `${supabaseUrl}/functions/v1/transcribe-audio`;
-        const transcribeReq = await fetch(transcribeEndpoint, {
-          method: 'POST',
+        const transcriptionResponse = await fetch(`${supabaseUrl}/functions/v1/transcribe-audio`, {
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabaseKey}`,
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseKey}`,
           },
-          body: JSON.stringify({ audioUrl: mediaUrl, zapiMessageId }),
+          body: JSON.stringify({
+            audioUrl: mediaUrl,
+            zapiMessageId,
+          }),
         });
 
-        let transcribeResult: any = null;
-        try {
-          transcribeResult = await transcribeReq.json();
-        } catch {
-          transcribeResult = null;
-        }
+        const transcriptionData = await transcriptionResponse.json().catch(() => null);
+        const transcription = transcriptionData?.transcription?.trim();
 
-        const transcription = transcribeResult?.transcription?.trim();
-
-        if (transcribeReq.ok && transcription) {
+        if (transcriptionResponse.ok && transcription) {
           messageForAline = transcription;
-          console.log(`[ZAPI-UNIFIED] ✅ Transcrição: "${messageForAline.substring(0, 100)}..."`);
-        } else {
-          console.error('[ZAPI-UNIFIED] Erro/sem transcrição no transcribe-audio:', {
-            status: transcribeReq.status,
-            body: transcribeResult,
-          });
-          messageForAline = '[Áudio recebido]';
+
+          await supabase
+            .from("messages")
+            .update({ content: `🎤 ${transcription}` })
+            .eq("conversation_id", conversationId)
+            .eq("zapi_message_id", zapiMessageId);
+
+          await supabase
+            .from("conversations")
+            .update({ last_message: `🎤 ${transcription}`.substring(0, 100) })
+            .eq("id", conversationId);
         }
-
-        const contentToSave = `🎤 ${messageForAline}`;
-
-        let updateQuery = supabase
-          .from('messages')
-          .update({ content: contentToSave })
-          .eq('conversation_id', conversationId);
-
-        if (zapiMessageId) {
-          updateQuery = updateQuery.eq('zapi_message_id', zapiMessageId);
-        } else {
-          updateQuery = updateQuery.eq('media_url', mediaUrl);
-        }
-
-        await updateQuery;
-
-        await supabase
-          .from('conversations')
-          .update({ last_message: contentToSave.substring(0, 90) })
-          .eq('id', conversationId);
-      } catch (transcribeError) {
-        console.error('[ZAPI-UNIFIED] Erro ao transcrever:', transcribeError);
-        messageForAline = '[Áudio recebido]';
+      } catch (error) {
+        console.error("[ZAPI-UNIFIED] Erro ao transcrever áudio:", error);
       }
     }
 
-    // ========================================
-    // PROCESSAR COM ALINE
-    // ========================================
-    console.log('[ZAPI-UNIFIED] Chamando aline-reply...');
-    
-    const alineEndpoint = `${supabaseUrl}/functions/v1/aline-reply`;
-    const alineReq = await fetch(alineEndpoint, {
-      method: 'POST',
+    const alineResponseRequest = await fetch(`${supabaseUrl}/functions/v1/aline-reply`, {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${supabaseKey}`,
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${supabaseKey}`,
       },
       body: JSON.stringify({
         phone,
-        message: messageForAline, // Usar transcrição se for áudio
+        message: messageForAline,
         contact_name: contactName,
         media_type: messageType,
         media_url: mediaUrl,
+        button_response_id: buttonResponseId || null,
       }),
     });
 
-    if (!alineReq.ok) {
-      const errorText = await alineReq.text();
-      console.error('[ZAPI-UNIFIED] Erro aline-reply:', errorText);
-      throw new Error(`aline-reply failed: ${alineReq.status}`);
+    if (!alineResponseRequest.ok) {
+      const errorText = await alineResponseRequest.text();
+      throw new Error(`aline-reply failed: ${alineResponseRequest.status} - ${errorText}`);
     }
 
-    const alineResponse = await alineReq.json();
-    console.log('[ZAPI-UNIFIED] Aline response:', JSON.stringify(alineResponse, null, 2).substring(0, 500));
+    const alineResponse = await alineResponseRequest.json();
 
-    // Verificar se foi pulado
     if (alineResponse.skipped) {
-      console.log(`[ZAPI-UNIFIED] Aline pulou: ${alineResponse.reason}`);
-      return new Response(JSON.stringify({ 
-        success: true, 
-        skipped: true, 
-        reason: alineResponse.reason,
-        message_saved: true 
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return new Response(
+        JSON.stringify({
+          success: true,
+          skipped: true,
+          reason: alineResponse.reason,
+          message_saved: true,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
-    // ========================================
-    // ENVIAR RESPOSTA VIA Z-API
-    // ========================================
-    const textMessage = alineResponse.mensagem_whatsapp || alineResponse.response;
-    const products = alineResponse.produtos || [];
+    const textMessage = alineResponse.mensagem_whatsapp || alineResponse.response || "";
+    const products = Array.isArray(alineResponse.produtos) ? alineResponse.produtos : [];
+    const useProductButtons = alineResponse.use_product_buttons === true;
+    const postCatalogMessage = alineResponse.mensagem_pos_catalogo || null;
 
     let textSent = false;
     let productsSent = 0;
+    let postCatalogSent = false;
 
-    // 1. Enviar texto
     if (textMessage) {
-      console.log(`[ZAPI-UNIFIED] Enviando texto: "${textMessage.substring(0, 80)}..."`);
-      
-      const result = await sendText(phone, textMessage, ZAPI_INSTANCE_ID, ZAPI_TOKEN, ZAPI_CLIENT_TOKEN);
-      
-      if (result.success) {
+      const textResult = await sendText(phone, textMessage, ZAPI_INSTANCE_ID, ZAPI_TOKEN, ZAPI_CLIENT_TOKEN);
+
+      if (textResult.success) {
         textSent = true;
-        console.log(`[ZAPI-UNIFIED] ✅ Texto enviado: ${result.messageId}`);
 
-        // Salvar resposta da Aline na tabela messages (para aparecer no chat)
-        await supabase
-          .from('messages')
-          .insert({
-            conversation_id: conversationId,
-            content: textMessage,
-            message_type: 'text',
-            is_from_me: true,
-            status: 'sent',
-            zapi_message_id: result.messageId,
-          });
+        await supabase.from("messages").insert({
+          conversation_id: conversationId,
+          content: textMessage,
+          message_type: "text",
+          is_from_me: true,
+          status: "sent",
+          zapi_message_id: textResult.messageId,
+        });
 
-        // Atualizar last_message
         await supabase
-          .from('conversations')
+          .from("conversations")
           .update({
             last_message: textMessage.substring(0, 100),
-            unread_count: 0, // Resetar porque respondemos
+            unread_count: 0,
           })
-          .eq('id', conversationId);
-
+          .eq("id", conversationId);
       } else {
-        console.error('[ZAPI-UNIFIED] ❌ Texto falhou:', result.error);
+        console.error("[ZAPI-UNIFIED] Falha ao enviar texto:", textResult.error);
       }
     }
 
-    // 2. Enviar produtos (cards com imagem/vídeo)
     if (products.length > 0) {
-      console.log(`[ZAPI-UNIFIED] Enviando ${products.length} produtos...`);
-      
-      // Delay entre texto e produtos
-      await new Promise(r => setTimeout(r, 1500));
+      await sleep(1200);
 
-      for (let i = 0; i < products.length; i++) {
-        const product = products[i];
-        const sku = product.sku || '';
-        const name = product.name || product.nome || '';
-        const price = product.price || product.preco || 0;
-        const imageUrl = product.image_url || product.url_imagem || '';
-        const videoUrl = product.video_url || product.url_video || '';
-        
-        // Formatar preço
-        const priceFormatted = price > 0 
-          ? `R$ ${Number(price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-          : '';
-        
-        // Montar caption
-        const caption = `${i + 1}️⃣ *${name}*\n💰 ${priceFormatted}\n🏷️ Cód: ${sku}`;
-        
-        // Decidir se envia vídeo ou imagem
-        const hasVideo = !!videoUrl && !videoUrl.includes('<nil>');
-        const mediaType = hasVideo ? 'video' : 'image';
-        const mediaUrlToSend = hasVideo ? videoUrl : imageUrl;
+      for (let index = 0; index < products.length; index++) {
+        const product = products[index];
+        const mediaType = product.video_url ? "video" : "image";
+        const mediaUrlToSend = product.video_url || product.image_url || null;
 
-        if (mediaUrlToSend && !mediaUrlToSend.includes('<nil>')) {
-          console.log(`[ZAPI-UNIFIED] Enviando produto ${i + 1}: ${sku} (${mediaType})`);
-          
-          const result = await sendMedia(
-            phone, 
-            mediaType, 
-            mediaUrlToSend, 
-            caption, 
-            ZAPI_INSTANCE_ID, 
-            ZAPI_TOKEN, 
-            ZAPI_CLIENT_TOKEN
+        let result:
+          | { success: boolean; messageId: string | null; error: unknown }
+          | null = null;
+
+        if (useProductButtons) {
+          result = await sendInteractiveProductCard(
+            phone,
+            product,
+            ZAPI_INSTANCE_ID,
+            ZAPI_TOKEN,
+            ZAPI_CLIENT_TOKEN,
           );
 
-          if (result.success) {
-            productsSent++;
-            console.log(`[ZAPI-UNIFIED] ✅ Produto ${i + 1} enviado: ${result.messageId}`);
-
-            // Salvar na tabela messages
-            await supabase
-              .from('messages')
-              .insert({
-                conversation_id: conversationId,
-                content: caption,
-                message_type: mediaType,
-                media_url: mediaUrlToSend,
-                is_from_me: true,
-                status: 'sent',
-                zapi_message_id: result.messageId,
-              });
-          } else {
-            console.error(`[ZAPI-UNIFIED] ❌ Produto ${i + 1} falhou`);
+          if (!result.success && mediaUrlToSend) {
+            console.warn("[ZAPI-UNIFIED] Botão falhou, fallback para mídia simples:", result.error);
+            result = await sendMedia(
+              phone,
+              mediaType,
+              mediaUrlToSend,
+              product.caption || product.name || "Produto",
+              ZAPI_INSTANCE_ID,
+              ZAPI_TOKEN,
+              ZAPI_CLIENT_TOKEN,
+            );
           }
+        } else if (mediaUrlToSend) {
+          result = await sendMedia(
+            phone,
+            mediaType,
+            mediaUrlToSend,
+            product.caption || product.name || "Produto",
+            ZAPI_INSTANCE_ID,
+            ZAPI_TOKEN,
+            ZAPI_CLIENT_TOKEN,
+          );
+        } else {
+          result = await sendText(
+            phone,
+            product.caption || product.name || "Produto",
+            ZAPI_INSTANCE_ID,
+            ZAPI_TOKEN,
+            ZAPI_CLIENT_TOKEN,
+          );
+        }
 
-          // Delay entre produtos
-          if (i < products.length - 1) {
-            await new Promise(r => setTimeout(r, 1200));
-          }
+        if (result?.success) {
+          productsSent += 1;
+
+          await supabase.from("messages").insert({
+            conversation_id: conversationId,
+            content: product.caption || product.name || "Produto",
+            message_type: mediaUrlToSend ? mediaType : "text",
+            media_url: mediaUrlToSend,
+            is_from_me: true,
+            status: "sent",
+            zapi_message_id: result.messageId,
+          });
+        } else {
+          console.error(`[ZAPI-UNIFIED] Falha ao enviar produto ${index + 1}:`, result?.error);
+        }
+
+        if (index < products.length - 1) {
+          await sleep(1100);
         }
       }
     }
 
-    // Registrar sessão de catálogo e atualizar conversation_state
-    if (productsSent > 0 && alineResponse) {
+    if (productsSent > 0 && postCatalogMessage) {
+      await sleep(1200);
+
+      const postResult = await sendText(
+        phone,
+        postCatalogMessage,
+        ZAPI_INSTANCE_ID,
+        ZAPI_TOKEN,
+        ZAPI_CLIENT_TOKEN,
+      );
+
+      if (postResult.success) {
+        postCatalogSent = true;
+
+        await supabase.from("messages").insert({
+          conversation_id: conversationId,
+          content: postCatalogMessage,
+          message_type: "text",
+          is_from_me: true,
+          status: "sent",
+          zapi_message_id: postResult.messageId,
+        });
+
+        await supabase
+          .from("conversations")
+          .update({
+            last_message: postCatalogMessage.substring(0, 100),
+            unread_count: 0,
+          })
+          .eq("id", conversationId);
+      }
+    }
+
+    if (productsSent > 0) {
       try {
-        const { data: session } = await supabase.rpc('create_catalog_session', {
+        const { data: sessionId } = await supabase.rpc("create_catalog_session", {
           p_phone: phone,
           p_thread_id: alineResponse.thread_id || null,
           p_categoria: alineResponse.categoria_crm || null,
-          p_tipo_alianca: null,
+          p_tipo_alianca: alineResponse.memoria?.finalidade || null,
           p_cor_preferida: alineResponse.cor_crm || null,
         });
 
-        if (session) {
-          // Registrar cada produto na sessão
+        if (sessionId) {
           for (const product of products.slice(0, productsSent)) {
-            const sku = product.sku || '';
-            const name = product.name || product.nome || '';
-            const price = product.price || 0;
-            const imageUrl = product.image_url || product.url_imagem || null;
-            const videoUrl = product.video_url || product.url_video || null;
-            await supabase.rpc('add_catalog_item', {
-              p_session_id: session,
-              p_sku: sku,
-              p_name: name,
-              p_price: price || null,
-              p_image_url: imageUrl,
-              p_video_url: videoUrl,
+            await supabase.rpc("add_catalog_item", {
+              p_session_id: sessionId,
+              p_sku: product.sku || null,
+              p_name: product.name || null,
+              p_price: product.price || null,
+              p_image_url: product.image_url || null,
+              p_video_url: product.video_url || null,
             });
           }
 
-          // CRÍTICO: Atualizar conversation_state com novo session_id e limpar produto anterior
-          await supabase.from('conversation_state').upsert({
-            phone,
-            last_catalog_session_id: session,
-            selected_sku: null,
-            selected_name: null,
-            selected_price: null,
-            updated_at: new Date().toISOString(),
-          }, { onConflict: 'phone' });
-
-          console.log(`[ZAPI-UNIFIED] ✅ Sessão de catálogo salva: ${session}`);
+          await supabase.from("conversation_state").upsert(
+            {
+              phone,
+              last_catalog_session_id: sessionId,
+              selected_sku: null,
+              selected_name: null,
+              selected_price: null,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "phone" },
+          );
         }
-      } catch (dbErr) {
-        console.warn(`[ZAPI-UNIFIED] Aviso ao salvar sessão de catálogo:`, dbErr);
+      } catch (error) {
+        console.warn("[ZAPI-UNIFIED] Aviso ao salvar sessão de catálogo:", error);
       }
     }
 
-    console.log('[ZAPI-UNIFIED] ====== FIM ======');
-    console.log(`[ZAPI-UNIFIED] Texto: ${textSent}, Produtos: ${productsSent}/${products.length}`);
-
-    return new Response(JSON.stringify({
-      success: true,
-      conversation_id: conversationId,
-      text_sent: textSent,
-      products_sent: productsSent,
-      aline_node: alineResponse.node_tecnico,
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-
+    return new Response(
+      JSON.stringify({
+        success: true,
+        conversation_id: conversationId,
+        text_sent: textSent,
+        products_sent: productsSent,
+        post_catalog_sent: postCatalogSent,
+        aline_node: alineResponse.node_tecnico,
+        use_product_buttons: useProductButtons,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
   } catch (error) {
-    console.error('[ZAPI-UNIFIED] ERRO:', error);
-    return new Response(JSON.stringify({ 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    console.error("[ZAPI-UNIFIED] ERRO:", error);
+    return new Response(
+      JSON.stringify({
+        error: error instanceof Error ? error.message : "Unknown error",
+      }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   }
 });
