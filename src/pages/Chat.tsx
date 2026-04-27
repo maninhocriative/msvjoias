@@ -177,7 +177,7 @@ const Chat = () => {
     } catch {
       toast({
         title: 'Erro',
-        description: 'Não foi possível atualizar o status.',
+        description: 'Nao foi possivel atualizar o status.',
         variant: 'destructive',
       });
     } finally {
@@ -238,14 +238,14 @@ const Chat = () => {
       );
 
       toast({
-        title: '↩️ Venda desfeita',
+        title: 'Venda desfeita',
         description: 'A conversa voltou para qualificado e a venda do chat foi cancelada.',
       });
     } catch (error) {
       console.error('Erro ao desfazer venda:', error);
       toast({
         title: 'Erro',
-        description: 'Não foi possível desfazer a venda.',
+        description: 'Nao foi possivel desfazer a venda.',
         variant: 'destructive',
       });
     } finally {
@@ -386,7 +386,7 @@ const Chat = () => {
           : 0;
 
       if (!productName) {
-        throw new Error('Selecione um produto válido antes de confirmar a venda.');
+        throw new Error('Selecione um produto valido antes de confirmar a venda.');
       }
 
       const customerName =
@@ -406,7 +406,7 @@ const Chat = () => {
       if (existingSaleError) throw existingSaleError;
 
       if (existingSale?.id) {
-        throw new Error('Já existe uma venda ativa registrada para esta conversa.');
+        throw new Error('Ja existe uma venda ativa registrada para esta conversa.');
       }
 
       const totalPrice = safeUnitPrice * safeQuantity;
@@ -455,14 +455,14 @@ const Chat = () => {
       );
 
       toast({
-        title: '🏆 Venda registrada',
+        title: 'Venda registrada',
         description: `${productName} x${safeQuantity} salvo com sucesso.`,
       });
     } catch (error: any) {
       console.error('Erro ao finalizar venda:', error);
       toast({
         title: 'Erro',
-        description: error?.message || 'Não foi possível finalizar a venda.',
+        description: error?.message || 'Nao foi possivel finalizar a venda.',
         variant: 'destructive',
       });
       throw error;
@@ -501,14 +501,14 @@ const Chat = () => {
       toast({
         title:
           action === 'takeover'
-            ? '✋ Atendimento assumido'
-            : '🤖 Devolvido para Aline',
+            ? 'Atendimento assumido'
+            : 'Devolvido para Aline',
         description: data.message,
       });
     } catch {
       toast({
         title: 'Erro',
-        description: 'Não foi possível alterar o atendimento.',
+        description: 'Nao foi possivel alterar o atendimento.',
         variant: 'destructive',
       });
     } finally {
@@ -528,7 +528,7 @@ const Chat = () => {
           action: 'takeover',
           seller_id: sellerId,
           seller_name: sellerName,
-          reason: 'Atribuição manual via painel',
+          reason: 'Atribuicao manual via painel',
         },
       });
 
@@ -547,13 +547,13 @@ const Chat = () => {
       }));
 
       toast({
-        title: '✅ Conversa atribuída',
-        description: `Atribuída para ${sellerName}`,
+        title: 'Conversa atribuida',
+        description: `Atribuida para ${sellerName}`,
       });
     } catch {
       toast({
         title: 'Erro',
-        description: 'Não foi possível atribuir.',
+        description: 'Nao foi possivel atribuir.',
         variant: 'destructive',
       });
     } finally {
@@ -764,7 +764,7 @@ const Chat = () => {
 
         if (showToast) {
           toast({
-            title: '✅ Atualizado!',
+            title: 'Atualizado!',
             description: `${conversationList.length} conversas`,
           });
         }
@@ -772,7 +772,7 @@ const Chat = () => {
         if (showToast) {
           toast({
             title: 'Erro',
-            description: 'Não foi possível atualizar',
+            description: 'Nao foi possivel atualizar',
             variant: 'destructive',
           });
         }
@@ -1097,7 +1097,7 @@ const Chat = () => {
 
   const uploadAudio = async (blob: Blob) => {
     if (!selectedConversation || blob.size < 1000) {
-      toast({ title: 'Áudio muito curto' });
+      toast({ title: 'Audio muito curto' });
       return;
     }
 
@@ -1143,7 +1143,7 @@ const Chat = () => {
     } catch {
       toast({
         title: 'Erro',
-        description: 'Não foi possível acessar o microfone.',
+        description: 'Nao foi possivel acessar o microfone.',
         variant: 'destructive',
       });
     }
@@ -1173,7 +1173,7 @@ const Chat = () => {
     setIsRecording(false);
     setRecordingStartTime(null);
 
-    toast({ title: 'Gravação cancelada' });
+    toast({ title: 'Gravacao cancelada' });
   };
 
   const captureAndSendScreenshot = async () => {
@@ -1385,6 +1385,13 @@ const Chat = () => {
     (sum, conversation) => sum + (conversation.unread_count || 0),
     0,
   );
+  const aiConversationCount = conversations.filter(
+    (conversation) => !getIsHumanTakeover(conversation.contact_number),
+  ).length;
+  const humanConversationCount = Math.max(conversations.length - aiConversationCount, 0);
+  const priorityConversationCount = conversations.filter((conversation) =>
+    ['quente', 'comprador', 'vendido'].includes(conversation.lead_status || ''),
+  ).length;
 
   const currentAlineData = selectedConversation
     ? alineStatusMap[selectedConversation.contact_number]
@@ -1434,104 +1441,179 @@ const Chat = () => {
         : 'Vendedor';
 
   const hasActiveFilters = filterStatus !== 'all' || filterAttendant !== 'all';
+  const selectedDisplayName = selectedConversation
+    ? customerProfiles[selectedConversation.contact_number]?.name ||
+      selectedConversation.contact_name ||
+      selectedConversation.contact_number
+    : '';
+  const selectedPlatformLabel = selectedConversation
+    ? selectedConversation.platform === 'instagram'
+      ? 'Instagram'
+      : 'WhatsApp'
+    : '';
+  const selectedLastActivity = selectedConversation
+    ? formatTime(
+        ((selectedConversation as any).last_message_at ||
+          selectedConversation.created_at) as string,
+      )
+    : '';
+  const filteredConversationCount = filteredConversations.length;
 
   return (
-    <div className="h-full min-h-0 min-w-0 flex bg-[#0d1117] overflow-hidden">
-      <div
-        className={cn(
-          'flex flex-col shrink-0 min-h-0 border-r border-white/5 bg-slate-950 overflow-x-hidden',
-          'w-full md:w-[400px] lg:w-[460px] xl:w-[500px] 2xl:w-[540px]',
-          selectedConversation ? 'hidden md:flex' : 'flex',
-        )}
-      >
-        <div className="px-4 py-3 border-b border-white/5 shrink-0">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="relative shrink-0">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center">
-                  <MessageCircle className="w-[18px] h-[18px] text-white" />
+    <div className="relative h-full min-h-0 min-w-0 overflow-hidden bg-[#071018] text-white">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute inset-y-0 left-0 w-[38%] bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.18),transparent_58%)]" />
+        <div className="absolute right-0 top-0 h-[420px] w-[420px] bg-[radial-gradient(circle_at_center,rgba(14,165,233,0.14),transparent_68%)]" />
+        <div className="absolute bottom-0 left-1/3 h-[360px] w-[360px] bg-[radial-gradient(circle_at_center,rgba(244,114,182,0.08),transparent_68%)]" />
+      </div>
+
+      <div className="relative z-10 h-full min-h-0 min-w-0 flex overflow-hidden">
+        <div
+          className={cn(
+            'flex flex-col shrink-0 min-h-0 border-r border-white/5 bg-slate-950/72 backdrop-blur-xl overflow-x-hidden',
+            'w-full md:w-[400px] lg:w-[460px] xl:w-[500px] 2xl:w-[540px]',
+            selectedConversation ? 'hidden md:flex' : 'flex',
+          )}
+        >
+        <div className="px-4 pt-4 pb-3 border-b border-white/5 shrink-0">
+          <div className="rounded-[28px] border border-white/10 bg-[linear-gradient(160deg,rgba(15,23,42,0.94),rgba(2,6,23,0.84))] p-4 shadow-[0_24px_60px_-32px_rgba(15,23,42,0.9)]">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="relative shrink-0">
+                  <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-400 via-cyan-400 to-sky-500 flex items-center justify-center shadow-[0_14px_30px_-18px_rgba(34,211,238,0.9)]">
+                    <MessageCircle className="w-5 h-5 text-white" />
+                  </div>
+
+                  {unreadTotal > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center ring-2 ring-slate-950">
+                      {unreadTotal > 99 ? '99+' : unreadTotal}
+                    </span>
+                  )}
                 </div>
 
-                {unreadTotal > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-0.5 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center">
-                    {unreadTotal > 99 ? '99+' : unreadTotal}
-                  </span>
-                )}
+                <div className="min-w-0">
+                  <p className="text-base font-semibold text-white leading-tight truncate">
+                    Central de Conversas
+                  </p>
+                  <p className="text-[11px] text-slate-400 mt-1 truncate">
+                    Visual mais rapido para triagem, follow-up e vendas
+                  </p>
+                </div>
               </div>
 
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-white leading-tight truncate">
-                  Chat CRM
-                </p>
-                <p className="text-[10px] text-slate-500 truncate">
-                  {conversations.length} conversas
-                </p>
-              </div>
-            </div>
-
-            <button
-              onClick={() => fetchConversations(true)}
-              disabled={refreshing}
-              className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition-colors shrink-0"
-            >
-              <RefreshCw className={cn('w-3.5 h-3.5', refreshing && 'animate-spin')} />
-            </button>
-          </div>
-
-          {onlineSellers.length > 0 && (
-            <div className="flex items-center gap-2 mb-3 px-2.5 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
-              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse shrink-0" />
-              <span className="text-[11px] text-emerald-400 font-medium shrink-0">
-                {onlineSellers.length} online
-              </span>
-
-              <div className="flex items-center gap-1 flex-1 overflow-x-auto scrollbar-hide">
-                {onlineSellers.map((seller) => (
-                  <button
-                    key={seller.user_id}
-                    onClick={() =>
-                      selectedConversation
-                        ? handleAssignToSeller(
-                            seller.user_id,
-                            seller.full_name || 'Vendedor',
-                          )
-                        : toast({ title: 'Selecione uma conversa primeiro' })
-                    }
-                    className="flex-none flex items-center gap-1 px-2 py-0.5 bg-slate-800/60 rounded-full border border-white/5 hover:border-emerald-500/40 transition-colors"
-                  >
-                    <div className="w-4 h-4 rounded-full bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center text-white text-[9px] font-bold">
-                      {(seller.full_name || 'V').charAt(0)}
-                    </div>
-                    <span className="text-[10px] text-slate-400 max-w-[72px] truncate">
-                      {(seller.full_name || 'Vendedor').split(' ')[0]}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-600" />
-            <Input
-              placeholder="Buscar conversa..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 h-9 bg-slate-800/60 border-white/5 text-sm text-white placeholder:text-slate-600 focus-visible:ring-emerald-500/40 rounded-lg"
-            />
-            {searchTerm && (
               <button
-                onClick={() => setSearchTerm('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-600 hover:text-white"
+                onClick={() => fetchConversations(true)}
+                disabled={refreshing}
+                className="shrink-0 inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] font-medium text-slate-300 transition-all hover:border-emerald-400/30 hover:bg-emerald-500/10 hover:text-white"
               >
-                <X className="w-3.5 h-3.5" />
+                <RefreshCw className={cn('w-3.5 h-3.5', refreshing && 'animate-spin')} />
+                Atualizar
               </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              {[
+                {
+                  label: 'Conversas',
+                  value: conversations.length,
+                  tone: 'from-slate-400/20 to-slate-500/5 text-slate-200',
+                },
+                {
+                  label: 'Nao lidas',
+                  value: unreadTotal,
+                  tone: 'from-rose-500/20 to-rose-500/5 text-rose-200',
+                },
+                {
+                  label: 'Humano',
+                  value: humanConversationCount,
+                  tone: 'from-amber-500/20 to-amber-500/5 text-amber-200',
+                },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className={cn(
+                    'rounded-2xl border border-white/8 bg-gradient-to-br px-3 py-3 shadow-inner',
+                    item.tone,
+                  )}
+                >
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
+                    {item.label}
+                  </p>
+                  <p className="mt-2 text-lg font-semibold text-white">{item.value}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex items-center justify-between gap-2 rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2 mb-4">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                  Foco agora
+                </p>
+                <p className="mt-1 text-sm font-medium text-white">
+                  {priorityConversationCount} conversas em alta prioridade
+                </p>
+              </div>
+
+              <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-[10px] font-semibold text-emerald-300">
+                {aiConversationCount} IA
+              </span>
+            </div>
+
+            {onlineSellers.length > 0 && (
+              <div className="flex items-center gap-2 mb-4 px-3 py-2.5 rounded-2xl border border-emerald-500/15 bg-emerald-500/10">
+                <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse shrink-0" />
+                <span className="text-[11px] text-emerald-300 font-medium shrink-0">
+                  {onlineSellers.length} vendedores online
+                </span>
+
+                <div className="flex items-center gap-1 flex-1 overflow-x-auto scrollbar-hide">
+                  {onlineSellers.map((seller) => (
+                    <button
+                      key={seller.user_id}
+                      onClick={() =>
+                        selectedConversation
+                          ? handleAssignToSeller(
+                              seller.user_id,
+                              seller.full_name || 'Vendedor',
+                            )
+                          : toast({ title: 'Selecione uma conversa primeiro' })
+                      }
+                      className="flex-none flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900/70 border border-white/8 hover:border-emerald-400/35 transition-colors"
+                    >
+                      <div className="w-5 h-5 rounded-full bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center text-white text-[9px] font-bold">
+                        {(seller.full_name || 'V').charAt(0)}
+                      </div>
+                      <span className="text-[10px] text-slate-300 max-w-[84px] truncate">
+                        {(seller.full_name || 'Vendedor').split(' ')[0]}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
+
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+              <Input
+                placeholder="Buscar conversa, cliente ou telefone..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 h-11 bg-slate-950/70 border-white/10 text-sm text-white placeholder:text-slate-500 focus-visible:ring-emerald-500/40 rounded-2xl"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="px-3 py-3 border-b border-white/5 shrink-0 bg-slate-950/80">
-          <div className="rounded-xl border border-white/5 bg-slate-900/45 p-3 space-y-3">
+        <div className="px-3 py-3 border-b border-white/5 shrink-0 bg-slate-950/55 backdrop-blur-md">
+          <div className="rounded-[24px] border border-white/8 bg-slate-900/50 p-3 space-y-3 shadow-[0_22px_50px_-36px_rgba(15,23,42,0.9)]">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -1539,8 +1621,10 @@ const Chat = () => {
                 </p>
                 <p className="text-[11px] text-slate-400 mt-1">
                   <span className="text-slate-300">{activeStatusLabel}</span>
-                  <span className="text-slate-600"> • </span>
+                  <span className="text-slate-600"> | </span>
                   <span className="text-slate-300">{activeAttendantLabel}</span>
+                  <span className="text-slate-600"> | </span>
+                  <span className="text-slate-300">{filteredConversationCount} resultados</span>
                 </p>
               </div>
 
@@ -1550,7 +1634,7 @@ const Chat = () => {
                     setFilterStatus('all');
                     setFilterAttendant('all');
                   }}
-                  className="shrink-0 px-2 py-1 rounded-lg border border-white/5 bg-slate-800/70 text-[10px] font-medium text-slate-400 hover:text-white hover:border-white/10 transition-colors"
+                  className="shrink-0 px-2.5 py-1 rounded-xl border border-white/10 bg-slate-800/80 text-[10px] font-medium text-slate-300 hover:text-white hover:border-white/20 transition-colors"
                 >
                   Limpar
                 </button>
@@ -1571,10 +1655,10 @@ const Chat = () => {
                       key={key}
                       onClick={() => setFilterStatus(key)}
                       className={cn(
-                        'w-full min-w-0 rounded-xl border px-3 py-2 transition-all text-left',
+                        'w-full min-w-0 rounded-2xl border px-3 py-2.5 transition-all text-left',
                         active
-                          ? 'border-emerald-500/35 bg-emerald-500/14 text-white shadow-[0_0_0_1px_rgba(16,185,129,0.08)]'
-                          : 'border-white/5 bg-slate-800/45 text-slate-400 hover:text-slate-200 hover:border-white/10',
+                          ? 'border-emerald-500/35 bg-emerald-500/14 text-white shadow-[0_10px_30px_-20px_rgba(16,185,129,0.9)]'
+                          : 'border-white/8 bg-slate-800/50 text-slate-400 hover:text-slate-200 hover:border-white/12',
                       )}
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -1651,10 +1735,10 @@ const Chat = () => {
                         setFilterAttendant((prev) => (prev === key ? 'all' : key))
                       }
                       className={cn(
-                        'w-full min-w-0 rounded-xl border px-3 py-2 transition-all text-left',
+                        'w-full min-w-0 rounded-2xl border px-3 py-2.5 transition-all text-left',
                         active
                           ? activeClass
-                          : 'border-white/5 bg-slate-800/45 text-slate-400 hover:text-slate-200 hover:border-white/10',
+                          : 'border-white/8 bg-slate-800/50 text-slate-400 hover:text-slate-200 hover:border-white/12',
                       )}
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -1684,39 +1768,46 @@ const Chat = () => {
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scrollbar-hide">
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scrollbar-hide px-2 py-3">
           {loading ? (
-            <div className="flex flex-col items-center justify-center h-32 gap-2">
-              <div className="w-6 h-6 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin" />
-              <p className="text-xs text-slate-600">Carregando...</p>
+            <div className="flex flex-col items-center justify-center h-40 gap-3 rounded-[24px] border border-white/8 bg-slate-900/45 text-slate-500">
+              <div className="w-7 h-7 border-2 border-emerald-500/30 border-t-emerald-400 rounded-full animate-spin" />
+              <p className="text-xs uppercase tracking-[0.16em]">Carregando conversas</p>
             </div>
           ) : filteredConversations.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-32 gap-2 text-slate-600">
-              <MessageSquare className="w-6 h-6 opacity-30" />
-              <p className="text-xs">
+            <div className="flex flex-col items-center justify-center h-44 gap-3 rounded-[24px] border border-dashed border-white/10 bg-slate-900/35 text-slate-500 px-6 text-center">
+              <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
+                <MessageSquare className="w-6 h-6 opacity-60" />
+              </div>
+              <p className="text-sm font-medium text-slate-300">
                 {searchTerm || hasActiveFilters
                   ? 'Nenhuma conversa encontrada'
                   : 'Nenhuma conversa'}
               </p>
+              <p className="text-xs text-slate-500 max-w-[220px]">
+                Ajuste os filtros ou aguarde novas mensagens entrarem na central.
+              </p>
             </div>
           ) : (
-            filteredConversations.map((conv) => (
-              <ConversationItem
-                key={conv.id}
-                conv={conv}
-                isSelected={selectedConversation?.id === conv.id}
-                customerProfile={customerProfiles[conv.contact_number]}
-                alineData={alineStatusMap[conv.contact_number]}
-                onClick={() => setSelectedConversation(conv)}
-              />
-            ))
+            <div className="space-y-2 pb-3">
+              {filteredConversations.map((conv) => (
+                <ConversationItem
+                  key={conv.id}
+                  conv={conv}
+                  isSelected={selectedConversation?.id === conv.id}
+                  customerProfile={customerProfiles[conv.contact_number]}
+                  alineData={alineStatusMap[conv.contact_number]}
+                  onClick={() => setSelectedConversation(conv)}
+                />
+              ))}
+            </div>
           )}
         </div>
       </div>
 
       <div
         className={cn(
-          'flex-1 min-w-0 min-h-0 flex flex-col',
+          'flex-1 min-w-0 min-h-0 flex flex-col bg-slate-950/25',
           !selectedConversation ? 'hidden md:flex' : 'flex',
         )}
       >
@@ -1724,30 +1815,31 @@ const Chat = () => {
           <>
             <div
               className={cn(
-                'px-4 border-b border-white/5 flex flex-col justify-center bg-slate-950/90 backdrop-blur-xl shrink-0 gap-0',
-                isSaleFinalized ? 'h-auto py-2' : 'h-14',
+                'px-4 pt-4 pb-3 border-b border-white/5 flex flex-col justify-center bg-slate-950/55 backdrop-blur-xl shrink-0 gap-0',
+                isSaleFinalized ? 'h-auto' : '',
               )}
             >
-              {isSaleFinalized && (
-                <div className="flex items-center gap-2 mb-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
-                  <Trophy className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span className="text-[11px] text-emerald-400 font-semibold flex-1">
-                    Venda finalizada com sucesso!
-                  </span>
-                  <button
-                    onClick={handleUndoSale}
-                    disabled={finalizingSale}
-                    className="text-[10px] text-emerald-600 hover:text-emerald-400 transition-colors"
-                  >
-                    Desfazer
-                  </button>
-                </div>
-              )}
+              <div className="rounded-[28px] border border-white/10 bg-[linear-gradient(160deg,rgba(15,23,42,0.92),rgba(2,6,23,0.82))] px-4 py-4 shadow-[0_24px_60px_-32px_rgba(15,23,42,0.9)]">
+                {isSaleFinalized && (
+                  <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl">
+                    <Trophy className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span className="text-[11px] text-emerald-400 font-semibold flex-1">
+                      Venda finalizada com sucesso!
+                    </span>
+                    <button
+                      onClick={handleUndoSale}
+                      disabled={finalizingSale}
+                      className="text-[10px] text-emerald-600 hover:text-emerald-400 transition-colors"
+                    >
+                      Desfazer
+                    </button>
+                  </div>
+                )}
 
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0 flex-1">
+                <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+                  <div className="flex items-start gap-3 min-w-0 flex-1">
                   <button
-                    className="md:hidden shrink-0 p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition-colors"
+                    className="md:hidden shrink-0 mt-1 p-2 rounded-xl text-slate-500 hover:text-white hover:bg-white/5 transition-colors"
                     onClick={() => setSelectedConversation(null)}
                   >
                     <ArrowLeft className="w-4 h-4" />
@@ -1761,12 +1853,12 @@ const Chat = () => {
                             .profile_pic_url
                         }
                         alt=""
-                        className="w-8 h-8 rounded-full object-cover"
+                        className="w-12 h-12 rounded-2xl object-cover ring-1 ring-white/10"
                       />
                     ) : (
                       <div
                         className={cn(
-                          'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white',
+                          'w-12 h-12 rounded-2xl flex items-center justify-center text-base font-bold text-white ring-1 ring-white/10',
                           selectedConversation.platform === 'instagram'
                             ? 'bg-gradient-to-br from-fuchsia-500 to-orange-400'
                             : isSaleFinalized
@@ -1787,30 +1879,28 @@ const Chat = () => {
 
                     <span
                       className={cn(
-                        'absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-slate-950',
+                        'absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-slate-950',
                         currentAgentDotClass,
                       )}
                     />
                   </div>
 
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-semibold text-white truncate">
-                        {customerProfiles[selectedConversation.contact_number]?.name ||
-                          selectedConversation.contact_name ||
-                          selectedConversation.contact_number}
+                      <p className="text-base font-semibold text-white truncate">
+                        {selectedDisplayName}
                       </p>
 
                       {isCurrentHumanTakeover && currentSellerName ? (
-                        <span className="hidden sm:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/25">
-                          <span className="w-4 h-4 rounded-full bg-amber-500 text-amber-950 text-[9px] font-bold flex items-center justify-center shrink-0">
+                        <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/25">
+                          <span className="w-5 h-5 rounded-full bg-amber-500 text-amber-950 text-[9px] font-bold flex items-center justify-center shrink-0">
                             {currentSellerInitial}
                           </span>
                           {currentSellerFirstName}
                         </span>
                       ) : (
                         <span className={cn(
-                          'hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold',
+                          'hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold',
                           currentAgentBadgeClass,
                         )}>
                           <Bot className="w-3 h-3 shrink-0" />
@@ -1819,21 +1909,36 @@ const Chat = () => {
                       )}
                     </div>
 
-                    <p className="text-[10px] text-slate-600 truncate">
+                    <p className="mt-1 text-[11px] text-slate-500 truncate">
                       {selectedConversation.contact_number}
                     </p>
+
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-medium text-slate-300">
+                        <MessageCircle className="w-3 h-3" />
+                        {selectedPlatformLabel}
+                      </span>
+                      <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-medium text-slate-300">
+                        <RefreshCw className="w-3 h-3" />
+                        Ultima atividade {selectedLastActivity}
+                      </span>
+                      <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-medium text-slate-300">
+                        <Sparkles className="w-3 h-3" />
+                        {selectedConversation.lead_status || 'novo'}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap xl:justify-end">
                   <button
                     onClick={handleFinalizeSale}
                     disabled={finalizingSale}
                     className={cn(
-                      'hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all',
+                      'hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-2xl text-[11px] font-semibold transition-all',
                       isSaleFinalized
                         ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30'
-                        : 'bg-slate-800/80 text-slate-400 border border-white/5 hover:bg-emerald-500/10 hover:text-emerald-400 hover:border-emerald-500/20',
+                        : 'bg-slate-800/80 text-slate-300 border border-white/10 hover:bg-emerald-500/10 hover:text-emerald-300 hover:border-emerald-500/20',
                       finalizingSale && 'opacity-50 cursor-not-allowed',
                     )}
                   >
@@ -1861,7 +1966,7 @@ const Chat = () => {
 
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <button className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition-colors">
+                      <button className="p-2 rounded-2xl border border-white/10 bg-white/5 text-slate-300 hover:text-white hover:bg-white/10 transition-colors">
                         <MoreVertical className="w-4 h-4" />
                       </button>
                     </DropdownMenuTrigger>
@@ -1946,32 +2051,35 @@ const Chat = () => {
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
+                  </div>
                 </div>
               </div>
             </div>
 
             <div
-              className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scrollbar-hide bg-[#0b141a]"
+              className="relative flex-1 min-h-0 overflow-y-auto overflow-x-hidden scrollbar-hide bg-[#081118]"
               onScroll={handleMessagesScroll}
-              style={{
-                backgroundImage:
-                  'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'0.015\'%3E%3Ccircle cx=\'30\' cy=\'30\' r=\'1\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")',
-              }}
             >
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.08),transparent_38%),radial-gradient(circle_at_bottom_right,rgba(14,165,233,0.08),transparent_34%)]" />
               <div
                 ref={messagesContainerRef}
-                className="w-full px-4 sm:px-6 lg:px-10 xl:px-12 py-4 max-w-5xl xl:max-w-6xl mx-auto min-h-full"
+                className="relative w-full px-4 sm:px-6 lg:px-10 xl:px-12 py-6 max-w-5xl xl:max-w-6xl mx-auto min-h-full"
               >
                 {messages.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-20 text-slate-600">
-                    <Sparkles className="w-8 h-8 mb-3 opacity-30" />
-                    <p className="text-sm">Nenhuma mensagem ainda</p>
+                  <div className="flex flex-col items-center justify-center py-24 text-slate-500 text-center">
+                    <div className="w-16 h-16 rounded-[24px] bg-white/5 border border-white/10 flex items-center justify-center mb-4">
+                      <Sparkles className="w-8 h-8 opacity-60 text-emerald-300" />
+                    </div>
+                    <p className="text-sm font-medium text-slate-200">Nenhuma mensagem ainda</p>
+                    <p className="text-xs text-slate-500 mt-2 max-w-[240px]">
+                      O historico desta conversa vai aparecer aqui assim que houver troca de mensagens.
+                    </p>
                   </div>
                 ) : (
                   Object.entries(groupedMessages).map(([date, grouped]) => (
                     <div key={date}>
                       <div className="flex justify-center my-4">
-                        <span className="px-3 py-1 rounded-full bg-slate-800/80 text-[10px] text-slate-500 font-medium">
+                        <span className="px-3.5 py-1.5 rounded-full border border-white/10 bg-slate-900/85 text-[10px] text-slate-400 font-medium shadow-sm backdrop-blur">
                           {formatDate(grouped[0].created_at || '')}
                         </span>
                       </div>
@@ -2010,10 +2118,10 @@ const Chat = () => {
               </div>
             </div>
 
-            <div className="px-4 py-3 bg-slate-950/95 border-t border-white/5 shrink-0">
+            <div className="px-4 pt-3 pb-4 bg-slate-950/70 border-t border-white/5 backdrop-blur-xl shrink-0">
               <div className="max-w-5xl xl:max-w-6xl mx-auto">
                 {isRecording && (
-                  <div className="flex items-center justify-between mb-2 px-3 py-2 bg-rose-500/10 border border-rose-500/20 rounded-lg">
+                  <div className="flex items-center justify-between mb-3 px-3 py-2.5 bg-rose-500/10 border border-rose-500/20 rounded-2xl">
                     <div className="flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
                       <span className="text-xs text-rose-400 font-medium">
@@ -2042,84 +2150,100 @@ const Chat = () => {
                   </div>
                 )}
 
-                <form onSubmit={sendMessage} className="flex items-end gap-2">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    className="hidden"
-                    onChange={handleFileUpload}
-                    accept="image/*,audio/*,video/*,.pdf,.doc,.docx"
-                    multiple
-                  />
-
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={isRecording}
-                      className="p-2 rounded-lg text-slate-600 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
-                    >
-                      <Paperclip className="w-4 h-4" />
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={captureAndSendScreenshot}
-                      disabled={isRecording}
-                      className="hidden sm:block p-2 rounded-lg text-slate-600 hover:text-cyan-400 hover:bg-cyan-500/10 transition-colors"
-                    >
-                      <Camera className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  <div className="flex-1 relative min-w-0">
-                    <Input
-                      value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
-                      placeholder="Digite uma mensagem..."
-                      disabled={isRecording}
-                      className="bg-slate-800/60 border-white/5 text-white placeholder:text-slate-600 h-10 pr-10 focus-visible:ring-emerald-500/30 rounded-xl text-sm"
+                <div className="rounded-[28px] border border-white/10 bg-slate-950/85 p-3 shadow-[0_24px_60px_-32px_rgba(15,23,42,0.9)]">
+                  <form onSubmit={sendMessage} className="flex items-end gap-3">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      className="hidden"
+                      onChange={handleFileUpload}
+                      accept="image/*,audio/*,video/*,.pdf,.doc,.docx"
+                      multiple
                     />
-                    {newMessage.trim() && (
+
+                    <div className="flex items-center gap-1 shrink-0 rounded-2xl border border-white/10 bg-slate-900/80 p-1">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isRecording}
+                        className="p-2.5 rounded-xl text-slate-500 hover:text-emerald-300 hover:bg-emerald-500/10 transition-colors"
+                      >
+                        <Paperclip className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={captureAndSendScreenshot}
+                        disabled={isRecording}
+                        className="hidden sm:block p-2.5 rounded-xl text-slate-500 hover:text-cyan-300 hover:bg-cyan-500/10 transition-colors"
+                      >
+                        <Camera className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div className="flex-1 relative min-w-0">
+                      <Input
+                        value={newMessage}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        placeholder="Digite uma mensagem..."
+                        disabled={isRecording}
+                        className="bg-slate-900/80 border-white/10 text-white placeholder:text-slate-500 h-12 pr-14 rounded-2xl text-sm focus-visible:ring-emerald-500/30"
+                      />
                       <button
                         type="submit"
-                        className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 bg-emerald-500 hover:bg-emerald-600 rounded-md flex items-center justify-center transition-colors"
+                        disabled={!newMessage.trim() || isRecording}
+                        className={cn(
+                          'absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-xl flex items-center justify-center transition-all',
+                          newMessage.trim() && !isRecording
+                            ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-[0_10px_26px_-14px_rgba(16,185,129,0.9)]'
+                            : 'bg-white/5 text-slate-600 cursor-not-allowed',
+                        )}
                       >
-                        <Send className="w-3 h-3 text-white" />
+                        <Send className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {!isRecording && (
+                      <button
+                        type="button"
+                        onClick={startRecording}
+                        className="shrink-0 p-3 rounded-2xl border border-white/10 bg-slate-900/80 text-slate-400 hover:text-emerald-300 hover:bg-emerald-500/10 hover:border-emerald-500/20 transition-colors"
+                      >
+                        <Mic className="w-4 h-4" />
                       </button>
                     )}
+                  </form>
+                  <div className="mt-2 flex items-center justify-between gap-3 px-1">
+                    <p className="text-[11px] text-slate-500">
+                      Anexe varias imagens, audio, video ou documentos sem sair da conversa.
+                    </p>
+                    <span className="hidden sm:inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.18em] text-slate-600">
+                      <Sparkles className="w-3 h-3" />
+                      Tempo real
+                    </span>
                   </div>
-
-                  {!isRecording && (
-                    <button
-                      type="button"
-                      onClick={startRecording}
-                      className="p-2 rounded-lg text-slate-600 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors shrink-0"
-                    >
-                      <Mic className="w-4 h-4" />
-                    </button>
-                  )}
-                </form>
+                </div>
               </div>
             </div>
           </>
         ) : (
           <div
-            className="flex-1 flex items-center justify-center bg-[#0b141a]"
+            className="relative flex-1 flex items-center justify-center bg-[#081118]"
             style={{
               backgroundImage:
                 'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'0.015\'%3E%3Ccircle cx=\'30\' cy=\'30\' r=\'1\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")',
             }}
           >
-            <div className="text-center px-6">
-              <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/10 flex items-center justify-center mx-auto mb-4">
-                <MessageCircle className="w-8 h-8 text-emerald-500/40" />
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.08),transparent_38%),radial-gradient(circle_at_bottom_right,rgba(14,165,233,0.08),transparent_34%)]" />
+            <div className="relative text-center px-6">
+              <div className="w-20 h-20 rounded-[28px] bg-white/5 border border-white/10 flex items-center justify-center mx-auto mb-5 shadow-[0_24px_60px_-40px_rgba(16,185,129,0.7)]">
+                <MessageCircle className="w-9 h-9 text-emerald-300/70" />
               </div>
-              <p className="text-sm font-medium text-slate-500">
+              <p className="text-base font-medium text-slate-200">
                 Selecione uma conversa
               </p>
-              <p className="text-xs text-slate-700 mt-1">
-                para começar a atender
+              <p className="text-sm text-slate-500 mt-2 max-w-[300px]">
+                para comecar a atender
               </p>
             </div>
           </div>
@@ -2169,6 +2293,7 @@ const Chat = () => {
           }}
         />
       )}
+      </div>
     </div>
   );
 };

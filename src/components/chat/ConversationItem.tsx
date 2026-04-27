@@ -127,11 +127,11 @@ const ConversationItem = memo(
       <button
         onClick={onClick}
         className={cn(
-          'w-full min-w-0 px-3 py-3 flex items-start gap-3 text-left transition-all border-b border-white/[0.04] relative group',
+          'w-full min-w-0 px-3.5 py-3.5 flex items-start gap-3 text-left transition-all relative group rounded-[22px] border shadow-[0_20px_50px_-38px_rgba(15,23,42,0.9)]',
           isSelected
-            ? 'bg-emerald-500/10 border-l-2 border-l-emerald-500'
-            : 'hover:bg-white/[0.03] border-l-2 border-l-transparent',
-          isSaleFinalized && !isSelected && 'bg-emerald-500/[0.04]',
+            ? 'border-emerald-500/35 bg-[linear-gradient(160deg,rgba(16,185,129,0.16),rgba(15,23,42,0.92))] ring-1 ring-emerald-500/20'
+            : 'border-white/[0.06] bg-slate-900/55 hover:bg-slate-900/75 hover:border-white/12',
+          isSaleFinalized && !isSelected && 'bg-emerald-500/[0.05]',
         )}
       >
         <div className="relative shrink-0 mt-0.5">
@@ -139,13 +139,13 @@ const ConversationItem = memo(
             <img
               src={customerProfile.profile_pic_url}
               alt={displayName}
-              className="w-10 h-10 rounded-full object-cover ring-1 ring-white/10"
+              className="w-11 h-11 rounded-2xl object-cover ring-1 ring-white/10"
               loading="lazy"
             />
           ) : (
             <div
               className={cn(
-                'w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white ring-1 ring-white/10',
+                'w-11 h-11 rounded-2xl flex items-center justify-center text-sm font-bold text-white ring-1 ring-white/10 shadow-[0_16px_30px_-18px_rgba(15,23,42,0.8)]',
                 isInstagram
                   ? 'bg-gradient-to-br from-fuchsia-500 to-orange-400'
                   : agentMeta.avatarClass,
@@ -157,7 +157,7 @@ const ConversationItem = memo(
 
           <span
             className={cn(
-              'absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-slate-950 flex items-center justify-center',
+              'absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-slate-950 flex items-center justify-center shadow-sm',
               agentMeta.dotClass,
             )}
           >
@@ -170,7 +170,7 @@ const ConversationItem = memo(
             <p
               title={displayName}
               className={cn(
-                'text-[13px] font-semibold leading-tight min-w-0 truncate',
+                'text-[13px] font-semibold leading-tight min-w-0 truncate tracking-[0.01em]',
                 hasUnread ? 'text-white' : 'text-slate-300',
               )}
             >
@@ -184,7 +184,7 @@ const ConversationItem = memo(
                 </span>
               )}
 
-              <span className="text-[10px] text-slate-500 leading-tight flex items-center gap-0.5">
+              <span className="text-[10px] text-slate-500 leading-tight flex items-center gap-1 rounded-full bg-white/[0.03] px-2 py-1">
                 <Clock className="w-2.5 h-2.5" />
                 {formatTime(lastMsgTime)}
               </span>
@@ -194,7 +194,7 @@ const ConversationItem = memo(
           <div className="flex items-center gap-x-1.5 gap-y-1 mb-1.5 flex-wrap">
             <span
               className={cn(
-                'inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium',
+                'inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium border border-white/8',
                 statusCfg.bg,
                 statusCfg.text,
               )}
@@ -204,7 +204,7 @@ const ConversationItem = memo(
             </span>
 
             {isHumanTakeover ? (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-amber-500/15 text-amber-300 border border-amber-500/20 max-w-full">
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium bg-amber-500/15 text-amber-300 border border-amber-500/20 max-w-full">
                 <span className="w-3.5 h-3.5 rounded-full bg-amber-500 text-amber-950 text-[8px] font-bold flex items-center justify-center shrink-0">
                   {sellerInitial}
                 </span>
@@ -214,7 +214,7 @@ const ConversationItem = memo(
               </span>
             ) : (
               <span className={cn(
-                'inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium',
+                'inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium border border-white/8',
                 agentMeta.badgeClass,
               )}>
                 <AgentIcon className="w-2.5 h-2.5 shrink-0" />
@@ -223,14 +223,14 @@ const ConversationItem = memo(
             )}
 
             {isSaleFinalized && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                 <CheckCircle2 className="w-2.5 h-2.5 shrink-0" />
                 Venda finalizada
               </span>
             )}
 
             {isInstagram && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-fuchsia-500/10 text-fuchsia-400">
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/15">
                 <Instagram className="w-2.5 h-2.5 shrink-0" />
                 IG
               </span>
@@ -241,7 +241,7 @@ const ConversationItem = memo(
             title={previewText}
             style={twoLineClamp}
             className={cn(
-              'text-[11px] leading-4 break-words min-h-[2rem] pr-1',
+              'text-[11px] leading-5 break-words min-h-[2.5rem] pr-1',
               hasUnread ? 'text-slate-300' : 'text-slate-500',
             )}
           >
