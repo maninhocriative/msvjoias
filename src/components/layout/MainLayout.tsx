@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
+import { Moon, Sun } from 'lucide-react';
+import { useTheme } from 'next-themes';
 import AppSidebar from './AppSidebar';
 
 const MainLayout = () => {
+  const { resolvedTheme, setTheme } = useTheme();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window !== 'undefined' && window.innerWidth < 1024) return true;
     const saved = localStorage.getItem('sidebar-collapsed');
@@ -69,7 +72,18 @@ const MainLayout = () => {
               <path d="M1.5 4h13M1.5 8h13M1.5 12h13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
             </svg>
           </button>
-          <span className="text-sm font-bold tracking-[0.2em] text-foreground">MSV</span>
+          <span className="text-sm font-bold tracking-[0.2em] text-foreground flex-1">MSV</span>
+          <button
+            onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            aria-label="Alternar tema"
+          >
+            {resolvedTheme === 'dark' ? (
+              <Sun className="w-4 h-4" />
+            ) : (
+              <Moon className="w-4 h-4" />
+            )}
+          </button>
         </div>
 
         <Outlet />

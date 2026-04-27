@@ -44,7 +44,7 @@ import {
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-/* ── Types ── */
+/* â”€â”€ Types â”€â”€ */
 interface ConversationRow {
   id: string;
   phone: string;
@@ -150,14 +150,16 @@ interface FollowupStateMeta {
   icon: any;
 }
 
-/* ── Constants ── */
+/* â”€â”€ Constants â”€â”€ */
 const LEGACY_INTERVALS = [
-  { minutes: 3, label: '3 min' },
-  { minutes: 10, label: '10 min' },
-  { minutes: 30, label: '30 min' },
-  { minutes: 120, label: '2 horas' },
-  { minutes: 360, label: '6 horas' },
+  { minutes: 60, label: '1 hora' },
+  { minutes: 24 * 60, label: '24 horas' },
+  { minutes: 3 * 24 * 60, label: '3 dias' },
 ];
+
+const SAFE_MAX_ATTEMPTS = 3;
+const SAFE_RUN_LIMIT = 20;
+const SAFE_WINDOW_LABEL = '9h Ã s 19h (Manaus)';
 
 const MARKETING_QUEUE_MINUTES: Record<Exclude<FollowupQueue, 'none'>, number> = {
   followup_imediato: 0,
@@ -177,7 +179,7 @@ const FOLLOWUP_QUEUE_OPTIONS: Array<{ value: FollowupQueue; label: string }> = [
   { value: 'followup_7dias', label: '7 dias' },
 ];
 
-/* ── Helpers ── */
+/* â”€â”€ Helpers â”€â”€ */
 function safeReadLocalStorage(key: string) {
   if (typeof window === 'undefined') return null;
 
@@ -224,7 +226,7 @@ function campaignShort(raw: string) {
   if (!raw) return '';
   const match = raw.match(/\[([^\]]+)\]\s*$/);
   const text = match ? match[1] : raw.replace(/^\[+|\]+$/g, '');
-  return text.length > 48 ? `${text.slice(0, 48)}…` : text;
+  return text.length > 48 ? `${text.slice(0, 48)}â€¦` : text;
 }
 
 function parseMarketingState(rawValue?: string | null): Record<string, LeadMarketingState> {
@@ -374,11 +376,11 @@ function getFollowupState(item: FollowupItem): FollowupStateMeta {
     };
   }
 
-  if (item.followup_count >= 5) {
+  if (item.followup_count >= SAFE_MAX_ATTEMPTS) {
     return {
       key: 'completed',
-      label: 'Concluído',
-      helper: 'Fluxo automático finalizado',
+      label: 'ConcluÃ­do',
+      helper: 'Fluxo automÃ¡tico finalizado',
       className: 'bg-zinc-500/15 text-zinc-300 border border-zinc-500/20',
       icon: CheckCircle2,
     };
@@ -391,7 +393,7 @@ function getFollowupState(item: FollowupItem): FollowupStateMeta {
     if (delay === 0) {
       return {
         key: 'ready',
-        label: 'Pronto para acionar',
+        label: 'Pronto na janela segura',
         helper: getFollowupQueueLabel(item.marketing_queue),
         className: 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/20',
         icon: Send,
@@ -413,7 +415,7 @@ function getFollowupState(item: FollowupItem): FollowupStateMeta {
     if (elapsed >= delay) {
       return {
         key: 'ready',
-        label: 'Pronto para acionar',
+        label: 'Pronto na janela segura',
         helper: getFollowupQueueLabel(item.marketing_queue),
         className: 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/20',
         icon: Send,
@@ -434,7 +436,7 @@ function getFollowupState(item: FollowupItem): FollowupStateMeta {
   if (!nextFollowup) {
     return {
       key: 'completed',
-      label: 'Concluído',
+      label: 'ConcluÃ­do',
       helper: 'Sem mais follow-ups',
       className: 'bg-zinc-500/15 text-zinc-300 border border-zinc-500/20',
       icon: CheckCircle2,
@@ -445,7 +447,7 @@ function getFollowupState(item: FollowupItem): FollowupStateMeta {
     return {
       key: 'waiting',
       label: `Aguardando ${nextFollowup.label}`,
-      helper: 'Fluxo automático da Aline',
+      helper: 'Fluxo protegido da Aline',
       className: 'bg-amber-500/15 text-amber-300 border border-amber-500/20',
       icon: Clock,
     };
@@ -456,8 +458,8 @@ function getFollowupState(item: FollowupItem): FollowupStateMeta {
   if (elapsed >= nextFollowup.minutes) {
     return {
       key: 'ready',
-      label: 'Pronto para enviar',
-      helper: 'Fluxo automático da Aline',
+      label: 'Pronto na janela segura',
+      helper: 'Fluxo protegido da Aline',
       className: 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/20',
       icon: Send,
     };
@@ -466,13 +468,13 @@ function getFollowupState(item: FollowupItem): FollowupStateMeta {
   return {
     key: 'waiting',
     label: `${formatRemainingMinutes(nextFollowup.minutes - elapsed)} restantes`,
-    helper: 'Fluxo automático da Aline',
+    helper: 'Fluxo protegido da Aline',
     className: 'bg-blue-500/15 text-blue-300 border border-blue-500/20',
     icon: Timer,
   };
 }
 
-/* ── Page ── */
+/* â”€â”€ Page â”€â”€ */
 export default function FollowupMonitor() {
   const [conversations, setConversations] = useState<ConversationRow[]>([]);
   const [marketingStateMap, setMarketingStateMap] = useState<
@@ -538,7 +540,7 @@ export default function FollowupMonitor() {
       await saveStoreSetting(
         MARKETING_SETTING_KEY,
         JSON.stringify(nextState),
-        'Ações de marketing dos leads importados',
+        'AÃ§Ãµes de marketing dos leads importados',
       );
 
       if (successMessage) {
@@ -550,7 +552,7 @@ export default function FollowupMonitor() {
     } catch (error: any) {
       toast({
         title: 'Aviso',
-        description: `Ação salva localmente, mas não foi possível persistir no banco: ${error.message}`,
+        description: `AÃ§Ã£o salva localmente, mas nÃ£o foi possÃ­vel persistir no banco: ${error.message}`,
         variant: 'destructive',
       });
     } finally {
@@ -615,7 +617,7 @@ export default function FollowupMonitor() {
       console.error('Erro ao buscar dados de follow-up:', error);
       toast({
         title: 'Erro',
-        description: 'Não foi possível carregar os dados de follow-up',
+        description: 'NÃ£o foi possÃ­vel carregar os dados de follow-up',
         variant: 'destructive',
       });
     } finally {
@@ -639,7 +641,7 @@ export default function FollowupMonitor() {
       console.error('Erro ao buscar mensagens:', error);
       toast({
         title: 'Erro',
-        description: 'Não foi possível carregar as mensagens',
+        description: 'NÃ£o foi possÃ­vel carregar as mensagens',
         variant: 'destructive',
       });
     } finally {
@@ -829,12 +831,12 @@ export default function FollowupMonitor() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4 sm:p-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Monitor de Follow-ups</h1>
           <p className="text-muted-foreground mt-1">
-            Acompanhe a fila de follow-ups da Aline e os leads enviados pela importação.
+            Acompanhe a fila de follow-ups da Aline e os leads enviados pela importaÃ§Ã£o.
           </p>
         </div>
 
@@ -853,9 +855,9 @@ export default function FollowupMonitor() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <Card className="border-white/10 bg-card/70">
+        <Card className="border-border/60 bg-card shadow-sm">
           <CardContent className="p-5 flex items-center gap-4">
-            <div className="w-11 h-11 rounded-2xl bg-white/5 flex items-center justify-center">
+            <div className="w-11 h-11 rounded-2xl bg-muted/40 flex items-center justify-center">
               <Users className="h-5 w-5 text-foreground" />
             </div>
             <div>
@@ -867,21 +869,21 @@ export default function FollowupMonitor() {
           </CardContent>
         </Card>
 
-        <Card className="border-white/10 bg-card/70">
+        <Card className="border-border/60 bg-card shadow-sm">
           <CardContent className="p-5 flex items-center gap-4">
             <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 flex items-center justify-center">
               <Send className="h-5 w-5 text-emerald-400" />
             </div>
             <div>
               <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                Prontos
+                ElegÃ­veis
               </p>
               <p className="text-2xl font-bold text-emerald-500">{stats.ready}</p>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-white/10 bg-card/70">
+        <Card className="border-border/60 bg-card shadow-sm">
           <CardContent className="p-5 flex items-center gap-4">
             <div className="w-11 h-11 rounded-2xl bg-amber-500/10 flex items-center justify-center">
               <Timer className="h-5 w-5 text-amber-400" />
@@ -895,7 +897,7 @@ export default function FollowupMonitor() {
           </CardContent>
         </Card>
 
-        <Card className="border-white/10 bg-card/70">
+        <Card className="border-border/60 bg-card shadow-sm">
           <CardContent className="p-5 flex items-center gap-4">
             <div className="w-11 h-11 rounded-2xl bg-fuchsia-500/10 flex items-center justify-center">
               <Megaphone className="h-5 w-5 text-fuchsia-400" />
@@ -909,14 +911,14 @@ export default function FollowupMonitor() {
           </CardContent>
         </Card>
 
-        <Card className="border-white/10 bg-card/70">
+        <Card className="border-border/60 bg-card shadow-sm">
           <CardContent className="p-5 flex items-center gap-4">
             <div className="w-11 h-11 rounded-2xl bg-zinc-500/10 flex items-center justify-center">
               <CheckCircle2 className="h-5 w-5 text-zinc-400" />
             </div>
             <div>
               <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                Concluídos
+                ConcluÃ­dos
               </p>
               <p className="text-2xl font-bold text-zinc-400">{stats.completed}</p>
             </div>
@@ -924,16 +926,75 @@ export default function FollowupMonitor() {
         </Card>
       </div>
 
-      <Card className="border-white/10 bg-card/70">
+      <Card className="border-border/60 bg-card shadow-sm">
+        <CardContent className="p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                Protecao anti-bloqueio
+              </p>
+              <h2 className="text-lg font-semibold mt-2">
+                O follow-up automatico agora segue uma regua mais segura
+              </h2>
+              <p className="text-sm text-muted-foreground mt-2 max-w-3xl">
+                A automacao envia apenas textos curtos, respeita janela comercial, limita
+                a quantidade por rodada e encerra o fluxo depois de poucas tentativas.
+              </p>
+            </div>
+
+            <Badge variant="outline" className="self-start text-[11px]">
+              Max. {SAFE_RUN_LIMIT} envios por rodada
+            </Badge>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 mt-5">
+            <div className="rounded-xl border border-border/60 bg-muted/30 p-4">
+              <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                Janela segura
+              </p>
+              <p className="text-sm font-semibold mt-2">{SAFE_WINDOW_LABEL}</p>
+            </div>
+
+            <div className="rounded-xl border border-border/60 bg-muted/30 p-4">
+              <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                Tentativas
+              </p>
+              <p className="text-sm font-semibold mt-2">
+                Ate {SAFE_MAX_ATTEMPTS} follow-ups por lead
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-border/60 bg-muted/30 p-4">
+              <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                Conteudo
+              </p>
+              <p className="text-sm font-semibold mt-2">
+                Texto curto, sem midia promocional automatica
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-border/60 bg-muted/30 p-4">
+              <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                Leitura da fila
+              </p>
+              <p className="text-sm font-semibold mt-2">
+                Filas importadas sao organizacionais; o fluxo da Aline e o unico automatico
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/60 bg-card shadow-sm">
         <CardHeader className="space-y-4">
           <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-3">
             <CardTitle className="flex items-center gap-2">
               <History className="h-5 w-5" />
-              Leads com Follow-up
+              Leads em acompanhamento
             </CardTitle>
 
             <Badge variant="secondary" className="text-[11px]">
-              {filteredItems.length} visíveis
+              {filteredItems.length} visiveis
             </Badge>
           </div>
 
@@ -941,7 +1002,7 @@ export default function FollowupMonitor() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar por nome, telefone, campanha ou anúncio..."
+                placeholder="Buscar por nome, telefone, campanha ou anÃºncio..."
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 className="pl-9"
@@ -972,13 +1033,13 @@ export default function FollowupMonitor() {
             >
               <SelectTrigger>
                 <Filter className="w-4 h-4 mr-2" />
-                <SelectValue placeholder="Situação" />
+                <SelectValue placeholder="SituaÃ§Ã£o" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todas as situações</SelectItem>
-                <SelectItem value="ready">Prontos</SelectItem>
+                <SelectItem value="all">Todas as situaÃ§Ãµes</SelectItem>
+                <SelectItem value="ready">Elegiveis agora</SelectItem>
                 <SelectItem value="waiting">Aguardando</SelectItem>
-                <SelectItem value="completed">Concluídos</SelectItem>
+                <SelectItem value="completed">ConcluÃ­dos</SelectItem>
               </SelectContent>
             </Select>
 
@@ -1014,7 +1075,7 @@ export default function FollowupMonitor() {
                 Nenhum lead encontrado
               </p>
               <p className="text-xs text-muted-foreground/70 mt-1">
-                Ajuste os filtros ou envie leads para follow-up na página de importação.
+                Ajuste os filtros ou envie leads para follow-up na pÃ¡gina de importaÃ§Ã£o.
               </p>
             </div>
           ) : (
@@ -1030,7 +1091,7 @@ export default function FollowupMonitor() {
                   return (
                     <div
                       key={item.id}
-                      className="rounded-2xl border border-white/10 bg-white/[0.02] p-4"
+                      className="rounded-2xl border border-border/60 bg-card/80 p-4 shadow-sm"
                     >
                       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                         <div className="flex-1 min-w-0 space-y-3">
@@ -1063,7 +1124,7 @@ export default function FollowupMonitor() {
 
                                 <span className="inline-flex items-center gap-1">
                                   <Clock3 className="w-3.5 h-3.5" />
-                                  Última atividade{' '}
+                                  Ãšltima atividade{' '}
                                   {getRelativeDate(item.last_message_at || item.imported_at || item.created_at)}
                                 </span>
                               </div>
@@ -1080,7 +1141,7 @@ export default function FollowupMonitor() {
                           </div>
 
                           <div className="grid gap-3 lg:grid-cols-[1.1fr_0.7fr_0.7fr]">
-                            <div className="rounded-xl border border-white/8 bg-muted/15 p-3">
+                            <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
                               <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                                 Origem
                               </p>
@@ -1109,7 +1170,7 @@ export default function FollowupMonitor() {
                               </div>
                             </div>
 
-                            <div className="rounded-xl border border-white/8 bg-muted/15 p-3">
+                            <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
                               <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                                 Fluxo
                               </p>
@@ -1117,7 +1178,7 @@ export default function FollowupMonitor() {
                               <p className="text-sm font-medium mt-2">
                                 {item.marketing_queue !== 'none'
                                   ? getFollowupQueueLabel(item.marketing_queue)
-                                  : 'Fluxo automático da Aline'}
+                                  : 'Fluxo protegido da Aline'}
                               </p>
 
                               <p className="text-xs text-muted-foreground mt-1">
@@ -1129,12 +1190,12 @@ export default function FollowupMonitor() {
                                   {item.followup_count}
                                 </span>
                                 <span className="text-xs text-muted-foreground">
-                                  / 5 enviados
+                                  / {SAFE_MAX_ATTEMPTS} enviados
                                 </span>
                               </div>
                             </div>
 
-                            <div className="rounded-xl border border-white/8 bg-muted/15 p-3">
+                            <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
                               <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                                 Disparos
                               </p>
@@ -1146,7 +1207,7 @@ export default function FollowupMonitor() {
                               <p className="text-xs text-muted-foreground mt-1">
                                 {item.in_broadcasts
                                   ? item.broadcast_campaign === 'none'
-                                    ? 'Campanha ainda não definida'
+                                    ? 'Campanha ainda nÃ£o definida'
                                     : item.broadcast_campaign
                                   : 'Nenhuma campanha associada'}
                               </p>
@@ -1155,7 +1216,7 @@ export default function FollowupMonitor() {
                         </div>
 
                         <div className="xl:w-[320px] shrink-0 space-y-3">
-                          <div className="rounded-xl border border-white/8 bg-muted/15 p-3">
+                          <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
                             <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                               Fila de follow-up
                             </p>
@@ -1185,7 +1246,7 @@ export default function FollowupMonitor() {
                             </Select>
 
                             <p className="text-[11px] text-muted-foreground mt-2">
-                              A alteração salva automaticamente.
+                              A alteraÃ§Ã£o salva automaticamente.
                             </p>
                           </div>
 
@@ -1247,10 +1308,10 @@ export default function FollowupMonitor() {
               {!selectedItem.conversation_id && (
                 <div className="rounded-xl border border-amber-500/15 bg-amber-500/5 p-4">
                   <p className="text-sm font-medium text-foreground">
-                    Este lead ainda não possui conversa na tabela da Aline
+                    Este lead ainda nÃ£o possui conversa na tabela da Aline
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Ele foi enviado para follow-up pela página de importação e pode ser
+                    Ele foi enviado para follow-up pela pÃ¡gina de importaÃ§Ã£o e pode ser
                     acionado via chat interno.
                   </p>
 
@@ -1264,7 +1325,7 @@ export default function FollowupMonitor() {
                       )}
                       {selectedItem.ad_name && (
                         <p>
-                          <span className="text-muted-foreground">Anúncio:</span>{' '}
+                          <span className="text-muted-foreground">AnÃºncio:</span>{' '}
                           {selectedItem.ad_name}
                         </p>
                       )}
@@ -1317,7 +1378,7 @@ export default function FollowupMonitor() {
                   )
                 ) : (
                   <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
-                    Ainda não existe histórico de mensagens para este lead.
+                    Ainda nÃ£o existe histÃ³rico de mensagens para este lead.
                   </div>
                 )}
               </ScrollArea>

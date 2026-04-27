@@ -74,13 +74,13 @@ interface PlaygroundInfo {
 
 const ALINE_DEFAULT_PROMPT = `# Aline | ACIUM Manaus
 
-Você é Aline, consultora virtual da ACIUM Manaus.
+VocÃª Ã© Aline, consultora virtual da ACIUM Manaus.
 
-Função:
+FunÃ§Ã£o:
 - fazer a triagem inicial do cliente
 - identificar rapidamente se ele quer:
-  - alianças de namoro
-  - alianças de casamento
+  - alianÃ§as de namoro
+  - alianÃ§as de casamento
   - pingentes dourados
   - pingentes prata
 
@@ -88,42 +88,42 @@ Regras:
 - respostas curtas e elegantes
 - nunca listar produtos manualmente
 - quando for casamento, dizer que vai transferir para a Keila
-- depois da transferência, não continuar conduzindo o fluxo de casamento
-- nunca inventar preço, estoque ou prazo
-- se houver catálogo, escrever só uma frase curta de introdução
+- depois da transferÃªncia, nÃ£o continuar conduzindo o fluxo de casamento
+- nunca inventar preÃ§o, estoque ou prazo
+- se houver catÃ¡logo, escrever sÃ³ uma frase curta de introduÃ§Ã£o
 
 Fluxo:
-- alianças de namoro: confirmar finalidade, perguntar cor e depois mostrar opções
-- pingentes: perguntar cor e depois mostrar opções
-- alianças de casamento: transferir para a Keila
+- alianÃ§as de namoro: confirmar finalidade, perguntar cor e depois mostrar opÃ§Ãµes
+- pingentes: perguntar cor e depois mostrar opÃ§Ãµes
+- alianÃ§as de casamento: transferir para a Keila
 
-Endereço da loja:
-Shopping Sumaúma, Av. Noel Nutels, 1762 - Cidade Nova, Manaus - AM.`;
+EndereÃ§o da loja:
+Shopping SumaÃºma, Av. Noel Nutels, 1762 - Cidade Nova, Manaus - AM.`;
 
 const KEILA_DEFAULT_PROMPT = `# Keila | ACIUM Manaus
 
-Você é Keila, especialista em alianças de casamento da ACIUM Manaus.
+VocÃª Ã© Keila, especialista em alianÃ§as de casamento da ACIUM Manaus.
 
-Função:
-- atender clientes que buscam alianças de casamento
-- usar memória do cliente para lembrar preferências e contexto
-- conduzir o atendimento com objetividade, elegância e segurança
+FunÃ§Ã£o:
+- atender clientes que buscam alianÃ§as de casamento
+- usar memÃ³ria do cliente para lembrar preferÃªncias e contexto
+- conduzir o atendimento com objetividade, elegÃ¢ncia e seguranÃ§a
 
-Fluxo obrigatório:
+Fluxo obrigatÃ³rio:
 1. perguntar para quando o cliente deseja fechar
 2. perguntar quanto quer investir
 3. perguntar se deseja o par ou a unidade
-4. perguntar a numeração
-5. se o cliente não souber a numeração, tranquilizar:
-   "Tudo bem, se você ainda não souber a numeração agora, eu sigo com você mesmo assim 😊"
+4. perguntar a numeraÃ§Ã£o
+5. se o cliente nÃ£o souber a numeraÃ§Ã£o, tranquilizar:
+   "Tudo bem, se vocÃª ainda nÃ£o souber a numeraÃ§Ã£o agora, eu sigo com vocÃª mesmo assim ðŸ˜Š"
 
 Depois:
-- buscar opções no catálogo da cor escolhida
-- os cards serão enviados pelo sistema
+- buscar opÃ§Ãµes no catÃ¡logo da cor escolhida
+- os cards serÃ£o enviados pelo sistema
 - sempre lembrar:
-  "O valor do card é da unidade. O par sai pelo dobro. 💍"
+  "O valor do card Ã© da unidade. O par sai pelo dobro. ðŸ’"
 - depois dos cards, perguntar:
-  "Gostou de algum modelo? 😊"
+  "Gostou de algum modelo? ðŸ˜Š"
 
 Cores de casamento:
 - dourada
@@ -134,8 +134,8 @@ Cores de casamento:
 Regras:
 - respostas curtas
 - nunca listar produtos manualmente
-- nunca inventar preço, estoque ou prazo
-- focar só em alianças de casamento`;
+- nunca inventar preÃ§o, estoque ou prazo
+- focar sÃ³ em alianÃ§as de casamento`;
 
 const AIConfig = () => {
   const [configs, setConfigs] = useState<AIAgentConfig[]>([]);
@@ -229,7 +229,7 @@ const AIConfig = () => {
       console.error('Error fetching configs:', error);
       toast({
         title: 'Erro',
-        description: 'Não foi possível carregar os agentes.',
+        description: 'NÃ£o foi possÃ­vel carregar os agentes.',
         variant: 'destructive',
       });
     } finally {
@@ -276,13 +276,13 @@ const AIConfig = () => {
 
       toast({
         title: 'Salvo!',
-        description: `Configurações da ${selectedConfig.name} atualizadas com sucesso.`,
+        description: `ConfiguraÃ§Ãµes da ${selectedConfig.name} atualizadas com sucesso.`,
       });
     } catch (error) {
       console.error('Error saving config:', error);
       toast({
         title: 'Erro',
-        description: 'Não foi possível salvar as configurações.',
+        description: 'NÃ£o foi possÃ­vel salvar as configuraÃ§Ãµes.',
         variant: 'destructive',
       });
     } finally {
@@ -343,7 +343,7 @@ const AIConfig = () => {
   const syncWithPlayground = async (action: 'push' | 'pull' | 'get') => {
     if (!selectedConfig?.assistant_id) {
       toast({
-        title: 'Assistant ID necessário',
+        title: 'Assistant ID necessÃ¡rio',
         description: `Configure o Assistant ID da ${selectedConfig?.name || 'agente'} primeiro.`,
         variant: 'destructive',
       });
@@ -390,7 +390,7 @@ const AIConfig = () => {
             ? 'Sincronizado!'
             : action === 'pull'
               ? 'Importado!'
-              : 'Informações carregadas',
+              : 'InformaÃ§Ãµes carregadas',
         description:
           action === 'push'
             ? `Prompt da ${selectedConfig.name} enviado para o Playground.`
@@ -401,7 +401,7 @@ const AIConfig = () => {
     } catch (error) {
       console.error('Sync error:', error);
       toast({
-        title: 'Erro na sincronização',
+        title: 'Erro na sincronizaÃ§Ã£o',
         description: error instanceof Error ? error.message : 'Erro desconhecido',
         variant: 'destructive',
       });
@@ -461,7 +461,7 @@ const AIConfig = () => {
 
     toast({
       title: 'Prompt carregado!',
-      description: `Prompt padrão da ${selectedConfig.name} aplicado. Salve para confirmar.`,
+      description: `Prompt padrÃ£o da ${selectedConfig.name} aplicado. Salve para confirmar.`,
     });
   };
 
@@ -477,7 +477,7 @@ const AIConfig = () => {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen gap-4">
         <Bot className="w-16 h-16 text-muted-foreground" />
-        <p className="text-muted-foreground">Nenhuma configuração de agente encontrada.</p>
+        <p className="text-muted-foreground">Nenhuma configuraÃ§Ã£o de agente encontrada.</p>
         <p className="text-sm text-muted-foreground text-center max-w-md">
           Aplique a migration da Keila e confirme se existem registros em <code>ai_agent_config</code>.
         </p>
@@ -494,9 +494,9 @@ const AIConfig = () => {
               <Sparkles className="w-6 h-6 text-background" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-foreground">Configuração dos Agentes</h1>
+              <h1 className="text-2xl font-bold text-foreground">ConfiguraÃ§Ã£o dos Agentes</h1>
               <p className="text-sm text-muted-foreground">
-                Edite Aline e Keila separadamente e sincronize cada uma com seu próprio Playground.
+                Edite Aline e Keila separadamente e sincronize cada uma com seu prÃ³prio Playground.
               </p>
             </div>
           </div>
@@ -520,7 +520,7 @@ const AIConfig = () => {
                 Agentes
               </CardTitle>
               <CardDescription>
-                Cada agente tem prompt, assistant e sincronização próprios.
+                Cada agente tem prompt, assistant e sincronizaÃ§Ã£o prÃ³prios.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -581,7 +581,7 @@ const AIConfig = () => {
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="grid w-full max-w-3xl grid-cols-5">
                 <TabsTrigger value="prompt">Prompt</TabsTrigger>
-                <TabsTrigger value="sections">Seções</TabsTrigger>
+                <TabsTrigger value="sections">SeÃ§Ãµes</TabsTrigger>
                 <TabsTrigger value="followup">Follow-up</TabsTrigger>
                 <TabsTrigger value="templates">Templates</TabsTrigger>
                 <TabsTrigger value="playground">Playground</TabsTrigger>
@@ -613,7 +613,7 @@ const AIConfig = () => {
                         ) : (
                           <Wand2 className="w-4 h-4" />
                         )}
-                        Carregar Prompt Padrão
+                        Carregar Prompt PadrÃ£o
                       </Button>
                     </div>
                   </CardHeader>
@@ -669,7 +669,7 @@ const AIConfig = () => {
                         <Textarea
                           value={selectedConfig.greeting || ''}
                           onChange={(e) => updateSelectedConfig({ greeting: e.target.value })}
-                          placeholder={`Olá! Sou a ${selectedConfig.name}...`}
+                          placeholder={`OlÃ¡! Sou a ${selectedConfig.name}...`}
                         />
                       </div>
                     </CardContent>
@@ -677,7 +677,7 @@ const AIConfig = () => {
 
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-lg">Regras e Restrições</CardTitle>
+                      <CardTitle className="text-lg">Regras e RestriÃ§Ãµes</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="space-y-2">
@@ -714,7 +714,7 @@ const AIConfig = () => {
                     <CardHeader>
                       <CardTitle className="text-lg">Template de Produto</CardTitle>
                       <CardDescription>
-                        Use variáveis: {'{{nome}}, {{preco}}, {{descricao}}, {{tamanhos}}, {{cor}}'}
+                        Use variÃ¡veis: {'{{nome}}, {{preco}}, {{descricao}}, {{tamanhos}}, {{cor}}'}
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -766,12 +766,12 @@ const AIConfig = () => {
 
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-lg">Configurações de Produtos</CardTitle>
+                    <CardTitle className="text-lg">ConfiguraÃ§Ãµes de Produtos</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
                       <div className="space-y-2">
-                        <Label>Máximo de Produtos por Mensagem</Label>
+                        <Label>MÃ¡ximo de Produtos por Mensagem</Label>
                         <Input
                           type="number"
                           value={selectedConfig.max_products_per_message}
@@ -787,8 +787,8 @@ const AIConfig = () => {
 
                       <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
                         <div>
-                          <Label>Priorizar Vídeo</Label>
-                          <p className="text-xs text-muted-foreground">Enviar vídeo quando disponível</p>
+                          <Label>Priorizar VÃ­deo</Label>
+                          <p className="text-xs text-muted-foreground">Enviar vÃ­deo quando disponÃ­vel</p>
                         </div>
                         <Switch
                           checked={selectedConfig.send_video_priority}
@@ -801,7 +801,7 @@ const AIConfig = () => {
                       <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
                         <div>
                           <Label>Incluir Tamanhos</Label>
-                          <p className="text-xs text-muted-foreground">Mostrar tamanhos disponíveis</p>
+                          <p className="text-xs text-muted-foreground">Mostrar tamanhos disponÃ­veis</p>
                         </div>
                         <Switch
                           checked={selectedConfig.include_sizes}
@@ -826,7 +826,7 @@ const AIConfig = () => {
 
                       <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
                         <div>
-                          <Label>Incluir Preço</Label>
+                          <Label>Incluir PreÃ§o</Label>
                           <p className="text-xs text-muted-foreground">Mostrar valores</p>
                         </div>
                         <Switch
@@ -859,18 +859,18 @@ const AIConfig = () => {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <MessageCircle className="w-5 h-5" />
-                      Recuperação de Conversas da {selectedConfig.name}
+                      RecuperaÃ§Ã£o de Conversas da {selectedConfig.name}
                     </CardTitle>
                     <CardDescription>
-                      Configure mensagens automáticas específicas para a agente selecionada.
+                      Configure mensagens automÃ¡ticas especÃ­ficas para a agente selecionada.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-6">
                     <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
                       <div>
-                        <Label className="text-base">Ativar Follow-up Automático</Label>
+                        <Label className="text-base">Ativar Follow-up AutomÃ¡tico</Label>
                         <p className="text-sm text-muted-foreground">
-                          A {selectedConfig.name} enviará mensagens para recuperar conversas inativas.
+                          A {selectedConfig.name} enviarÃ¡ mensagens para recuperar conversas inativas.
                         </p>
                       </div>
                       <Switch
@@ -893,13 +893,13 @@ const AIConfig = () => {
                           <div className="flex items-center gap-2">
                             <Input
                               type="number"
-                              value={Math.floor((selectedConfig.followup_interval_minutes ?? 10) / 1440)}
+                              value={Math.floor((selectedConfig.followup_interval_minutes ?? 60) / 1440)}
                               onChange={(e) => {
                                 const days = parseInt(e.target.value) || 0;
-                                const currentTotal = selectedConfig.followup_interval_minutes ?? 10;
+                                const currentTotal = selectedConfig.followup_interval_minutes ?? 60;
                                 const hours = Math.floor((currentTotal % 1440) / 60);
                                 const minutes = currentTotal % 60;
-                                const newTotal = Math.max(5, days * 1440 + hours * 60 + minutes);
+                                const newTotal = Math.max(60, days * 1440 + hours * 60 + minutes);
                                 updateSelectedConfig({ followup_interval_minutes: newTotal });
                               }}
                               min={0}
@@ -913,13 +913,13 @@ const AIConfig = () => {
                           <div className="flex items-center gap-2">
                             <Input
                               type="number"
-                              value={Math.floor(((selectedConfig.followup_interval_minutes ?? 10) % 1440) / 60)}
+                              value={Math.floor(((selectedConfig.followup_interval_minutes ?? 60) % 1440) / 60)}
                               onChange={(e) => {
                                 const hours = parseInt(e.target.value) || 0;
-                                const currentTotal = selectedConfig.followup_interval_minutes ?? 10;
+                                const currentTotal = selectedConfig.followup_interval_minutes ?? 60;
                                 const days = Math.floor(currentTotal / 1440);
                                 const minutes = currentTotal % 60;
-                                const newTotal = Math.max(5, days * 1440 + hours * 60 + minutes);
+                                const newTotal = Math.max(60, days * 1440 + hours * 60 + minutes);
                                 updateSelectedConfig({ followup_interval_minutes: newTotal });
                               }}
                               min={0}
@@ -933,13 +933,13 @@ const AIConfig = () => {
                           <div className="flex items-center gap-2">
                             <Input
                               type="number"
-                              value={(selectedConfig.followup_interval_minutes ?? 10) % 60}
+                              value={(selectedConfig.followup_interval_minutes ?? 60) % 60}
                               onChange={(e) => {
                                 const minutes = parseInt(e.target.value) || 0;
-                                const currentTotal = selectedConfig.followup_interval_minutes ?? 10;
+                                const currentTotal = selectedConfig.followup_interval_minutes ?? 60;
                                 const days = Math.floor(currentTotal / 1440);
                                 const hours = Math.floor((currentTotal % 1440) / 60);
-                                const newTotal = Math.max(5, days * 1440 + hours * 60 + minutes);
+                                const newTotal = Math.max(60, days * 1440 + hours * 60 + minutes);
                                 updateSelectedConfig({ followup_interval_minutes: newTotal });
                               }}
                               min={0}
@@ -955,7 +955,7 @@ const AIConfig = () => {
                       <div className="space-y-2">
                         <Label className="flex items-center gap-2">
                           <Timer className="w-4 h-4" />
-                          Máximo de Tentativas
+                          MÃ¡ximo de Tentativas
                         </Label>
                         <div className="flex items-center gap-2">
                           <Input
@@ -967,7 +967,7 @@ const AIConfig = () => {
                               })
                             }
                             min={1}
-                            max={5}
+                            max={3}
                             disabled={!selectedConfig.followup_enabled}
                             className="w-24"
                           />
@@ -1061,7 +1061,7 @@ const AIConfig = () => {
                       <CardHeader className="pb-2">
                         <div className="flex items-center justify-between">
                           <CardTitle className="text-base">{template.name}</CardTitle>
-                          {template.is_default && <Badge variant="secondary">Padrão</Badge>}
+                          {template.is_default && <Badge variant="secondary">PadrÃ£o</Badge>}
                         </div>
                         <CardDescription className="text-xs">{template.description}</CardDescription>
                       </CardHeader>
@@ -1098,7 +1098,7 @@ const AIConfig = () => {
                       Playground da {selectedConfig.name}
                     </CardTitle>
                     <CardDescription>
-                      Cada agente pode ter seu próprio Assistant ID e sua própria sincronização.
+                      Cada agente pode ter seu prÃ³prio Assistant ID e sua prÃ³pria sincronizaÃ§Ã£o.
                     </CardDescription>
                   </CardHeader>
 
@@ -1119,7 +1119,7 @@ const AIConfig = () => {
                         </Button>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Esse Assistant ID pertence apenas à {selectedConfig.name}.
+                        Esse Assistant ID pertence apenas Ã  {selectedConfig.name}.
                       </p>
                     </div>
 
@@ -1180,7 +1180,7 @@ const AIConfig = () => {
                     {selectedPlaygroundInfo && (
                       <div className="p-4 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg">
                         <h4 className="font-medium text-green-800 dark:text-green-200 mb-2">
-                          Informações do Playground
+                          InformaÃ§Ãµes do Playground
                         </h4>
                         <div className="text-sm text-green-700 dark:text-green-300 space-y-1">
                           <p><strong>Nome:</strong> {selectedPlaygroundInfo.name}</p>
@@ -1195,7 +1195,7 @@ const AIConfig = () => {
                       <div className="text-sm text-muted-foreground space-y-1">
                         <p>1. Selecione a agente na coluna da esquerda.</p>
                         <p>2. Edite o prompt, assistant ID e modelo dessa agente.</p>
-                        <p>3. Salve a configuração.</p>
+                        <p>3. Salve a configuraÃ§Ã£o.</p>
                         <p>4. Envie ou importe essa agente separadamente do Playground.</p>
                       </div>
                     </div>

@@ -18,7 +18,7 @@ import {
   AreaChart, Area, CartesianGrid
 } from 'recharts';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface DashboardStats {
   totalProducts: number; activeConversations: number; totalStock: number;
   totalCustomers: number; alineOrders: number; activeFollowups: number;
@@ -45,15 +45,15 @@ interface DailyOrderData {
   date: string; dateLabel: string; total: number; aline: number; forwarded: number;
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const FOLLOWUP_INTERVALS = [
-  { minutes: 3 }, { minutes: 10 }, { minutes: 30 }, { minutes: 120 }, { minutes: 360 },
+  { minutes: 60 }, { minutes: 1440 }, { minutes: 4320 },
 ];
 const PERIOD_OPTIONS = [
   { value: 7, label: '7d' }, { value: 15, label: '15d' }, { value: 30, label: '30d' },
 ];
 
-// ─── Chart Tooltip ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Chart Tooltip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const ChartTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
   return (
@@ -70,7 +70,7 @@ const ChartTooltip = ({ active, payload, label }: any) => {
   );
 };
 
-// ─── Stat Card — sem caixinha, ícone pequeno inline com label ─────────────────
+// â”€â”€â”€ Stat Card â€” sem caixinha, Ã­cone pequeno inline com label â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const StatCard = ({
   label, value, icon: Icon, accent, onClick,
 }: {
@@ -91,7 +91,7 @@ const StatCard = ({
   </div>
 );
 
-// ─── Period Selector ──────────────────────────────────────────────────────────
+// â”€â”€â”€ Period Selector â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const PeriodSelector = ({ value, onChange }: { value: number; onChange: (v: number) => void }) => (
   <div className="flex rounded-lg border border-border overflow-hidden shrink-0">
     {PERIOD_OPTIONS.map((o) => (
@@ -110,7 +110,7 @@ const PeriodSelector = ({ value, onChange }: { value: number; onChange: (v: numb
   </div>
 );
 
-// ─── Main Dashboard ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Main Dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const Dashboard = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState<DashboardStats>({
@@ -129,7 +129,7 @@ const Dashboard = () => {
   const [conversionPeriod, setConversionPeriod] = useState(7);
   const realtimeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Tick a cada 1s só para os contadores de espera
+  // Tick a cada 1s sÃ³ para os contadores de espera
   useEffect(() => {
     const t = setInterval(() => setCurrentTime(Date.now()), 1000);
     return () => clearInterval(t);
@@ -166,7 +166,7 @@ const Dashboard = () => {
 
       const totalStock = stockResult.data?.reduce((acc, v) => acc + (v.stock || 0), 0) || 0;
       const uniqueCustomers = new Set(customersResult.data?.map(c => c.contact_number)).size;
-      const activeFollowups = followupsResult.data?.filter(f => f.followup_count < 5).length || 0;
+      const activeFollowups = followupsResult.data?.filter(f => f.followup_count < 3).length || 0;
 
       setStats({
         totalProducts: productsResult.count || 0,
@@ -263,7 +263,7 @@ const Dashboard = () => {
     }
   }, [chartPeriod, conversionPeriod]);
 
-  // Debounce realtime — 1.5s de espera antes de re-fetch
+  // Debounce realtime â€” 1.5s de espera antes de re-fetch
   const debouncedFetch = useCallback(() => {
     if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
     realtimeDebounceRef.current = setTimeout(() => fetchDashboardData(), 1500);
@@ -283,7 +283,7 @@ const Dashboard = () => {
     };
   }, [fetchDashboardData, debouncedFetch]);
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
+  // â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const formatPhone = (phone: string) => {
     if (!phone) return '';
     const c = phone.replace(/\D/g, '');
@@ -299,7 +299,7 @@ const Dashboard = () => {
     return `${sec}s`;
   }, [currentTime]);
 
-  // Urgência: verde < 5min, âmbar < 15min, vermelho >= 15min
+  // UrgÃªncia: verde < 5min, Ã¢mbar < 15min, vermelho >= 15min
   const getWaitingUrgency = (ws: Date) => {
     const m = Math.floor((currentTime - ws.getTime()) / 60000);
     if (m < 5) return 'bg-emerald-500';
@@ -315,7 +315,7 @@ const Dashboard = () => {
   };
 
   const getFollowupStatus = useCallback((count: number, lastAt: string | null) => {
-    if (count >= 5) return { label: 'Concluído', color: 'bg-muted/60 text-muted-foreground', icon: CheckCircle2 };
+    if (count >= 3) return { label: 'ConcluÃ­do', color: 'bg-muted/60 text-muted-foreground', icon: CheckCircle2 };
     const next = FOLLOWUP_INTERVALS[count];
     if (!next) return { label: 'Completo', color: 'bg-muted/60 text-muted-foreground', icon: CheckCircle2 };
     if (!lastAt) return { label: 'Aguardando', color: 'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400', icon: Clock };
@@ -324,9 +324,9 @@ const Dashboard = () => {
     return { label: `${Math.ceil(next.minutes - elapsed)}min`, color: 'bg-blue-500/15 text-blue-600 dark:text-blue-400', icon: Timer };
   }, [currentTime]);
 
-  // ─── Memos ────────────────────────────────────────────────────────────────
+  // â”€â”€â”€ Memos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const followupStats = useMemo(() => {
-    const active = followupConversations.filter(c => c.followup_count < 5);
+    const active = followupConversations.filter(c => c.followup_count < 3);
     return {
       active: active.length,
       ready: active.filter(c => getFollowupStatus(c.followup_count, c.last_message_at).label === 'Pronto').length,
@@ -334,7 +334,7 @@ const Dashboard = () => {
         const l = getFollowupStatus(c.followup_count, c.last_message_at).label;
         return l.includes('min') || l === 'Aguardando';
       }).length,
-      completed: followupConversations.filter(c => c.followup_count >= 5).length,
+      completed: followupConversations.filter(c => c.followup_count >= 3).length,
     };
   }, [followupConversations, getFollowupStatus]);
 
@@ -349,7 +349,7 @@ const Dashboard = () => {
   const totalConvLeads = useMemo(() => conversionData.reduce((a, d) => a + d.total, 0), [conversionData]);
   const totalConvConverted = useMemo(() => conversionData.reduce((a, d) => a + d.converted, 0), [conversionData]);
 
-  // ─── Loading ──────────────────────────────────────────────────────────────
+  // â”€â”€â”€ Loading â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (loading) {
     return (
       <div className="w-full px-4 sm:px-6 lg:px-8 py-6 max-w-[1920px] mx-auto space-y-4">
@@ -371,7 +371,7 @@ const Dashboard = () => {
     );
   }
 
-  // ─── Render ───────────────────────────────────────────────────────────────
+  // â”€â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-6 max-w-[1920px] mx-auto space-y-4">
 
@@ -384,7 +384,7 @@ const Dashboard = () => {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
             </span>
-            <span className="text-xs text-muted-foreground">Atualização em tempo real</span>
+            <span className="text-xs text-muted-foreground">AtualizaÃ§Ã£o em tempo real</span>
           </div>
         </div>
         <Button
@@ -408,17 +408,17 @@ const Dashboard = () => {
         <StatCard label="Encaminhados" value={stats.ordersForwardedToAcium} icon={Send} accent="text-amber-500" />
       </div>
 
-      {/* Gráficos */}
+      {/* GrÃ¡ficos */}
       <div className="grid lg:grid-cols-5 gap-4">
 
-        {/* Área: pedidos no período */}
+        {/* Ãrea: pedidos no perÃ­odo */}
         <Card className="lg:col-span-3 border-border bg-card">
           <CardHeader className="px-5 pt-5 pb-0">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-2">
                   <Send className="w-3.5 h-3.5 text-amber-500" />
-                  Pedidos no Período
+                  Pedidos no PerÃ­odo
                 </CardTitle>
                 <div className="flex items-center gap-4 mt-1.5">
                   <span className="flex items-center gap-1.5 text-xs">
@@ -462,14 +462,14 @@ const Dashboard = () => {
           </CardContent>
         </Card>
 
-        {/* Bar: conversão por follow-up */}
+        {/* Bar: conversÃ£o por follow-up */}
         <Card className="lg:col-span-2 border-border bg-card">
           <CardHeader className="px-5 pt-5 pb-0">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-2">
                   <BarChart3 className="w-3.5 h-3.5 text-violet-500" />
-                  Conversão por Follow-up
+                  ConversÃ£o por Follow-up
                 </CardTitle>
                 <p className="text-xs text-muted-foreground mt-1.5">
                   Taxa geral:{' '}
@@ -488,7 +488,7 @@ const Dashboard = () => {
             {conversionData.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-[220px] text-muted-foreground gap-2">
                 <BarChart3 className="w-6 h-6 opacity-20" />
-                <p className="text-xs">Sem dados no período</p>
+                <p className="text-xs">Sem dados no perÃ­odo</p>
               </div>
             ) : (
               <div className="h-[220px]">
@@ -496,7 +496,7 @@ const Dashboard = () => {
                   <BarChart data={conversionData} margin={{ top: 4, right: 12, left: -18, bottom: 0 }} barGap={3}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                     <XAxis
-                      dataKey="followup_count" tickFormatter={v => `${v}×`}
+                      dataKey="followup_count" tickFormatter={v => `${v}Ã—`}
                       tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
                       axisLine={false} tickLine={false}
                     />
@@ -515,7 +515,7 @@ const Dashboard = () => {
         </Card>
       </div>
 
-      {/* Alerta de espera — barra fina, só aparece quando há clientes */}
+      {/* Alerta de espera â€” barra fina, sÃ³ aparece quando hÃ¡ clientes */}
       {waitingConversations.length > 0 && (
         <div className="flex items-center gap-3 rounded-xl border border-orange-500/20 bg-orange-500/5 px-4 py-2.5">
           <div className="flex items-center gap-2 shrink-0">
@@ -525,7 +525,7 @@ const Dashboard = () => {
               {waitingConversations.length}
             </span>
           </div>
-          {/* Linha divisória */}
+          {/* Linha divisÃ³ria */}
           <div className="w-px h-4 bg-border shrink-0" />
           <div className="flex items-center gap-2 flex-1 overflow-x-auto min-w-0 scrollbar-none">
             {waitingConversations.slice(0, 7).map((conv) => (
@@ -615,7 +615,7 @@ const Dashboard = () => {
                 { v: followupStats.active, l: 'Ativos', bar: 'bg-sky-500', val: 'text-sky-500' },
                 { v: followupStats.ready, l: 'Prontos', bar: 'bg-emerald-500', val: 'text-emerald-500' },
                 { v: followupStats.waiting, l: 'Aguard.', bar: 'bg-amber-500', val: 'text-amber-500' },
-                { v: followupStats.completed, l: 'Feitos', bar: 'bg-muted-foreground/30', val: 'text-muted-foreground' },
+                { v: followupStats.completed, l: 'Encerrados', bar: 'bg-muted-foreground/30', val: 'text-muted-foreground' },
               ].map(({ v, l, bar, val }) => (
                 <div key={l} className="rounded-lg bg-muted/50 p-2 text-center">
                   <div className={`h-0.5 rounded-full ${bar} mb-2 mx-auto w-5`} />
@@ -658,12 +658,12 @@ const Dashboard = () => {
           </CardContent>
         </Card>
 
-        {/* Resumo de conversão */}
+        {/* Resumo de conversÃ£o */}
         <Card className="border-border bg-card">
           <CardHeader className="px-5 pt-4 pb-3">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <BarChart3 className="w-3.5 h-3.5 text-emerald-500" />
-              Resumo de Conversão
+              Resumo de ConversÃ£o
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4 pt-0">
@@ -704,7 +704,7 @@ const Dashboard = () => {
                       <div key={data.followup_count} className="px-2.5 py-2.5 rounded-lg hover:bg-muted/40 transition-colors">
                         <div className="flex items-center justify-between mb-1.5">
                           <span className="text-[11px] text-muted-foreground">
-                            {data.followup_count === 0 ? 'Sem follow-up' : `${data.followup_count}× follow-up`}
+                            {data.followup_count === 0 ? 'Sem follow-up' : `${data.followup_count}Ã— follow-up`}
                           </span>
                           <span className="flex items-center gap-1.5">
                             <span className="text-[11px] text-muted-foreground/60">{data.converted}/{data.total}</span>

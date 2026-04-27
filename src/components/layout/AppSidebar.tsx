@@ -25,11 +25,14 @@ import {
   FileSpreadsheet,
   X,
   Trophy,
+  Moon,
+  Sun,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useTheme } from 'next-themes';
 
 interface AppSidebarProps {
   collapsed: boolean;
@@ -95,7 +98,9 @@ const ROLE_LABELS: Record<string, string> = {
 const AppSidebar = ({ collapsed, onToggle, onMobileClose }: AppSidebarProps) => {
   const { user, profile, signOut } = useAuth();
   const { isAdmin, isGerente, role } = useUserRole();
+  const { resolvedTheme, setTheme } = useTheme();
   const location = useLocation();
+  const isDarkMode = resolvedTheme !== 'light';
 
   const displayName = profile?.full_name || user?.email?.split('@')[0] || 'Usuário';
   const initials = displayName
@@ -285,6 +290,24 @@ const AppSidebar = ({ collapsed, onToggle, onMobileClose }: AppSidebarProps) => 
           <>
             <Tooltip delayDuration={0}>
               <TooltipTrigger asChild>
+                <button
+                  onClick={() => setTheme(isDarkMode ? 'light' : 'dark')}
+                  className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
+                >
+                  {isDarkMode ? (
+                    <Sun className="w-3.5 h-3.5" />
+                  ) : (
+                    <Moon className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="text-xs">
+                {isDarkMode ? 'Usar tema claro' : 'Usar tema escuro'}
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip delayDuration={0}>
+              <TooltipTrigger asChild>
                 <div className="w-8 h-8 rounded-full bg-foreground text-background flex items-center justify-center text-[11px] font-bold cursor-default select-none">
                   {initials}
                 </div>
@@ -312,29 +335,43 @@ const AppSidebar = ({ collapsed, onToggle, onMobileClose }: AppSidebarProps) => 
             </Tooltip>
           </>
         ) : (
-          <div className="flex items-center gap-2 px-1 py-0.5">
-            <div className="w-7 h-7 rounded-full bg-foreground text-background flex items-center justify-center text-[11px] font-bold shrink-0 select-none">
-              {initials}
-            </div>
-
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-sidebar-foreground truncate leading-tight">
-                {displayName}
-              </p>
-              {role && (
-                <p className="text-[10px] text-muted-foreground leading-tight">
-                  {ROLE_LABELS[role]}
-                </p>
-              )}
-            </div>
-
+          <div className="space-y-2">
             <button
-              onClick={signOut}
-              className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-all shrink-0"
-              title="Sair"
+              onClick={() => setTheme(isDarkMode ? 'light' : 'dark')}
+              className="w-full flex items-center justify-between rounded-lg border border-sidebar-border bg-sidebar-accent/70 px-2.5 py-2 text-xs font-medium text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
             >
-              <LogOut className="w-3.5 h-3.5" />
+              <span>{isDarkMode ? 'Tema claro' : 'Tema escuro'}</span>
+              {isDarkMode ? (
+                <Sun className="w-3.5 h-3.5" />
+              ) : (
+                <Moon className="w-3.5 h-3.5" />
+              )}
             </button>
+
+            <div className="flex items-center gap-2 px-1 py-0.5">
+              <div className="w-7 h-7 rounded-full bg-foreground text-background flex items-center justify-center text-[11px] font-bold shrink-0 select-none">
+                {initials}
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-sidebar-foreground truncate leading-tight">
+                  {displayName}
+                </p>
+                {role && (
+                  <p className="text-[10px] text-muted-foreground leading-tight">
+                    {ROLE_LABELS[role]}
+                  </p>
+                )}
+              </div>
+
+              <button
+                onClick={signOut}
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-all shrink-0"
+                title="Sair"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         )}
       </div>
