@@ -61,6 +61,9 @@ export type Message = {
   is_from_me: boolean;
   zapi_message_id?: string;
   status?: string;
+  edited_at?: string | null;
+  deleted_at?: string | null;
+  replaced_message_id?: string | null;
   created_at?: string;
 };
 

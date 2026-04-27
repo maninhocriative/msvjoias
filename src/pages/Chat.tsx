@@ -63,6 +63,12 @@ interface CustomerProfile {
   profile_pic_url?: string;
 }
 
+type OutgoingAttachmentPayload = {
+  message: string;
+  message_type: string;
+  media_url: string;
+};
+
 const statusFilters = [
   { key: 'all', label: 'Todos', color: 'bg-slate-500' },
   { key: 'novo', label: 'Novos', color: 'bg-slate-400' },
@@ -95,6 +101,9 @@ const Chat = () => {
   const [finalizeDialogOpen, setFinalizeDialogOpen] = useState(false);
   const [customerProfiles, setCustomerProfiles] = useState<Record<string, CustomerProfile>>({});
   const [finalizingSale, setFinalizingSale] = useState(false);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingMessageDraft, setEditingMessageDraft] = useState('');
+  const [editingMessageBusyId, setEditingMessageBusyId] = useState<string | null>(null);
 
   const audioStreamRef = useRef<MediaStream | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -557,7 +566,7 @@ const Chat = () => {
       const { data, error } = await supabase
         .from('messages')
         .select(
-          'id, content, created_at, is_from_me, media_url, message_type, status, conversation_id',
+          'id, content, created_at, is_from_me, media_url, message_type, status, conversation_id, zapi_message_id, edited_at, deleted_at, replaced_message_id',
         )
         .eq('conversation_id', conversationId)
         .order('created_at', { ascending: true })
@@ -565,7 +574,7 @@ const Chat = () => {
 
       if (error) throw error;
 
-      setMessages((data || []).filter((m) => m.content?.trim() || m.media_url));
+      setMessages((data || []).filter((m) => m.content?.trim() || m.media_url || m.deleted_at));
     } catch {
       // silent
     }
@@ -602,6 +611,9 @@ const Chat = () => {
     if (selectedConversation) {
       lastMessageCount.current = 0;
       shouldAutoScroll.current = true;
+      setEditingMessageId(null);
+      setEditingMessageDraft('');
+      setEditingMessageBusyId(null);
       fetchMessages(selectedConversation.id);
       markAsRead(selectedConversation.id);
       setIsContactTyping(false);
@@ -852,45 +864,195 @@ const Chat = () => {
     );
   }, []);
 
-  const removeOptimistic = useCallback((tempId: string) => {
-    setMessages((prev) => prev.filter((m) => m.id !== tempId));
+  const removeOptimisticMessages = useCallback((tempIds: string[]) => {
+    if (!tempIds.length) return;
+
+    setMessages((prev) => prev.filter((message) => !tempIds.includes(message.id)));
   }, []);
 
-  const sendMessageDirect = async (messageText: string) => {
-    if (!messageText.trim() || !selectedConversation) return;
+  const invokeAutomationSend = useCallback(
+    async (body: Record<string, unknown>) => {
+      if (!selectedConversation) {
+        throw new Error('Nenhuma conversa selecionada.');
+      }
 
-    const tempId = addOptimisticMessage(messageText);
-
-    supabase.functions
-      .invoke('automation-send', {
+      const { data, error } = await supabase.functions.invoke('automation-send', {
         body: {
           conversation_id: selectedConversation.id,
           phone: selectedConversation.contact_number,
-          message: messageText,
-          message_type: 'text',
           platform: selectedConversation.platform || 'whatsapp',
+          prefer_zapi: true,
+          ...body,
         },
-      })
-      .then(({ error }) => {
-        if (error) {
-          markOptimisticFailed(tempId);
-          toast({
-            title: 'Erro',
-            description: 'Não foi possível enviar.',
-            variant: 'destructive',
-          });
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+
+      return data;
+    },
+    [selectedConversation],
+  );
+
+  const getAttachmentMessageType = useCallback((file: File) => {
+    if (file.type.startsWith('image/')) return 'image';
+    if (file.type.startsWith('audio/')) return 'audio';
+    if (file.type.startsWith('video/')) return 'video';
+    return 'document';
+  }, []);
+
+  const getAttachmentDisplayLabel = useCallback((file: File, messageType: string) => {
+    if (messageType === 'audio') return 'Audio';
+    if (messageType === 'image') return file.name || 'Imagem';
+    if (messageType === 'video') return file.name || 'Video';
+    return file.name || 'Documento';
+  }, []);
+
+  const getAttachmentMessage = useCallback((file: File, messageType: string) => {
+    if (messageType === 'document') return file.name || 'Documento';
+    if (messageType === 'audio') return 'Audio';
+    return '';
+  }, []);
+
+  const uploadAttachmentFile = useCallback(
+    async (file: File, messageType: string): Promise<OutgoingAttachmentPayload> => {
+      const extension =
+        file.name.split('.').pop() ||
+        file.type.split('/').pop() ||
+        'bin';
+      const uniqueId =
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const fileName = `${selectedConversation?.id || 'chat'}/${uniqueId}.${extension}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('chat-media')
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from('chat-media').getPublicUrl(fileName);
+
+      return {
+        message: getAttachmentMessage(file, messageType),
+        message_type: messageType,
+        media_url: publicUrl,
+      };
+    },
+    [getAttachmentMessage, selectedConversation?.id],
+  );
+
+  const sendAttachments = useCallback(
+    async (files: File[]) => {
+      if (!selectedConversation || !files.length) return;
+
+      const optimisticEntries = files.map((file) => {
+        const messageType = getAttachmentMessageType(file);
+        return {
+          file,
+          messageType,
+          tempId: addOptimisticMessage(
+            getAttachmentDisplayLabel(file, messageType),
+            messageType,
+          ),
+        };
+      });
+
+      const uploadedAttachments = await Promise.allSettled(
+        optimisticEntries.map(async (entry) => ({
+          tempId: entry.tempId,
+          attachment: await uploadAttachmentFile(entry.file, entry.messageType),
+        })),
+      );
+
+      const successfulUploads = uploadedAttachments.flatMap((result, index) => {
+        if (result.status === 'fulfilled') {
+          return [result.value];
         }
 
-        setTimeout(() => removeOptimistic(tempId), 3000);
-      })
-      .catch(() => {
-        markOptimisticFailed(tempId);
+        markOptimisticFailed(optimisticEntries[index].tempId);
+        return [];
+      });
+
+      if (!successfulUploads.length) {
         toast({
           title: 'Erro',
-          description: 'Não foi possível enviar.',
+          description: 'Nao foi possivel enviar os arquivos selecionados.',
           variant: 'destructive',
         });
+        return;
+      }
+
+      try {
+        await invokeAutomationSend({
+          attachments: successfulUploads.map((item) => item.attachment),
+        });
+
+        setTimeout(() => {
+          removeOptimisticMessages(successfulUploads.map((item) => item.tempId));
+        }, 300);
+
+        if (successfulUploads.length !== files.length) {
+          toast({
+            title: 'Envio parcial',
+            description: `${successfulUploads.length} de ${files.length} arquivo(s) foram enviados.`,
+          });
+        }
+      } catch (error) {
+        successfulUploads.forEach((item) => markOptimisticFailed(item.tempId));
+        toast({
+          title: 'Erro',
+          description:
+            error instanceof Error
+              ? error.message
+              : 'Nao foi possivel enviar os arquivos.',
+          variant: 'destructive',
+        });
+      }
+    },
+    [
+      addOptimisticMessage,
+      getAttachmentDisplayLabel,
+      getAttachmentMessageType,
+      invokeAutomationSend,
+      markOptimisticFailed,
+      removeOptimisticMessages,
+      selectedConversation,
+      toast,
+      uploadAttachmentFile,
+    ],
+  );
+
+  const sendMessageDirect = async (messageText: string) => {
+    const trimmedMessage = messageText.trim();
+    if (!trimmedMessage || !selectedConversation) return;
+
+    const tempId = addOptimisticMessage(trimmedMessage);
+
+    try {
+      await invokeAutomationSend({
+        message: trimmedMessage,
+        message_type: 'text',
       });
+
+      setTimeout(() => removeOptimisticMessages([tempId]), 300);
+    } catch (error) {
+      markOptimisticFailed(tempId);
+      toast({
+        title: 'Erro',
+        description:
+          error instanceof Error ? error.message : 'Nao foi possivel enviar.',
+        variant: 'destructive',
+      });
+    }
   };
 
   const sendMessage = async (e: React.FormEvent) => {
@@ -904,58 +1066,17 @@ const Chat = () => {
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-
-    if (!file || !selectedConversation) return;
-
-    let messageType = 'document';
-
-    if (file.type.startsWith('image/')) messageType = 'image';
-    else if (file.type.startsWith('audio/')) messageType = 'audio';
-    else if (file.type.startsWith('video/')) messageType = 'video';
-
-    const tempId = addOptimisticMessage(file.name, messageType);
+    const files = Array.from(e.target.files || []);
 
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
 
-    try {
-      const fileName = `${Date.now()}.${file.name.split('.').pop()}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('chat-media')
-        .upload(fileName, file);
-
-      if (uploadError) throw uploadError;
-
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from('chat-media').getPublicUrl(fileName);
-
-      const { error } = await supabase.functions.invoke('automation-send', {
-        body: {
-          conversation_id: selectedConversation.id,
-          phone: selectedConversation.contact_number,
-          message: file.name,
-          message_type: messageType,
-          media_url: publicUrl,
-          platform: selectedConversation.platform || 'whatsapp',
-        },
-      });
-
-      if (error) throw error;
-
-      setTimeout(() => removeOptimistic(tempId), 3000);
-    } catch {
-      markOptimisticFailed(tempId);
-
-      toast({
-        title: 'Erro',
-        description: 'Não foi possível enviar o arquivo.',
-        variant: 'destructive',
-      });
+    if (!files.length) {
+      return;
     }
+
+    await sendAttachments(files);
   };
 
   useEffect(() => {
@@ -980,41 +1101,15 @@ const Chat = () => {
       return;
     }
 
-    const tempId = addOptimisticMessage('🎤 Áudio', 'audio');
-
     try {
-      const fileName = `audio-${Date.now()}.webm`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('chat-media')
-        .upload(fileName, blob);
-
-      if (uploadError) throw uploadError;
-
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from('chat-media').getPublicUrl(fileName);
-
-      const { error } = await supabase.functions.invoke('automation-send', {
-        body: {
-          conversation_id: selectedConversation.id,
-          phone: selectedConversation.contact_number,
-          message: 'Áudio',
-          message_type: 'audio',
-          media_url: publicUrl,
-          platform: selectedConversation.platform || 'whatsapp',
-        },
+      const audioFile = new File([blob], `audio-${Date.now()}.webm`, {
+        type: 'audio/webm',
       });
-
-      if (error) throw error;
-
-      setTimeout(() => removeOptimistic(tempId), 3000);
+      await sendAttachments([audioFile]);
     } catch {
-      markOptimisticFailed(tempId);
-
       toast({
         title: 'Erro',
-        description: 'Não foi possível enviar o áudio.',
+        description: 'Nao foi possivel enviar o audio.',
         variant: 'destructive',
       });
     }
@@ -1105,44 +1200,92 @@ const Chat = () => {
       );
 
       if (!blob) throw new Error('Failed');
-
-      const tempId = addOptimisticMessage('📸 Screenshot', 'image');
-      const fileName = `screenshot-${Date.now()}.png`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('chat-media')
-        .upload(fileName, blob);
-
-      if (uploadError) throw uploadError;
-
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from('chat-media').getPublicUrl(fileName);
-
-      const { error } = await supabase.functions.invoke('automation-send', {
-        body: {
-          conversation_id: selectedConversation.id,
-          phone: selectedConversation.contact_number,
-          message: 'Screenshot',
-          message_type: 'image',
-          media_url: publicUrl,
-          platform: selectedConversation.platform || 'whatsapp',
-        },
+      const screenshotFile = new File([blob], `screenshot-${Date.now()}.png`, {
+        type: 'image/png',
       });
 
-      if (error) throw error;
-
-      setTimeout(() => removeOptimistic(tempId), 3000);
+      await sendAttachments([screenshotFile]);
     } catch (error: any) {
       if (error.name !== 'NotAllowedError') {
         toast({
           title: 'Erro',
-          description: 'Não foi possível capturar.',
+          description: 'Nao foi possivel capturar.',
           variant: 'destructive',
         });
       }
     }
   };
+
+  const canEditMessage = useCallback((message: Message) => {
+    if (!message.is_from_me) return false;
+    if (message.message_type !== 'text') return false;
+    if (message.media_url) return false;
+    if (message.deleted_at) return false;
+    if (!message.zapi_message_id) return false;
+    return ['sent', 'delivered', 'read'].includes(message.status || '');
+  }, []);
+
+  const handleStartEditingMessage = useCallback((message: Message) => {
+    setEditingMessageId(message.id);
+    setEditingMessageDraft(message.content || '');
+  }, []);
+
+  const handleCancelEditingMessage = useCallback(() => {
+    setEditingMessageId(null);
+    setEditingMessageDraft('');
+    setEditingMessageBusyId(null);
+  }, []);
+
+  const handleSaveEditedMessage = useCallback(
+    async (message: Message) => {
+      const nextContent = editingMessageDraft.trim();
+
+      if (!nextContent || !message.zapi_message_id) {
+        return;
+      }
+
+      if (nextContent === (message.content || '').trim()) {
+        handleCancelEditingMessage();
+        return;
+      }
+
+      const tempId = addOptimisticMessage(nextContent);
+      setEditingMessageBusyId(message.id);
+
+      try {
+        await invokeAutomationSend({
+          message: nextContent,
+          message_type: 'text',
+          replace_message_id: message.id,
+          replace_zapi_message_id: message.zapi_message_id,
+        });
+
+        handleCancelEditingMessage();
+        setTimeout(() => removeOptimisticMessages([tempId]), 300);
+      } catch (error) {
+        markOptimisticFailed(tempId);
+        toast({
+          title: 'Erro',
+          description:
+            error instanceof Error
+              ? error.message
+              : 'Nao foi possivel editar a mensagem.',
+          variant: 'destructive',
+        });
+      } finally {
+        setEditingMessageBusyId(null);
+      }
+    },
+    [
+      addOptimisticMessage,
+      editingMessageDraft,
+      handleCancelEditingMessage,
+      invokeAutomationSend,
+      markOptimisticFailed,
+      removeOptimisticMessages,
+      toast,
+    ],
+  );
 
   const formatRecordingTime = (seconds: number) =>
     `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, '0')}`;
@@ -1287,7 +1430,7 @@ const Chat = () => {
     filterAttendant === 'all'
       ? 'Todos os atendimentos'
       : filterAttendant === 'aline'
-        ? 'Aline'
+        ? 'Aline e Keila'
         : 'Vendedor';
 
   const hasActiveFilters = filterStatus !== 'all' || filterAttendant !== 'all';
@@ -1484,7 +1627,7 @@ const Chat = () => {
                 {[
                   {
                     key: 'aline',
-                    label: 'IA',
+                    label: 'Aline/Keila',
                     count: attendantCounts.aline,
                     icon: Bot,
                     activeClass:
@@ -1841,6 +1984,16 @@ const Chat = () => {
                             index === 0 ||
                             grouped[index - 1]?.is_from_me !== message.is_from_me
                           }
+                          canEdit={canEditMessage(message)}
+                          editValue={
+                            editingMessageId === message.id ? editingMessageDraft : ''
+                          }
+                          isEditing={editingMessageId === message.id}
+                          isSavingEdit={editingMessageBusyId === message.id}
+                          onStartEdit={handleStartEditingMessage}
+                          onEditValueChange={setEditingMessageDraft}
+                          onCancelEdit={handleCancelEditingMessage}
+                          onSaveEdit={handleSaveEditedMessage}
                         />
                       ))}
                     </div>
@@ -1896,6 +2049,7 @@ const Chat = () => {
                     className="hidden"
                     onChange={handleFileUpload}
                     accept="image/*,audio/*,video/*,.pdf,.doc,.docx"
+                    multiple
                   />
 
                   <div className="flex items-center gap-1 shrink-0">

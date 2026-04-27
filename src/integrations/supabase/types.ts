@@ -574,11 +574,14 @@ export type Database = {
           content: string | null
           conversation_id: string
           created_at: string
+          deleted_at: string | null
+          edited_at: string | null
           id: string
           is_from_me: boolean | null
           media_url: string | null
           message_type: string | null
           product_interest: string | null
+          replaced_message_id: string | null
           status: string | null
           zapi_message_id: string | null
         }
@@ -586,11 +589,14 @@ export type Database = {
           content?: string | null
           conversation_id: string
           created_at?: string
+          deleted_at?: string | null
+          edited_at?: string | null
           id?: string
           is_from_me?: boolean | null
           media_url?: string | null
           message_type?: string | null
           product_interest?: string | null
+          replaced_message_id?: string | null
           status?: string | null
           zapi_message_id?: string | null
         }
@@ -598,11 +604,14 @@ export type Database = {
           content?: string | null
           conversation_id?: string
           created_at?: string
+          deleted_at?: string | null
+          edited_at?: string | null
           id?: string
           is_from_me?: boolean | null
           media_url?: string | null
           message_type?: string | null
           product_interest?: string | null
+          replaced_message_id?: string | null
           status?: string | null
           zapi_message_id?: string | null
         }

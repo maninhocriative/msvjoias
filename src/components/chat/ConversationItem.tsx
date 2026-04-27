@@ -1,6 +1,6 @@
 import { memo, type CSSProperties } from 'react';
 import { cn } from '@/lib/utils';
-import { Bot, UserCheck, Instagram, CheckCircle2, Clock } from 'lucide-react';
+import { Bot, Crown, UserCheck, Instagram, CheckCircle2, Clock } from 'lucide-react';
 import type { Conversation, LeadStatus } from '@/lib/supabase';
 
 interface CustomerProfile {
@@ -13,6 +13,7 @@ interface AlineConversation {
   id: string;
   phone: string;
   status: string;
+  active_agent?: string;
   assigned_seller_id?: string;
   assigned_seller_name?: string;
   assigned_at?: string;
@@ -67,12 +68,52 @@ const twoLineClamp: CSSProperties = {
   overflow: 'hidden',
 };
 
+function getAgentMeta(alineData?: AlineConversation, isSaleFinalized?: boolean) {
+  const isHumanTakeover = alineData?.status === 'human_takeover';
+  const activeAgent = alineData?.active_agent || 'aline';
+
+  if (isHumanTakeover) {
+    return {
+      label: 'Humano',
+      Icon: UserCheck,
+      dotClass: 'bg-amber-500',
+      avatarClass: 'bg-gradient-to-br from-amber-500 to-orange-500',
+      badgeClass: 'bg-amber-500/15 text-amber-300 border border-amber-500/20',
+      iconClass: 'text-amber-950',
+    };
+  }
+
+  if (activeAgent === 'keila') {
+    return {
+      label: 'Keila',
+      Icon: Crown,
+      dotClass: 'bg-sky-500',
+      avatarClass: 'bg-gradient-to-br from-sky-500 to-indigo-500',
+      badgeClass: 'bg-sky-500/15 text-sky-300 border border-sky-500/20',
+      iconClass: 'text-sky-950',
+    };
+  }
+
+  return {
+    label: 'Aline',
+    Icon: Bot,
+    dotClass: 'bg-emerald-500',
+    avatarClass: isSaleFinalized
+      ? 'bg-gradient-to-br from-emerald-500 to-teal-600'
+      : 'bg-gradient-to-br from-emerald-400 to-cyan-500',
+    badgeClass: 'bg-emerald-500/10 text-emerald-400',
+    iconClass: 'text-emerald-950',
+  };
+}
+
 const ConversationItem = memo(
   ({ conv, isSelected, customerProfile, alineData, onClick }: ConversationItemProps) => {
     const hasUnread = (conv.unread_count ?? 0) > 0;
     const isInstagram = conv.platform === 'instagram';
     const isHumanTakeover = alineData?.status === 'human_takeover';
     const isSaleFinalized = conv.lead_status === 'vendido';
+    const agentMeta = getAgentMeta(alineData, isSaleFinalized);
+    const AgentIcon = agentMeta.Icon;
     const sellerName = alineData?.assigned_seller_name || '';
     const sellerFirstName = sellerName.split(' ')[0];
     const sellerInitial = sellerName.charAt(0).toUpperCase() || 'V';
@@ -107,9 +148,7 @@ const ConversationItem = memo(
                 'w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white ring-1 ring-white/10',
                 isInstagram
                   ? 'bg-gradient-to-br from-fuchsia-500 to-orange-400'
-                  : isSaleFinalized
-                    ? 'bg-gradient-to-br from-emerald-500 to-teal-600'
-                    : 'bg-gradient-to-br from-emerald-400 to-cyan-500',
+                  : agentMeta.avatarClass,
               )}
             >
               {displayName.charAt(0).toUpperCase()}
@@ -119,14 +158,10 @@ const ConversationItem = memo(
           <span
             className={cn(
               'absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-slate-950 flex items-center justify-center',
-              isHumanTakeover ? 'bg-amber-500' : 'bg-emerald-500',
+              agentMeta.dotClass,
             )}
           >
-            {isHumanTakeover ? (
-              <UserCheck className="w-2 h-2 text-amber-950" />
-            ) : (
-              <Bot className="w-2 h-2 text-emerald-950" />
-            )}
+            <AgentIcon className={cn('w-2 h-2', agentMeta.iconClass)} />
           </span>
         </div>
 
@@ -178,9 +213,12 @@ const ConversationItem = memo(
                 </span>
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-emerald-500/10 text-emerald-400">
-                <Bot className="w-2.5 h-2.5 shrink-0" />
-                Aline
+              <span className={cn(
+                'inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium',
+                agentMeta.badgeClass,
+              )}>
+                <AgentIcon className="w-2.5 h-2.5 shrink-0" />
+                {agentMeta.label}
               </span>
             )}
 

@@ -10,6 +10,7 @@ interface ZAPIMessage {
   phone?: string;
   isFromMe?: boolean;
   fromMe?: boolean;
+  isEdit?: boolean;
   senderName?: string;
   pushName?: string;
   text?: { phone?: string; message?: string; senderName?: string };
@@ -21,6 +22,7 @@ interface ZAPIMessage {
   event?: string;
   type?: string;
   status?: string;
+  ids?: string[];
   messageId?: string;
   zaapId?: string;
   buttonResponseId?: string;
@@ -57,6 +59,25 @@ function buildHeaders(clientToken?: string) {
   }
 
   return headers;
+}
+
+function normalizeZapiStatus(status?: string | null) {
+  switch (String(status || "").toUpperCase()) {
+    case "PENDING":
+      return "sending";
+    case "SENT":
+      return "sent";
+    case "RECEIVED":
+      return "delivered";
+    case "READ":
+    case "READ_BY_ME":
+    case "PLAYED":
+      return "read";
+    case "DELETED":
+      return "deleted";
+    default:
+      return status ? String(status).toLowerCase() : "sent";
+  }
 }
 
 async function sendText(
@@ -188,21 +209,29 @@ serve(async (req) => {
       eventType === "message-status-update" ||
       hasError;
 
-    if (isStatusCallback && eventType !== "message-status-update") {
+    const statusMessageIds = [
+      ...(Array.isArray(payload.ids) ? payload.ids : []),
+      payload.messageId || "",
+      payload.zaapId || "",
+    ]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+
+    if (isStatusCallback && statusMessageIds.length > 0) {
+      await supabase
+        .from("messages")
+        .update({ status: normalizeZapiStatus(payload.status) })
+        .in("zapi_message_id", statusMessageIds);
+
       return new Response(
-        JSON.stringify({ success: true, skipped: true, reason: "status_callback" }),
+        JSON.stringify({ success: true, type: "status_update", ids: statusMessageIds }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    if (eventType === "message-status-update" && payload.messageId) {
-      await supabase
-        .from("messages")
-        .update({ status: payload.status })
-        .eq("zapi_message_id", payload.messageId);
-
+    if (isStatusCallback) {
       return new Response(
-        JSON.stringify({ success: true, type: "status_update" }),
+        JSON.stringify({ success: true, skipped: true, reason: "status_callback_without_id" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
