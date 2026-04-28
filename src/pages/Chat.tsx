@@ -1400,6 +1400,8 @@ const Chat = () => {
     ? 'human'
     : currentAlineData?.active_agent === 'keila'
       ? 'keila'
+      : currentAlineData?.active_agent === 'kate'
+        ? 'kate'
       : 'aline';
 
   const currentAgentLabel =
@@ -1407,6 +1409,8 @@ const Chat = () => {
       ? 'Humano'
       : currentAgentSlug === 'keila'
         ? 'Keila'
+        : currentAgentSlug === 'kate'
+          ? 'Kate'
         : 'Aline';
 
   const currentAgentBadgeClass =
@@ -1414,6 +1418,8 @@ const Chat = () => {
       ? 'bg-amber-500/15 text-amber-300 border border-amber-500/25'
       : currentAgentSlug === 'keila'
         ? 'bg-sky-500/15 text-sky-300 border border-sky-500/25'
+        : currentAgentSlug === 'kate'
+          ? 'bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/25'
         : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
 
   const currentAgentDotClass =
@@ -1421,6 +1427,8 @@ const Chat = () => {
       ? 'bg-amber-500'
       : currentAgentSlug === 'keila'
         ? 'bg-sky-500'
+        : currentAgentSlug === 'kate'
+          ? 'bg-fuchsia-500'
         : 'bg-emerald-500';
 
   const activeStatusLabel =
@@ -1430,7 +1438,7 @@ const Chat = () => {
     filterAttendant === 'all'
       ? 'Todos os atendimentos'
       : filterAttendant === 'aline'
-        ? 'Aline e Keila'
+        ? 'Aline, Keila e Kate'
         : 'Vendedor';
 
   const hasActiveFilters = filterStatus !== 'all' || filterAttendant !== 'all';
@@ -1627,7 +1635,7 @@ const Chat = () => {
                 {[
                   {
                     key: 'aline',
-                    label: 'Aline/Keila',
+                    label: 'Aline/Keila/Kate',
                     count: attendantCounts.aline,
                     icon: Bot,
                     activeClass:
@@ -1773,6 +1781,8 @@ const Chat = () => {
                               ? 'bg-gradient-to-br from-emerald-500 to-teal-600'
                               : currentAgentSlug === 'keila'
                                 ? 'bg-gradient-to-br from-sky-500 to-indigo-500'
+                                : currentAgentSlug === 'kate'
+                                  ? 'bg-gradient-to-br from-fuchsia-500 to-rose-500'
                                 : 'bg-gradient-to-br from-emerald-400 to-cyan-500',
                         )}
                       >
@@ -1813,7 +1823,11 @@ const Chat = () => {
                           'hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold',
                           currentAgentBadgeClass,
                         )}>
-                          <Bot className="w-3 h-3 shrink-0" />
+                          {currentAgentSlug === 'kate' ? (
+                            <Sparkles className="w-3 h-3 shrink-0" />
+                          ) : (
+                            <Bot className="w-3 h-3 shrink-0" />
+                          )}
                           {currentAgentLabel}
                         </span>
                       )}

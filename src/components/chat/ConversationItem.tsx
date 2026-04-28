@@ -1,6 +1,6 @@
 import { memo, type CSSProperties } from 'react';
 import { cn } from '@/lib/utils';
-import { Bot, Crown, UserCheck, Instagram, CheckCircle2, Clock } from 'lucide-react';
+import { Bot, Crown, UserCheck, Instagram, CheckCircle2, Clock, Sparkles } from 'lucide-react';
 import type { Conversation, LeadStatus } from '@/lib/supabase';
 
 interface CustomerProfile {
@@ -91,6 +91,17 @@ function getAgentMeta(alineData?: AlineConversation, isSaleFinalized?: boolean) 
       avatarClass: 'bg-gradient-to-br from-sky-500 to-indigo-500',
       badgeClass: 'bg-sky-500/15 text-sky-300 border border-sky-500/20',
       iconClass: 'text-sky-950',
+    };
+  }
+
+  if (activeAgent === 'kate') {
+    return {
+      label: 'Kate',
+      Icon: Sparkles,
+      dotClass: 'bg-fuchsia-500',
+      avatarClass: 'bg-gradient-to-br from-fuchsia-500 to-rose-500',
+      badgeClass: 'bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/20',
+      iconClass: 'text-fuchsia-950',
     };
   }
 

@@ -6,9 +6,15 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-type MemoryAgent = "aline" | "keila";
-type ConversationAgent = "aline" | "keila" | "human";
+type MemoryAgent = "aline" | "keila" | "kate";
+type ConversationAgent = "aline" | "keila" | "kate" | "human";
 type AnyRecord = Record<string, any>;
+
+interface ResponseMediaItem {
+  type: "image" | "video";
+  url: string;
+  caption?: string | null;
+}
 
 interface CatalogProduct {
   id: string;
@@ -33,6 +39,66 @@ interface CatalogProduct {
   button_id?: string;
   button_label?: string;
 }
+
+interface KatePendantTemplate {
+  id: string;
+  family: "coracao" | "octagonal" | "redondo";
+  color: "prata" | "dourada";
+  sku_hint: string;
+  file_name: string;
+  display_name: string;
+}
+
+const KATE_ENGRAVING_TEMPLATES: KatePendantTemplate[] = [
+  {
+    id: "PF-010001-01-S",
+    family: "coracao",
+    color: "prata",
+    sku_hint: "pf01000101",
+    file_name: "PF-010001-01-S.png",
+    display_name: "Pingente Coração Prata",
+  },
+  {
+    id: "PF-010001-03-M",
+    family: "coracao",
+    color: "dourada",
+    sku_hint: "pf01000103",
+    file_name: "PF-010001-03-M.png",
+    display_name: "Pingente Coração Dourado",
+  },
+  {
+    id: "PF-010002-01-L",
+    family: "octagonal",
+    color: "prata",
+    sku_hint: "pf01000201",
+    file_name: "PF-010002-01-L.png",
+    display_name: "Pingente Octagonal Prata",
+  },
+  {
+    id: "PF-010002-03-M",
+    family: "octagonal",
+    color: "dourada",
+    sku_hint: "pf01000203",
+    file_name: "PF-010002-03-M.png",
+    display_name: "Pingente Octagonal Dourado",
+  },
+  {
+    id: "PF-010003-01-M",
+    family: "redondo",
+    color: "prata",
+    sku_hint: "pf01000301",
+    file_name: "PF-010003-01-M.png",
+    display_name: "Pingente Redondo Prata",
+  },
+  {
+    id: "PF-010003-03-S",
+    family: "redondo",
+    color: "dourada",
+    sku_hint: "pf01000303",
+    file_name: "PF-010003-03-S.png",
+    display_name: "Pingente Redondo Dourado",
+  },
+];
 
 function normalizeText(text: string): string {
   return String(text || "")
@@ -115,6 +181,64 @@ function detectMarriageIntent(text: string, data: AnyRecord, currentNode: string
     String(currentNode || "").includes("finalidade");
 
   return explicitMarriage && allianceContext;
+}
+
+function detectPendantIntent(text: string, data: AnyRecord, currentNode: string): boolean {
+  const normalized = normalizeText(text);
+  const explicitPendant =
+    detectCategory(text, {}) === "pingente" ||
+    /fotograv|foto gravad|foto no pingente|gravar foto|foto no medalha|foto no medalhao/.test(normalized);
+  return explicitPendant || data.categoria === "pingente" || String(currentNode || "").startsWith("kate_");
+}
+
+function detectPreviewApprovalIntent(text: string): boolean {
+  const normalized = normalizeText(text);
+  return /aprov|gostei|pode fazer|pode seguir|quero assim|ficou bom|fechar|sim pode|ta bom|t[aá] lindo/.test(normalized);
+}
+
+function detectPreviewRedoIntent(text: string): boolean {
+  const normalized = normalizeText(text);
+  return /outra foto|trocar foto|manda outra|vou mandar outra|refaz|refazer|mudar foto/.test(normalized);
+}
+
+function normalizeSkuToken(value: string): string {
+  return normalizeText(value).replace(/[^a-z0-9]/g, "");
+}
+
+function inferPendantFamilyFromText(text: string): "coracao" | "octagonal" | "redondo" | null {
+  const normalized = normalizeText(text);
+
+  if (/coracao|cora[cç]ao|heart/.test(normalized)) return "coracao";
+  if (/octagonal|octogonal|octag/.test(normalized)) return "octagonal";
+  if (/redondo|redonda|redond|circle|circular/.test(normalized)) return "redondo";
+
+  return null;
+}
+
+function inferKatePendantColor(product: Partial<CatalogProduct> | AnyRecord): "prata" | "dourada" | null {
+  const detected = detectColor(
+    `${product.color || ""} ${product.name || ""} ${product.description || ""} ${product.category || ""}`,
+  );
+
+  if (detected === "prata" || detected === "dourada") return detected;
+  return null;
+}
+
+function matchKateTemplateForProduct(product: Partial<CatalogProduct> | AnyRecord): KatePendantTemplate | null {
+  const sku = normalizeSkuToken(String(product.sku || ""));
+  const family = inferPendantFamilyFromText(
+    `${product.name || ""} ${product.description || ""} ${product.category || ""}`,
+  );
+  const color = inferKatePendantColor(product);
+
+  return (
+    KATE_ENGRAVING_TEMPLATES.find((template) => {
+      const skuMatches = sku ? sku.startsWith(template.sku_hint) || sku.includes(template.sku_hint) : false;
+      const familyMatches = family === template.family;
+      const colorMatches = color === template.color;
+      return colorMatches && (skuMatches || familyMatches);
+    }) || null
+  );
 }
 
 function extractTimelineAnswer(text: string, currentNode: string): string | null {
@@ -233,6 +357,7 @@ function extractRingSizes(text: string, currentNode: string): { size1: string | 
 
 function resetCatalogChoice(data: AnyRecord) {
   delete data.catalogo_keila_enviado;
+  delete data.catalogo_kate_enviado;
   delete data.catalogo_orcamento_relaxado;
   delete data.last_catalog;
   delete data.selected_product;
@@ -252,6 +377,16 @@ function isKeilaFlowNode(node: string): boolean {
   );
 }
 
+function isKateFlowNode(node: string): boolean {
+  const normalized = String(node || "");
+  return (
+    normalized.startsWith("kate_") ||
+    normalized === "catalogo_pingente" ||
+    normalized === "selecao_pingente" ||
+    normalized === "human_handoff_pingente"
+  );
+}
+
 function resetKeilaFlowState(data: AnyRecord) {
   delete data.prazo_fechamento;
   delete data.orcamento_valor;
@@ -264,6 +399,20 @@ function resetKeilaFlowState(data: AnyRecord) {
   delete data.delivery_method;
   delete data.payment_method;
   delete data.keila_store_handoff_done;
+  resetCatalogChoice(data);
+}
+
+function resetKateFlowState(data: AnyRecord) {
+  delete data.cor;
+  delete data.delivery_method;
+  delete data.payment_method;
+  delete data.kate_photo_requested;
+  delete data.kate_customer_photo_url;
+  delete data.kate_preview_image_url;
+  delete data.kate_preview_status;
+  delete data.kate_preview_approved;
+  delete data.kate_store_handoff_done;
+  delete data.kate_selected_template_id;
   resetCatalogChoice(data);
 }
 
@@ -556,6 +705,25 @@ function buildKeilaCards(products: CatalogProduct[]): CatalogProduct[] {
   });
 }
 
+function buildKateCards(products: CatalogProduct[]): CatalogProduct[] {
+  return products.map((product) => {
+    const captionLines = [
+      `*${product.name}*`,
+      product.color ? `🎨 Cor: ${product.color}` : null,
+      product.sku ? `📦 Cód: ${product.sku}` : null,
+      product.price_formatted ? `💰 Valor da unidade: ${product.price_formatted}` : null,
+      "📸 Fotogravação de 1 lado inclusa.",
+    ].filter(Boolean);
+
+    return {
+      ...product,
+      caption: captionLines.join("\n"),
+      button_id: `select_${product.sku || product.id}`,
+      button_label: "Quero este",
+    };
+  });
+}
+
 function findCatalogSelection(token: string | null, catalog: any[]): any | null {
   if (!token || !Array.isArray(catalog) || catalog.length === 0) return null;
 
@@ -599,6 +767,7 @@ function buildResponsePayload(args: {
   message: string;
   node: string;
   products?: CatalogProduct[];
+  mediaItems?: ResponseMediaItem[];
   selectedProduct?: any | null;
   collectedData: AnyRecord;
   agent: ConversationAgent;
@@ -610,6 +779,7 @@ function buildResponsePayload(args: {
     message,
     node,
     products = [],
+    mediaItems = [],
     selectedProduct = null,
     collectedData,
     agent,
@@ -631,6 +801,9 @@ function buildResponsePayload(args: {
     produtos: products,
     total_produtos: products.length,
     tem_produtos: products.length > 0,
+    media_items: mediaItems,
+    total_media_items: mediaItems.length,
+    tem_midia: mediaItems.length > 0,
     mensagem_pos_catalogo: postCatalogMessage,
     enviar_mensagem_pos_catalogo: !!postCatalogMessage,
     produto_selecionado: selectedProduct,
@@ -781,7 +954,7 @@ async function persistConversation(
         agente_atual: activeAgent,
       },
       last_message_at: new Date().toISOString(),
-      agent_handoff_at: activeAgent === "keila" ? new Date().toISOString() : null,
+      agent_handoff_at: activeAgent === "keila" || activeAgent === "kate" ? new Date().toISOString() : null,
     })
     .eq("id", conversationId);
 }
@@ -890,6 +1063,745 @@ async function handoffKeilaToHuman(args: {
     selectedProduct: data.selected_product || null,
     collectedData: data,
     agent: "human",
+  });
+}
+
+async function generateKatePreview(args: {
+  supabase: any;
+  phone: string;
+  selectedProduct: AnyRecord;
+  customerPhotoUrl: string;
+}) {
+  const { supabase, phone, selectedProduct, customerPhotoUrl } = args;
+  const openAIApiKey = Deno.env.get("OPENAI_API_KEY");
+
+  if (!openAIApiKey) {
+    throw new Error("OPENAI_API_KEY não configurada para gerar a prévia da Kate.");
+  }
+
+  const productImageUrl = String(selectedProduct?.image_url || selectedProduct?.media_url || "").trim();
+  if (!productImageUrl) {
+    throw new Error("O produto escolhido não possui imagem para gerar a prévia.");
+  }
+
+  const prompt = `Crie uma prévia comercial realista de fotogravação para aprovação do cliente.
+- Use a imagem do pingente escolhido como referência principal de forma, metal e enquadramento.
+- Use a foto enviada pelo cliente como arte que será gravada no pingente.
+- A gravação deve parecer monocromática, elegante e centralizada na frente do pingente.
+- Preserve o tipo de pingente, a cor do metal, o fundo branco e o visual limpo de catálogo.
+- Não adicione corrente, mãos, textos extras, molduras ou objetos novos.
+- O resultado deve parecer uma prévia de gravação, não uma foto impressa colorida.`;
+
+  const imageResponse = await fetch("https://api.openai.com/v1/images/edits", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${openAIApiKey}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-image-1",
+      images: [
+        { image_url: productImageUrl },
+        { image_url: customerPhotoUrl },
+      ],
+      prompt,
+      size: "1024x1024",
+      quality: "low",
+      output_format: "png",
+    }),
+  });
+
+  if (!imageResponse.ok) {
+    const errorText = await imageResponse.text();
+    throw new Error(`OpenAI image edit error: ${imageResponse.status} - ${errorText}`);
+  }
+
+  const imagePayload = await imageResponse.json();
+  const previewBase64 = imagePayload?.data?.[0]?.b64_json || null;
+  const previewUrl = imagePayload?.data?.[0]?.url || null;
+
+  if (previewUrl) {
+    return previewUrl;
+  }
+
+  if (!previewBase64) {
+    throw new Error("A OpenAI não retornou uma imagem válida para a prévia.");
+  }
+
+  const binary = Uint8Array.from(atob(previewBase64), (char) => char.charCodeAt(0));
+  const filePath = `kate-previews/${phone}/${Date.now()}-${selectedProduct?.sku || selectedProduct?.id || "pingente"}.png`;
+
+  const { error: uploadError } = await supabase.storage
+    .from("chat-media")
+    .upload(filePath, binary, {
+      contentType: "image/png",
+      upsert: true,
+    });
+
+  if (uploadError) {
+    throw uploadError;
+  }
+
+  const { data: publicUrlData } = supabase.storage.from("chat-media").getPublicUrl(filePath);
+  return publicUrlData?.publicUrl || null;
+}
+
+async function handoffKateToHuman(args: {
+  supabase: any;
+  supabaseUrl: string;
+  supabaseServiceKey: string;
+  conversation: any;
+  phone: string;
+  contactName: string;
+  data: AnyRecord;
+}) {
+  const { supabase, supabaseUrl, supabaseServiceKey, conversation, phone, contactName, data } = args;
+
+  data.kate_store_handoff_done = true;
+  const deliveryLabel = data.delivery_method === "retirada" ? "retirada na loja" : "delivery";
+  const paymentLabel =
+    data.payment_method === "pix"
+      ? "Pix"
+      : data.payment_method === "crediario_bemol"
+        ? "Crediario Bemol"
+        : data.payment_method === "cartao"
+          ? "cartão de crédito"
+          : "forma de pagamento";
+  const selectedLabel = data.selected_name || data.selected_sku || "pingente fotogravado";
+  const assignmentReason = `Kate finalizou pedido: ${selectedLabel} | ${deliveryLabel} | ${paymentLabel}`;
+
+  await supabase
+    .from("aline_conversations")
+    .update({
+      status: "human_takeover",
+      active_agent: "human",
+      assignment_reason: assignmentReason,
+      collected_data: {
+        ...data,
+        agente_atual: "human",
+      },
+      last_message_at: new Date().toISOString(),
+      agent_handoff_at: new Date().toISOString(),
+    })
+    .eq("id", conversation.id);
+
+  const { data: crmConversation } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("contact_number", phone)
+    .maybeSingle();
+
+  if (crmConversation?.id) {
+    await supabase
+      .from("conversations")
+      .update({ lead_status: "comprador" })
+      .eq("id", crmConversation.id);
+  }
+
+  try {
+    await fetch(`${supabaseUrl}/functions/v1/aline-takeover`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${supabaseServiceKey}`,
+      },
+      body: JSON.stringify({
+        phone,
+        action: "auto_forward",
+        reason: assignmentReason,
+        send_intro: true,
+      }),
+    });
+  } catch (error) {
+    console.error("[ALINE-REPLY] Erro ao encaminhar pingente para atendimento humano:", error);
+  }
+
+  const reply = `Perfeito! Já deixei anotado que será ${deliveryLabel} com pagamento via ${paymentLabel}. Vou te encaminhar agora para nosso atendimento humano finalizar seu pingente fotogravado 💫`;
+
+  await saveAssistantMessage(supabase, conversation.id, "kate", reply, "human_handoff_pingente");
+  await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+  return buildResponsePayload({
+    phone,
+    message: reply,
+    node: "human_handoff_pingente",
+    selectedProduct: data.selected_product || null,
+    collectedData: data,
+    agent: "human",
+  });
+}
+
+async function handleKateFlow(args: {
+  supabase: any;
+  supabaseUrl: string;
+  supabaseServiceKey: string;
+  conversation: any;
+  phone: string;
+  message: string;
+  contactName: string;
+  buttonResponseId: string | null;
+  catalogSelectionHint: string | null;
+  mediaType: string | null;
+  mediaUrl: string | null;
+}) {
+  const {
+    supabase,
+    supabaseUrl,
+    supabaseServiceKey,
+    conversation,
+    phone,
+    message,
+    contactName,
+    buttonResponseId,
+    catalogSelectionHint,
+    mediaType,
+    mediaUrl,
+  } = args;
+
+  const currentNode = String(conversation.current_node || "");
+  const data: AnyRecord = {
+    ...(conversation.collected_data || {}),
+    agente_atual: "kate",
+    categoria: "pingente",
+  };
+
+  if (!isKateFlowNode(currentNode)) {
+    resetKateFlowState(data);
+  }
+
+  const previousSelectedSku = String(data.selected_sku || "");
+  const selectedFromCatalog = findCatalogSelection(
+    buttonResponseId || catalogSelectionHint || message,
+    Array.isArray(data.last_catalog) ? data.last_catalog : [],
+  );
+
+  if (selectedFromCatalog) {
+    data.selected_product = selectedFromCatalog;
+    data.selected_sku = selectedFromCatalog.sku;
+    data.selected_name = selectedFromCatalog.name;
+    data.selected_price = selectedFromCatalog.price;
+    data.kate_selected_template_id = matchKateTemplateForProduct(selectedFromCatalog)?.id || null;
+
+    if (previousSelectedSku && previousSelectedSku !== String(selectedFromCatalog.sku || "")) {
+      delete data.kate_customer_photo_url;
+      delete data.kate_preview_image_url;
+      delete data.kate_preview_status;
+      delete data.kate_preview_approved;
+      delete data.delivery_method;
+      delete data.payment_method;
+      delete data.kate_store_handoff_done;
+    }
+  }
+
+  const deliveryMethod = extractDeliveryMethod(message);
+  if (deliveryMethod) {
+    data.delivery_method = deliveryMethod;
+  }
+
+  const paymentMethod = extractPaymentMethod(message);
+  if (paymentMethod) {
+    data.payment_method = paymentMethod;
+  }
+
+  const detectedColor = detectColor(message);
+  if (detectedColor === "prata" || detectedColor === "dourada") {
+    if (data.cor !== detectedColor) {
+      data.cor = detectedColor;
+      resetCatalogChoice(data);
+      delete data.kate_selected_template_id;
+      delete data.kate_customer_photo_url;
+      delete data.kate_preview_image_url;
+      delete data.kate_preview_status;
+      delete data.kate_preview_approved;
+    }
+  }
+
+  const hasColor = data.cor === "prata" || data.cor === "dourada";
+  const hasSelectedProduct = !!data.selected_sku;
+  const hasPhoto = !!data.kate_customer_photo_url;
+  const hasPreview = !!data.kate_preview_image_url;
+  const hasPreviewApproved = data.kate_preview_approved === true;
+  const hasDelivery = !!data.delivery_method;
+  const hasPayment = !!data.payment_method;
+  const wantsCatalogResend = detectCatalogResendIntent(message);
+  const wantsMoreOptions = detectMoreOptionsIntent(message);
+
+  const fetchKateCatalogCards = async (excludeSkus: string[] = []) => {
+    const searchParams: AnyRecord = {
+      category: "pingente",
+      only_available: true,
+      limit: 30,
+    };
+
+    if (data.cor) {
+      searchParams.color = data.cor;
+    }
+
+    if (excludeSkus.length > 0) {
+      searchParams.exclude_skus = excludeSkus;
+    }
+
+    const catalog = await searchCatalog(supabase, searchParams, data);
+    const filtered = catalog.filter((product) => {
+      const template = matchKateTemplateForProduct(product);
+      if (!template) return false;
+      if (!data.cor) return true;
+      return template.color === data.cor;
+    });
+
+    return buildKateCards(filtered);
+  };
+
+  if (!hasColor) {
+    const reply = detectedColor && !["prata", "dourada"].includes(detectedColor)
+      ? "Para pingentes com fotogravação, hoje eu tenho modelos em dourada e prata. Qual dessas cores você prefere? 💫"
+      : `Perfeito! Vou te transferir para a Kate, nossa especialista em pingentes fotogravados. 💫
+
+Oi! Sou a Kate. Qual cor você prefere para o pingente: dourada ou prata?`;
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "kate",
+      "kate_cor",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_cor");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "kate_cor",
+      collectedData: data,
+      agent: "kate",
+    });
+  }
+
+  if (!data.catalogo_kate_enviado) {
+    const cards = await fetchKateCatalogCards();
+
+    if (cards.length === 0) {
+      const reply = `Não encontrei pingentes fotograváveis prontos na cor ${data.cor} agora. Se quiser, eu posso te mostrar a outra cor disponível 😊`;
+
+      await persistConversation(
+        supabase,
+        conversation.id,
+        "kate",
+        "kate_sem_catalogo",
+        conversation.current_node || null,
+        data,
+      );
+      await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_sem_catalogo");
+      await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+      return buildResponsePayload({
+        phone,
+        message: reply,
+        node: "kate_sem_catalogo",
+        collectedData: data,
+        agent: "kate",
+      });
+    }
+
+    data.catalogo_kate_enviado = true;
+    data.last_catalog = cards.map((product) => ({
+      id: product.id,
+      sku: product.sku,
+      name: product.name,
+      price: product.price,
+      color: product.color,
+      image_url: product.image_url,
+      video_url: product.video_url,
+    }));
+
+    const reply = `Separei os pingentes fotograváveis na cor ${data.cor}. ✨
+A fotogravação de 1 lado já está inclusa.`;
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "kate",
+      "catalogo_pingente",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "catalogo_pingente");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "catalogo_pingente",
+      products: cards,
+      collectedData: data,
+      agent: "kate",
+      useProductButtons: true,
+      postCatalogMessage: "Gostou de algum modelo? Se escolher um, eu já te peço a foto para gerar a prévia 😊",
+    });
+  }
+
+  if (data.catalogo_kate_enviado && !hasSelectedProduct && (wantsCatalogResend || wantsMoreOptions)) {
+    const shownSkus = Array.isArray(data.last_catalog)
+      ? data.last_catalog.map((item: any) => String(item?.sku || "")).filter(Boolean)
+      : [];
+    const cards = await fetchKateCatalogCards(wantsMoreOptions ? shownSkus : []);
+
+    if (cards.length === 0 && wantsMoreOptions) {
+      const reply = "No momento esses são os modelos fotograváveis que tenho nessa cor. Se quiser, eu posso te mostrar a outra cor disponível 😊";
+
+      await persistConversation(
+        supabase,
+        conversation.id,
+        "kate",
+        "kate_sem_mais_opcoes",
+        conversation.current_node || null,
+        data,
+      );
+      await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_sem_mais_opcoes");
+      await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+      return buildResponsePayload({
+        phone,
+        message: reply,
+        node: "kate_sem_mais_opcoes",
+        collectedData: data,
+        agent: "kate",
+      });
+    }
+
+    if (cards.length > 0) {
+      data.last_catalog = cards.map((product) => ({
+        id: product.id,
+        sku: product.sku,
+        name: product.name,
+        price: product.price,
+        color: product.color,
+        image_url: product.image_url,
+        video_url: product.video_url,
+      }));
+
+      const reply = wantsMoreOptions
+        ? `Tenho outras opções de pingentes fotograváveis na cor ${data.cor} para te mostrar. ✨`
+        : "Claro! Vou te reenviar os modelos para você olhar com calma. ✨";
+
+      await persistConversation(
+        supabase,
+        conversation.id,
+        "kate",
+        "catalogo_pingente",
+        conversation.current_node || null,
+        data,
+      );
+      await saveAssistantMessage(supabase, conversation.id, "kate", reply, "catalogo_pingente");
+      await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+      return buildResponsePayload({
+        phone,
+        message: reply,
+        node: "catalogo_pingente",
+        products: cards,
+        collectedData: data,
+        agent: "kate",
+        useProductButtons: true,
+        postCatalogMessage: "Gostou de algum modelo? Se escolher um, eu já te peço a foto para gerar a prévia 😊",
+      });
+    }
+  }
+
+  if (hasSelectedProduct && !hasPhoto) {
+    if (mediaType === "image" && mediaUrl) {
+      data.kate_customer_photo_url = mediaUrl;
+      data.kate_photo_requested = true;
+
+      try {
+        const previewImageUrl = await generateKatePreview({
+          supabase,
+          phone,
+          selectedProduct: data.selected_product || {},
+          customerPhotoUrl: mediaUrl,
+        });
+
+        data.kate_preview_image_url = previewImageUrl;
+        data.kate_preview_status = "sent";
+        data.kate_preview_approved = false;
+
+        const reply = `Recebi sua foto! Gerei uma prévia do *${data.selected_name}* para você conferir. Se aprovar, eu sigo para entrega e pagamento 😊`;
+
+        await persistConversation(
+          supabase,
+          conversation.id,
+          "kate",
+          "kate_preview",
+          conversation.current_node || null,
+          data,
+        );
+        await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_preview");
+        await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+        return buildResponsePayload({
+          phone,
+          message: reply,
+          node: "kate_preview",
+          mediaItems: previewImageUrl
+            ? [
+                {
+                  type: "image",
+                  url: previewImageUrl,
+                  caption: `Prévia do ${data.selected_name || "pingente fotogravado"}`,
+                },
+              ]
+            : [],
+          selectedProduct: data.selected_product || null,
+          collectedData: data,
+          agent: "kate",
+        });
+      } catch (error) {
+        console.error("[ALINE-REPLY] Erro ao gerar prévia da Kate:", error);
+        const reply =
+          "Recebi sua foto, mas não consegui gerar a prévia automática agora. Vou te encaminhar para nosso atendimento humano finalizar a fotogravação com você 😊";
+
+        await persistConversation(
+          supabase,
+          conversation.id,
+          "kate",
+          "kate_preview_falhou",
+          conversation.current_node || null,
+          data,
+        );
+        await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_preview_falhou");
+        await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+        return await handoffKateToHuman({
+          supabase,
+          supabaseUrl,
+          supabaseServiceKey,
+          conversation,
+          phone,
+          contactName,
+          data,
+        });
+      }
+    }
+
+    const reply = `Perfeito! Você escolheu *${data.selected_name}*. 📸
+
+Esse modelo permite fotogravação de 1 lado. Me manda agora a foto que você quer gravar para eu gerar a prévia 😊`;
+
+    data.kate_photo_requested = true;
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "kate",
+      "kate_foto",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_foto");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "kate_foto",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "kate",
+    });
+  }
+
+  if (hasPreview && !hasPreviewApproved) {
+    if (mediaType === "image" && mediaUrl) {
+      data.kate_customer_photo_url = mediaUrl;
+      data.kate_preview_approved = false;
+
+      try {
+        const previewImageUrl = await generateKatePreview({
+          supabase,
+          phone,
+          selectedProduct: data.selected_product || {},
+          customerPhotoUrl: mediaUrl,
+        });
+
+        data.kate_preview_image_url = previewImageUrl;
+        data.kate_preview_status = "resent";
+
+        const reply = "Perfeito! Gerei uma nova prévia com essa foto para você conferir 😊";
+
+        await persistConversation(
+          supabase,
+          conversation.id,
+          "kate",
+          "kate_preview",
+          conversation.current_node || null,
+          data,
+        );
+        await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_preview");
+        await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+        return buildResponsePayload({
+          phone,
+          message: reply,
+          node: "kate_preview",
+          mediaItems: previewImageUrl
+            ? [
+                {
+                  type: "image",
+                  url: previewImageUrl,
+                  caption: `Nova prévia do ${data.selected_name || "pingente fotogravado"}`,
+                },
+              ]
+            : [],
+          selectedProduct: data.selected_product || null,
+          collectedData: data,
+          agent: "kate",
+        });
+      } catch (error) {
+        console.error("[ALINE-REPLY] Erro ao refazer prévia da Kate:", error);
+      }
+    }
+
+    if (detectPreviewRedoIntent(message)) {
+      delete data.kate_customer_photo_url;
+      delete data.kate_preview_image_url;
+      delete data.kate_preview_status;
+      delete data.kate_preview_approved;
+
+      const reply = "Claro! Me manda outra foto que eu gero uma nova prévia para você 😊";
+
+      await persistConversation(
+        supabase,
+        conversation.id,
+        "kate",
+        "kate_foto",
+        conversation.current_node || null,
+        data,
+      );
+      await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_foto");
+      await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+      return buildResponsePayload({
+        phone,
+        message: reply,
+        node: "kate_foto",
+        selectedProduct: data.selected_product || null,
+        collectedData: data,
+        agent: "kate",
+      });
+    }
+
+    if (detectPreviewApprovalIntent(message)) {
+      data.kate_preview_approved = true;
+    } else {
+      const reply =
+        "Se essa prévia ficou boa, me confirma que eu sigo para entrega e pagamento. Se preferir, você também pode me mandar outra foto 😊";
+
+      await persistConversation(
+        supabase,
+        conversation.id,
+        "kate",
+        "kate_preview",
+        conversation.current_node || null,
+        data,
+      );
+      await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_preview");
+      await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+      return buildResponsePayload({
+        phone,
+        message: reply,
+        node: "kate_preview",
+        selectedProduct: data.selected_product || null,
+        collectedData: data,
+        agent: "kate",
+      });
+    }
+  }
+
+  if (hasSelectedProduct && (data.kate_preview_approved === true) && !hasDelivery) {
+    const reply = `Perfeito! Prévia aprovada para *${data.selected_name}*. ✨
+
+Você vai retirar na loja ou prefere delivery? Depois eu confirmo a forma de pagamento: Pix, Crediario Bemol ou cartão de crédito.`;
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "kate",
+      "kate_entrega",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_entrega");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "kate_entrega",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "kate",
+    });
+  }
+
+  if (hasSelectedProduct && hasDelivery && !hasPayment) {
+    const reply = "Perfeito! E a forma de pagamento vai ser no Pix, Crediario Bemol ou cartão de crédito? 💳";
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "kate",
+      "kate_pagamento",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_pagamento");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "kate_pagamento",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "kate",
+    });
+  }
+
+  if (hasSelectedProduct && hasDelivery && hasPayment && !data.kate_store_handoff_done) {
+    return await handoffKateToHuman({
+      supabase,
+      supabaseUrl,
+      supabaseServiceKey,
+      conversation,
+      phone,
+      contactName,
+      data,
+    });
+  }
+
+  const reply = "Se quiser, posso te reenviar os modelos ou gerar outra prévia com uma nova foto 😊";
+
+  await persistConversation(
+    supabase,
+    conversation.id,
+    "kate",
+    "selecao_pingente",
+    conversation.current_node || null,
+    data,
+  );
+  await saveAssistantMessage(supabase, conversation.id, "kate", reply, "selecao_pingente");
+  await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+  return buildResponsePayload({
+    phone,
+    message: reply,
+    node: "selecao_pingente",
+    selectedProduct: data.selected_product || null,
+    collectedData: data,
+    agent: "kate",
   });
 }
 
@@ -1426,9 +2338,12 @@ serve(async (req) => {
     const contactName = String(body.contact_name || "Cliente");
     const buttonResponseId = body.button_response_id ? String(body.button_response_id) : null;
     const catalogSelectionHint = body.catalog_selection_hint ? String(body.catalog_selection_hint) : null;
+    const mediaType = body.media_type ? String(body.media_type) : null;
+    const mediaUrl = body.media_url ? String(body.media_url) : null;
+    const inboundText = [message, catalogSelectionHint].filter(Boolean).join(" ").trim();
 
-    if (!phone || !message) {
-      throw new Error("phone and message are required");
+    if (!phone || (!message && !mediaUrl && !buttonResponseId && !catalogSelectionHint)) {
+      throw new Error("phone and message or media are required");
     }
 
     const resolved = await resolveConversation(supabase, phone, contactName);
@@ -1450,7 +2365,7 @@ serve(async (req) => {
     await supabase.from("aline_messages").insert({
       conversation_id: conversation.id,
       role: "user",
-      message,
+      message: message || buttonResponseId || catalogSelectionHint || (mediaType ? `[${mediaType}]` : "[sem texto]"),
       node: conversation.current_node || "abertura",
     });
 
@@ -1459,14 +2374,46 @@ serve(async (req) => {
       contact_name: contactName || conversation.collected_data?.contact_name || "Cliente",
     };
 
-    baseData.categoria = detectCategory(message, baseData) || baseData.categoria || null;
-    baseData.finalidade = detectAllianceType(message, baseData) || baseData.finalidade || null;
-    baseData.triagem_categoria = detectClassification(message, baseData) || baseData.triagem_categoria || null;
+    baseData.categoria = detectCategory(inboundText, baseData) || baseData.categoria || null;
+    baseData.finalidade = detectAllianceType(inboundText, baseData) || baseData.finalidade || null;
+    baseData.triagem_categoria = detectClassification(inboundText, baseData) || baseData.triagem_categoria || null;
 
     const activeAgent = (conversation.active_agent || baseData.agente_atual || "aline") as ConversationAgent;
     const alineMemory = await loadAgentMemory(supabase, phone, "aline");
+    const kateMemory = await loadAgentMemory(supabase, phone, "kate");
 
-    if (activeAgent === "keila" || detectMarriageIntent(message, baseData, conversation.current_node || "")) {
+    if (activeAgent === "kate" || detectPendantIntent(inboundText, baseData, conversation.current_node || "")) {
+      const kateResponse = await handleKateFlow({
+        supabase,
+        supabaseUrl,
+        supabaseServiceKey,
+        conversation: {
+          ...conversation,
+          active_agent: "kate",
+          collected_data: hydrateDataWithMemory(
+            {
+              ...baseData,
+              agente_atual: "kate",
+              categoria: "pingente",
+            },
+            kateMemory,
+          ),
+        },
+        phone,
+        message,
+        contactName,
+        buttonResponseId,
+        catalogSelectionHint,
+        mediaType,
+        mediaUrl,
+      });
+
+      return new Response(JSON.stringify(kateResponse), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (activeAgent === "keila" || detectMarriageIntent(inboundText, baseData, conversation.current_node || "")) {
       const keilaResponse = await handleKeilaFlow({
         supabase,
         supabaseUrl,

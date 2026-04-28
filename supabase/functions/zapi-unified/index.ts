@@ -530,11 +530,13 @@ serve(async (req) => {
 
     const textMessage = alineResponse.mensagem_whatsapp || alineResponse.response || "";
     const products = Array.isArray(alineResponse.produtos) ? alineResponse.produtos : [];
+    const mediaItems = Array.isArray(alineResponse.media_items) ? alineResponse.media_items : [];
     const useProductButtons = alineResponse.use_product_buttons === true;
     const postCatalogMessage = alineResponse.mensagem_pos_catalogo || null;
 
     let textSent = false;
     let productsSent = 0;
+    let mediaItemsSent = 0;
     let postCatalogSent = false;
     const sequenceLeaseResult = await acquireZapiGovernorLease(supabase, {
       lane: "conversation",
@@ -671,7 +673,66 @@ serve(async (req) => {
       }
     }
 
-    if (productsSent > 0 && postCatalogMessage) {
+    if (mediaItems.length > 0) {
+      await sleep(1200);
+
+      for (let index = 0; index < mediaItems.length; index++) {
+        const item = mediaItems[index];
+        let result:
+          | { success: boolean; messageId: string | null; error: unknown }
+          | null = null;
+
+        if (item?.url && (item.type === "image" || item.type === "video")) {
+          result = (
+            await sendWithGovernorLease(sequenceLeaseResult.lease, () =>
+              sendMedia(
+                phone,
+                item.type,
+                item.url,
+                item.caption || "",
+                ZAPI_INSTANCE_ID,
+                ZAPI_TOKEN,
+                ZAPI_CLIENT_TOKEN,
+              ),
+            )
+          ).result;
+        } else if (item?.caption) {
+          result = (
+            await sendWithGovernorLease(sequenceLeaseResult.lease, () =>
+              sendText(
+                phone,
+                item.caption,
+                ZAPI_INSTANCE_ID,
+                ZAPI_TOKEN,
+                ZAPI_CLIENT_TOKEN,
+              ),
+            )
+          ).result;
+        }
+
+        if (result?.success) {
+          mediaItemsSent += 1;
+
+          await supabase.from("messages").insert({
+            conversation_id: conversationId,
+            content: item.caption || `[${item.type || "media"}]`,
+            message_type: item.type || "image",
+            media_url: item.url || null,
+            is_from_me: true,
+            status: "sent",
+            zapi_message_id: result?.messageId || null,
+          });
+        } else {
+          console.error(`[ZAPI-UNIFIED] Falha ao enviar mídia ${index + 1}:`, result?.error);
+        }
+
+        if (index < mediaItems.length - 1) {
+          await sleep(1100);
+        }
+      }
+    }
+
+    if ((productsSent > 0 || mediaItemsSent > 0) && postCatalogMessage) {
       await sleep(1200);
 
       const postResult = (
@@ -756,6 +817,7 @@ serve(async (req) => {
         conversation_id: conversationId,
         text_sent: textSent,
         products_sent: productsSent,
+        media_items_sent: mediaItemsSent,
         post_catalog_sent: postCatalogSent,
         aline_node: alineResponse.node_tecnico,
         use_product_buttons: useProductButtons,
