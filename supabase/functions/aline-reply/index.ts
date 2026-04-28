@@ -408,7 +408,9 @@ async function searchCatalog(
     const category = normalizeText(product.category || "");
     const name = normalizeText(product.name || "");
     const productColor = normalizeText(product.color || "");
+    const description = normalizeText(product.description || "");
     const productSku = normalizeText(product.sku || "");
+    const colorSearchText = `${productColor} ${name} ${description} ${category}`;
     const isTungsten =
       category.includes("tungstenio") ||
       category.includes("tungsten") ||
@@ -439,9 +441,17 @@ async function searchCatalog(
 
     if (requestedColor) {
       const normalizedRequestedColor =
-        requestedColor === "prata" ? ["prata", "aco", "aço"] : [requestedColor];
+        requestedColor === "prata"
+          ? ["prata", "aco", "aço", "silver"]
+          : requestedColor === "dourada"
+            ? ["dourada", "dourado", "ouro", "gold", "amarela", "amarelo"]
+            : requestedColor === "preta"
+              ? ["preta", "preto", "black", "negra", "escura", "escuro"]
+              : requestedColor === "azul"
+                ? ["azul", "blue"]
+                : [requestedColor];
 
-      const matchesColor = normalizedRequestedColor.some((color) => productColor.includes(color));
+      const matchesColor = normalizedRequestedColor.some((color) => colorSearchText.includes(color));
       if (!matchesColor) return false;
     }
 
@@ -457,7 +467,21 @@ async function searchCatalog(
     return true;
   });
 
-  filtered = filtered.slice(0, 8);
+  filtered = filtered.sort((a: any, b: any) => {
+    const aColor = normalizeText(a.color || "");
+    const bColor = normalizeText(b.color || "");
+    const requested = normalizeText(requestedColor);
+    const aExact = requested ? aColor.includes(requested) : false;
+    const bExact = requested ? bColor.includes(requested) : false;
+
+    if (aExact !== bExact) return aExact ? -1 : 1;
+
+    return Number(a.price || 0) - Number(b.price || 0);
+  });
+
+  if (Number.isFinite(Number(params.limit)) && Number(params.limit) > 0) {
+    filtered = filtered.slice(0, Number(params.limit));
+  }
 
   return filtered.map((product: any, index: number) => {
     const sizes = (product.product_variants || [])
