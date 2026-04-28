@@ -170,10 +170,11 @@ function extractDeliveryMethod(text: string): "retirada" | "entrega" | null {
   return null;
 }
 
-function extractPaymentMethod(text: string): "pix" | "cartao" | null {
+function extractPaymentMethod(text: string): "pix" | "cartao" | "crediario_bemol" | null {
   const normalized = normalizeText(text);
 
   if (/\bpix\b/.test(normalized)) return "pix";
+  if (/crediario|crediario bemol|crediario da bemol|bemol/.test(normalized)) return "crediario_bemol";
   if (/cartao|cartão|credito|crédito|debito|débito/.test(normalized)) return "cartao";
 
   return null;
@@ -386,6 +387,7 @@ async function searchCatalog(
       category,
       color,
       description,
+      tags,
       product_variants(size, stock)
     `)
     .eq("active", true)
@@ -410,12 +412,22 @@ async function searchCatalog(
     const productColor = normalizeText(product.color || "");
     const description = normalizeText(product.description || "");
     const productSku = normalizeText(product.sku || "");
-    const colorSearchText = `${productColor} ${name} ${description} ${category}`;
+    const tagsText = Array.isArray(product.tags)
+      ? product.tags.map((tag: unknown) => normalizeText(String(tag || ""))).join(" ")
+      : normalizeText(String(product.tags || ""));
+    const colorSearchText = `${productColor} ${name} ${description} ${category} ${tagsText}`;
     const isTungsten =
       category.includes("tungstenio") ||
       category.includes("tungsten") ||
       name.includes("tungstenio") ||
-      name.includes("tungsten");
+      name.includes("tungsten") ||
+      description.includes("tungstenio") ||
+      description.includes("tungsten") ||
+      name.includes("casamento") ||
+      description.includes("casamento") ||
+      tagsText.includes("tungstenio") ||
+      tagsText.includes("tungsten") ||
+      tagsText.includes("casamento");
 
     if (excludedSkus.length > 0 && productSku && excludedSkus.includes(productSku)) {
       return false;
@@ -426,7 +438,12 @@ async function searchCatalog(
         category.includes("alianca") ||
         category.includes("aliancas") ||
         category.includes("tungsten") ||
-        name.includes("alianca");
+        name.includes("alianca") ||
+        description.includes("alianca") ||
+        description.includes("aliancas") ||
+        tagsText.includes("alianca") ||
+        tagsText.includes("aliancas") ||
+        tagsText.includes("casamento");
 
       if (!isAlliance) return false;
 
@@ -783,13 +800,24 @@ async function handoffKeilaToHuman(args: {
   const { supabase, supabaseUrl, supabaseServiceKey, conversation, phone, contactName, data } = args;
 
   data.keila_store_handoff_done = true;
+  const deliveryLabel = data.delivery_method === "retirada" ? "retirada na loja" : "delivery";
+  const paymentLabel =
+    data.payment_method === "pix"
+      ? "Pix"
+      : data.payment_method === "crediario_bemol"
+        ? "Crediario Bemol"
+        : data.payment_method === "cartao"
+          ? "cartao de credito"
+          : "forma de pagamento";
+  const selectedLabel = data.selected_name || data.selected_sku || "alianca casamento";
+  const assignmentReason = `Keila finalizou pedido: ${selectedLabel} | ${deliveryLabel} | ${paymentLabel}`;
 
   await supabase
     .from("aline_conversations")
     .update({
       status: "human_takeover",
       active_agent: "human",
-      assignment_reason: "Retirada na loja após atendimento da Keila",
+      assignment_reason: assignmentReason,
       collected_data: {
         ...data,
         agente_atual: "human",
@@ -822,7 +850,7 @@ async function handoffKeilaToHuman(args: {
       body: JSON.stringify({
         phone,
         action: "auto_forward",
-        reason: `Keila finalizou retirada na loja: ${data.selected_name || data.selected_sku || "aliança casamento"}`,
+        reason: assignmentReason,
         send_intro: true,
       }),
     });
@@ -830,14 +858,14 @@ async function handoffKeilaToHuman(args: {
     console.error("[ALINE-REPLY] Erro ao encaminhar para atendimento humano:", error);
   }
 
-  const reply = `Perfeito! Como você vai retirar na loja, vou te encaminhar agora para nosso atendimento humano finalizar com você e acionar os vendedores. 💍`;
+  const reply = `Perfeito! Já deixei anotado que será ${deliveryLabel} com pagamento via ${paymentLabel}. Vou te encaminhar agora para nosso atendimento humano finalizar com você e acionar os vendedores. 💍`;
 
   await saveAssistantMessage(
     supabase,
     conversation.id,
     "keila",
     reply,
-    "human_handoff_retirada",
+    "human_handoff_fechamento",
   );
 
   await saveAgentMemory(supabase, phone, "keila", contactName, data);
@@ -845,7 +873,7 @@ async function handoffKeilaToHuman(args: {
   return buildResponsePayload({
     phone,
     message: reply,
-    node: "human_handoff_retirada",
+    node: "human_handoff_fechamento",
     selectedProduct: data.selected_product || null,
     collectedData: data,
     agent: "human",
@@ -923,6 +951,9 @@ async function handleKeilaFlow(args: {
   const paymentMethod = extractPaymentMethod(message);
   if (paymentMethod) {
     data.payment_method = paymentMethod;
+  }
+  if (!data.payment_method && /crediario|crediario bemol|crediario da bemol|bemol/.test(normalizeText(message))) {
+    data.payment_method = "crediario_bemol";
   }
 
   if (customerDoesNotKnowSize(message)) {
@@ -1265,7 +1296,7 @@ O valor do card é da unidade. O par sai pelo dobro.`;
   if (hasSelectedProduct && !hasDelivery) {
     const reply = `Perfeito! Você escolheu *${data.selected_name}*. 💍
 
-Você vai retirar na loja ou prefere entrega?`;
+Você vai retirar na loja ou prefere delivery? Depois eu confirmo a forma de pagamento: Pix, Crediario Bemol ou cartão de crédito.`;
 
     await persistConversation(
       supabase,
@@ -1288,24 +1319,8 @@ Você vai retirar na loja ou prefere entrega?`;
     });
   }
 
-  if (
-    hasSelectedProduct &&
-    data.delivery_method === "retirada" &&
-    !data.keila_store_handoff_done
-  ) {
-    return await handoffKeilaToHuman({
-      supabase,
-      supabaseUrl,
-      supabaseServiceKey,
-      conversation,
-      phone,
-      contactName,
-      data,
-    });
-  }
-
-  if (hasSelectedProduct && data.delivery_method === "entrega" && !hasPayment) {
-    const reply = "Perfeito! E o pagamento vai ser no Pix ou cartão? 💳";
+  if (hasSelectedProduct && hasDelivery && !hasPayment) {
+    const reply = "Perfeito! E a forma de pagamento vai ser no Pix, Crediario Bemol ou cartão de crédito? 💳";
 
     await persistConversation(
       supabase,
@@ -1328,27 +1343,15 @@ Você vai retirar na loja ou prefere entrega?`;
     });
   }
 
-  if (hasSelectedProduct && data.delivery_method === "entrega" && hasPayment) {
-    const reply = `Perfeito! Já deixei tudo anotado para seguir com seu atendimento. 💍`;
-
-    await persistConversation(
+  if (hasSelectedProduct && hasDelivery && hasPayment && !data.keila_store_handoff_done) {
+    return await handoffKeilaToHuman({
       supabase,
-      conversation.id,
-      "keila",
-      "finalizado",
-      conversation.current_node || null,
-      data,
-    );
-    await saveAssistantMessage(supabase, conversation.id, "keila", reply, "finalizado");
-    await saveAgentMemory(supabase, phone, "keila", contactName, data);
-
-    return buildResponsePayload({
+      supabaseUrl,
+      supabaseServiceKey,
+      conversation,
       phone,
-      message: reply,
-      node: "finalizado",
-      selectedProduct: data.selected_product || null,
-      collectedData: data,
-      agent: "keila",
+      contactName,
+      data,
     });
   }
 
