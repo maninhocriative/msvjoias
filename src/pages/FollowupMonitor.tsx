@@ -23,9 +23,11 @@ import {
 import {
   RefreshCw,
   MessageCircle,
+  Activity,
   Clock,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   Users,
   Send,
   Timer,
@@ -40,6 +42,9 @@ import {
   Phone,
   UserRound,
   Clock3,
+  Gauge,
+  ShieldAlert,
+  ShieldCheck,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -176,6 +181,22 @@ interface ZapiGovernorFormState {
   minGapSeconds: string;
   burstWindowMinutes: string;
   maxAutomaticSendsPerWindow: string;
+}
+
+interface OutboundHealthRow {
+  id: string;
+  conversation_id: string;
+  content: string | null;
+  message_type: string | null;
+  status: string | null;
+  created_at: string | null;
+  zapi_message_id: string | null;
+}
+
+interface QueueHealthAlert {
+  tone: 'healthy' | 'warning' | 'critical';
+  title: string;
+  description: string;
 }
 
 const DEFAULT_ZAPI_GOVERNOR: ZapiGovernorFormState = {
@@ -512,6 +533,56 @@ function parseZapiGovernorState(rawValue?: string | null): ZapiGovernorFormState
   }
 }
 
+function buildMessagePreview(content?: string | null, messageType?: string | null) {
+  const trimmed = String(content || '').trim();
+  if (trimmed) {
+    return trimmed.length > 110 ? `${trimmed.slice(0, 110)}...` : trimmed;
+  }
+
+  switch (messageType) {
+    case 'image':
+      return '[Imagem]';
+    case 'video':
+      return '[Video]';
+    case 'audio':
+      return '[Audio]';
+    case 'document':
+      return '[Documento]';
+    default:
+      return '[Mensagem sem texto]';
+  }
+}
+
+function getHealthToneMeta(tone: QueueHealthAlert['tone']) {
+  if (tone === 'critical') {
+    return {
+      badgeClass: 'border-rose-500/20 bg-rose-500/10 text-rose-300',
+      panelClass: 'border-rose-500/20 bg-rose-500/5',
+      icon: ShieldAlert,
+      iconClass: 'text-rose-400',
+      label: 'Critico',
+    };
+  }
+
+  if (tone === 'warning') {
+    return {
+      badgeClass: 'border-amber-500/20 bg-amber-500/10 text-amber-300',
+      panelClass: 'border-amber-500/20 bg-amber-500/5',
+      icon: AlertTriangle,
+      iconClass: 'text-amber-400',
+      label: 'Atencao',
+    };
+  }
+
+  return {
+    badgeClass: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300',
+    panelClass: 'border-emerald-500/20 bg-emerald-500/5',
+    icon: ShieldCheck,
+    iconClass: 'text-emerald-400',
+    label: 'Saudavel',
+  };
+}
+
 /* â”€â”€ Page â”€â”€ */
 export default function FollowupMonitor() {
   const [conversations, setConversations] = useState<ConversationRow[]>([]);
@@ -527,6 +598,13 @@ export default function FollowupMonitor() {
   const [zapiGovernor, setZapiGovernor] = useState<ZapiGovernorFormState>(
     DEFAULT_ZAPI_GOVERNOR,
   );
+  const [outboundRecentMessages, setOutboundRecentMessages] = useState<
+    OutboundHealthRow[]
+  >([]);
+  const [outboundRecentFailures, setOutboundRecentFailures] = useState<
+    OutboundHealthRow[]
+  >([]);
+  const [outboundPendingCount, setOutboundPendingCount] = useState(0);
 
   const [selectedItem, setSelectedItem] = useState<FollowupItem | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -612,10 +690,15 @@ export default function FollowupMonitor() {
       const localMarketing = parseMarketingState(
         safeReadLocalStorage(MARKETING_LOCAL_KEY),
       );
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
       const [
         { data: conversationsData, error: conversationsError },
         { data: settingsData, error: settingsError },
+        { data: outboundMessagesData, error: outboundMessagesError },
+        { data: failedMessagesData, error: failedMessagesError },
+        { count: pendingMessagesCount, error: pendingMessagesError },
       ] = await Promise.all([
         supabase
           .from('aline_conversations')
@@ -630,10 +713,41 @@ export default function FollowupMonitor() {
             'facebook_leads_last_import',
             ZAPI_GOVERNOR_KEY,
           ]),
+        supabase
+          .from('messages')
+          .select(
+            'id, conversation_id, content, message_type, status, created_at, zapi_message_id',
+          )
+          .eq('is_from_me', true)
+          .is('deleted_at', null)
+          .gte('created_at', oneHourAgo)
+          .order('created_at', { ascending: false })
+          .limit(500),
+        supabase
+          .from('messages')
+          .select(
+            'id, conversation_id, content, message_type, status, created_at, zapi_message_id',
+          )
+          .eq('is_from_me', true)
+          .eq('status', 'failed')
+          .is('deleted_at', null)
+          .gte('created_at', oneDayAgo)
+          .order('created_at', { ascending: false })
+          .limit(8),
+        supabase
+          .from('messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('is_from_me', true)
+          .is('deleted_at', null)
+          .in('status', ['pending', 'sending'])
+          .gte('created_at', oneDayAgo),
       ]);
 
       if (conversationsError) throw conversationsError;
       if (settingsError) throw settingsError;
+      if (outboundMessagesError) throw outboundMessagesError;
+      if (failedMessagesError) throw failedMessagesError;
+      if (pendingMessagesError) throw pendingMessagesError;
 
       const marketingSetting = settingsData?.find(
         (row) => row.key === MARKETING_SETTING_KEY,
@@ -662,6 +776,9 @@ export default function FollowupMonitor() {
       setMarketingStateMap(mergedMarketing);
       setImportedLeads(imported);
       setZapiGovernor(parseZapiGovernorState(governorSetting?.value));
+      setOutboundRecentMessages((outboundMessagesData || []) as OutboundHealthRow[]);
+      setOutboundRecentFailures((failedMessagesData || []) as OutboundHealthRow[]);
+      setOutboundPendingCount(Number(pendingMessagesCount || 0));
       safeWriteLocalStorage(MARKETING_LOCAL_KEY, JSON.stringify(mergedMarketing));
     } catch (error) {
       console.error('Erro ao buscar dados de follow-up:', error);
@@ -850,6 +967,144 @@ export default function FollowupMonitor() {
       importedOnly,
     };
   }, [combinedItems]);
+
+  const queueHealth = useMemo(() => {
+    const now = Date.now();
+    const burstWindowMinutes = Math.max(
+      Number(zapiGovernor.burstWindowMinutes || DEFAULT_ZAPI_GOVERNOR.burstWindowMinutes),
+      1,
+    );
+    const burstWindowMs = burstWindowMinutes * 60 * 1000;
+    const currentWindowLimit = Math.max(
+      Number(
+        zapiGovernor.maxAutomaticSendsPerWindow ||
+          DEFAULT_ZAPI_GOVERNOR.maxAutomaticSendsPerWindow,
+      ),
+      1,
+    );
+
+    const statusCounts = outboundRecentMessages.reduce<Record<string, number>>(
+      (acc, item) => {
+        const key = String(item.status || 'unknown').toLowerCase();
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      },
+      {},
+    );
+
+    const currentWindowCount = outboundRecentMessages.filter((item) => {
+      if (!item.created_at) return false;
+      return now - new Date(item.created_at).getTime() <= burstWindowMs;
+    }).length;
+
+    const last15MinutesMap = new Map<number, number>();
+    outboundRecentMessages.forEach((item) => {
+      if (!item.created_at) return;
+      const date = new Date(item.created_at);
+      if (Number.isNaN(date.getTime())) return;
+      if (now - date.getTime() > 15 * 60 * 1000) return;
+      date.setSeconds(0, 0);
+      const key = date.getTime();
+      last15MinutesMap.set(key, (last15MinutesMap.get(key) || 0) + 1);
+    });
+
+    const minuteBuckets = Array.from({ length: 15 }, (_, index) => {
+      const bucketDate = new Date(now - (14 - index) * 60 * 1000);
+      bucketDate.setSeconds(0, 0);
+      const key = bucketDate.getTime();
+      return {
+        label: bucketDate.toLocaleTimeString('pt-BR', {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        count: last15MinutesMap.get(key) || 0,
+      };
+    });
+
+    const peakPerMinute = Math.max(
+      1,
+      ...minuteBuckets.map((bucket) => bucket.count),
+    );
+    const averagePerMinute = Number(
+      (
+        minuteBuckets.reduce((sum, bucket) => sum + bucket.count, 0) /
+        minuteBuckets.length
+      ).toFixed(1),
+    );
+
+    const alerts: QueueHealthAlert[] = [];
+
+    if (outboundPendingCount >= Math.max(5, Math.ceil(currentWindowLimit * 0.5))) {
+      alerts.push({
+        tone: outboundPendingCount >= currentWindowLimit ? 'critical' : 'warning',
+        title: 'Fila pendente acumulando',
+        description: `${outboundPendingCount} mensagens seguem em pending/sending. Vale reduzir o ritmo temporariamente.`,
+      });
+    }
+
+    if ((statusCounts.failed || 0) >= 3 || outboundRecentFailures.length >= 5) {
+      alerts.push({
+        tone:
+          (statusCounts.failed || 0) >= 6 || outboundRecentFailures.length >= 6
+            ? 'critical'
+            : 'warning',
+        title: 'Falhas recentes na saida',
+        description: `${outboundRecentFailures.length} falhas nas ultimas 24h. Confira Z-API, midias e qualidade do numero.`,
+      });
+    }
+
+    if (currentWindowCount >= currentWindowLimit) {
+      alerts.push({
+        tone: currentWindowCount >= currentWindowLimit * 1.2 ? 'critical' : 'warning',
+        title: 'Janela de vazao sob pressao',
+        description: `${currentWindowCount}/${currentWindowLimit} envios na janela ativa. O limitador pode comecar a segurar novas rodadas.`,
+      });
+    }
+
+    if (!alerts.length) {
+      alerts.push({
+        tone: 'healthy',
+        title: 'Fluxo controlado',
+        description:
+          outboundRecentMessages.length === 0
+            ? 'Sem disparos na ultima hora. Nenhum sinal de pressao agora.'
+            : 'A saida esta fluindo dentro do ritmo configurado para a Z-API.',
+      });
+    }
+
+    const dominantTone = alerts.some((item) => item.tone === 'critical')
+      ? 'critical'
+      : alerts.some((item) => item.tone === 'warning')
+        ? 'warning'
+        : 'healthy';
+
+    return {
+      lastHourTotal: outboundRecentMessages.length,
+      lastHourDelivered:
+        (statusCounts.sent || 0) +
+        (statusCounts.delivered || 0) +
+        (statusCounts.read || 0),
+      lastHourFailed: statusCounts.failed || 0,
+      currentWindowCount,
+      currentWindowLimit,
+      currentWindowUsage: Math.min(
+        999,
+        Math.round((currentWindowCount / currentWindowLimit) * 100),
+      ),
+      pendingNow: outboundPendingCount,
+      averagePerMinute,
+      peakPerMinute,
+      minuteBuckets,
+      alerts,
+      tone: dominantTone as QueueHealthAlert['tone'],
+    };
+  }, [
+    outboundPendingCount,
+    outboundRecentFailures,
+    outboundRecentMessages,
+    zapiGovernor.burstWindowMinutes,
+    zapiGovernor.maxAutomaticSendsPerWindow,
+  ]);
 
   const updateFollowupQueue = async (
     item: FollowupItem,
@@ -1068,6 +1323,214 @@ export default function FollowupMonitor() {
                 Filas importadas sao organizacionais; o fluxo da Aline e o unico automatico
               </p>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/60 bg-card shadow-sm">
+        <CardHeader className="space-y-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                Saude da saida da Z-API
+              </p>
+              <h2 className="text-lg font-semibold mt-2">
+                Monitoramento vivo para detectar pressao, fila e falhas
+              </h2>
+              <p className="text-sm text-muted-foreground mt-2 max-w-3xl">
+                Esse painel acompanha a ultima hora de envios do CRM e sinaliza cedo
+                quando a fila estiver acelerando demais ou falhando.
+              </p>
+            </div>
+
+            <Badge
+              variant="outline"
+              className={getHealthToneMeta(queueHealth.tone).badgeClass}
+            >
+              {getHealthToneMeta(queueHealth.tone).label}
+            </Badge>
+          </div>
+        </CardHeader>
+
+        <CardContent className="pt-0 space-y-5">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-xl border border-border/60 bg-muted/30 p-4">
+              <div className="flex items-center gap-2">
+                <Activity className="h-4 w-4 text-foreground" />
+                <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                  Saida 1h
+                </p>
+              </div>
+              <p className="text-2xl font-bold mt-3">{queueHealth.lastHourTotal}</p>
+              <p className="text-xs text-muted-foreground mt-2">
+                {queueHealth.lastHourDelivered} chegaram em sent/delivered/read.
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-border/60 bg-muted/30 p-4">
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-amber-400" />
+                <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                  Pendente agora
+                </p>
+              </div>
+              <p className="text-2xl font-bold mt-3">{queueHealth.pendingNow}</p>
+              <p className="text-xs text-muted-foreground mt-2">
+                Mensagens em pending ou sending nas ultimas 24h.
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-border/60 bg-muted/30 p-4">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-rose-400" />
+                <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                  Falhas 24h
+                </p>
+              </div>
+              <p className="text-2xl font-bold mt-3">{outboundRecentFailures.length}</p>
+              <p className="text-xs text-muted-foreground mt-2">
+                {queueHealth.lastHourFailed} ocorreram na ultima hora.
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-border/60 bg-muted/30 p-4">
+              <div className="flex items-center gap-2">
+                <Gauge className="h-4 w-4 text-sky-400" />
+                <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                  Pressao atual
+                </p>
+              </div>
+              <p className="text-2xl font-bold mt-3">
+                {queueHealth.currentWindowCount}/{queueHealth.currentWindowLimit}
+              </p>
+              <p className="text-xs text-muted-foreground mt-2">
+                {queueHealth.currentWindowUsage}% do teto da janela ativa.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+            <div className="rounded-xl border border-border/60 bg-muted/30 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                    Ritmo dos ultimos 15 minutos
+                  </p>
+                  <p className="text-sm font-semibold mt-2">
+                    Media de {queueHealth.averagePerMinute}/min e pico de {queueHealth.peakPerMinute}/min
+                  </p>
+                </div>
+                <Badge variant="secondary" className="text-[11px]">
+                  Atualiza a cada 30s
+                </Badge>
+              </div>
+
+              <div className="mt-4 flex items-end gap-2 h-28">
+                {queueHealth.minuteBuckets.map((bucket, index) => (
+                  <div key={`${bucket.label}-${index}`} className="flex-1 min-w-0">
+                    <div className="h-20 flex items-end">
+                      <div
+                        className="w-full rounded-t-md bg-primary/80"
+                        style={{
+                          height: `${Math.max(
+                            10,
+                            (bucket.count / queueHealth.peakPerMinute) * 100,
+                          )}%`,
+                          opacity: bucket.count === 0 ? 0.2 : 1,
+                        }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-2 truncate">
+                      {index % 3 === 0 ? bucket.label : bucket.count > 0 ? bucket.count : ''}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-border/60 bg-muted/30 p-4 space-y-3">
+              <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                Alertas automaticos
+              </p>
+
+              {queueHealth.alerts.map((alert, index) => {
+                const toneMeta = getHealthToneMeta(alert.tone);
+                const AlertIcon = toneMeta.icon;
+
+                return (
+                  <div
+                    key={`${alert.title}-${index}`}
+                    className={`rounded-xl border p-3 ${toneMeta.panelClass}`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <AlertIcon className={`h-4 w-4 mt-0.5 ${toneMeta.iconClass}`} />
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold">{alert.title}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {alert.description}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border/60 bg-muted/30 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                  Falhas recentes
+                </p>
+                <p className="text-sm font-semibold mt-2">
+                  Ultimas ocorrencias de saida com erro
+                </p>
+              </div>
+              <Badge variant="outline" className="text-[11px]">
+                {outboundRecentFailures.length} nas ultimas 24h
+              </Badge>
+            </div>
+
+            {outboundRecentFailures.length === 0 ? (
+              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 mt-4">
+                <p className="text-sm font-medium text-emerald-300">
+                  Sem falhas registradas nas ultimas 24 horas.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3 mt-4">
+                {outboundRecentFailures.map((item) => (
+                  <div
+                    key={item.id}
+                    className="rounded-xl border border-border/60 bg-card/70 p-3"
+                  >
+                    <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {buildMessagePreview(item.content, item.message_type)}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2 mt-2 text-[11px] text-muted-foreground">
+                          <span>{item.message_type || 'text'}</span>
+                          <span>status: {item.status || 'failed'}</span>
+                          <span>
+                            {item.created_at
+                              ? new Date(item.created_at).toLocaleString('pt-BR')
+                              : '-'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {item.zapi_message_id && (
+                        <Badge variant="secondary" className="text-[10px] max-w-full truncate">
+                          {item.zapi_message_id}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
