@@ -218,11 +218,38 @@ function extractRingSizes(text: string, currentNode: string): { size1: string | 
 
 function resetCatalogChoice(data: AnyRecord) {
   delete data.catalogo_keila_enviado;
+  delete data.catalogo_orcamento_relaxado;
   delete data.last_catalog;
   delete data.selected_product;
   delete data.selected_sku;
   delete data.selected_name;
   delete data.selected_price;
+}
+
+function isKeilaFlowNode(node: string): boolean {
+  const normalized = String(node || "");
+  return (
+    normalized.startsWith("keila_") ||
+    normalized === "catalogo" ||
+    normalized === "selecao" ||
+    normalized === "finalizado" ||
+    normalized === "human_handoff_retirada"
+  );
+}
+
+function resetKeilaFlowState(data: AnyRecord) {
+  delete data.prazo_fechamento;
+  delete data.orcamento_valor;
+  delete data.orcamento_texto;
+  delete data.quantidade_tipo;
+  delete data.tamanho_1;
+  delete data.tamanho_2;
+  delete data.numeracao_status;
+  delete data.cor;
+  delete data.delivery_method;
+  delete data.payment_method;
+  delete data.keila_store_handoff_done;
+  resetCatalogChoice(data);
 }
 
 function buildSummary(data: AnyRecord): string {
@@ -788,7 +815,6 @@ async function handleKeilaFlow(args: {
   message: string;
   contactName: string;
   buttonResponseId: string | null;
-  keilaMemory: AnyRecord | null;
 }) {
   const {
     supabase,
@@ -799,20 +825,20 @@ async function handleKeilaFlow(args: {
     message,
     contactName,
     buttonResponseId,
-    keilaMemory,
   } = args;
 
-  const data: AnyRecord = hydrateDataWithMemory(
-    {
-      ...(conversation.collected_data || {}),
-      agente_atual: "keila",
-      categoria: "aliancas",
-      finalidade: "casamento",
-    },
-    keilaMemory,
-  );
-
   const currentNode = String(conversation.current_node || "");
+  const data: AnyRecord = {
+    ...(conversation.collected_data || {}),
+    agente_atual: "keila",
+    categoria: "aliancas",
+    finalidade: "casamento",
+  };
+
+  if (!isKeilaFlowNode(currentNode)) {
+    resetKeilaFlowState(data);
+  }
+
   const selectedFromCatalog = findCatalogSelection(
     buttonResponseId || message,
     Array.isArray(data.last_catalog) ? data.last_catalog : [],
@@ -1012,10 +1038,43 @@ Oi! Sou a Keila. Para quando você quer fechar essas alianças? ⏰`;
       searchParams.max_price = data.quantidade_tipo === "par" ? budgetValue / 2 : budgetValue;
     }
 
-    const catalog = await searchCatalog(supabase, searchParams, data);
+    let catalog = await searchCatalog(supabase, searchParams, data);
+    let usedBudgetFallback = false;
+
+    if (catalog.length === 0 && searchParams.max_price) {
+      const relaxedSearchParams = { ...searchParams };
+      delete relaxedSearchParams.max_price;
+      catalog = await searchCatalog(supabase, relaxedSearchParams, data);
+      usedBudgetFallback = catalog.length > 0;
+    }
+
+    if (catalog.length === 0) {
+      const reply = `Não encontrei modelos prontos na cor ${data.cor} dentro dessa faixa agora. Se quiser, eu posso te mostrar outra faixa de valor ou outra cor.`;
+
+      await persistConversation(
+        supabase,
+        conversation.id,
+        "keila",
+        "keila_sem_catalogo",
+        conversation.current_node || null,
+        data,
+      );
+      await saveAssistantMessage(supabase, conversation.id, "keila", reply, "keila_sem_catalogo");
+      await saveAgentMemory(supabase, phone, "keila", contactName, data);
+
+      return buildResponsePayload({
+        phone,
+        message: reply,
+        node: "keila_sem_catalogo",
+        collectedData: data,
+        agent: "keila",
+      });
+    }
+
     const cards = buildKeilaCards(catalog);
 
     data.catalogo_keila_enviado = true;
+    data.catalogo_orcamento_relaxado = usedBudgetFallback;
     data.last_catalog = cards.map((product) => ({
       id: product.id,
       sku: product.sku,
@@ -1031,7 +1090,11 @@ Oi! Sou a Keila. Para quando você quer fechar essas alianças? ⏰`;
         ? "Tudo bem, se você ainda não souber a numeração agora, eu sigo com você mesmo assim 😊\n\n"
         : "";
 
-    const reply = `${intro}Separei opções na cor ${data.cor}. 💍
+    const reply = `${intro}${
+      usedBudgetFallback
+        ? `Não encontrei modelos na cor ${data.cor} exatamente dentro dessa faixa de valor, mas separei outras opções disponíveis da mesma categoria para te mostrar. 💍`
+        : `Separei opções na cor ${data.cor}. 💍`
+    }
 O valor do card é da unidade. O par sai pelo dobro.`;
 
     await persistConversation(
@@ -1224,7 +1287,6 @@ serve(async (req) => {
     baseData.triagem_categoria = detectClassification(message, baseData) || baseData.triagem_categoria || null;
 
     const activeAgent = (conversation.active_agent || baseData.agente_atual || "aline") as ConversationAgent;
-    const keilaMemory = await loadAgentMemory(supabase, phone, "keila");
     const alineMemory = await loadAgentMemory(supabase, phone, "aline");
 
     if (activeAgent === "keila" || detectMarriageIntent(message, baseData, conversation.current_node || "")) {
@@ -1235,21 +1297,17 @@ serve(async (req) => {
         conversation: {
           ...conversation,
           active_agent: "keila",
-          collected_data: hydrateDataWithMemory(
-            {
-              ...baseData,
-              agente_atual: "keila",
-              categoria: "aliancas",
-              finalidade: "casamento",
-            },
-            keilaMemory,
-          ),
+          collected_data: {
+            ...baseData,
+            agente_atual: "keila",
+            categoria: "aliancas",
+            finalidade: "casamento",
+          },
         },
         phone,
         message,
         contactName,
         buttonResponseId,
-        keilaMemory,
       });
 
       return new Response(JSON.stringify(keilaResponse), {
