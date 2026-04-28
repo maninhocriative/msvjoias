@@ -1,5 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  acquireZapiGovernorLease,
+  releaseZapiGovernorLease,
+  sendWithGovernorLease,
+} from "../_shared/zapi-governor.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -491,11 +496,24 @@ serve(async (req) => {
     let textSent = false;
     let productsSent = 0;
     let postCatalogSent = false;
+    const sequenceLeaseResult = await acquireZapiGovernorLease(supabase, {
+      lane: "conversation",
+      bypassBurstLimit: true,
+    });
 
+    if (!sequenceLeaseResult.lease) {
+      throw new Error("Nao foi possivel reservar a fila segura da Z-API.");
+    }
+
+    try {
     if (textMessage) {
-      const textResult = await sendText(phone, textMessage, ZAPI_INSTANCE_ID, ZAPI_TOKEN, ZAPI_CLIENT_TOKEN);
+      const textResult = (
+        await sendWithGovernorLease(sequenceLeaseResult.lease, () =>
+          sendText(phone, textMessage, ZAPI_INSTANCE_ID, ZAPI_TOKEN, ZAPI_CLIENT_TOKEN),
+        )
+      ).result;
 
-      if (textResult.success) {
+      if (textResult?.success) {
         textSent = true;
 
         await supabase.from("messages").insert({
@@ -504,7 +522,7 @@ serve(async (req) => {
           message_type: "text",
           is_from_me: true,
           status: "sent",
-          zapi_message_id: textResult.messageId,
+          zapi_message_id: textResult?.messageId || null,
         });
 
         await supabase
@@ -515,7 +533,10 @@ serve(async (req) => {
           })
           .eq("id", conversationId);
       } else {
-        console.error("[ZAPI-UNIFIED] Falha ao enviar texto:", textResult.error);
+        console.error(
+          "[ZAPI-UNIFIED] Falha ao enviar texto:",
+          textResult?.error,
+        );
       }
     }
 
@@ -532,44 +553,60 @@ serve(async (req) => {
           | null = null;
 
         if (useProductButtons) {
-          result = await sendInteractiveProductCard(
-            phone,
-            product,
-            ZAPI_INSTANCE_ID,
-            ZAPI_TOKEN,
-            ZAPI_CLIENT_TOKEN,
-          );
+          result = (
+            await sendWithGovernorLease(sequenceLeaseResult.lease, () =>
+              sendInteractiveProductCard(
+                phone,
+                product,
+                ZAPI_INSTANCE_ID,
+                ZAPI_TOKEN,
+                ZAPI_CLIENT_TOKEN,
+              ),
+            )
+          ).result;
 
-          if (!result.success && mediaUrlToSend) {
-            console.warn("[ZAPI-UNIFIED] Botão falhou, fallback para mídia simples:", result.error);
-            result = await sendMedia(
-              phone,
-              mediaType,
-              mediaUrlToSend,
-              product.caption || product.name || "Produto",
-              ZAPI_INSTANCE_ID,
-              ZAPI_TOKEN,
-              ZAPI_CLIENT_TOKEN,
-            );
+          if (!result?.success && mediaUrlToSend) {
+            console.warn("[ZAPI-UNIFIED] Botão falhou, fallback para mídia simples:", result?.error);
+            result = (
+              await sendWithGovernorLease(sequenceLeaseResult.lease, () =>
+                sendMedia(
+                  phone,
+                  mediaType,
+                  mediaUrlToSend,
+                  product.caption || product.name || "Produto",
+                  ZAPI_INSTANCE_ID,
+                  ZAPI_TOKEN,
+                  ZAPI_CLIENT_TOKEN,
+                ),
+              )
+            ).result;
           }
         } else if (mediaUrlToSend) {
-          result = await sendMedia(
-            phone,
-            mediaType,
-            mediaUrlToSend,
-            product.caption || product.name || "Produto",
-            ZAPI_INSTANCE_ID,
-            ZAPI_TOKEN,
-            ZAPI_CLIENT_TOKEN,
-          );
+          result = (
+            await sendWithGovernorLease(sequenceLeaseResult.lease, () =>
+              sendMedia(
+                phone,
+                mediaType,
+                mediaUrlToSend,
+                product.caption || product.name || "Produto",
+                ZAPI_INSTANCE_ID,
+                ZAPI_TOKEN,
+                ZAPI_CLIENT_TOKEN,
+              ),
+            )
+          ).result;
         } else {
-          result = await sendText(
-            phone,
-            product.caption || product.name || "Produto",
-            ZAPI_INSTANCE_ID,
-            ZAPI_TOKEN,
-            ZAPI_CLIENT_TOKEN,
-          );
+          result = (
+            await sendWithGovernorLease(sequenceLeaseResult.lease, () =>
+              sendText(
+                phone,
+                product.caption || product.name || "Produto",
+                ZAPI_INSTANCE_ID,
+                ZAPI_TOKEN,
+                ZAPI_CLIENT_TOKEN,
+              ),
+            )
+          ).result;
         }
 
         if (result?.success) {
@@ -582,7 +619,7 @@ serve(async (req) => {
             media_url: mediaUrlToSend,
             is_from_me: true,
             status: "sent",
-            zapi_message_id: result.messageId,
+            zapi_message_id: result?.messageId || null,
           });
         } else {
           console.error(`[ZAPI-UNIFIED] Falha ao enviar produto ${index + 1}:`, result?.error);
@@ -597,15 +634,19 @@ serve(async (req) => {
     if (productsSent > 0 && postCatalogMessage) {
       await sleep(1200);
 
-      const postResult = await sendText(
-        phone,
-        postCatalogMessage,
-        ZAPI_INSTANCE_ID,
-        ZAPI_TOKEN,
-        ZAPI_CLIENT_TOKEN,
-      );
+      const postResult = (
+        await sendWithGovernorLease(sequenceLeaseResult.lease, () =>
+          sendText(
+            phone,
+            postCatalogMessage,
+            ZAPI_INSTANCE_ID,
+            ZAPI_TOKEN,
+            ZAPI_CLIENT_TOKEN,
+          ),
+        )
+      ).result;
 
-      if (postResult.success) {
+      if (postResult?.success) {
         postCatalogSent = true;
 
         await supabase.from("messages").insert({
@@ -614,7 +655,7 @@ serve(async (req) => {
           message_type: "text",
           is_from_me: true,
           status: "sent",
-          zapi_message_id: postResult.messageId,
+          zapi_message_id: postResult?.messageId || null,
         });
 
         await supabase
@@ -625,6 +666,9 @@ serve(async (req) => {
           })
           .eq("id", conversationId);
       }
+    }
+    } finally {
+      await releaseZapiGovernorLease(sequenceLeaseResult.lease);
     }
 
     if (productsSent > 0) {

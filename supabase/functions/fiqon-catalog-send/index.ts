@@ -1,5 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  acquireZapiGovernorLease,
+  releaseZapiGovernorLease,
+  sendWithGovernorLease,
+} from "../_shared/zapi-governor.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -409,22 +414,35 @@ serve(async (req) => {
     let successCount = 0;
     let errorCount = 0;
     let textSent = false;
+    const sequenceLeaseResult = await acquireZapiGovernorLease(supabase, {
+      lane: "conversation",
+      bypassBurstLimit: true,
+    });
+
+    if (!sequenceLeaseResult.lease) {
+      throw new Error('Nao foi possivel reservar a fila segura da Z-API.');
+    }
 
     // ========================================
     // ENVIAR MENSAGEM DE TEXTO (fala da Aline)
     // ========================================
+    try {
     if (textMessage) {
       console.log(`[ZAPI-SEND] Enviando mensagem de texto...`);
       
-      const textResult = await sendTextToZAPI(
-        phone,
-        textMessage,
-        ZAPI_INSTANCE_ID!,
-        ZAPI_TOKEN!,
-        ZAPI_CLIENT_TOKEN
-      );
+      const textResult = (
+        await sendWithGovernorLease(sequenceLeaseResult.lease, () =>
+          sendTextToZAPI(
+            phone,
+            textMessage,
+            ZAPI_INSTANCE_ID!,
+            ZAPI_TOKEN!,
+            ZAPI_CLIENT_TOKEN
+          )
+        )
+      ).result;
 
-      if (textResult.success) {
+      if (textResult?.success) {
         console.log(`[ZAPI-SEND] ✅ Texto enviado: ${textResult.messageId}`);
         textSent = true;
         
@@ -623,28 +641,32 @@ serve(async (req) => {
       console.log(`[ZAPI-SEND] =====================================`);
 
       // Send to Z-API
-      const sendResult = await sendMediaToZAPI(
-        phone,
-        finalMediaType,
-        finalMediaUrl,
-        caption,
-        ZAPI_INSTANCE_ID!,
-        ZAPI_TOKEN!,
-        ZAPI_CLIENT_TOKEN
-      );
+      const sendResult = (
+        await sendWithGovernorLease(sequenceLeaseResult.lease, () =>
+          sendMediaToZAPI(
+            phone,
+            finalMediaType,
+            finalMediaUrl,
+            caption,
+            ZAPI_INSTANCE_ID!,
+            ZAPI_TOKEN!,
+            ZAPI_CLIENT_TOKEN
+          )
+        )
+      ).result;
 
       results.push({
         index: productIndex,
         sku,
-        success: sendResult.success,
-        messageId: sendResult.messageId,
-        error: sendResult.error,
+        success: Boolean(sendResult?.success),
+        messageId: sendResult?.messageId,
+        error: sendResult?.error,
         mediaType: finalMediaType,
         mediaUrl: finalMediaUrl,
         price: finalPrice || undefined,
       });
 
-      if (sendResult.success) {
+      if (sendResult?.success) {
         successCount++;
         console.log(`[ZAPI-SEND] ✅ Card ${productIndex} enviado: ${sendResult.messageId}`);
       } else {
@@ -671,15 +693,19 @@ serve(async (req) => {
       
       console.log(`[ZAPI-SEND] 📝 Enviando mensagem pós-catálogo...`);
       
-      const postResult = await sendTextToZAPI(
-        phone,
-        postCatalogMessage,
-        ZAPI_INSTANCE_ID!,
-        ZAPI_TOKEN!,
-        ZAPI_CLIENT_TOKEN
-      );
+      const postResult = (
+        await sendWithGovernorLease(sequenceLeaseResult.lease, () =>
+          sendTextToZAPI(
+            phone,
+            postCatalogMessage,
+            ZAPI_INSTANCE_ID!,
+            ZAPI_TOKEN!,
+            ZAPI_CLIENT_TOKEN
+          )
+        )
+      ).result;
       
-      if (postResult.success) {
+      if (postResult?.success) {
         postCatalogSent = true;
         console.log(`[ZAPI-SEND] ✅ Mensagem pós-catálogo enviada`);
         
@@ -738,15 +764,19 @@ serve(async (req) => {
         if (listaItens.length > 0) {
           const mensagemLista = `📋 *ESCOLHA O SEU:*\n\n${listaItens.join('\n\n')}\n\n✏️ _Digite o número para escolher!_`;
           
-          const listResult = await sendTextToZAPI(
-            phone,
-            mensagemLista,
-            ZAPI_INSTANCE_ID!,
-            ZAPI_TOKEN!,
-            ZAPI_CLIENT_TOKEN
-          );
+          const listResult = (
+            await sendWithGovernorLease(sequenceLeaseResult.lease, () =>
+              sendTextToZAPI(
+                phone,
+                mensagemLista,
+                ZAPI_INSTANCE_ID!,
+                ZAPI_TOKEN!,
+                ZAPI_CLIENT_TOKEN
+              )
+            )
+          ).result;
           
-          if (listResult.success) {
+          if (listResult?.success) {
             console.log(`[ZAPI-SEND] ✅ Lista numérica enviada com ${listaItens.length} itens`);
             
             // CRÍTICO: Salvar lista como última mensagem do assistant
@@ -783,6 +813,9 @@ serve(async (req) => {
       } catch (listError) {
         console.warn(`[ZAPI-SEND] Lista falhou (não crítico):`, listError);
       }
+    }
+    } finally {
+      await releaseZapiGovernorLease(sequenceLeaseResult.lease);
     }
 
     // ========================================

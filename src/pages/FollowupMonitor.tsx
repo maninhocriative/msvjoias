@@ -170,6 +170,19 @@ const MARKETING_QUEUE_MINUTES: Record<Exclude<FollowupQueue, 'none'>, number> = 
 
 const MARKETING_SETTING_KEY = 'facebook_leads_marketing_state';
 const MARKETING_LOCAL_KEY = 'facebook_leads_marketing_state_local';
+const ZAPI_GOVERNOR_KEY = 'zapi_dispatch_governor';
+
+interface ZapiGovernorFormState {
+  minGapSeconds: string;
+  burstWindowMinutes: string;
+  maxAutomaticSendsPerWindow: string;
+}
+
+const DEFAULT_ZAPI_GOVERNOR: ZapiGovernorFormState = {
+  minGapSeconds: '8',
+  burstWindowMinutes: '5',
+  maxAutomaticSendsPerWindow: '20',
+};
 
 const FOLLOWUP_QUEUE_OPTIONS: Array<{ value: FollowupQueue; label: string }> = [
   { value: 'none', label: 'Sem fila de marketing' },
@@ -474,6 +487,31 @@ function getFollowupState(item: FollowupItem): FollowupStateMeta {
   };
 }
 
+function parseZapiGovernorState(rawValue?: string | null): ZapiGovernorFormState {
+  if (!rawValue) return DEFAULT_ZAPI_GOVERNOR;
+
+  try {
+    const parsed = JSON.parse(rawValue) as Record<string, unknown>;
+    return {
+      minGapSeconds: String(
+        Number(parsed.minGapMs || parsed.min_gap_ms || 8000) / 1000,
+      ),
+      burstWindowMinutes: String(
+        Number(parsed.burstWindowMs || parsed.burst_window_ms || 300000) / 60000,
+      ),
+      maxAutomaticSendsPerWindow: String(
+        Number(
+          parsed.maxAutomaticSendsPerWindow ||
+            parsed.max_automatic_sends_per_window ||
+            20,
+        ),
+      ),
+    };
+  } catch {
+    return DEFAULT_ZAPI_GOVERNOR;
+  }
+}
+
 /* â”€â”€ Page â”€â”€ */
 export default function FollowupMonitor() {
   const [conversations, setConversations] = useState<ConversationRow[]>([]);
@@ -485,6 +523,10 @@ export default function FollowupMonitor() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [persistingMarketing, setPersistingMarketing] = useState(false);
+  const [savingGovernor, setSavingGovernor] = useState(false);
+  const [zapiGovernor, setZapiGovernor] = useState<ZapiGovernorFormState>(
+    DEFAULT_ZAPI_GOVERNOR,
+  );
 
   const [selectedItem, setSelectedItem] = useState<FollowupItem | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -583,7 +625,11 @@ export default function FollowupMonitor() {
         supabase
           .from('store_settings')
           .select('key, value')
-          .in('key', [MARKETING_SETTING_KEY, 'facebook_leads_last_import']),
+          .in('key', [
+            MARKETING_SETTING_KEY,
+            'facebook_leads_last_import',
+            ZAPI_GOVERNOR_KEY,
+          ]),
       ]);
 
       if (conversationsError) throw conversationsError;
@@ -594,6 +640,9 @@ export default function FollowupMonitor() {
       );
       const importSetting = settingsData?.find(
         (row) => row.key === 'facebook_leads_last_import',
+      );
+      const governorSetting = settingsData?.find(
+        (row) => row.key === ZAPI_GOVERNOR_KEY,
       );
 
       const dbMarketing = parseMarketingState(marketingSetting?.value);
@@ -612,6 +661,7 @@ export default function FollowupMonitor() {
       setConversations((conversationsData || []) as ConversationRow[]);
       setMarketingStateMap(mergedMarketing);
       setImportedLeads(imported);
+      setZapiGovernor(parseZapiGovernorState(governorSetting?.value));
       safeWriteLocalStorage(MARKETING_LOCAL_KEY, JSON.stringify(mergedMarketing));
     } catch (error) {
       console.error('Erro ao buscar dados de follow-up:', error);
@@ -822,6 +872,43 @@ export default function FollowupMonitor() {
     await persistMarketingState(nextState, successMessage);
   };
 
+  const saveZapiGovernor = async () => {
+    setSavingGovernor(true);
+
+    try {
+      const payload = {
+        enabled: true,
+        minGapMs: Math.max(Number(zapiGovernor.minGapSeconds || 8), 1) * 1000,
+        burstWindowMs:
+          Math.max(Number(zapiGovernor.burstWindowMinutes || 5), 1) * 60 * 1000,
+        maxAutomaticSendsPerWindow: Math.max(
+          Number(zapiGovernor.maxAutomaticSendsPerWindow || 20),
+          1,
+        ),
+      };
+
+      await saveStoreSetting(
+        ZAPI_GOVERNOR_KEY,
+        JSON.stringify(payload),
+        'Controle de vazao segura da Z-API para disparos automaticos',
+      );
+
+      toast({
+        title: 'Controle salvo',
+        description:
+          'O ritmo seguro da Z-API foi atualizado para campanhas, follow-up e catalogos automaticos.',
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: error.message || 'Nao foi possivel salvar o controle da Z-API.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingGovernor(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -981,6 +1068,106 @@ export default function FollowupMonitor() {
                 Filas importadas sao organizacionais; o fluxo da Aline e o unico automatico
               </p>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/60 bg-card shadow-sm">
+        <CardContent className="p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                Controle de vazao da Z-API
+              </p>
+              <h2 className="text-lg font-semibold mt-2">
+                Segure filas grandes sem quebrar a ordem dos cards
+              </h2>
+              <p className="text-sm text-muted-foreground mt-2 max-w-3xl">
+                Esse controle desacelera campanhas, follow-ups e catalogos automáticos.
+                Os cards do mesmo atendimento continuam saindo um apos o outro, na ordem.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-[11px]">
+                Conversas manuais continuam priorizadas
+              </Badge>
+              <Button
+                variant="outline"
+                onClick={() => setZapiGovernor(DEFAULT_ZAPI_GOVERNOR)}
+                disabled={savingGovernor}
+              >
+                Restaurar padrao
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3 mt-5">
+            <div className="rounded-xl border border-border/60 bg-muted/30 p-4 space-y-2">
+              <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                Intervalo minimo
+              </p>
+              <Input
+                type="number"
+                min={1}
+                value={zapiGovernor.minGapSeconds}
+                onChange={(event) =>
+                  setZapiGovernor((current) => ({
+                    ...current,
+                    minGapSeconds: event.target.value,
+                  }))
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Segundos entre um disparo automatico e outro.
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-border/60 bg-muted/30 p-4 space-y-2">
+              <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                Janela de controle
+              </p>
+              <Input
+                type="number"
+                min={1}
+                value={zapiGovernor.burstWindowMinutes}
+                onChange={(event) =>
+                  setZapiGovernor((current) => ({
+                    ...current,
+                    burstWindowMinutes: event.target.value,
+                  }))
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Minutos usados para medir o volume automatico recente.
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-border/60 bg-muted/30 p-4 space-y-2">
+              <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                Teto automatico
+              </p>
+              <Input
+                type="number"
+                min={1}
+                value={zapiGovernor.maxAutomaticSendsPerWindow}
+                onChange={(event) =>
+                  setZapiGovernor((current) => ({
+                    ...current,
+                    maxAutomaticSendsPerWindow: event.target.value,
+                  }))
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Quantos disparos automaticos o sistema aceita nessa janela antes de segurar novas rodadas.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-end mt-5">
+            <Button onClick={saveZapiGovernor} disabled={savingGovernor}>
+              {savingGovernor ? 'Salvando...' : 'Salvar controle da Z-API'}
+            </Button>
           </div>
         </CardContent>
       </Card>

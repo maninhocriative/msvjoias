@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendWithZapiGovernor } from "../_shared/zapi-governor.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -353,19 +354,37 @@ serve(async (req) => {
       followupNumber?: number;
       error?: string;
     }> = [];
+    let throttled = false;
+    let throttleMessage: string | null = null;
 
     for (let index = 0; index < queue.length; index += 1) {
       const { conversation, config, crmConversation } = queue[index];
       const followupNumber = Number(conversation.followup_count || 0) + 1;
 
       try {
-        const zapiResponse = await sendTextMessage(
-          zapiInstanceId,
-          zapiToken,
-          zapiClientToken,
-          conversation.phone,
-          config.message,
+        const governorResult = await sendWithZapiGovernor(
+          supabase,
+          {
+            lane: "followup",
+            bypassBurstLimit: false,
+          },
+          () =>
+            sendTextMessage(
+              zapiInstanceId,
+              zapiToken,
+              zapiClientToken,
+              conversation.phone,
+              config.message,
+            ),
         );
+
+        if (governorResult.blocked || !governorResult.result) {
+          throttled = true;
+          throttleMessage = "Rodada interrompida pelo controle de vazao segura da Z-API.";
+          break;
+        }
+
+        const zapiResponse = governorResult.result;
         const zapiPayload = await zapiResponse.json().catch(() => null);
 
         if (!zapiResponse.ok) {
@@ -433,10 +452,12 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        processed: queue.length,
+        processed: results.length,
         sent: sentCount,
         eligible: eligibleConversations.length,
-        deferred: Math.max(eligibleConversations.length - queue.length, 0),
+        deferred: Math.max(eligibleConversations.length - results.length, 0),
+        throttled,
+        throttle_message: throttleMessage,
         safeMaxAttempts,
         safeWindow: `${BUSINESS_HOUR_START}:00-${BUSINESS_HOUR_END}:00 (${BUSINESS_TIMEZONE})`,
         results,

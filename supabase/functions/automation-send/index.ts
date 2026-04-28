@@ -1,10 +1,20 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  acquireZapiGovernorLease,
+  releaseZapiGovernorLease,
+  sendWithGovernorLease,
+  sendWithZapiGovernor,
+  type ZapiGovernorLease,
+} from "../_shared/zapi-governor.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+const SEQUENCE_INTRO_GAP_MS = 1200;
+const SEQUENCE_ITEM_GAP_MS = 900;
 
 interface Product {
   sku: string;
@@ -302,6 +312,8 @@ async function updateStoredMessage(
 }
 
 async function sendOutgoingItem(args: {
+  supabase: ReturnType<typeof createClient>;
+  lease?: ZapiGovernorLease | null;
   normalizedPhone: string;
   message: string | null;
   messageType: string;
@@ -316,6 +328,8 @@ async function sendOutgoingItem(args: {
   messageId: string | null;
 }) {
   const {
+    supabase,
+    lease,
     normalizedPhone,
     message,
     messageType,
@@ -331,15 +345,48 @@ async function sendOutgoingItem(args: {
   } = args;
 
   if (preferZapi && hasZapi && zapiInstanceId && zapiToken) {
-    const result = await sendViaZAPI(
-      normalizedPhone,
-      messageType,
-      message,
-      mediaUrl,
-      zapiInstanceId,
-      zapiToken,
-      zapiClientToken || undefined,
-    );
+    const result = lease
+      ? (
+          await sendWithGovernorLease(lease, () =>
+            sendViaZAPI(
+              normalizedPhone,
+              messageType,
+              message,
+              mediaUrl,
+              zapiInstanceId,
+              zapiToken,
+              zapiClientToken || undefined,
+            ),
+          )
+        ).result
+      : (
+          await sendWithZapiGovernor(
+            supabase,
+            {
+              lane: "manual",
+              bypassBurstLimit: true,
+            },
+            () =>
+              sendViaZAPI(
+                normalizedPhone,
+                messageType,
+                message,
+                mediaUrl,
+                zapiInstanceId,
+                zapiToken,
+                zapiClientToken || undefined,
+              ),
+          )
+        ).result;
+
+    if (!result) {
+      return {
+        forwarded: false,
+        status: "failed",
+        zapiMessageId: null,
+        error: "Nao foi possivel entrar na fila segura da Z-API.",
+      };
+    }
 
     return {
       forwarded: result.success,
@@ -391,15 +438,48 @@ async function sendOutgoingItem(args: {
   }
 
   if (hasZapi && zapiInstanceId && zapiToken) {
-    const result = await sendViaZAPI(
-      normalizedPhone,
-      messageType,
-      message,
-      mediaUrl,
-      zapiInstanceId,
-      zapiToken,
-      zapiClientToken || undefined,
-    );
+    const result = lease
+      ? (
+          await sendWithGovernorLease(lease, () =>
+            sendViaZAPI(
+              normalizedPhone,
+              messageType,
+              message,
+              mediaUrl,
+              zapiInstanceId,
+              zapiToken,
+              zapiClientToken || undefined,
+            ),
+          )
+        ).result
+      : (
+          await sendWithZapiGovernor(
+            supabase,
+            {
+              lane: "manual",
+              bypassBurstLimit: true,
+            },
+            () =>
+              sendViaZAPI(
+                normalizedPhone,
+                messageType,
+                message,
+                mediaUrl,
+                zapiInstanceId,
+                zapiToken,
+                zapiClientToken || undefined,
+              ),
+          )
+        ).result;
+
+    if (!result) {
+      return {
+        forwarded: false,
+        status: "failed",
+        zapiMessageId: null,
+        error: "Nao foi possivel entrar na fila segura da Z-API.",
+      };
+    }
 
     return {
       forwarded: result.success,
@@ -513,7 +593,16 @@ serve(async (req) => {
       forwarded: 0,
       errors: [],
     };
+    const sequenceLeaseResult =
+      hasZapi && zapiInstanceId && zapiToken
+        ? await acquireZapiGovernorLease(supabase, {
+            lane: "manual",
+            bypassBurstLimit: true,
+          })
+        : null;
+    const sequenceLease = sequenceLeaseResult?.lease || null;
 
+    try {
     if (products && Array.isArray(products) && products.length > 0) {
       if (message) {
         const introMessageId = skip_crm_save
@@ -526,6 +615,8 @@ serve(async (req) => {
             });
 
         const introResult = await sendOutgoingItem({
+          supabase,
+          lease: sequenceLease,
           normalizedPhone,
           message: String(message),
           messageType: "text",
@@ -554,7 +645,7 @@ serve(async (req) => {
           results.messages.push(introMessageId);
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 250));
+        await new Promise((resolve) => setTimeout(resolve, SEQUENCE_INTRO_GAP_MS));
       }
 
       for (let index = 0; index < products.length; index += 1) {
@@ -585,6 +676,8 @@ serve(async (req) => {
             });
 
         const result = await sendOutgoingItem({
+          supabase,
+          lease: sequenceLease,
           normalizedPhone,
           message: caption,
           messageType: currentMediaUrl ? mediaType : "text",
@@ -614,7 +707,7 @@ serve(async (req) => {
         }
 
         if (index < products.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 500));
+          await new Promise((resolve) => setTimeout(resolve, SEQUENCE_ITEM_GAP_MS));
         }
       }
 
@@ -661,6 +754,8 @@ serve(async (req) => {
             });
 
         const sendResult = await sendOutgoingItem({
+          supabase,
+          lease: sequenceLease,
           normalizedPhone,
           message: attachmentMessage,
           messageType: attachmentType,
@@ -687,6 +782,10 @@ serve(async (req) => {
             zapi_message_id: sendResult.zapiMessageId,
           });
           results.messages.push(storedMessageId);
+        }
+
+        if (index < normalizedAttachments.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, SEQUENCE_ITEM_GAP_MS));
         }
       }
 
@@ -733,6 +832,8 @@ serve(async (req) => {
         });
 
     const sendResult = await sendOutgoingItem({
+      supabase,
+      lease: sequenceLease,
       normalizedPhone,
       message: outgoingMessage,
       messageType: outgoingMessageType,
@@ -771,6 +872,11 @@ serve(async (req) => {
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
+    } finally {
+      if (sequenceLease) {
+        await releaseZapiGovernorLease(sequenceLease);
+      }
+    }
   } catch (error) {
     console.error("[AUTOMATION-SEND] Error:", error);
 

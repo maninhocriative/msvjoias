@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendWithZapiGovernor } from "../_shared/zapi-governor.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -102,6 +103,7 @@ serve(async (req) => {
     let sent = 0;
     let failed = 0;
     const errors: string[] = [];
+    let throttled = false;
 
     for (let i = 0; i < phonesToSend.length; i++) {
       const phone = phonesToSend[i];
@@ -123,11 +125,27 @@ serve(async (req) => {
           headers['Client-Token'] = ZAPI_CLIENT_TOKEN;
         }
 
-        const response = await fetch(zapiEndpoint, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(zapiBody),
-        });
+        const governorResult = await sendWithZapiGovernor(
+          supabase,
+          {
+            lane: "campaign",
+            bypassBurstLimit: false,
+          },
+          () =>
+            fetch(zapiEndpoint, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify(zapiBody),
+            }),
+        );
+
+        if (governorResult.blocked || !governorResult.result) {
+          throttled = true;
+          console.warn('[CAMPAIGN] Parando rodada por limite seguro da Z-API');
+          break;
+        }
+
+        const response = governorResult.result;
 
         const result = await response.json();
 
@@ -217,13 +235,13 @@ serve(async (req) => {
         errors.push(`${phone.slice(0, 6)}****: ${errMsg}`);
       }
 
-      // 30s delay between sends (anti-spam)
+      // Delay local adicional entre itens da campanha
       if (i < phonesToSend.length - 1) {
         await new Promise(resolve => setTimeout(resolve, 30000));
       }
     }
 
-    const remaining = uniquePhones.length - batchLimit;
+    const remaining = uniquePhones.length - sent - failed;
 
     return new Response(
       JSON.stringify({
@@ -232,6 +250,7 @@ serve(async (req) => {
         sent,
         failed,
         remaining,
+        throttled,
         total_eligible: uniquePhones.length,
         errors: errors.slice(0, 10)
       }),
