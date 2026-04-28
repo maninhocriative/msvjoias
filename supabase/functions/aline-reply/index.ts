@@ -186,6 +186,20 @@ function customerDoesNotKnowSize(text: string): boolean {
   );
 }
 
+function detectCatalogResendIntent(text: string): boolean {
+  const normalized = normalizeText(text);
+  const asksToSend = /(envia|enviar|manda|manda ai|mostra|mostrar|quero ver|me manda|me envia)/.test(normalized);
+  const mentionsCatalog = /(modelo|modelos|opcao|opcoes|catalogo|alianca|aliancas)/.test(normalized);
+  return asksToSend && mentionsCatalog;
+}
+
+function detectMoreOptionsIntent(text: string): boolean {
+  const normalized = normalizeText(text);
+  return /tem outros|tem outras|mais opcoes|mais opcoes|mais modelos|outros modelos|outras opcoes|outras opções|ver mais/.test(
+    normalized,
+  );
+}
+
 function extractRingSizes(text: string, currentNode: string): { size1: string | null; size2: string | null } {
   const normalized = normalizeText(text);
   const sizeContext =
@@ -386,16 +400,24 @@ async function searchCatalog(
   const requestedCategory = String(params.category || data.categoria || "").toLowerCase().trim();
   const requestedPurpose = String(data.finalidade || "").toLowerCase().trim();
   const maxPrice = params.max_price ? Number(params.max_price) : null;
+  const excludedSkus = Array.isArray(params.exclude_skus)
+    ? params.exclude_skus.map((sku: unknown) => normalizeText(String(sku || ""))).filter(Boolean)
+    : [];
 
   let filtered = (products || []).filter((product: any) => {
     const category = normalizeText(product.category || "");
     const name = normalizeText(product.name || "");
     const productColor = normalizeText(product.color || "");
+    const productSku = normalizeText(product.sku || "");
     const isTungsten =
       category.includes("tungstenio") ||
       category.includes("tungsten") ||
       name.includes("tungstenio") ||
       name.includes("tungsten");
+
+    if (excludedSkus.length > 0 && productSku && excludedSkus.includes(productSku)) {
+      return false;
+    }
 
     if (requestedCategory === "aliancas") {
       const isAlliance =
@@ -907,6 +929,40 @@ async function handleKeilaFlow(args: {
   const hasSelectedProduct = !!data.selected_sku;
   const hasDelivery = !!data.delivery_method;
   const hasPayment = !!data.payment_method;
+  const wantsCatalogResend = detectCatalogResendIntent(message);
+  const wantsMoreOptions = detectMoreOptionsIntent(message);
+
+  const fetchKeilaCatalogCards = async (excludeSkus: string[] = []) => {
+    const searchParams: AnyRecord = {
+      category: "aliancas",
+      color: data.cor,
+      only_available: true,
+    };
+
+    if (excludeSkus.length > 0) {
+      searchParams.exclude_skus = excludeSkus;
+    }
+
+    if (Number.isFinite(Number(data.orcamento_valor || 0)) && Number(data.orcamento_valor || 0) > 0) {
+      const budgetValue = Number(data.orcamento_valor || 0);
+      searchParams.max_price = data.quantidade_tipo === "par" ? budgetValue / 2 : budgetValue;
+    }
+
+    let catalog = await searchCatalog(supabase, searchParams, data);
+    let usedBudgetFallback = false;
+
+    if (catalog.length === 0 && searchParams.max_price) {
+      const relaxedSearchParams = { ...searchParams };
+      delete relaxedSearchParams.max_price;
+      catalog = await searchCatalog(supabase, relaxedSearchParams, data);
+      usedBudgetFallback = catalog.length > 0;
+    }
+
+    return {
+      cards: buildKeilaCards(catalog),
+      usedBudgetFallback,
+    };
+  };
 
   if (!hasTimeline) {
     const reply = `Perfeito! Vou te transferir para a Keila, nossa especialista em alianças de casamento. 💍
@@ -1027,28 +1083,9 @@ Oi! Sou a Keila. Para quando você quer fechar essas alianças? ⏰`;
   }
 
   if (!data.catalogo_keila_enviado) {
-    const searchParams: AnyRecord = {
-      category: "aliancas",
-      color: data.cor,
-      only_available: true,
-    };
+    const { cards, usedBudgetFallback } = await fetchKeilaCatalogCards();
 
-    if (Number.isFinite(Number(data.orcamento_valor || 0)) && Number(data.orcamento_valor || 0) > 0) {
-      const budgetValue = Number(data.orcamento_valor || 0);
-      searchParams.max_price = data.quantidade_tipo === "par" ? budgetValue / 2 : budgetValue;
-    }
-
-    let catalog = await searchCatalog(supabase, searchParams, data);
-    let usedBudgetFallback = false;
-
-    if (catalog.length === 0 && searchParams.max_price) {
-      const relaxedSearchParams = { ...searchParams };
-      delete relaxedSearchParams.max_price;
-      catalog = await searchCatalog(supabase, relaxedSearchParams, data);
-      usedBudgetFallback = catalog.length > 0;
-    }
-
-    if (catalog.length === 0) {
+    if (cards.length === 0) {
       const reply = `Não encontrei modelos prontos na cor ${data.cor} dentro dessa faixa agora. Se quiser, eu posso te mostrar outra faixa de valor ou outra cor.`;
 
       await persistConversation(
@@ -1070,8 +1107,6 @@ Oi! Sou a Keila. Para quando você quer fechar essas alianças? ⏰`;
         agent: "keila",
       });
     }
-
-    const cards = buildKeilaCards(catalog);
 
     data.catalogo_keila_enviado = true;
     data.catalogo_orcamento_relaxado = usedBudgetFallback;
@@ -1119,6 +1154,88 @@ O valor do card é da unidade. O par sai pelo dobro.`;
       postCatalogMessage:
         "Lembrando que o valor do card é da unidade e o par sai pelo dobro. Gostou de algum modelo? 😊",
     });
+  }
+
+  if (data.catalogo_keila_enviado && !hasSelectedProduct && (wantsCatalogResend || wantsMoreOptions)) {
+    const shownSkus = Array.isArray(data.last_catalog)
+      ? data.last_catalog.map((item: any) => String(item?.sku || "")).filter(Boolean)
+      : [];
+
+    const { cards, usedBudgetFallback } = await fetchKeilaCatalogCards(wantsMoreOptions ? shownSkus : []);
+
+    if (cards.length === 0 && wantsMoreOptions) {
+      const reply =
+        "No momento essas são as opções que tenho nessa cor. Se quiser, eu posso buscar outra faixa de valor ou outra cor para te mostrar. 😊";
+
+      await persistConversation(
+        supabase,
+        conversation.id,
+        "keila",
+        "keila_sem_mais_opcoes",
+        conversation.current_node || null,
+        data,
+      );
+      await saveAssistantMessage(
+        supabase,
+        conversation.id,
+        "keila",
+        reply,
+        "keila_sem_mais_opcoes",
+      );
+      await saveAgentMemory(supabase, phone, "keila", contactName, data);
+
+      return buildResponsePayload({
+        phone,
+        message: reply,
+        node: "keila_sem_mais_opcoes",
+        collectedData: data,
+        agent: "keila",
+      });
+    }
+
+    if (cards.length > 0) {
+      data.catalogo_orcamento_relaxado = usedBudgetFallback;
+      data.last_catalog = cards.map((product) => ({
+        id: product.id,
+        sku: product.sku,
+        name: product.name,
+        price: product.price,
+        color: product.color,
+        image_url: product.image_url,
+        video_url: product.video_url,
+      }));
+
+      const reply = wantsMoreOptions
+        ? `${
+            usedBudgetFallback
+              ? `Tenho outras opções na cor ${data.cor}, incluindo modelos fora dessa faixa exata para você comparar. 💍`
+              : `Tenho outras opções na cor ${data.cor} para te mostrar. 💍`
+          }`
+        : "Claro! Vou te reenviar os modelos para você olhar com calma. 💍";
+
+      await persistConversation(
+        supabase,
+        conversation.id,
+        "keila",
+        "catalogo",
+        conversation.current_node || null,
+        data,
+      );
+      await saveAssistantMessage(supabase, conversation.id, "keila", reply, "catalogo");
+      await saveAgentMemory(supabase, phone, "keila", contactName, data);
+
+      return buildResponsePayload({
+        phone,
+        message: reply,
+        node: "catalogo",
+        products: cards,
+        collectedData: data,
+        agent: "keila",
+        useProductButtons: true,
+        postCatalogMessage:
+          "Lembrando que o valor do card é da unidade e o par sai pelo dobro. Gostou de algum modelo? 😊",
+      });
+    }
   }
 
   if (hasSelectedProduct && !hasDelivery) {
