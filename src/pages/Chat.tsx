@@ -104,6 +104,9 @@ const Chat = () => {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingMessageDraft, setEditingMessageDraft] = useState('');
   const [editingMessageBusyId, setEditingMessageBusyId] = useState<string | null>(null);
+  const selectedAlineConversationId = selectedConversation
+    ? alineStatusMap[selectedConversation.contact_number]?.id || null
+    : null;
 
   const audioStreamRef = useRef<MediaStream | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -561,20 +564,94 @@ const Chat = () => {
     }
   };
 
-  const fetchMessages = useCallback(async (conversationId: string) => {
+  const fetchMessages = useCallback(async (conversationId: string, phone?: string) => {
     try {
-      const { data, error } = await supabase
-        .from('messages')
-        .select(
-          'id, content, created_at, is_from_me, media_url, message_type, status, conversation_id, zapi_message_id, edited_at, deleted_at, replaced_message_id',
-        )
-        .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true })
-        .limit(100);
+      const [{ data, error }, alineConversationResult] = await Promise.all([
+        supabase
+          .from('messages')
+          .select(
+            'id, content, created_at, is_from_me, media_url, message_type, status, conversation_id, zapi_message_id, edited_at, deleted_at, replaced_message_id',
+          )
+          .eq('conversation_id', conversationId)
+          .order('created_at', { ascending: true })
+          .limit(100),
+        phone
+          ? supabase
+              .from('aline_conversations')
+              .select('id')
+              .eq('phone', phone)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+      ]);
 
       if (error) throw error;
 
-      setMessages((data || []).filter((m) => m.content?.trim() || m.media_url || m.deleted_at));
+      let mergedMessages = (data || []).filter(
+        (message) => message.content?.trim() || message.media_url || message.deleted_at,
+      );
+
+      const alineConversationId = alineConversationResult?.data?.id;
+
+      if (phone && alineConversationId) {
+        const { data: alineHistory, error: alineHistoryError } = await supabase
+          .from('aline_messages')
+          .select('id, message, created_at, role')
+          .eq('conversation_id', alineConversationId)
+          .neq('role', 'user')
+          .order('created_at', { ascending: true })
+          .limit(200);
+
+        if (!alineHistoryError && alineHistory?.length) {
+          const mirroredOutgoingText = mergedMessages.filter(
+            (message) =>
+              message.is_from_me &&
+              !message.media_url &&
+              (message.message_type === 'text' || !message.message_type) &&
+              message.content?.trim(),
+          );
+
+          const fallbackAgentMessages = alineHistory
+            .filter((entry) => entry.message?.trim())
+            .filter((entry) => {
+              const entryTime = new Date(entry.created_at || '').getTime();
+
+              return !mirroredOutgoingText.some((message) => {
+                const messageTime = new Date(message.created_at || '').getTime();
+                const sameContent = message.content?.trim() === entry.message.trim();
+                const closeEnough =
+                  Number.isFinite(entryTime) &&
+                  Number.isFinite(messageTime) &&
+                  Math.abs(messageTime - entryTime) <= 30000;
+
+                return sameContent && closeEnough;
+              });
+            })
+            .map(
+              (entry): Message => ({
+                id: `aline-log:${entry.id}`,
+                conversation_id: conversationId,
+                content: entry.message,
+                message_type: 'text',
+                media_url: null,
+                is_from_me: true,
+                status: 'sent',
+                created_at: entry.created_at || new Date().toISOString(),
+              }),
+            );
+
+          if (fallbackAgentMessages.length > 0) {
+            mergedMessages = [...mergedMessages, ...fallbackAgentMessages].sort(
+              (a, b) =>
+                new Date(a.created_at || '').getTime() -
+                new Date(b.created_at || '').getTime(),
+            );
+          }
+        }
+      }
+
+      setMessages(mergedMessages);
     } catch {
       // silent
     }
@@ -614,12 +691,11 @@ const Chat = () => {
       setEditingMessageId(null);
       setEditingMessageDraft('');
       setEditingMessageBusyId(null);
-      fetchMessages(selectedConversation.id);
+      fetchMessages(selectedConversation.id, selectedConversation.contact_number);
       markAsRead(selectedConversation.id);
       setIsContactTyping(false);
       fetchAlineStatus(selectedConversation.contact_number);
       startChatting(selectedConversation.contact_number);
-
       const channel = supabase
         .channel(`messages-${selectedConversation.id}`)
         .on(
@@ -662,13 +738,37 @@ const Chat = () => {
         )
         .subscribe();
 
+      const alineChannel = selectedAlineConversationId
+        ? supabase
+            .channel(`aline-messages-${selectedAlineConversationId}`)
+            .on(
+              'postgres_changes',
+              {
+                event: '*',
+                schema: 'public',
+                table: 'aline_messages',
+                filter: `conversation_id=eq.${selectedAlineConversationId}`,
+              },
+              () => {
+                fetchMessages(
+                  selectedConversation.id,
+                  selectedConversation.contact_number,
+                );
+              },
+            )
+            .subscribe()
+        : null;
+
       const pollInterval = setInterval(
-        () => fetchMessages(selectedConversation.id),
+        () => fetchMessages(selectedConversation.id, selectedConversation.contact_number),
         15000,
       );
 
       return () => {
         supabase.removeChannel(channel);
+        if (alineChannel) {
+          supabase.removeChannel(alineChannel);
+        }
         clearInterval(pollInterval);
         stopChatting();
       };
@@ -678,6 +778,7 @@ const Chat = () => {
   }, [
     selectedConversation?.id,
     selectedConversation?.contact_number,
+    selectedAlineConversationId,
     fetchMessages,
     fetchAlineStatus,
     startChatting,
