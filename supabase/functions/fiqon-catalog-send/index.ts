@@ -55,6 +55,80 @@ interface SendResult {
   price?: number;
 }
 
+async function ensureCrmConversation(
+  supabase: any,
+  phone: string,
+  contactName?: string | null,
+) {
+  const { data: existingConversation } = await supabase
+    .from('conversations')
+    .select('id, unread_count')
+    .eq('contact_number', phone)
+    .maybeSingle();
+
+  if (existingConversation?.id) {
+    if (contactName) {
+      await supabase
+        .from('conversations')
+        .update({ contact_name: contactName })
+        .eq('id', existingConversation.id);
+    }
+
+    return existingConversation.id as string;
+  }
+
+  const { data: createdConversation, error: createConversationError } = await supabase
+    .from('conversations')
+    .insert({
+      contact_number: phone,
+      contact_name: contactName || phone,
+      platform: 'whatsapp',
+      unread_count: 0,
+      last_message: '',
+      last_message_at: new Date().toISOString(),
+    })
+    .select('id')
+    .single();
+
+  if (createConversationError || !createdConversation?.id) {
+    throw createConversationError || new Error('Unable to create CRM conversation');
+  }
+
+  return createdConversation.id as string;
+}
+
+async function mirrorOutgoingMessageToCrm(
+  supabase: any,
+  conversationId: string,
+  params: {
+    content: string;
+    messageType: string;
+    mediaUrl?: string | null;
+    zapiMessageId?: string | null;
+  },
+) {
+  const content = params.content || `[${params.messageType}]`;
+
+  await supabase.from('messages').insert({
+    conversation_id: conversationId,
+    content,
+    message_type: params.messageType,
+    media_url: params.mediaUrl || null,
+    is_from_me: true,
+    status: 'sent',
+    zapi_message_id: params.zapiMessageId || null,
+  });
+
+  await supabase
+    .from('conversations')
+    .update({
+      last_message: content.substring(0, 100),
+      unread_count: 0,
+      last_message_at: new Date().toISOString(),
+    })
+    .eq('id', conversationId);
+}
+
 // Helper to clean nil/null values from Fiqon
 function cleanValue(val: any): string | null {
   if (val === null || val === undefined) return null;
@@ -260,6 +334,7 @@ serve(async (req) => {
     // Extract message from user
     const userMessage = cleanValue(payload.message) || cleanValue(payload.mensagem) || cleanValue(payload.text);
     const contactName = cleanValue(payload.contact_name) || cleanValue(payload.nome_contato);
+    const crmConversationId = await ensureCrmConversation(supabase, phone, contactName);
     
     // ========================================
     // DEDUPLICAÇÃO ROBUSTA: Verificar hash da mensagem + phone + minuto
@@ -458,7 +533,7 @@ serve(async (req) => {
           if (alineConv) {
             await supabase.from('aline_messages').insert({
               conversation_id: alineConv.id,
-              role: 'assistant',
+              role: alineResponse?.agente_atual || 'aline',
               message: textMessage,
               node: alineResponse?.node_tecnico || 'reply'
             });
@@ -477,6 +552,18 @@ serve(async (req) => {
         }
       } else {
         console.error(`[ZAPI-SEND] ❌ Texto falhou: ${textResult.error}`);
+      }
+
+      if (textResult?.success) {
+        try {
+          await mirrorOutgoingMessageToCrm(supabase, crmConversationId, {
+            content: textMessage,
+            messageType: 'text',
+            zapiMessageId: textResult.messageId || null,
+          });
+        } catch (crmMirrorError) {
+          console.warn(`[ZAPI-SEND] Aviso: nao espelhou texto no CRM:`, crmMirrorError);
+        }
       }
 
       // Aguardar antes de enviar produtos
@@ -674,6 +761,19 @@ serve(async (req) => {
         console.error(`[ZAPI-SEND] ❌ Card ${productIndex} falhou: ${sendResult.error}`);
       }
 
+      if (sendResult?.success) {
+        try {
+          await mirrorOutgoingMessageToCrm(supabase, crmConversationId, {
+            content: caption,
+            messageType: finalMediaType,
+            mediaUrl: finalMediaUrl,
+            zapiMessageId: sendResult.messageId || null,
+          });
+        } catch (crmMirrorError) {
+          console.warn(`[ZAPI-SEND] Aviso: nao espelhou card no CRM:`, crmMirrorError);
+        }
+      }
+
       // Delay between products (except for last one)
       if (i < products.length - 1) {
         await new Promise(resolve => setTimeout(resolve, delayMs));
@@ -720,7 +820,7 @@ serve(async (req) => {
           if (alineConv) {
             await supabase.from('aline_messages').insert({
               conversation_id: alineConv.id,
-              role: 'assistant',
+              role: alineResponse?.agente_atual || 'aline',
               message: postCatalogMessage,
               node: 'pos_catalogo'
             });
@@ -745,6 +845,18 @@ serve(async (req) => {
     // ========================================
     // ENVIAR LISTA NUMÉRICA PARA SELEÇÃO (substitui botões truncados)
     // Lista clara com número + nome completo + código
+    if (postCatalogSent) {
+      try {
+        await mirrorOutgoingMessageToCrm(supabase, crmConversationId, {
+          content: postCatalogMessage,
+          messageType: 'text',
+          zapiMessageId: null,
+        });
+      } catch (crmMirrorError) {
+        console.warn(`[ZAPI-SEND] Aviso: nao espelhou pos-catalogo no CRM:`, crmMirrorError);
+      }
+    }
+
     // ========================================
     if (successCount > 0) {
       try {
@@ -790,7 +902,7 @@ serve(async (req) => {
               if (alineConv) {
                 await supabase.from('aline_messages').insert({
                   conversation_id: alineConv.id,
-                  role: 'assistant',
+                  role: alineResponse?.agente_atual || 'aline',
                   message: mensagemLista,
                   node: 'lista_selecao'
                 });
@@ -807,6 +919,16 @@ serve(async (req) => {
               }
             } catch (dbError) {
               console.warn(`[ZAPI-SEND] Aviso: Não salvou lista:`, dbError);
+            }
+
+            try {
+              await mirrorOutgoingMessageToCrm(supabase, crmConversationId, {
+                content: mensagemLista,
+                messageType: 'text',
+                zapiMessageId: listResult.messageId || null,
+              });
+            } catch (crmMirrorError) {
+              console.warn(`[ZAPI-SEND] Aviso: nao espelhou lista no CRM:`, crmMirrorError);
             }
           }
         }
