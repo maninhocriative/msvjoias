@@ -66,6 +66,36 @@ function buildHeaders(clientToken?: string) {
   return headers;
 }
 
+function findNestedString(
+  value: unknown,
+  predicate: (candidate: string) => boolean,
+  maxDepth = 5,
+): string | null {
+  if (maxDepth < 0 || value === null || value === undefined) return null;
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed && predicate(trimmed) ? trimmed : null;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const match = findNestedString(item, predicate, maxDepth - 1);
+      if (match) return match;
+    }
+    return null;
+  }
+
+  if (typeof value === "object") {
+    for (const nestedValue of Object.values(value as Record<string, unknown>)) {
+      const match = findNestedString(nestedValue, predicate, maxDepth - 1);
+      if (match) return match;
+    }
+  }
+
+  return null;
+}
+
 function normalizeZapiStatus(status?: string | null) {
   switch (String(status || "").toUpperCase()) {
     case "PENDING":
@@ -252,12 +282,21 @@ serve(async (req) => {
       payload.listResponseId ||
       payload.buttonResponse?.buttonId ||
       payload.buttonsResponseMessage?.buttonId ||
+      findNestedString(payload, (candidate) => /^select[_-][a-z0-9-]+$/i.test(candidate) || candidate === "retomar_atendimento") ||
       "";
 
     const buttonResponseLabel =
       payload.buttonResponse?.message ||
       payload.buttonsResponseMessage?.message ||
       "";
+
+    const catalogSelectionHint =
+      findNestedString(
+        payload,
+        (candidate) =>
+          /^e0\d{5,}$/i.test(candidate) ||
+          /alianca|aliança|tungsten|casamento|facetad|solidblack|designer|dourad|pret|azul|blue/i.test(candidate),
+      ) || "";
 
     let messageContent = "";
     let messageType = "text";
@@ -466,6 +505,7 @@ serve(async (req) => {
         media_type: messageType,
         media_url: mediaUrl,
         button_response_id: buttonResponseId || null,
+        catalog_selection_hint: catalogSelectionHint || null,
       }),
     });
 

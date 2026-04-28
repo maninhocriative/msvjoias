@@ -572,6 +572,19 @@ function findCatalogSelection(token: string | null, catalog: any[]): any | null 
   });
   if (exactSku) return exactSku;
 
+  const fuzzyNameMatch = catalog.find((item: any) => {
+    const name = normalizeText(String(item.name || ""));
+    if (!name) return false;
+    if (normalized.includes(name)) return true;
+
+    const significantWords = name.split(/\s+/).filter((word) => word.length >= 4);
+    if (significantWords.length === 0) return false;
+
+    const matchedWords = significantWords.filter((word) => normalized.includes(word)).length;
+    return matchedWords >= Math.min(3, significantWords.length) && matchedWords >= 2;
+  });
+  if (fuzzyNameMatch) return fuzzyNameMatch;
+
   const numeric = normalized.match(/^\s*(\d{1,2})\s*$/);
   if (numeric) {
     const index = Number(numeric[1]) - 1;
@@ -889,6 +902,7 @@ async function handleKeilaFlow(args: {
   message: string;
   contactName: string;
   buttonResponseId: string | null;
+  catalogSelectionHint: string | null;
 }) {
   const {
     supabase,
@@ -899,6 +913,7 @@ async function handleKeilaFlow(args: {
     message,
     contactName,
     buttonResponseId,
+    catalogSelectionHint,
   } = args;
 
   const currentNode = String(conversation.current_node || "");
@@ -914,7 +929,7 @@ async function handleKeilaFlow(args: {
   }
 
   const selectedFromCatalog = findCatalogSelection(
-    buttonResponseId || message,
+    buttonResponseId || catalogSelectionHint || message,
     Array.isArray(data.last_catalog) ? data.last_catalog : [],
   );
 
@@ -1005,6 +1020,7 @@ async function handleKeilaFlow(args: {
 
     let catalog = await searchCatalog(supabase, searchParams, data);
     let usedBudgetFallback = false;
+    let usedWeddingFallback = false;
 
     if (catalog.length === 0 && searchParams.max_price) {
       const relaxedSearchParams = { ...searchParams };
@@ -1013,9 +1029,21 @@ async function handleKeilaFlow(args: {
       usedBudgetFallback = catalog.length > 0;
     }
 
+    if (catalog.length === 0 && data.finalidade === "casamento") {
+      const broadWeddingData = {
+        ...data,
+        finalidade: "",
+      };
+      const broadSearchParams = { ...searchParams };
+      delete broadSearchParams.max_price;
+      catalog = await searchCatalog(supabase, broadSearchParams, broadWeddingData);
+      usedWeddingFallback = catalog.length > 0;
+    }
+
     return {
       cards: buildKeilaCards(catalog),
       usedBudgetFallback,
+      usedWeddingFallback,
     };
   };
 
@@ -1138,7 +1166,7 @@ Oi! Sou a Keila. Para quando você quer fechar essas alianças? ⏰`;
   }
 
   if (!data.catalogo_keila_enviado) {
-    const { cards, usedBudgetFallback } = await fetchKeilaCatalogCards();
+    const { cards, usedBudgetFallback, usedWeddingFallback } = await fetchKeilaCatalogCards();
 
     if (cards.length === 0) {
       const reply = `Não encontrei modelos prontos na cor ${data.cor} dentro dessa faixa agora. Se quiser, eu posso te mostrar outra faixa de valor ou outra cor.`;
@@ -1183,7 +1211,9 @@ Oi! Sou a Keila. Para quando você quer fechar essas alianças? ⏰`;
     const reply = `${intro}${
       usedBudgetFallback
         ? `Não encontrei modelos na cor ${data.cor} exatamente dentro dessa faixa de valor, mas separei outras opções disponíveis da mesma categoria para te mostrar. 💍`
-        : `Separei opções na cor ${data.cor}. 💍`
+        : usedWeddingFallback
+          ? `Não encontrei modelos na cor ${data.cor} com o cadastro ideal da linha de casamento, mas separei outras opções compatíveis para te mostrar. 💍`
+          : `Separei opções na cor ${data.cor}. 💍`
     }
 O valor do card é da unidade. O par sai pelo dobro.`;
 
@@ -1216,7 +1246,7 @@ O valor do card é da unidade. O par sai pelo dobro.`;
       ? data.last_catalog.map((item: any) => String(item?.sku || "")).filter(Boolean)
       : [];
 
-    const { cards, usedBudgetFallback } = await fetchKeilaCatalogCards(wantsMoreOptions ? shownSkus : []);
+    const { cards, usedBudgetFallback, usedWeddingFallback } = await fetchKeilaCatalogCards(wantsMoreOptions ? shownSkus : []);
 
     if (cards.length === 0 && wantsMoreOptions) {
       const reply =
@@ -1264,7 +1294,9 @@ O valor do card é da unidade. O par sai pelo dobro.`;
         ? `${
             usedBudgetFallback
               ? `Tenho outras opções na cor ${data.cor}, incluindo modelos fora dessa faixa exata para você comparar. 💍`
-              : `Tenho outras opções na cor ${data.cor} para te mostrar. 💍`
+              : usedWeddingFallback
+                ? `Tenho outras opções compatíveis na cor ${data.cor} para te mostrar. 💍`
+                : `Tenho outras opções na cor ${data.cor} para te mostrar. 💍`
           }`
         : "Claro! Vou te reenviar os modelos para você olhar com calma. 💍";
 
@@ -1393,6 +1425,7 @@ serve(async (req) => {
     const message = String(body.message || "");
     const contactName = String(body.contact_name || "Cliente");
     const buttonResponseId = body.button_response_id ? String(body.button_response_id) : null;
+    const catalogSelectionHint = body.catalog_selection_hint ? String(body.catalog_selection_hint) : null;
 
     if (!phone || !message) {
       throw new Error("phone and message are required");
@@ -1452,6 +1485,7 @@ serve(async (req) => {
         message,
         contactName,
         buttonResponseId,
+        catalogSelectionHint,
       });
 
       return new Response(JSON.stringify(keilaResponse), {
