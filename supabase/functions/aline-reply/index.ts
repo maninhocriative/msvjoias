@@ -456,6 +456,11 @@ function resetKeilaFlowState(data: AnyRecord) {
 }
 
 function resetKateFlowState(data: AnyRecord) {
+  delete data.finalidade;
+  delete data.quantidade_tipo;
+  delete data.tamanho_1;
+  delete data.tamanho_2;
+  delete data.numeracao_status;
   delete data.cor;
   delete data.catalog_history;
   delete data.delivery_method;
@@ -1027,6 +1032,26 @@ async function saveAssistantMessage(
     message,
     node,
   });
+
+  const preview = String(message || "").trim().slice(0, 100);
+  if (!preview) return;
+
+  const { data: agentConversation } = await supabase
+    .from("aline_conversations")
+    .select("phone")
+    .eq("id", conversationId)
+    .maybeSingle();
+
+  const phone = String(agentConversation?.phone || "").trim();
+  if (!phone) return;
+
+  await supabase
+    .from("conversations")
+    .update({
+      last_message: preview,
+      last_message_at: new Date().toISOString(),
+    })
+    .eq("contact_number", phone);
 }
 
 async function handoffKeilaToHuman(args: {
@@ -1319,6 +1344,14 @@ async function handleKateFlow(args: {
     agente_atual: "kate",
     categoria: "pingente",
   };
+
+  // Pingentes não usam numeração/tamanho de alianças; limpamos qualquer resíduo
+  // herdado para que, após a cor, a Kate siga direto para o catálogo.
+  delete data.finalidade;
+  delete data.quantidade_tipo;
+  delete data.tamanho_1;
+  delete data.tamanho_2;
+  delete data.numeracao_status;
 
   if (!isKateFlowNode(currentNode)) {
     resetKateFlowState(data);
