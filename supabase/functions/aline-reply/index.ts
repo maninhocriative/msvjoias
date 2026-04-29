@@ -44,7 +44,8 @@ interface KatePendantTemplate {
   id: string;
   family: "coracao" | "octagonal" | "redondo";
   color: "prata" | "dourada";
-  sku_hint: string;
+  sku_aliases: string[];
+  name_aliases: string[];
   file_name: string;
   display_name: string;
 }
@@ -54,7 +55,8 @@ const KATE_ENGRAVING_TEMPLATES: KatePendantTemplate[] = [
     id: "PF-010001-01-S",
     family: "coracao",
     color: "prata",
-    sku_hint: "pf01000101",
+    sku_aliases: ["pf01000101", "pf01000101s"],
+    name_aliases: ["pingente inox formato coracao", "pingente coracao prata"],
     file_name: "PF-010001-01-S.png",
     display_name: "Pingente Coração Prata",
   },
@@ -62,7 +64,8 @@ const KATE_ENGRAVING_TEMPLATES: KatePendantTemplate[] = [
     id: "PF-010001-03-M",
     family: "coracao",
     color: "dourada",
-    sku_hint: "pf01000103",
+    sku_aliases: ["pf01000103", "pf01000103m"],
+    name_aliases: ["pingente dourado formato coracao", "pingente coracao dourado"],
     file_name: "PF-010001-03-M.png",
     display_name: "Pingente Coração Dourado",
   },
@@ -70,7 +73,8 @@ const KATE_ENGRAVING_TEMPLATES: KatePendantTemplate[] = [
     id: "PF-010002-01-L",
     family: "octagonal",
     color: "prata",
-    sku_hint: "pf01000201",
+    sku_aliases: ["pf01000201", "pf01000201l"],
+    name_aliases: ["pingente inox octagonal", "pingente octagonal prata"],
     file_name: "PF-010002-01-L.png",
     display_name: "Pingente Octagonal Prata",
   },
@@ -78,7 +82,8 @@ const KATE_ENGRAVING_TEMPLATES: KatePendantTemplate[] = [
     id: "PF-010002-03-M",
     family: "octagonal",
     color: "dourada",
-    sku_hint: "pf01000203",
+    sku_aliases: ["pf01000203", "pf01000203m"],
+    name_aliases: ["pingente octagonal dourado"],
     file_name: "PF-010002-03-M.png",
     display_name: "Pingente Octagonal Dourado",
   },
@@ -86,7 +91,8 @@ const KATE_ENGRAVING_TEMPLATES: KatePendantTemplate[] = [
     id: "PF-010003-01-M",
     family: "redondo",
     color: "prata",
-    sku_hint: "pf01000301",
+    sku_aliases: ["pf01000301", "pf01000301m"],
+    name_aliases: ["pingente inox redondo", "pingente redondo prata"],
     file_name: "PF-010003-01-M.png",
     display_name: "Pingente Redondo Prata",
   },
@@ -94,7 +100,8 @@ const KATE_ENGRAVING_TEMPLATES: KatePendantTemplate[] = [
     id: "PF-010003-03-S",
     family: "redondo",
     color: "dourada",
-    sku_hint: "pf01000303",
+    sku_aliases: ["pf01000303", "pf01000303s"],
+    name_aliases: ["pingente dourado redondo", "pingente redondo dourado"],
     file_name: "PF-010003-03-S.png",
     display_name: "Pingente Redondo Dourado",
   },
@@ -226,6 +233,7 @@ function inferKatePendantColor(product: Partial<CatalogProduct> | AnyRecord): "p
 
 function matchKateTemplateForProduct(product: Partial<CatalogProduct> | AnyRecord): KatePendantTemplate | null {
   const sku = normalizeSkuToken(String(product.sku || ""));
+  const name = normalizeText(String(product.name || ""));
   const family = inferPendantFamilyFromText(
     `${product.name || ""} ${product.description || ""} ${product.category || ""}`,
   );
@@ -233,10 +241,16 @@ function matchKateTemplateForProduct(product: Partial<CatalogProduct> | AnyRecor
 
   return (
     KATE_ENGRAVING_TEMPLATES.find((template) => {
-      const skuMatches = sku ? sku.startsWith(template.sku_hint) || sku.includes(template.sku_hint) : false;
+      const skuMatches = sku
+        ? template.sku_aliases.some((alias) => {
+            const normalizedAlias = normalizeSkuToken(alias);
+            return sku === normalizedAlias || sku.startsWith(normalizedAlias) || normalizedAlias.startsWith(sku);
+          })
+        : false;
+      const nameMatches = template.name_aliases.some((alias) => name.includes(normalizeText(alias)));
       const familyMatches = family === template.family;
       const colorMatches = color === template.color;
-      return colorMatches && (skuMatches || familyMatches);
+      return colorMatches && (skuMatches || (nameMatches && familyMatches));
     }) || null
   );
 }
