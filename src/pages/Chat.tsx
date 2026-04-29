@@ -585,15 +585,15 @@ const Chat = () => {
 
   const fetchMessages = useCallback(async (conversationId: string, phone?: string) => {
     try {
-      const [{ data, error }, alineConversationResult] = await Promise.all([
-        supabase
-          .from('messages')
-          .select(
-            'id, content, created_at, is_from_me, media_url, message_type, status, conversation_id, zapi_message_id, edited_at, deleted_at, replaced_message_id',
-          )
-          .eq('conversation_id', conversationId)
-          .order('created_at', { ascending: true })
-          .limit(100),
+      const [crmConversationsResult, alineConversationResult] = await Promise.all([
+        phone
+          ? supabase
+              .from('conversations')
+              .select('id')
+              .eq('contact_number', phone)
+              .order('created_at', { ascending: false })
+              .limit(20)
+          : Promise.resolve({ data: [{ id: conversationId }], error: null }),
         phone
           ? supabase
               .from('aline_conversations')
@@ -604,6 +604,24 @@ const Chat = () => {
               .maybeSingle()
           : Promise.resolve({ data: null, error: null }),
       ]);
+
+      const relatedConversationIds = Array.from(
+        new Set(
+          (crmConversationsResult?.data || [])
+            .map((conversation) => conversation?.id)
+            .filter(Boolean)
+            .concat(conversationId),
+        ),
+      );
+
+      const { data, error } = await supabase
+        .from('messages')
+        .select(
+          'id, content, created_at, is_from_me, media_url, message_type, status, conversation_id, zapi_message_id, edited_at, deleted_at, replaced_message_id',
+        )
+        .in('conversation_id', relatedConversationIds)
+        .order('created_at', { ascending: true })
+        .limit(300);
 
       if (error) throw error;
 
@@ -788,6 +806,25 @@ const Chat = () => {
         )
         .subscribe();
 
+      const phoneConversationChannel = supabase
+        .channel(`conversation-phone-${selectedConversation.contact_number}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'conversations',
+            filter: `contact_number=eq.${selectedConversation.contact_number}`,
+          },
+          () => {
+            fetchMessages(
+              selectedConversation.id,
+              selectedConversation.contact_number,
+            );
+          },
+        )
+        .subscribe();
+
       const alineChannel = selectedAlineConversationId
         ? supabase
             .channel(`aline-messages-${selectedAlineConversationId}`)
@@ -816,6 +853,7 @@ const Chat = () => {
 
       return () => {
         supabase.removeChannel(channel);
+        supabase.removeChannel(phoneConversationChannel);
         if (alineChannel) {
           supabase.removeChannel(alineChannel);
         }
