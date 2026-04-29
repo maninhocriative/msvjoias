@@ -564,6 +564,25 @@ const Chat = () => {
     }
   };
 
+  const buildMessagePreview = useCallback((message: Partial<Message> | null | undefined) => {
+    if (!message) return '';
+    if (message.deleted_at) return 'Mensagem removida';
+    if (message.content?.trim()) return message.content.trim();
+
+    switch (message.message_type) {
+      case 'image':
+        return '📷 Imagem';
+      case 'audio':
+        return '🎤 Áudio';
+      case 'video':
+        return '🎬 Vídeo';
+      case 'document':
+        return '📎 Documento';
+      default:
+        return message.media_url ? '📎 Mídia' : '';
+    }
+  }, []);
+
   const fetchMessages = useCallback(async (conversationId: string, phone?: string) => {
     try {
       const [{ data, error }, alineConversationResult] = await Promise.all([
@@ -652,10 +671,41 @@ const Chat = () => {
       }
 
       setMessages(mergedMessages);
+
+      const latestVisibleMessage = [...mergedMessages]
+        .reverse()
+        .find((entry) => buildMessagePreview(entry));
+
+      if (latestVisibleMessage) {
+        const preview = buildMessagePreview(latestVisibleMessage);
+        const previewTime = latestVisibleMessage.created_at || new Date().toISOString();
+
+        setConversations((prev) =>
+          prev.map((conversation) =>
+            conversation.id === conversationId
+              ? {
+                  ...conversation,
+                  last_message: preview,
+                  last_message_at: previewTime,
+                }
+              : conversation,
+          ),
+        );
+
+        setSelectedConversation((prev) =>
+          prev && prev.id === conversationId
+            ? {
+                ...prev,
+                last_message: preview,
+                last_message_at: previewTime,
+              }
+            : prev,
+        );
+      }
     } catch {
       // silent
     }
-  }, []);
+  }, [buildMessagePreview]);
 
   const markAsRead = async (id: string) => {
     await supabase.from('conversations').update({ unread_count: 0 }).eq('id', id);

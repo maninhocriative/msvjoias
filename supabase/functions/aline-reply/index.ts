@@ -364,6 +364,44 @@ function resetCatalogChoice(data: AnyRecord) {
   delete data.selected_sku;
   delete data.selected_name;
   delete data.selected_price;
+  delete data.delivery_method;
+  delete data.payment_method;
+  delete data.keila_store_handoff_done;
+  delete data.kate_store_handoff_done;
+}
+
+function hasCurrentCatalogSelection(data: AnyRecord): boolean {
+  const selectedSku = normalizeText(String(data.selected_sku || ""));
+  const selectedName = normalizeText(String(data.selected_name || ""));
+  const catalog = Array.isArray(data.last_catalog) ? data.last_catalog : [];
+
+  if (catalog.length === 0) return false;
+
+  return catalog.some((item: any) => {
+    const itemSku = normalizeText(String(item?.sku || ""));
+    const itemName = normalizeText(String(item?.name || ""));
+
+    return (selectedSku && itemSku === selectedSku) || (selectedName && itemName === selectedName);
+  });
+}
+
+function mergeCatalogHistory(existingCatalog: unknown, items: unknown): AnyRecord[] {
+  const currentItems = Array.isArray(existingCatalog) ? existingCatalog : [];
+  const incomingItems = Array.isArray(items) ? items : [];
+  const map = new Map<string, AnyRecord>();
+
+  for (const item of [...currentItems, ...incomingItems]) {
+    const record = (item || {}) as AnyRecord;
+    const key = normalizeText(String(record.sku || record.id || record.name || ""));
+    if (!key) continue;
+    map.set(key, record);
+  }
+
+  return Array.from(map.values());
+}
+
+function getCatalogSelectionPool(data: AnyRecord): AnyRecord[] {
+  return mergeCatalogHistory(data.catalog_history, data.last_catalog);
 }
 
 function isKeilaFlowNode(node: string): boolean {
@@ -396,6 +434,7 @@ function resetKeilaFlowState(data: AnyRecord) {
   delete data.tamanho_2;
   delete data.numeracao_status;
   delete data.cor;
+  delete data.catalog_history;
   delete data.delivery_method;
   delete data.payment_method;
   delete data.keila_store_handoff_done;
@@ -404,6 +443,7 @@ function resetKeilaFlowState(data: AnyRecord) {
 
 function resetKateFlowState(data: AnyRecord) {
   delete data.cor;
+  delete data.catalog_history;
   delete data.delivery_method;
   delete data.payment_method;
   delete data.kate_photo_requested;
@@ -576,7 +616,8 @@ async function searchCatalog(
       description.includes("casamento") ||
       tagsText.includes("tungstenio") ||
       tagsText.includes("tungsten") ||
-      tagsText.includes("casamento");
+      tagsText.includes("casamento") ||
+      /^e0(?:6|7)120\d+/i.test(productSku);
 
     if (excludedSkus.length > 0 && productSku && excludedSkus.includes(productSku)) {
       return false;
@@ -1272,7 +1313,7 @@ async function handleKateFlow(args: {
   const previousSelectedSku = String(data.selected_sku || "");
   const selectedFromCatalog = findCatalogSelection(
     buttonResponseId || catalogSelectionHint || message,
-    Array.isArray(data.last_catalog) ? data.last_catalog : [],
+    getCatalogSelectionPool(data),
   );
 
   if (selectedFromCatalog) {
@@ -1281,6 +1322,7 @@ async function handleKateFlow(args: {
     data.selected_name = selectedFromCatalog.name;
     data.selected_price = selectedFromCatalog.price;
     data.kate_selected_template_id = matchKateTemplateForProduct(selectedFromCatalog)?.id || null;
+    data.last_catalog = mergeCatalogHistory(data.last_catalog, [selectedFromCatalog]);
 
     if (previousSelectedSku && previousSelectedSku !== String(selectedFromCatalog.sku || "")) {
       delete data.kate_customer_photo_url;
@@ -1415,6 +1457,7 @@ Oi! Sou a Kate. Qual cor você prefere para o pingente: dourada ou prata?`;
       image_url: product.image_url,
       video_url: product.video_url,
     }));
+    data.catalog_history = mergeCatalogHistory(data.catalog_history, data.last_catalog);
 
     const reply = `Separei os pingentes fotograváveis na cor ${data.cor}. ✨
 A fotogravação de 1 lado já está inclusa.`;
@@ -1481,6 +1524,7 @@ A fotogravação de 1 lado já está inclusa.`;
         image_url: product.image_url,
         video_url: product.video_url,
       }));
+      data.catalog_history = mergeCatalogHistory(data.catalog_history, data.last_catalog);
 
       const reply = wantsMoreOptions
         ? `Tenho outras opções de pingentes fotograváveis na cor ${data.cor} para te mostrar. ✨`
@@ -1842,7 +1886,7 @@ async function handleKeilaFlow(args: {
 
   const selectedFromCatalog = findCatalogSelection(
     buttonResponseId || catalogSelectionHint || message,
-    Array.isArray(data.last_catalog) ? data.last_catalog : [],
+    getCatalogSelectionPool(data),
   );
 
   if (selectedFromCatalog) {
@@ -1850,6 +1894,7 @@ async function handleKeilaFlow(args: {
     data.selected_sku = selectedFromCatalog.sku;
     data.selected_name = selectedFromCatalog.name;
     data.selected_price = selectedFromCatalog.price;
+    data.last_catalog = mergeCatalogHistory(data.last_catalog, [selectedFromCatalog]);
   }
 
   const prazo = extractTimelineAnswer(message, currentNode);
@@ -1908,7 +1953,18 @@ async function handleKeilaFlow(args: {
   const hasQuantityType = !!data.quantidade_tipo;
   const hasSizeInfo = !!data.tamanho_1 || data.numeracao_status === "nao_sabe";
   const hasColor = !!data.cor;
-  const hasSelectedProduct = !!data.selected_sku;
+  const hasSelectedProduct = hasCurrentCatalogSelection(data);
+
+  if (!hasSelectedProduct) {
+    delete data.selected_product;
+    delete data.selected_sku;
+    delete data.selected_name;
+    delete data.selected_price;
+    delete data.delivery_method;
+    delete data.payment_method;
+    delete data.keila_store_handoff_done;
+  }
+
   const hasDelivery = !!data.delivery_method;
   const hasPayment = !!data.payment_method;
   const wantsCatalogResend = detectCatalogResendIntent(message);
@@ -2114,6 +2170,7 @@ Oi! Sou a Keila. Para quando você quer fechar essas alianças? ⏰`;
       image_url: product.image_url,
       video_url: product.video_url,
     }));
+    data.catalog_history = mergeCatalogHistory(data.catalog_history, data.last_catalog);
 
     const intro =
       data.numeracao_status === "nao_sabe"
@@ -2201,6 +2258,7 @@ O valor do card é da unidade. O par sai pelo dobro.`;
         image_url: product.image_url,
         video_url: product.video_url,
       }));
+      data.catalog_history = mergeCatalogHistory(data.catalog_history, data.last_catalog);
 
       const reply = wantsMoreOptions
         ? `${

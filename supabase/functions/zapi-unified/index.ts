@@ -96,6 +96,64 @@ function findNestedString(
   return null;
 }
 
+function collectNestedStrings(
+  value: unknown,
+  maxDepth = 5,
+  bucket: string[] = [],
+): string[] {
+  if (maxDepth < 0 || value === null || value === undefined) return bucket;
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed) bucket.push(trimmed);
+    return bucket;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectNestedStrings(item, maxDepth - 1, bucket);
+    }
+    return bucket;
+  }
+
+  if (typeof value === "object") {
+    for (const nestedValue of Object.values(value as Record<string, unknown>)) {
+      collectNestedStrings(nestedValue, maxDepth - 1, bucket);
+    }
+  }
+
+  return bucket;
+}
+
+function pickBestCatalogSelectionHint(payload: unknown): string {
+  const uniqueCandidates = Array.from(new Set(collectNestedStrings(payload)));
+  let bestCandidate = "";
+  let bestScore = -1;
+
+  for (const candidate of uniqueCandidates) {
+    const normalized = candidate.trim();
+    if (!normalized) continue;
+
+    let score = 0;
+
+    if (/\be0\d{5,}\b/i.test(normalized)) score += 100;
+    if (/c[oó]d[:\s]/i.test(normalized)) score += 30;
+    if (/(alianca|aliança|pingente|medalha|tungsten|tungstenio|facetad|solidblack|designer|zirc[oô]nia|zirconia|black)/i.test(normalized)) {
+      score += 25;
+    }
+    if (normalized.length >= 24) score += 10;
+    if (/(^|[\s_*])quero esta($|[\s!*_])/i.test(normalized)) score -= 15;
+    if (/^(azul|blue|dourada|dourado|prata|preta|preto)$/i.test(normalized)) score -= 40;
+
+    if (score > bestScore || (score === bestScore && normalized.length > bestCandidate.length)) {
+      bestScore = score;
+      bestCandidate = normalized;
+    }
+  }
+
+  return bestScore > 0 ? bestCandidate : "";
+}
+
 function normalizeZapiStatus(status?: string | null) {
   switch (String(status || "").toUpperCase()) {
     case "PENDING":
@@ -290,13 +348,14 @@ serve(async (req) => {
       payload.buttonsResponseMessage?.message ||
       "";
 
-    const catalogSelectionHint =
+    let catalogSelectionHint =
       findNestedString(
         payload,
         (candidate) =>
           /^e0\d{5,}$/i.test(candidate) ||
           /alianca|aliança|tungsten|casamento|facetad|solidblack|designer|dourad|pret|azul|blue/i.test(candidate),
       ) || "";
+    catalogSelectionHint = pickBestCatalogSelectionHint(payload) || catalogSelectionHint;
 
     let messageContent = "";
     let messageType = "text";
