@@ -417,14 +417,14 @@ serve(async (req) => {
     const mediaUrl = body.media_url || null;
     const buttonResponseId = body.button_response_id || null;
 
-    const looksLikeDirectWebhookRequest =
+    const shouldProxyToUnifiedAgentFlow =
       !!phone &&
       !!newMessage &&
-      saveHistory === true &&
       !agentOverride &&
-      (!Array.isArray(body.messages) || body.messages.length === 0);
+      body.skip_aline_reply_proxy !== true &&
+      body.force_raw_ai_chat !== true;
 
-    if (looksLikeDirectWebhookRequest) {
+    if (shouldProxyToUnifiedAgentFlow) {
       await upsertConversationAndMessage({
         supabase,
         phone,
