@@ -2565,6 +2565,7 @@ serve(async (req) => {
         contact_name: contactName,
         save_history: false,
         agent_override: "aline",
+        skip_aline_reply_proxy: true,
         memory_context: alineMemory?.summary || null,
         conversation_snapshot: {
           categoria: alineData.categoria || null,

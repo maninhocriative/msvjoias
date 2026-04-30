@@ -407,7 +407,11 @@ serve(async (req) => {
 
     let messages = body.messages || [];
     const phone = body.phone?.replace(/\D/g, "") || null;
-    const newMessage = body.message || body.text || null;
+    const lastStructuredMessageContent =
+      Array.isArray(messages) && messages.length > 0
+        ? messages[messages.length - 1]?.content || null
+        : null;
+    const newMessage = body.message || body.text || lastStructuredMessageContent || null;
     const contactName = body.contact_name || body.senderName || null;
     const saveHistory = body.save_history !== false;
     const agentOverride = body.agent_override || null;
@@ -420,7 +424,6 @@ serve(async (req) => {
     const shouldProxyToUnifiedAgentFlow =
       !!phone &&
       !!newMessage &&
-      !agentOverride &&
       body.skip_aline_reply_proxy !== true &&
       body.force_raw_ai_chat !== true;
 
