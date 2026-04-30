@@ -293,6 +293,90 @@ async function getAgentConfig(supabase: any, agent: "aline" | "keila") {
   return fallback || null;
 }
 
+async function upsertConversationAndMessage(args: {
+  supabase: any;
+  phone: string;
+  contactName: string | null;
+  content: string;
+  mediaUrl: string | null;
+  isFromMe: boolean;
+  platform: string;
+  messageType: string;
+}) {
+  const {
+    supabase,
+    phone,
+    contactName,
+    content,
+    mediaUrl,
+    isFromMe,
+    platform,
+    messageType,
+  } = args;
+
+  let conversationId: string;
+
+  const { data: existingConv } = await supabase
+    .from("conversations")
+    .select("id, unread_count")
+    .eq("contact_number", phone)
+    .single();
+
+  if (existingConv) {
+    conversationId = existingConv.id;
+    await supabase
+      .from("conversations")
+      .update({
+        contact_name: contactName || phone,
+        platform,
+        last_message: content || `[${messageType}]`,
+        last_message_at: new Date().toISOString(),
+        unread_count: isFromMe ? 0 : (existingConv.unread_count || 0) + 1,
+      })
+      .eq("id", conversationId);
+  } else {
+    const { data: newConv, error: createError } = await supabase
+      .from("conversations")
+      .insert({
+        contact_number: phone,
+        contact_name: contactName || phone,
+        platform,
+        last_message: content || `[${messageType}]`,
+        unread_count: isFromMe ? 0 : 1,
+      })
+      .select()
+      .single();
+
+    if (createError) throw createError;
+    conversationId = newConv.id;
+  }
+
+  const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+  const { data: existingMsg } = await supabase
+    .from("messages")
+    .select("id")
+    .eq("conversation_id", conversationId)
+    .eq("is_from_me", isFromMe)
+    .eq("content", content)
+    .gte("created_at", twoMinutesAgo)
+    .maybeSingle();
+
+  if (!existingMsg) {
+    const { error: msgError } = await supabase
+      .from("messages")
+      .insert({
+        conversation_id: conversationId,
+        content,
+        is_from_me: isFromMe,
+        message_type: messageType,
+        media_url: mediaUrl,
+        status: isFromMe ? "sent" : "delivered",
+      });
+
+    if (msgError) throw msgError;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -329,6 +413,51 @@ serve(async (req) => {
     const agentOverride = body.agent_override || null;
     const memoryContext = body.memory_context || null;
     const conversationSnapshot = body.conversation_snapshot || null;
+    const mediaType = body.media_type || body.message_type || "text";
+    const mediaUrl = body.media_url || null;
+    const buttonResponseId = body.button_response_id || null;
+
+    const looksLikeDirectWebhookRequest =
+      !!phone &&
+      !!newMessage &&
+      saveHistory === true &&
+      !agentOverride &&
+      (!Array.isArray(body.messages) || body.messages.length === 0);
+
+    if (looksLikeDirectWebhookRequest) {
+      await upsertConversationAndMessage({
+        supabase,
+        phone,
+        contactName,
+        content: String(newMessage || ""),
+        mediaUrl,
+        isFromMe: false,
+        platform: body.platform || (body.isInstagram ? "instagram" : "whatsapp"),
+        messageType: mediaType,
+      });
+
+      const proxyResponse = await fetch(`${supabaseUrl}/functions/v1/aline-reply`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({
+          phone,
+          message: newMessage,
+          contact_name: contactName,
+          media_type: mediaType,
+          media_url: mediaUrl,
+          button_response_id: buttonResponseId,
+        }),
+      });
+
+      const proxyText = await proxyResponse.text();
+      return new Response(proxyText, {
+        status: proxyResponse.status,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     let currentState: any = null;
     if (phone) {
