@@ -38,14 +38,18 @@ interface ZAPIMessage {
   messageText?: string;
   media_url?: string;
   mediaUrl?: string;
+  imageUrl?: string;
+  audioUrl?: string;
+  videoUrl?: string;
+  documentUrl?: string;
   message_type?: string;
   messageType?: string;
   file_name?: string;
   fileName?: string;
-  image?: { imageUrl?: string; caption?: string };
-  audio?: { audioUrl?: string };
-  video?: { videoUrl?: string; caption?: string };
-  document?: { documentUrl?: string; fileName?: string };
+  image?: { imageUrl?: string; url?: string; mediaUrl?: string; caption?: string };
+  audio?: { audioUrl?: string; url?: string; mediaUrl?: string };
+  video?: { videoUrl?: string; url?: string; mediaUrl?: string; caption?: string };
+  document?: { documentUrl?: string; url?: string; mediaUrl?: string; fileName?: string };
   event?: string;
   type?: string;
   status?: string;
@@ -111,7 +115,23 @@ function normalizeInboundPayload(rawPayload: ZAPIMessage): ZAPIMessage {
     "text";
   const mediaUrl =
     normalizeString(rawPayload.media_url) ||
-    normalizeString(rawPayload.mediaUrl);
+    normalizeString(rawPayload.mediaUrl) ||
+    normalizeString(rawPayload.imageUrl) ||
+    normalizeString(rawPayload.audioUrl) ||
+    normalizeString(rawPayload.videoUrl) ||
+    normalizeString(rawPayload.documentUrl) ||
+    normalizeString(rawPayload.image?.imageUrl) ||
+    normalizeString(rawPayload.image?.url) ||
+    normalizeString(rawPayload.image?.mediaUrl) ||
+    normalizeString(rawPayload.audio?.audioUrl) ||
+    normalizeString(rawPayload.audio?.url) ||
+    normalizeString(rawPayload.audio?.mediaUrl) ||
+    normalizeString(rawPayload.video?.videoUrl) ||
+    normalizeString(rawPayload.video?.url) ||
+    normalizeString(rawPayload.video?.mediaUrl) ||
+    normalizeString(rawPayload.document?.documentUrl) ||
+    normalizeString(rawPayload.document?.url) ||
+    normalizeString(rawPayload.document?.mediaUrl);
   const fileName =
     normalizeString(rawPayload.file_name) ||
     normalizeString(rawPayload.fileName);
@@ -586,19 +606,19 @@ serve(async (req) => {
       messageContent = payload.message;
     } else if (payload.image) {
       messageType = "image";
-      mediaUrl = payload.image.imageUrl || null;
+      mediaUrl = payload.image.imageUrl || payload.image.url || payload.image.mediaUrl || null;
       messageContent = payload.image.caption || "";
     } else if (payload.audio) {
       messageType = "audio";
-      mediaUrl = payload.audio.audioUrl || null;
+      mediaUrl = payload.audio.audioUrl || payload.audio.url || payload.audio.mediaUrl || null;
       messageContent = "[Áudio recebido]";
     } else if (payload.video) {
       messageType = "video";
-      mediaUrl = payload.video.videoUrl || null;
+      mediaUrl = payload.video.videoUrl || payload.video.url || payload.video.mediaUrl || null;
       messageContent = payload.video.caption || "";
     } else if (payload.document) {
       messageType = "document";
-      mediaUrl = payload.document.documentUrl || null;
+      mediaUrl = payload.document.documentUrl || payload.document.url || payload.document.mediaUrl || null;
       messageContent = payload.document.fileName || "";
     }
 

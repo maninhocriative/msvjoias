@@ -1448,7 +1448,7 @@ async function generateKatePreview(args: {
       ],
       prompt,
       size: "1024x1024",
-      quality: "low",
+      quality: "high",
       output_format: "png",
     }),
   });
@@ -1506,17 +1506,21 @@ async function generateMaluPreview(args: {
     throw new Error("O óculos escolhido não possui imagem para gerar a prévia.");
   }
 
-  const prompt = `Imagem A é a selfie/foto enviada pelo cliente. Imagem B é o óculos escolhido pelo cliente.
+  const prompt = `Imagem A é a selfie/foto original do cliente. Imagem B é a foto oficial do óculos escolhido.
 
-Crie uma prévia comercial realista do cliente usando o óculos da Imagem B.
+Faça uma edição realista e controlada da Imagem A, mantendo a foto do cliente como base.
 
-Preserve fielmente a identidade da pessoa da Imagem A, incluindo formato do rosto, tom de pele, cabelo, barba, expressão, pose e proporções.
-Aplique o óculos da Imagem B no rosto da pessoa com encaixe natural, perspectiva correta, tamanho proporcional, sombras realistas e reflexos sutis.
-Preserve o design do óculos: formato da armação, cor, lente, transparência, hastes e detalhes.
+Preserve a Imagem A praticamente intacta: não altere identidade, rosto, formato da cabeça, olhos, nariz, boca, pele, cabelo, barba, expressão, pose, roupa, fundo, iluminação geral, enquadramento ou proporções da pessoa.
+Não embeleze, não rejuvenesça, não afine, não redesenhe e não recrie o rosto. A pessoa precisa continuar sendo exatamente o mesmo cliente da selfie.
 
-Não invente outro óculos. Não altere o rosto do cliente. Não mudar cabelo, roupa ou expressão. Não transformar em ilustração. Não criar efeito artificial.
+Aplique sobre o rosto o óculos da Imagem B com a maior fidelidade possível.
+Preserve o óculos da Imagem B: formato da armação, ponte, lentes, cor, transparência, hastes, detalhes metálicos, parafusos, brilho e acabamento.
+Não invente outro óculos, não troque a cor da lente, não mude o formato e não simplifique o produto.
 
-Resultado final: prévia comercial realista, limpa e convincente para venda via WhatsApp.`;
+O único elemento novo na Imagem A deve ser o óculos escolhido, ajustado ao rosto com tamanho proporcional, perspectiva correta, encaixe natural no nariz/orelhas, sombras suaves e reflexos discretos.
+Se algum detalhe lateral da haste não puder aparecer pela pose da selfie, mantenha coerente com a perspectiva, mas não altere o design frontal do óculos.
+
+Resultado final: a selfie original do cliente usando exatamente o óculos escolhido, com aparência comercial realista para WhatsApp.`;
 
   const imageResponse = await fetch("https://api.openai.com/v1/images/edits", {
     method: "POST",
@@ -1532,7 +1536,7 @@ Resultado final: prévia comercial realista, limpa e convincente para venda via 
       ],
       prompt,
       size: "1024x1024",
-      quality: "low",
+      quality: "high",
       output_format: "png",
     }),
   });

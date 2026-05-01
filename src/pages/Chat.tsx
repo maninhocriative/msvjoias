@@ -77,6 +77,27 @@ const statusFilters = [
   { key: 'vendido', label: 'Vendidos', color: 'bg-emerald-400' },
 ];
 
+const buildPhoneVariants = (phone: string) => {
+  const digits = String(phone || '').replace(/\D/g, '');
+  const variants = new Set<string>();
+  if (digits) variants.add(digits);
+  if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+    variants.add(digits.slice(2));
+  }
+  if (!digits.startsWith('55') && (digits.length === 10 || digits.length === 11)) {
+    variants.add(`55${digits}`);
+  }
+  if (digits.startsWith('55') && digits.length === 13 && digits[4] === '9') {
+    variants.add(`${digits.slice(0, 4)}${digits.slice(5)}`);
+    variants.add(`${digits.slice(2, 4)}${digits.slice(5)}`);
+  }
+  if (digits.startsWith('55') && digits.length === 12) {
+    variants.add(`${digits.slice(0, 4)}9${digits.slice(4)}`);
+    variants.add(`${digits.slice(2, 4)}9${digits.slice(4)}`);
+  }
+  return Array.from(variants);
+};
+
 const Chat = () => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
@@ -114,6 +135,7 @@ const Chat = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const shouldAutoScroll = useRef(true);
   const lastMessageCount = useRef(0);
+  const relatedConversationIdsRef = useRef<Set<string>>(new Set());
 
   const { toast } = useToast();
   const { onlineSellers, startChatting, stopChatting } = useSellerPresence();
@@ -585,12 +607,13 @@ const Chat = () => {
 
   const fetchMessages = useCallback(async (conversationId: string, phone?: string) => {
     try {
+      const phoneVariants = phone ? buildPhoneVariants(phone) : [];
       const [crmConversationsResult, alineConversationResult] = await Promise.all([
         phone
           ? supabase
               .from('conversations')
               .select('id')
-              .eq('contact_number', phone)
+              .in('contact_number', phoneVariants)
               .order('created_at', { ascending: false })
               .limit(20)
           : Promise.resolve({ data: [{ id: conversationId }], error: null }),
@@ -598,7 +621,7 @@ const Chat = () => {
           ? supabase
               .from('aline_conversations')
               .select('id')
-              .eq('phone', phone)
+              .in('phone', phoneVariants)
               .order('created_at', { ascending: false })
               .limit(1)
               .maybeSingle()
@@ -610,9 +633,10 @@ const Chat = () => {
           (crmConversationsResult?.data || [])
             .map((conversation) => conversation?.id)
             .filter(Boolean)
-            .concat(conversationId),
+          .concat(conversationId),
         ),
       );
+      relatedConversationIdsRef.current = new Set(relatedConversationIds);
 
       const { data, error } = await supabase
         .from('messages')
@@ -731,12 +755,13 @@ const Chat = () => {
 
   const fetchAlineStatus = useCallback(async (phone: string) => {
     try {
+      const phoneVariants = buildPhoneVariants(phone);
       const { data } = await supabase
         .from('aline_conversations')
         .select(
           'id, phone, status, active_agent, assigned_seller_id, assigned_seller_name, assignment_reason, assigned_at',
         )
-        .eq('phone', phone)
+        .in('phone', phoneVariants)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -745,6 +770,7 @@ const Chat = () => {
         setAlineStatusMap((prev) => ({
           ...prev,
           [phone]: data,
+          [data.phone]: data,
         }));
       }
     } catch {
@@ -765,26 +791,30 @@ const Chat = () => {
       fetchAlineStatus(selectedConversation.contact_number);
       startChatting(selectedConversation.contact_number);
       const channel = supabase
-        .channel(`messages-${selectedConversation.id}`)
+        .channel(`messages-related-${selectedConversation.id}`)
         .on(
           'postgres_changes',
           {
             event: 'INSERT',
             schema: 'public',
             table: 'messages',
-            filter: `conversation_id=eq.${selectedConversation.id}`,
           },
           (payload) => {
-            if (!(payload.new as Message).is_from_me) {
+            const newMessage = payload.new as Message;
+            if (!relatedConversationIdsRef.current.has(newMessage.conversation_id)) {
+              return;
+            }
+
+            if (!newMessage.is_from_me) {
               setIsContactTyping(false);
             }
 
             setMessages((prev) => {
-              if (prev.some((m) => m.id === (payload.new as Message).id)) {
+              if (prev.some((m) => m.id === newMessage.id)) {
                 return prev;
               }
 
-              return [...prev, payload.new as Message];
+              return [...prev, newMessage];
             });
           },
         )
@@ -794,12 +824,16 @@ const Chat = () => {
             event: 'UPDATE',
             schema: 'public',
             table: 'messages',
-            filter: `conversation_id=eq.${selectedConversation.id}`,
           },
           (payload) => {
+            const updatedMessage = payload.new as Message;
+            if (!relatedConversationIdsRef.current.has(updatedMessage.conversation_id)) {
+              return;
+            }
+
             setMessages((prev) =>
               prev.map((m) =>
-                m.id === (payload.new as Message).id ? { ...m, ...payload.new } : m,
+                m.id === updatedMessage.id ? { ...m, ...updatedMessage } : m,
               ),
             );
           },
@@ -908,7 +942,9 @@ const Chat = () => {
         setConversations(conversationList);
 
         if (conversationList.length > 0) {
-          const phones = conversationList.map((c) => c.contact_number);
+          const phones = Array.from(
+            new Set(conversationList.flatMap((c) => buildPhoneVariants(c.contact_number))),
+          );
 
           const [{ data: alineData }, { data: customersData }] = await Promise.all([
             supabase
@@ -928,6 +964,9 @@ const Chat = () => {
 
             alineData.forEach((ac) => {
               statusMap[ac.phone] = ac;
+              buildPhoneVariants(ac.phone).forEach((variant) => {
+                statusMap[variant] = ac;
+              });
             });
 
             setAlineStatusMap(statusMap);
@@ -1591,6 +1630,8 @@ const Chat = () => {
       ? 'keila'
       : currentAlineData?.active_agent === 'kate'
         ? 'kate'
+        : currentAlineData?.active_agent === 'malu'
+          ? 'malu'
       : 'aline';
 
   const currentAgentLabel =
@@ -1600,6 +1641,8 @@ const Chat = () => {
         ? 'Keila'
         : currentAgentSlug === 'kate'
           ? 'Kate'
+          : currentAgentSlug === 'malu'
+            ? 'Malu'
         : 'Aline';
 
   const currentAgentBadgeClass =
@@ -1609,6 +1652,8 @@ const Chat = () => {
         ? 'bg-sky-500/15 text-sky-300 border border-sky-500/25'
         : currentAgentSlug === 'kate'
           ? 'bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/25'
+          : currentAgentSlug === 'malu'
+            ? 'bg-violet-500/15 text-violet-300 border border-violet-500/25'
         : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
 
   const currentAgentDotClass =
@@ -1618,6 +1663,8 @@ const Chat = () => {
         ? 'bg-sky-500'
         : currentAgentSlug === 'kate'
           ? 'bg-fuchsia-500'
+          : currentAgentSlug === 'malu'
+            ? 'bg-violet-500'
         : 'bg-emerald-500';
 
   const activeStatusLabel =
@@ -1824,7 +1871,7 @@ const Chat = () => {
                 {[
                   {
                     key: 'aline',
-                    label: 'Aline/Keila/Kate',
+                    label: 'Aline/Keila/Kate/Malu',
                     count: attendantCounts.aline,
                     icon: Bot,
                     activeClass:

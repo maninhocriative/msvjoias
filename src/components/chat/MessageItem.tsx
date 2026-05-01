@@ -167,6 +167,13 @@ const MessageItem = memo(({
               />
             )}
 
+            {message.message_type === 'image' && !message.media_url && !showTextContent && !isDeleted && (
+              <div className="flex items-center gap-2 rounded-2xl border border-white/8 bg-black/10 px-3 py-2 text-sm text-slate-300">
+                <FileText className="w-4 h-4 shrink-0" />
+                <span>Imagem recebida</span>
+              </div>
+            )}
+
             {message.message_type === 'audio' && message.media_url && (
               <div className="flex items-center gap-2 bg-black/20 rounded-2xl p-2.5 mb-2 w-full max-w-[320px] min-w-0 border border-white/8">
                 <Volume2 className="w-5 h-5 shrink-0 text-emerald-300" />

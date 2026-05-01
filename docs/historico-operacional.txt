@@ -284,3 +284,40 @@ Validacao feita
 
 Validacao local bloqueada
 - npm run build nao rodou porque o comando vite nao esta disponivel no node_modules/.bin desta maquina.
+
+2026-05-01 - Tags de agentes, mensagens recebidas e fidelidade da previa
+
+Contexto
+- O CRM mostrava tag "Aline" em conversa que ja estava com active_agent=malu no banco.
+- Mensagens recebidas do cliente podiam nao aparecer no painel em tempo real quando eram salvas em outra conversa relacionada ao mesmo telefone.
+- A geracao de previa de oculos estava alterando demais a selfie do cliente e recriando o oculos, quando o objetivo e manter ambos fieis.
+
+Mudancas feitas
+- src/components/chat/ConversationItem.tsx
+  - Adicionado suporte visual para agente Malu, com tag e cor proprias.
+
+- src/pages/Chat.tsx
+  - Header do chat agora reconhece active_agent=malu e mostra "Malu" com cor propria.
+  - Filtro de atendimento agora lista Aline/Keila/Kate/Malu.
+  - Busca de status e mensagens passa a considerar variantes do telefone com/sem 55 e com/sem nono digito.
+  - Realtime de mensagens passa a aceitar conversas relacionadas ao telefone selecionado, nao apenas o conversation_id inicial.
+
+- src/components/chat/MessageItem.tsx
+  - Adicionado placeholder "Imagem recebida" para caso uma midia recebida venha sem URL renderizavel.
+
+- supabase/functions/zapi-unified/index.ts
+  - Normalizador de payload agora captura mais variacoes de URL de midia da Z-API:
+    - imageUrl/audioUrl/videoUrl/documentUrl no topo;
+    - image.url/image.mediaUrl;
+    - audio.url/audio.mediaUrl;
+    - video.url/video.mediaUrl;
+    - document.url/document.mediaUrl.
+
+- supabase/functions/aline-reply/index.ts
+  - Previews de Kate e Malu agora usam quality=high no gpt-image-1.
+  - Prompt da Malu reforcado para usar a selfie do cliente como base praticamente intacta.
+  - Prompt da Malu reforcado para aplicar o oculos escolhido com fidelidade, sem recriar ou trocar formato/cor/lente/armacao.
+
+Observacao tecnica
+- O gerador de previews ja estava integrado ao gpt-image-1 via endpoint de edicao de imagens da OpenAI.
+- O problema principal era qualidade baixa e prompt permissivo demais; isso foi corrigido para aumentar fidelidade.
