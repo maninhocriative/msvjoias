@@ -376,16 +376,18 @@ async function sendInteractiveProductCard(
   const buttonId = product.button_id || `select_${product.sku || product.id}`;
   const buttonLabel = product.button_label || "Quero esta";
   const message = product.caption || product.name || "Produto";
-  const buttons = [
-    {
-      id: buttonId,
-      label: buttonLabel,
-    },
-    {
-      id: "more_options",
-      label: "Quero mais",
-    },
-  ];
+  const buttons = Array.isArray(product.buttons) && product.buttons.length > 0
+    ? product.buttons
+    : [
+        {
+          id: buttonId,
+          label: buttonLabel,
+        },
+        {
+          id: "more_options",
+          label: "Quero mais",
+        },
+      ];
   const buttonList: Record<string, unknown> = {
     buttons,
   };
@@ -424,6 +426,18 @@ async function sendProductChoiceButtons(
   const buttonId = product.button_id || `select_${product.sku || product.id}`;
   const buttonLabel = product.button_label || "Quero esta";
   const productName = product.name || "este modelo";
+  const buttons = Array.isArray(product.buttons) && product.buttons.length > 0
+    ? product.buttons
+    : [
+        {
+          id: buttonId,
+          label: buttonLabel,
+        },
+        {
+          id: "more_options",
+          label: "Quero mais",
+        },
+      ];
 
   const response = await fetch(`https://api.z-api.io/instances/${instanceId}/token/${token}/send-button-list`, {
     method: "POST",
@@ -432,16 +446,35 @@ async function sendProductChoiceButtons(
       phone,
       message: `Escolha uma opção para ${productName}:`,
       buttonList: {
-        buttons: [
-          {
-            id: buttonId,
-            label: buttonLabel,
-          },
-          {
-            id: "more_options",
-            label: "Quero mais",
-          },
-        ],
+        buttons,
+      },
+    }),
+  });
+
+  const result = await response.json();
+  return {
+    success: response.ok && !!(result.messageId || result.zaapId),
+    messageId: result.messageId || result.zaapId || null,
+    error: response.ok ? null : result,
+  };
+}
+
+async function sendActionButtons(
+  phone: string,
+  message: string,
+  buttons: Array<{ id: string; label: string }>,
+  instanceId: string,
+  token: string,
+  clientToken?: string,
+) {
+  const response = await fetch(`https://api.z-api.io/instances/${instanceId}/token/${token}/send-button-list`, {
+    method: "POST",
+    headers: buildHeaders(clientToken),
+    body: JSON.stringify({
+      phone,
+      message,
+      buttonList: {
+        buttons,
       },
     }),
   });
@@ -526,7 +559,7 @@ serve(async (req) => {
       payload.listResponseId ||
       payload.buttonResponse?.buttonId ||
       payload.buttonsResponseMessage?.buttonId ||
-      findNestedString(payload, (candidate) => /^select[_-][a-z0-9-]+$/i.test(candidate) || candidate === "retomar_atendimento") ||
+      findNestedString(payload, (candidate) => /^(select|choose|details)[_-][a-z0-9-]+$/i.test(candidate) || candidate === "retomar_atendimento") ||
       "";
 
     const buttonResponseLabel =
@@ -789,10 +822,12 @@ serve(async (req) => {
     const mediaItems = Array.isArray(alineResponse.media_items) ? alineResponse.media_items : [];
     const useProductButtons = alineResponse.use_product_buttons === true;
     const postCatalogMessage = alineResponse.mensagem_pos_catalogo || null;
+    const actionButtons = Array.isArray(alineResponse.action_buttons) ? alineResponse.action_buttons : [];
 
     let textSent = false;
     let productsSent = 0;
     let mediaItemsSent = 0;
+    let actionButtonsSent = false;
     let postCatalogSent = false;
     const sequenceLeaseResult = await acquireZapiGovernorLease(supabase, {
       lane: "conversation",
@@ -1007,6 +1042,38 @@ serve(async (req) => {
       }
     }
 
+    if (actionButtons.length > 0) {
+      await sleep(700);
+
+      const buttonResult = (
+        await sendWithGovernorLease(sequenceLeaseResult.lease, () =>
+          sendActionButtons(
+            phone,
+            "Escolha uma opção:",
+            actionButtons,
+            ZAPI_INSTANCE_ID,
+            ZAPI_TOKEN,
+            ZAPI_CLIENT_TOKEN,
+          ),
+        )
+      ).result;
+
+      if (buttonResult?.success) {
+        actionButtonsSent = true;
+
+        await supabase.from("messages").insert({
+          conversation_id: conversationId,
+          content: "Escolha uma opção:",
+          message_type: "button_list",
+          is_from_me: true,
+          status: "sent",
+          zapi_message_id: buttonResult?.messageId || null,
+        });
+      } else {
+        console.warn("[ZAPI-UNIFIED] Falha ao enviar botões de ação:", buttonResult?.error);
+      }
+    }
+
     if ((productsSent > 0 || mediaItemsSent > 0) && postCatalogMessage) {
       await sleep(1200);
 
@@ -1093,6 +1160,7 @@ serve(async (req) => {
         text_sent: textSent,
         products_sent: productsSent,
         media_items_sent: mediaItemsSent,
+        action_buttons_sent: actionButtonsSent,
         post_catalog_sent: postCatalogSent,
         aline_node: alineResponse.node_tecnico,
         use_product_buttons: useProductButtons,

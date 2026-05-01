@@ -7,8 +7,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-type MemoryAgent = "aline" | "keila" | "kate";
-type ConversationAgent = "aline" | "keila" | "kate" | "human";
+type MemoryAgent = "aline" | "keila" | "kate" | "malu";
+type ConversationAgent = "aline" | "keila" | "kate" | "malu" | "human";
 type AnyRecord = Record<string, any>;
 
 interface ResponseMediaItem {
@@ -39,6 +39,7 @@ interface CatalogProduct {
   index?: number;
   button_id?: string;
   button_label?: string;
+  buttons?: Array<{ id: string; label: string }>;
 }
 
 interface KatePendantTemplate {
@@ -135,17 +136,23 @@ function detectColor(text: string): string | null {
 }
 
 function detectCategory(text: string, data: AnyRecord): string | null {
+  const raw = String(text || "").toLowerCase();
   const normalized = normalizeText(text);
+  const searchable = `${normalized} ${raw}`;
 
-  if (/pingente|pingentes|medalha|medalhas|medalhinha|colar|cordao|cordão|corrente/.test(normalized)) {
+  if (/oculos|oculo|óculos|óculo|ã³culos|ã³culo|armacao|arma[cç]ao|lente|modelo de oculos|quero testar oculos|provar oculos|oculos de sol/.test(searchable)) {
+    return "oculos";
+  }
+
+  if (/pingente|pingentes|medalha|medalhas|medalhinha|colar|cordao|cordão|corrente/.test(searchable)) {
     return "pingente";
   }
 
-  if (/alianc/.test(normalized)) {
+  if (/alian|alianc|alianç/.test(searchable)) {
     return "aliancas";
   }
 
-  if (/anel|aneis|an[eé]is/.test(normalized)) {
+  if (/anel|aneis|an[eé]is/.test(searchable)) {
     return "aneis";
   }
 
@@ -175,6 +182,7 @@ function detectClassification(text: string, data: AnyRecord): string | null {
   if (category === "aliancas" && allianceType === "namoro") return "aliancas_namoro";
   if (category === "pingente" && color === "dourada") return "pingentes_dourados";
   if (category === "pingente" && color === "prata") return "pingentes_prata";
+  if (category === "oculos") return "oculos";
 
   return null;
 }
@@ -195,8 +203,12 @@ function detectPendantIntent(text: string, data: AnyRecord, currentNode: string)
   const normalized = normalizeText(text);
   const explicitPendant =
     detectCategory(text, {}) === "pingente" ||
-    /fotograv|foto gravad|foto no pingente|gravar foto|foto no medalha|foto no medalhao/.test(normalized);
+    /fotograv|foto gravad|foto no pingente|gravar foto|foto no medalha|foto no medalhao|placa|coracao|cora[cç]ao|redondo|hexagonal/.test(normalized);
   return explicitPendant || data.categoria === "pingente" || String(currentNode || "").startsWith("kate_");
+}
+
+function detectEyewearIntent(text: string, data: AnyRecord, currentNode: string): boolean {
+  return detectCategory(text, {}) === "oculos" || data.categoria === "oculos" || String(currentNode || "").startsWith("malu_");
 }
 
 function hasWeddingAllianceContext(data: AnyRecord, currentNode: string): boolean {
@@ -266,6 +278,20 @@ function shouldRouteToKeila(
     data.agente_atual === "keila" ||
     hasWeddingAllianceContext(data, currentNode) ||
     detectMarriageIntent(text, data, currentNode)
+  );
+}
+
+function shouldRouteToMalu(
+  activeAgent: ConversationAgent,
+  text: string,
+  data: AnyRecord,
+  currentNode: string,
+): boolean {
+  return (
+    activeAgent === "malu" ||
+    data.agente_atual === "malu" ||
+    isMaluFlowNode(currentNode) ||
+    detectEyewearIntent(text, data, currentNode)
   );
 }
 
@@ -399,7 +425,7 @@ function customerDoesNotKnowSize(text: string): boolean {
 function detectCatalogResendIntent(text: string): boolean {
   const normalized = normalizeText(text);
   const asksToSend = /(envia|enviar|manda|manda ai|mostra|mostrar|quero ver|me manda|me envia)/.test(normalized);
-  const mentionsCatalog = /(modelo|modelos|opcao|opcoes|catalogo|alianca|aliancas)/.test(normalized);
+  const mentionsCatalog = /(modelo|modelos|opcao|opcoes|catalogo|alianca|aliancas|pingente|pingentes|oculos|armacao)/.test(normalized);
   return asksToSend && mentionsCatalog;
 }
 
@@ -453,6 +479,7 @@ function resetCatalogChoice(data: AnyRecord) {
   delete data.payment_method;
   delete data.keila_store_handoff_done;
   delete data.kate_store_handoff_done;
+  delete data.malu_store_handoff_done;
 }
 
 function hasCurrentCatalogSelection(data: AnyRecord): boolean {
@@ -510,6 +537,16 @@ function isKateFlowNode(node: string): boolean {
   );
 }
 
+function isMaluFlowNode(node: string): boolean {
+  const normalized = String(node || "");
+  return (
+    normalized.startsWith("malu_") ||
+    normalized === "catalogo_oculos" ||
+    normalized === "selecao_oculos" ||
+    normalized === "human_handoff_oculos"
+  );
+}
+
 function resetKeilaFlowState(data: AnyRecord) {
   delete data.prazo_fechamento;
   delete data.orcamento_valor;
@@ -543,6 +580,24 @@ function resetKateFlowState(data: AnyRecord) {
   delete data.kate_preview_approved;
   delete data.kate_store_handoff_done;
   delete data.kate_selected_template_id;
+  resetCatalogChoice(data);
+}
+
+function resetMaluFlowState(data: AnyRecord) {
+  delete data.finalidade;
+  delete data.quantidade_tipo;
+  delete data.tamanho_1;
+  delete data.tamanho_2;
+  delete data.numeracao_status;
+  delete data.cor;
+  delete data.catalog_history;
+  delete data.delivery_method;
+  delete data.payment_method;
+  delete data.malu_customer_photo_url;
+  delete data.malu_preview_image_url;
+  delete data.malu_preview_status;
+  delete data.malu_preview_approved;
+  delete data.malu_store_handoff_done;
   resetCatalogChoice(data);
 }
 
@@ -652,6 +707,51 @@ function formatProductCaption(product: Partial<CatalogProduct>) {
   return lines.join("\n");
 }
 
+function detectPendantFamily(product: AnyRecord): string {
+  const template = matchKateTemplateForProduct(product);
+  const text = normalizeText(`${product?.name || ""} ${product?.description || ""} ${product?.sku || ""}`);
+
+  if (template?.family) return template.family;
+  if (/coracao|cora[cç]ao|heart/.test(text)) return "coracao";
+  if (/hexagonal|sextavado|octagonal/.test(text)) return "hexagonal";
+  if (/redondo|circular|circulo|c[ií]rculo/.test(text)) return "redondo";
+
+  return "generico";
+}
+
+function buildPendantPreviewPrompt(product: AnyRecord): string {
+  const family = detectPendantFamily(product);
+  const color = detectColor(`${product?.color || ""} ${product?.name || ""} ${product?.description || ""}`);
+  const colorInstruction = color
+    ? `Preserve a cor do metal do template (${color === "dourada" ? "dourado" : "prata"}).`
+    : "Preserve exatamente a cor do metal do template.";
+  const familyInstruction =
+    family === "redondo"
+      ? "O pingente é redondo. A fotogravação deve respeitar a área circular, com rosto centralizado, escala equilibrada e margem segura nas bordas."
+      : family === "coracao"
+        ? "O pingente é em formato de coração. A fotogravação deve se adaptar à silhueta do coração sem deformar o rosto, respeitando curvas superiores e ponta inferior."
+        : family === "hexagonal" || family === "octagonal"
+          ? "O pingente é geométrico. A fotogravação deve respeitar a área útil do formato, mantendo alinhamento e margem segura nas bordas."
+          : "A fotogravação deve respeitar a área útil do pingente escolhido, com margens internas harmoniosas.";
+
+  return `Imagem A é o template oficial do pingente escolhido. Imagem B é a foto enviada pelo cliente.
+
+Crie uma prévia comercial realista de um pingente personalizado fotogravado.
+
+Use a Imagem A como base principal e preserve exatamente o produto: formato, metal, brilho, contorno, proporção, argola, bordas, estrutura, fundo limpo e enquadramento.
+Não recrie o pingente do zero. Não troque o template. Não altere argola, bordas, proporção, cor do metal ou acabamento externo.
+
+Use a IA apenas para transformar a pessoa da Imagem B em uma fotogravação realista na área útil frontal do pingente.
+A gravação deve preservar identidade, formato do rosto, cabelo, expressão e principais traços faciais, com acabamento monocromático fino de gravação a laser sobre metal.
+Não aplicar foto colorida dentro do pingente. Não parecer foto colada, adesivo, impressão plana ou desenho artístico exagerado.
+
+Centralize a pessoa com elegância, sem invadir a argola, sem encostar nas bordas e sem cortar excessivamente rosto, cabeça ou queixo.
+${familyInstruction}
+${colorInstruction}
+
+Resultado final: mockup premium, realista e vendável para WhatsApp, com aparência de joia ACIUM personalizada por fotogravação.`;
+}
+
 async function searchCatalog(
   supabase: any,
   params: Record<string, any>,
@@ -737,6 +837,21 @@ async function searchCatalog(
     if (requestedCategory === "pingente") {
       const isPendant = category.includes("pingente") || name.includes("pingente") || name.includes("medalha");
       if (!isPendant) return false;
+    }
+
+    if (requestedCategory === "oculos") {
+      const isEyewear =
+        category.includes("oculos") ||
+        category.includes("oculo") ||
+        name.includes("oculos") ||
+        name.includes("oculo") ||
+        name.includes("armacao") ||
+        name.includes("lente") ||
+        description.includes("oculos") ||
+        description.includes("armacao") ||
+        tagsText.includes("oculos") ||
+        tagsText.includes("armacao");
+      if (!isEyewear) return false;
     }
 
     if (requestedColor) {
@@ -858,11 +973,44 @@ function buildKateCards(products: CatalogProduct[]): CatalogProduct[] {
   });
 }
 
+function buildMaluCards(products: CatalogProduct[]): CatalogProduct[] {
+  return products.map((product) => {
+    const captionLines = [
+      `*${product.name}*`,
+      product.description ? product.description : null,
+      product.color ? `Cor: ${product.color}` : null,
+      product.sku ? `Cód: ${product.sku}` : null,
+      product.price_formatted ? `Valor: ${product.price_formatted}` : null,
+    ].filter(Boolean);
+
+    return {
+      ...product,
+      caption: captionLines.join("\n"),
+      button_id: `select_${product.sku || product.id}`,
+      button_label: "Escolher este",
+      buttons: [
+        {
+          id: `details_${product.sku || product.id}`,
+          label: "Ver mais",
+        },
+        {
+          id: `choose_${product.sku || product.id}`,
+          label: "Escolher",
+        },
+        {
+          id: `select_${product.sku || product.id}`,
+          label: "Escolher este",
+        },
+      ],
+    };
+  });
+}
+
 function findCatalogSelection(token: string | null, catalog: any[]): any | null {
   if (!token || !Array.isArray(catalog) || catalog.length === 0) return null;
 
   const normalized = normalizeText(token);
-  const explicitButton = normalized.match(/^select[_-]([a-z0-9-]+)/i);
+  const explicitButton = normalized.match(/^(?:select|choose|details)[_-]([a-z0-9-]+)/i);
   if (explicitButton) {
     const sku = explicitButton[1].toUpperCase();
     return catalog.find((item: any) => String(item.sku || "").toUpperCase() === sku) || null;
@@ -907,6 +1055,7 @@ function buildResponsePayload(args: {
   agent: ConversationAgent;
   useProductButtons?: boolean;
   postCatalogMessage?: string | null;
+  actionButtons?: Array<{ id: string; label: string }>;
 }) {
   const {
     phone,
@@ -919,6 +1068,7 @@ function buildResponsePayload(args: {
     agent,
     useProductButtons = false,
     postCatalogMessage = null,
+    actionButtons = [],
   } = args;
 
   const singleLine = message.replace(/\n+/g, " ").replace(/\s+/g, " ").trim();
@@ -938,6 +1088,7 @@ function buildResponsePayload(args: {
     media_items: mediaItems,
     total_media_items: mediaItems.length,
     tem_midia: mediaItems.length > 0,
+    action_buttons: actionButtons,
     mensagem_pos_catalogo: postCatalogMessage,
     enviar_mensagem_pos_catalogo: !!postCatalogMessage,
     produto_selecionado: selectedProduct,
@@ -1274,13 +1425,7 @@ async function generateKatePreview(args: {
     throw new Error("O produto escolhido não possui imagem para gerar a prévia.");
   }
 
-  const prompt = `Crie uma prévia comercial realista de fotogravação para aprovação do cliente.
-- Use a imagem do pingente escolhido como referência principal de forma, metal e enquadramento.
-- Use a foto enviada pelo cliente como arte que será gravada no pingente.
-- A gravação deve parecer monocromática, elegante e centralizada na frente do pingente.
-- Preserve o tipo de pingente, a cor do metal, o fundo branco e o visual limpo de catálogo.
-- Não adicione corrente, mãos, textos extras, molduras ou objetos novos.
-- O resultado deve parecer uma prévia de gravação, não uma foto impressa colorida.`;
+  const prompt = buildPendantPreviewPrompt(selectedProduct);
 
   const imageResponse = await fetch("https://api.openai.com/v1/images/edits", {
     method: "POST",
@@ -1320,6 +1465,90 @@ async function generateKatePreview(args: {
 
   const binary = Uint8Array.from(atob(previewBase64), (char) => char.charCodeAt(0));
   const filePath = `kate-previews/${phone}/${Date.now()}-${selectedProduct?.sku || selectedProduct?.id || "pingente"}.png`;
+
+  const { error: uploadError } = await supabase.storage
+    .from("chat-media")
+    .upload(filePath, binary, {
+      contentType: "image/png",
+      upsert: true,
+    });
+
+  if (uploadError) {
+    throw uploadError;
+  }
+
+  const { data: publicUrlData } = supabase.storage.from("chat-media").getPublicUrl(filePath);
+  return publicUrlData?.publicUrl || null;
+}
+
+async function generateMaluPreview(args: {
+  supabase: any;
+  phone: string;
+  selectedProduct: AnyRecord;
+  customerPhotoUrl: string;
+}) {
+  const { supabase, phone, selectedProduct, customerPhotoUrl } = args;
+  const openAIApiKey = Deno.env.get("OPENAI_API_KEY");
+
+  if (!openAIApiKey) {
+    throw new Error("OPENAI_API_KEY não configurada para gerar a prévia da Malu.");
+  }
+
+  const productImageUrl = String(selectedProduct?.image_url || selectedProduct?.media_url || "").trim();
+  if (!productImageUrl) {
+    throw new Error("O óculos escolhido não possui imagem para gerar a prévia.");
+  }
+
+  const prompt = `Imagem A é a selfie/foto enviada pelo cliente. Imagem B é o óculos escolhido pelo cliente.
+
+Crie uma prévia comercial realista do cliente usando o óculos da Imagem B.
+
+Preserve fielmente a identidade da pessoa da Imagem A, incluindo formato do rosto, tom de pele, cabelo, barba, expressão, pose e proporções.
+Aplique o óculos da Imagem B no rosto da pessoa com encaixe natural, perspectiva correta, tamanho proporcional, sombras realistas e reflexos sutis.
+Preserve o design do óculos: formato da armação, cor, lente, transparência, hastes e detalhes.
+
+Não invente outro óculos. Não altere o rosto do cliente. Não mudar cabelo, roupa ou expressão. Não transformar em ilustração. Não criar efeito artificial.
+
+Resultado final: prévia comercial realista, limpa e convincente para venda via WhatsApp.`;
+
+  const imageResponse = await fetch("https://api.openai.com/v1/images/edits", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${openAIApiKey}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-image-1",
+      images: [
+        { image_url: customerPhotoUrl },
+        { image_url: productImageUrl },
+      ],
+      prompt,
+      size: "1024x1024",
+      quality: "low",
+      output_format: "png",
+    }),
+  });
+
+  if (!imageResponse.ok) {
+    const errorText = await imageResponse.text();
+    throw new Error(`OpenAI eyewear image edit error: ${imageResponse.status} - ${errorText}`);
+  }
+
+  const imagePayload = await imageResponse.json();
+  const previewBase64 = imagePayload?.data?.[0]?.b64_json || null;
+  const previewUrl = imagePayload?.data?.[0]?.url || null;
+
+  if (previewUrl) {
+    return previewUrl;
+  }
+
+  if (!previewBase64) {
+    throw new Error("A OpenAI não retornou uma imagem válida para a prévia de óculos.");
+  }
+
+  const binary = Uint8Array.from(atob(previewBase64), (char) => char.charCodeAt(0));
+  const filePath = `malu-previews/${phone}/${Date.now()}-${selectedProduct?.sku || selectedProduct?.id || "oculos"}.png`;
 
   const { error: uploadError } = await supabase.storage
     .from("chat-media")
@@ -2010,6 +2239,313 @@ Você vai retirar na loja ou prefere delivery? Depois eu confirmo a forma de pag
   });
 }
 
+async function handleMaluFlow(args: {
+  supabase: any;
+  conversation: any;
+  phone: string;
+  message: string;
+  contactName: string;
+  buttonResponseId: string | null;
+  catalogSelectionHint: string | null;
+  mediaType: string | null;
+  mediaUrl: string | null;
+}) {
+  const {
+    supabase,
+    conversation,
+    phone,
+    message,
+    contactName,
+    buttonResponseId,
+    catalogSelectionHint,
+    mediaType,
+    mediaUrl,
+  } = args;
+
+  const currentNode = String(conversation.current_node || "");
+  const data: AnyRecord = {
+    ...(conversation.collected_data || {}),
+    agente_atual: "malu",
+    categoria: "oculos",
+  };
+
+  if (!isMaluFlowNode(currentNode)) {
+    resetMaluFlowState(data);
+  }
+
+  const selectedFromCatalog = findCatalogSelection(
+    buttonResponseId || catalogSelectionHint || message,
+    getCatalogSelectionPool(data),
+  );
+  const wantsDetails = /^details[_-]/i.test(String(buttonResponseId || message || ""));
+  const wantsMoreOptions = detectMoreOptionsIntent(message) || /^more_options$/i.test(String(buttonResponseId || ""));
+  const wantsCatalogResend = detectCatalogResendIntent(message);
+
+  if (selectedFromCatalog) {
+    data.selected_product = selectedFromCatalog;
+    data.selected_sku = selectedFromCatalog.sku;
+    data.selected_name = selectedFromCatalog.name;
+    data.selected_price = selectedFromCatalog.price;
+
+    if (wantsDetails) {
+      const reply = [
+        `Claro! Esse é o *${selectedFromCatalog.name}*.`,
+        selectedFromCatalog.description || null,
+        selectedFromCatalog.color ? `Cor: ${selectedFromCatalog.color}` : null,
+        selectedFromCatalog.price_formatted ? `Valor: ${selectedFromCatalog.price_formatted}` : null,
+        "Se quiser testar no rosto, toque em Escolher este ou me envie uma selfie de frente.",
+      ].filter(Boolean).join("\n\n");
+
+      await persistConversation(supabase, conversation.id, "malu", "malu_detalhes", conversation.current_node || null, data);
+      await saveAssistantMessage(supabase, conversation.id, "malu", reply, "malu_detalhes");
+      await saveAgentMemory(supabase, phone, "malu", contactName, data);
+
+      return buildResponsePayload({
+        phone,
+        message: reply,
+        node: "malu_detalhes",
+        selectedProduct: data.selected_product || null,
+        collectedData: data,
+        agent: "malu",
+      });
+    }
+  }
+
+  const hasSelectedProduct = !!data.selected_sku;
+  const hasPhoto = !!data.malu_customer_photo_url;
+  const hasPreview = !!data.malu_preview_image_url;
+
+  const fetchMaluCatalogCards = async (excludeSkus: string[] = []) => {
+    const catalog = await searchCatalog(
+      supabase,
+      {
+        category: "oculos",
+        only_available: true,
+        limit: 30,
+        exclude_skus: excludeSkus,
+      },
+      data,
+    );
+    return buildMaluCards(catalog);
+  };
+
+  if (!data.catalogo_malu_enviado || (!hasSelectedProduct && (wantsMoreOptions || wantsCatalogResend))) {
+    const shownSkus = Array.isArray(data.last_catalog)
+      ? data.last_catalog.map((item: any) => String(item?.sku || "")).filter(Boolean)
+      : [];
+    const cards = await fetchMaluCatalogCards(wantsMoreOptions ? shownSkus : []);
+
+    if (cards.length === 0) {
+      const reply = "Oi, eu sou a Malu. No momento não encontrei modelos de óculos disponíveis no catálogo, mas posso chamar um atendente para te ajudar.";
+
+      await persistConversation(supabase, conversation.id, "malu", "malu_sem_catalogo", conversation.current_node || null, data);
+      await saveAssistantMessage(supabase, conversation.id, "malu", reply, "malu_sem_catalogo");
+      await saveAgentMemory(supabase, phone, "malu", contactName, data);
+
+      return buildResponsePayload({
+        phone,
+        message: reply,
+        node: "malu_sem_catalogo",
+        collectedData: data,
+        agent: "malu",
+      });
+    }
+
+    data.catalogo_malu_enviado = true;
+    data.last_catalog = cards.map((product) => ({
+      id: product.id,
+      sku: product.sku,
+      name: product.name,
+      price: product.price,
+      color: product.color,
+      image_url: product.image_url,
+      video_url: product.video_url,
+      description: product.description,
+    }));
+    data.catalog_history = mergeCatalogHistory(data.catalog_history, data.last_catalog);
+
+    const reply = wantsMoreOptions
+      ? "Separei mais alguns modelos de óculos para você ver."
+      : `Oi, eu sou a Malu.
+Vou te ajudar a escolher o óculos ideal.
+
+Separei alguns modelos disponíveis. Você pode escolher um modelo ou me mandar uma selfie de frente para eu gerar uma prévia.`;
+
+    await persistConversation(supabase, conversation.id, "malu", "catalogo_oculos", conversation.current_node || null, data);
+    await saveAssistantMessage(supabase, conversation.id, "malu", reply, "catalogo_oculos");
+    await saveAgentMemory(supabase, phone, "malu", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "catalogo_oculos",
+      products: cards,
+      collectedData: data,
+      agent: "malu",
+      useProductButtons: true,
+      postCatalogMessage: "Gostou de algum modelo? Toque em Escolher este que eu te peço a selfie para testar.",
+    });
+  }
+
+  if (hasSelectedProduct && !hasPhoto) {
+    if (mediaType === "image" && mediaUrl) {
+      data.malu_customer_photo_url = mediaUrl;
+
+      try {
+        const previewImageUrl = await generateMaluPreview({
+          supabase,
+          phone,
+          selectedProduct: data.selected_product || {},
+          customerPhotoUrl: mediaUrl,
+        });
+
+        data.malu_preview_image_url = previewImageUrl;
+        data.malu_preview_status = "sent";
+        data.malu_preview_approved = false;
+
+        const reply = `Prontinho. Gerei uma prévia do modelo *${data.selected_name}* em você.
+
+Quer ficar com esse, testar outro modelo ou falar com atendente?`;
+
+        await persistConversation(supabase, conversation.id, "malu", "malu_preview", conversation.current_node || null, data);
+        await saveAssistantMessage(supabase, conversation.id, "malu", reply, "malu_preview");
+        await saveAgentMemory(supabase, phone, "malu", contactName, data);
+
+        return buildResponsePayload({
+          phone,
+          message: reply,
+          node: "malu_preview",
+          mediaItems: previewImageUrl
+            ? [
+                {
+                  type: "image",
+                  url: previewImageUrl,
+                  caption: `Prévia do ${data.selected_name || "óculos escolhido"}`,
+                },
+              ]
+            : [],
+          selectedProduct: data.selected_product || null,
+          collectedData: data,
+          agent: "malu",
+          actionButtons: [
+            { id: "malu_quero_esse", label: "Quero esse" },
+            { id: "malu_testar_outro", label: "Testar outro" },
+            { id: "retomar_atendimento", label: "Falar com atendente" },
+          ],
+        });
+      } catch (error) {
+        console.error("[ALINE-REPLY] Erro ao gerar prévia da Malu:", error);
+        const reply = "Tive uma instabilidade para gerar sua prévia agora. Vou tentar novamente em instantes ou chamar um atendente para te ajudar.";
+
+        await persistConversation(supabase, conversation.id, "malu", "malu_preview_falhou", conversation.current_node || null, data);
+        await saveAssistantMessage(supabase, conversation.id, "malu", reply, "malu_preview_falhou");
+        await saveAgentMemory(supabase, phone, "malu", contactName, data);
+
+        return buildResponsePayload({
+          phone,
+          message: reply,
+          node: "malu_preview_falhou",
+          selectedProduct: data.selected_product || null,
+          collectedData: data,
+          agent: "malu",
+        });
+      }
+    }
+
+    const reply = `Perfeito. Você escolheu o modelo *${data.selected_name}*.
+
+Agora me envie uma selfie de frente, com boa iluminação e sem óculos no rosto, que eu gero uma prévia para você.`;
+
+    await persistConversation(supabase, conversation.id, "malu", "malu_selfie", conversation.current_node || null, data);
+    await saveAssistantMessage(supabase, conversation.id, "malu", reply, "malu_selfie");
+    await saveAgentMemory(supabase, phone, "malu", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "malu_selfie",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "malu",
+    });
+  }
+
+  if (hasPreview) {
+    const normalized = normalizeText([buttonResponseId, message].filter(Boolean).join(" "));
+    if (/quero esse|malu_quero_esse|ficar com esse|vou ficar/.test(normalized)) {
+      const reply = `Perfeito. Vou deixar anotado que você gostou do *${data.selected_name}* e chamar um atendente para finalizar com você.`;
+
+      await persistConversation(supabase, conversation.id, "malu", "human_handoff_oculos", conversation.current_node || null, data);
+      await saveAssistantMessage(supabase, conversation.id, "malu", reply, "human_handoff_oculos");
+      await saveAgentMemory(supabase, phone, "malu", contactName, data);
+
+      return buildResponsePayload({
+        phone,
+        message: reply,
+        node: "human_handoff_oculos",
+        selectedProduct: data.selected_product || null,
+        collectedData: data,
+        agent: "malu",
+      });
+    }
+
+    if (/testar outro|malu_testar_outro|outro modelo|ver outros|mais modelos/.test(normalized)) {
+      delete data.selected_product;
+      delete data.selected_sku;
+      delete data.selected_name;
+      delete data.selected_price;
+      delete data.malu_customer_photo_url;
+      delete data.malu_preview_image_url;
+      delete data.malu_preview_status;
+      delete data.malu_preview_approved;
+      data.catalogo_malu_enviado = false;
+
+      return handleMaluFlow({
+        ...args,
+        conversation: {
+          ...conversation,
+          collected_data: data,
+          current_node: "malu_reiniciar_catalogo",
+        },
+        message: "mostrar modelos",
+        buttonResponseId: null,
+        catalogSelectionHint: null,
+        mediaType: null,
+        mediaUrl: null,
+      });
+    }
+
+    const reply = "Quer ficar com esse, testar outro modelo ou falar com atendente?";
+
+    await persistConversation(supabase, conversation.id, "malu", "malu_preview", conversation.current_node || null, data);
+    await saveAssistantMessage(supabase, conversation.id, "malu", reply, "malu_preview");
+    await saveAgentMemory(supabase, phone, "malu", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "malu_preview",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "malu",
+    });
+  }
+
+  const reply = "Posso te mostrar os modelos de óculos disponíveis ou gerar uma prévia com selfie. Quer ver os modelos?";
+
+  await persistConversation(supabase, conversation.id, "malu", "selecao_oculos", conversation.current_node || null, data);
+  await saveAssistantMessage(supabase, conversation.id, "malu", reply, "selecao_oculos");
+  await saveAgentMemory(supabase, phone, "malu", contactName, data);
+
+  return buildResponsePayload({
+    phone,
+    message: reply,
+    node: "selecao_oculos",
+    collectedData: data,
+    agent: "malu",
+  });
+}
+
 async function handleKeilaFlow(args: {
   supabase: any;
   supabaseUrl: string;
@@ -2593,7 +3129,8 @@ serve(async (req) => {
       contact_name: contactName || conversation.collected_data?.contact_name || "Cliente",
     };
 
-    baseData.categoria = detectCategory(inboundText, baseData) || baseData.categoria || null;
+    const explicitCategory = detectCategory(inboundText, {});
+    baseData.categoria = explicitCategory || detectCategory(inboundText, baseData) || baseData.categoria || null;
     baseData.finalidade = detectAllianceType(inboundText, baseData) || baseData.finalidade || null;
     baseData.triagem_categoria = detectClassification(inboundText, baseData) || baseData.triagem_categoria || null;
 
@@ -2601,16 +3138,61 @@ serve(async (req) => {
     const alineMemory = await loadAgentMemory(supabase, phone, "aline");
     const kateMemory = await loadAgentMemory(supabase, phone, "kate");
     const keilaMemory = await loadAgentMemory(supabase, phone, "keila");
-    const routeToKate = shouldRouteToKate(
-      activeAgent,
-      inboundText,
-      baseData,
-      conversation.current_node || "",
-      kateMemory,
-      keilaMemory,
-    );
+    const maluMemory = await loadAgentMemory(supabase, phone, "malu");
+    const routeToMalu =
+      explicitCategory === "oculos" ||
+      (explicitCategory !== "pingente" &&
+        explicitCategory !== "aliancas" &&
+        explicitCategory !== "aneis" &&
+        shouldRouteToMalu(activeAgent, inboundText, baseData, conversation.current_node || ""));
+    const routeToKate =
+      !routeToMalu &&
+      (explicitCategory === "pingente" ||
+        (explicitCategory !== "aliancas" &&
+          explicitCategory !== "aneis" &&
+          shouldRouteToKate(
+            activeAgent,
+            inboundText,
+            baseData,
+            conversation.current_node || "",
+            kateMemory,
+            keilaMemory,
+          )));
     const routeToKeila =
-      !routeToKate && shouldRouteToKeila(activeAgent, inboundText, baseData, conversation.current_node || "");
+      !routeToMalu &&
+      !routeToKate &&
+      (explicitCategory === "aliancas" ||
+        explicitCategory === "aneis" ||
+        shouldRouteToKeila(activeAgent, inboundText, baseData, conversation.current_node || ""));
+
+    if (routeToMalu) {
+      const maluResponse = await handleMaluFlow({
+        supabase,
+        conversation: {
+          ...conversation,
+          active_agent: "malu",
+          collected_data: hydrateDataWithMemory(
+            {
+              ...baseData,
+              agente_atual: "malu",
+              categoria: "oculos",
+            },
+            maluMemory,
+          ),
+        },
+        phone,
+        message,
+        contactName,
+        buttonResponseId,
+        catalogSelectionHint,
+        mediaType,
+        mediaUrl,
+      });
+
+      return new Response(JSON.stringify(maluResponse), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     if (routeToKate) {
       const kateResponse = await handleKateFlow({

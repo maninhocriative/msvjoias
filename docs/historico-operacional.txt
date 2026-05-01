@@ -140,3 +140,87 @@ Validacao feita em producao
   - "prata" -> agente keila, node keila_orcamento
   - "pingentes" -> agente kate, node kate_cor
   - "prata" -> agente kate, node catalogo_pingente, produtos de pingente
+
+2026-05-01 - Roteamento seguro, agente Malu e preview premium de pingentes
+
+Contexto
+- O fluxo precisava parar de ficar preso no agente atual quando o cliente mudasse de produto.
+- A integracao oficial de WhatsApp continua sendo a Z-API ja conectada e funcionando.
+- A previa de pingente precisava preservar o template oficial do produto; a IA deve gerar/aplicar somente a fotogravacao, sem recriar o pingente inteiro.
+- Foi iniciada a integracao da Malu para atendimento de oculos.
+
+Mudancas feitas
+- supabase/functions/aline-reply/index.ts
+  - Adicionada intencao/categoria "oculos" para rotear conversas para a Malu.
+  - A deteccao explicita de produto agora tem prioridade sobre o agente ativo, evitando que aliancas, pingentes e oculos fiquem presos no contexto anterior.
+  - Criado fluxo base da Malu:
+    - apresenta a agente;
+    - busca catalogo category=oculos;
+    - envia cards pela mesma estrutura que a Z-API ja usa;
+    - reconhece Ver mais, Escolher e Escolher este;
+    - pede selfie;
+    - gera previa com o oculos escolhido;
+    - oferece Quero esse, Testar outro e Falar com atendente.
+  - Melhorado o prompt da Kate para fotogravacao:
+    - template do pingente e a base principal;
+    - preservar formato, argola, bordas, cor do metal, brilho, proporcao e enquadramento;
+    - usar IA apenas na area util da fotogravacao;
+    - evitar foto colorida colada, impressao plana ou desenho exagerado.
+
+- supabase/functions/zapi-unified/index.ts
+  - Os cards agora aceitam botoes customizados por produto sem quebrar o padrao atual de "Quero mais".
+  - Adicionado suporte a botoes de acao enviados pelo aline-reply, usados apos a previa da Malu.
+  - Mantido envio pela Z-API, sem uso da API da Meta.
+
+- supabase/functions/ai-catalog-search/index.ts
+  - Adicionada normalizacao da categoria oculos/armacao para busca de catalogo.
+
+- supabase/migrations/20260501162000_malu_agent_memory.sql
+  - Adicionada migracao segura para permitir agent_slug/active_agent/role = malu nas constraints existentes.
+
+Validacao pendente
+- Rodar git diff --check nos arquivos alterados.
+- Aplicar SQL pontual em producao para liberar a Malu nas constraints, evitando db push por causa dos timestamps antigos desalinhados.
+- Deployar aline-reply, zapi-unified e ai-catalog-search no Supabase.
+- Testar:
+  - em fluxo de aliancas, pedir "pingentes" e continuar com Kate;
+  - em fluxo de aliancas ou pingentes, pedir "oculos" e ir para Malu;
+  - Malu enviar cards de oculos com Ver mais, Escolher e Escolher este;
+  - clique em Escolher este pedir selfie;
+  - envio de selfie gerar previa;
+  - preview de pingente preservar template oficial do produto.
+
+Atualizacao de producao
+- SQL pontual aplicado no Supabase para permitir a Malu:
+  - aline_conversations_active_agent_check aceita aline, keila, kate, malu, human.
+  - customer_agent_memory_agent_slug_check aceita aline, keila, kate, malu.
+  - aline_messages_role_check aceita user, aline, keila, kate, malu, human.
+- Consulta de categorias em public.products mostrou:
+  - aliancas: 46
+  - pingente: 9
+  - personalizacao: 7
+- Ainda nao existem produtos category=oculos cadastrados em producao. A Malu consegue rotear e responder, mas so enviara cards de oculos depois do cadastro/importacao dos modelos.
+- Deploy feito no Supabase:
+  - aline-reply
+  - zapi-unified
+  - ai-catalog-search
+- Redeploy adicional de aline-reply feito apos reforcar deteccao de "oculos" e "alianca" com/sem acento.
+
+Validacao feita em producao por chamada direta ao endpoint aline-reply
+- Telefone de teste 559200009911:
+  - "aliancas de casamento" -> agente keila, node keila_prazo.
+  - "pingentes" -> agente kate, node kate_cor.
+  - "oculos" -> agente malu, node malu_sem_catalogo.
+- Telefone de teste 559200009912:
+  - "oculos" -> agente malu, node malu_sem_catalogo.
+  - "pingentes" -> agente kate, node kate_cor.
+- Telefone de teste 559200009914:
+  - "pingentes" -> agente kate, node kate_cor.
+  - "alianca" -> agente keila, node keila_prazo.
+- Telefone de teste 559200009915:
+  - "pingentes" -> agente kate, node kate_cor.
+  - "alianca" com acento -> agente keila, node keila_prazo.
+
+Observacao importante
+- Como nao ha produtos category=oculos cadastrados, ainda nao foi possivel validar envio real de cards de oculos.
+- Proximo passo operacional: cadastrar/importar modelos de oculos com category=oculos, image_url, preco e estoque para a Malu enviar os cards pela Z-API.
