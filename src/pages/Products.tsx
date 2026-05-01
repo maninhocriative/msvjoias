@@ -26,7 +26,9 @@ import { Plus, Pencil, Trash2, Package, Layers, Video, Image, FolderEdit, Search
 import { useToast } from '@/hooks/use-toast';
 import ProductVariantsDialog from '@/components/products/ProductVariantsDialog';
 import ImportCSVDialog from '@/components/products/ImportCSVDialog';
-import { formatCategory, formatColor, allowedCategories } from '@/lib/formatters';
+import CategorySelect from '@/components/products/CategorySelect';
+import { formatColor } from '@/lib/formatters';
+import { useCategories } from '@/hooks/useCategories';
 
 interface ProductWithStock extends Product {
   totalStock?: number;
