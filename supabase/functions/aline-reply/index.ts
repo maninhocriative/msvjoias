@@ -963,7 +963,7 @@ async function resolveConversation(supabase: any, phone: string, contactName: st
 
   if (error) throw error;
 
-  if (existingConversation?.phone !== phone) {
+  if (existingConversation && existingConversation.phone !== phone) {
     const { data: canonicalized, error: canonicalizeError } = await supabase
       .from("aline_conversations")
       .update({ phone })

@@ -1,0 +1,80 @@
+Historico operacional - ACIUM CRM
+Atualizado em: 2026-05-01
+
+Objetivo deste arquivo
+- Registrar, em texto simples, as mudancas feitas no projeto.
+- Manter os proximos passos visiveis antes de qualquer nova alteracao.
+- Ser atualizado sempre que uma nova mudanca for feita no repositorio.
+
+2026-05-01 - Correcao emergencial dos agentes para novos contatos
+
+Contexto
+- Numeros novos estavam entrando no CRM, mas os agentes nao respondiam no WhatsApp.
+- A mensagem recebida era salva e aparecia no chat, mas a resposta automatica podia falhar no caminho entre zapi-unified, aline-reply e ai-chat.
+- O sistema precisava continuar operando hoje com uma resposta minima mesmo se o motor de IA falhasse.
+
+Mudancas feitas
+- supabase/functions/aline-reply/index.ts
+  - Adicionada resposta segura da Aline quando o ai-chat falhar.
+  - Assim, um contato novo com mensagem simples como "Ola" nao fica sem retorno.
+  - Ajustado roteamento da Keila para nao assumir qualquer conversa apenas por categoria "aliancas"; o foco fica em casamento/contexto real de Keila.
+  - Mantida prioridade da Kate quando houver contexto de pingente/fotogravacao.
+
+- supabase/functions/zapi-unified/index.ts
+  - Adicionada resposta segura no gateway caso aline-reply falhe.
+  - O gateway continua tentando enviar uma saudacao da Aline em vez de encerrar o fluxo sem resposta.
+
+Publicacao
+- Commit criado:
+  - 39bd4d3 fix(chat): keep agents responding for new contacts
+- Push feito para:
+  - origin/main
+- Deploy Supabase feito no projeto:
+  - ahbjwpkpxqqrpvpzmqwa
+- Funcoes publicadas:
+  - aline-reply
+  - zapi-unified
+
+Validacao feita
+- git diff --check passou para os arquivos alterados.
+- npm run lint nao rodou porque o eslint nao esta instalado no node_modules local.
+- Supabase CLI confirmou o deploy das funcoes alteradas.
+
+Estado local conhecido
+- Existe supabase/.temp/ nao rastreado.
+- Essa pasta parece temporaria do Supabase CLI e nao foi commitada.
+
+Proximos passos recomendados
+- Testar agora com um numero novo real enviando "Ola" pelo WhatsApp.
+- Confirmar se a resposta da Aline chega no WhatsApp e aparece no CRM.
+- Se responder apenas a saudacao segura, investigar logs de ai-chat/OpenAI para descobrir a falha original.
+- Verificar no Supabase Logs das funcoes:
+  - zapi-unified
+  - aline-reply
+  - ai-chat
+- Depois que o atendimento estiver estavel, remover dependencias restantes de conversation_state para decisao de fluxo.
+- Criar ou documentar o processo fixo de deploy das Edge Functions para evitar duvida entre commit no GitHub e producao Supabase.
+
+2026-05-01 - Correcao do roteamento em numero novo
+
+Contexto
+- Teste real mostrou que a Aline respondia apenas a saudacao segura.
+- Ao enviar "pingentes", a conversa nao era transferida para Kate.
+- Teste direto em producao da funcao aline-reply retornou erro 500:
+  - Cannot read properties of null (reading 'id')
+
+Causa encontrada
+- Em resolveConversation, a funcao tentava canonicalizar o telefone antes de confirmar que existingConversation existia.
+- Para numero novo, existingConversation era null e o codigo tentava acessar existingConversation.id.
+- Isso fazia aline-reply falhar antes de executar o roteamento para Kate ou Keila.
+
+Mudanca feita
+- supabase/functions/aline-reply/index.ts
+  - Alterada a condicao de canonicalizacao para rodar apenas quando existingConversation existir.
+  - Antes: existingConversation?.phone !== phone
+  - Depois: existingConversation && existingConversation.phone !== phone
+
+Validacao pendente
+- Testar chamada direta de aline-reply com "pingentes".
+- Deployar aline-reply novamente no Supabase.
+- Testar no WhatsApp se "pingentes" transfere para Kate.
