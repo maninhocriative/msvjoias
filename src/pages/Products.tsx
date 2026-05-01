@@ -348,16 +348,12 @@ const Products = () => {
                   </p>
                   <div className="space-y-2">
                     <Label>Nova Categoria</Label>
-                    <Select value={bulkCategory} onValueChange={setBulkCategory}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione uma categoria" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {allowedCategories.map(cat => (
-                          <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <CategorySelect
+                      value={bulkCategory}
+                      onValueChange={setBulkCategory}
+                      placeholder="Selecione uma categoria"
+                    />
+
                   </div>
                   <div className="flex gap-2 justify-end">
                     <Button variant="outline" onClick={() => setBulkCategoryDialogOpen(false)}>
@@ -429,19 +425,12 @@ const Products = () => {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="category">Categoria</Label>
-                    <Select 
-                      value={formData.category} 
+                    <CategorySelect
+                      value={formData.category}
                       onValueChange={(value) => setFormData({ ...formData, category: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione uma categoria" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {allowedCategories.map(cat => (
-                          <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      placeholder="Selecione uma categoria"
+                    />
+
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -526,8 +515,8 @@ const Products = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todas as categorias</SelectItem>
-              {allowedCategories.map(cat => (
-                <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
+              {dbCategories.map(cat => (
+                <SelectItem key={cat.slug} value={cat.slug}>{cat.label}</SelectItem>
               ))}
             </SelectContent>
           </Select>
