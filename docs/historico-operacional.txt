@@ -78,3 +78,26 @@ Validacao pendente
 - Testar chamada direta de aline-reply com "pingentes".
 - Deployar aline-reply novamente no Supabase.
 - Testar no WhatsApp se "pingentes" transfere para Kate.
+
+2026-05-01 - Botao Quero mais nos cards de catalogo
+
+Contexto
+- A transferencia para Kate voltou a funcionar.
+- Ao chegar no catalogo, os cards nao estavam indo com botao de "Quero mais".
+- O sistema enviava somente o botao de escolha do produto, como "Quero esta" ou "Quero este".
+
+Mudanca feita
+- supabase/functions/zapi-unified/index.ts
+  - Os cards interativos enviados por send-button-list agora incluem dois botoes:
+    - botao de escolha do produto
+    - botao "Quero mais" com id more_options
+  - Adicionado fallback: se o card com midia e botoes falhar, o sistema envia a midia simples e depois tenta enviar uma mensagem separada com os botoes.
+
+- supabase/functions/aline-reply/index.ts
+  - detectMoreOptionsIntent agora reconhece o id more_options e textos como "quero mais".
+  - Ao clicar em "Quero mais", o fluxo deve buscar mais opcoes do catalogo quando houver catalogo ja enviado.
+
+Validacao pendente
+- Testar no WhatsApp se os cards aparecem com "Quero mais".
+- Testar clique em "Quero mais" para Kate e Keila.
+- Deployar zapi-unified e aline-reply apos validacao local basica.

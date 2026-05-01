@@ -376,13 +376,18 @@ async function sendInteractiveProductCard(
   const buttonId = product.button_id || `select_${product.sku || product.id}`;
   const buttonLabel = product.button_label || "Quero esta";
   const message = product.caption || product.name || "Produto";
+  const buttons = [
+    {
+      id: buttonId,
+      label: buttonLabel,
+    },
+    {
+      id: "more_options",
+      label: "Quero mais",
+    },
+  ];
   const buttonList: Record<string, unknown> = {
-    buttons: [
-      {
-        id: buttonId,
-        label: buttonLabel,
-      },
-    ],
+    buttons,
   };
 
   if (product.video_url) {
@@ -398,6 +403,46 @@ async function sendInteractiveProductCard(
       phone,
       message,
       buttonList,
+    }),
+  });
+
+  const result = await response.json();
+  return {
+    success: response.ok && !!(result.messageId || result.zaapId),
+    messageId: result.messageId || result.zaapId || null,
+    error: response.ok ? null : result,
+  };
+}
+
+async function sendProductChoiceButtons(
+  phone: string,
+  product: any,
+  instanceId: string,
+  token: string,
+  clientToken?: string,
+) {
+  const buttonId = product.button_id || `select_${product.sku || product.id}`;
+  const buttonLabel = product.button_label || "Quero esta";
+  const productName = product.name || "este modelo";
+
+  const response = await fetch(`https://api.z-api.io/instances/${instanceId}/token/${token}/send-button-list`, {
+    method: "POST",
+    headers: buildHeaders(clientToken),
+    body: JSON.stringify({
+      phone,
+      message: `Escolha uma opção para ${productName}:`,
+      buttonList: {
+        buttons: [
+          {
+            id: buttonId,
+            label: buttonLabel,
+          },
+          {
+            id: "more_options",
+            label: "Quero mais",
+          },
+        ],
+      },
     }),
   });
 
@@ -833,6 +878,25 @@ serve(async (req) => {
                 ),
               )
             ).result;
+
+            if (result?.success) {
+              await sleep(700);
+              const buttonFallback = (
+                await sendWithGovernorLease(sequenceLeaseResult.lease, () =>
+                  sendProductChoiceButtons(
+                    phone,
+                    product,
+                    ZAPI_INSTANCE_ID,
+                    ZAPI_TOKEN,
+                    ZAPI_CLIENT_TOKEN,
+                  ),
+                )
+              ).result;
+
+              if (!buttonFallback?.success) {
+                console.warn("[ZAPI-UNIFIED] Fallback de botões também falhou:", buttonFallback?.error);
+              }
+            }
           }
         } else if (mediaUrlToSend) {
           result = (

@@ -388,7 +388,7 @@ function detectCatalogResendIntent(text: string): boolean {
 
 function detectMoreOptionsIntent(text: string): boolean {
   const normalized = normalizeText(text);
-  return /tem outros|tem outras|mais opcoes|mais opcoes|mais modelos|outros modelos|outras opcoes|outras opções|ver mais/.test(
+  return /more_options|ver_mais|quero mais|tem outros|tem outras|mais opcoes|mais modelos|outros modelos|outras opcoes|outras opções|ver mais/.test(
     normalized,
   );
 }
