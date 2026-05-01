@@ -994,12 +994,8 @@ function buildMaluCards(products: CatalogProduct[]): CatalogProduct[] {
           label: "Ver mais",
         },
         {
-          id: `choose_${product.sku || product.id}`,
-          label: "Escolher",
-        },
-        {
           id: `select_${product.sku || product.id}`,
-          label: "Escolher este",
+          label: "Quero este",
         },
       ],
     };
@@ -1012,13 +1008,18 @@ function findCatalogSelection(token: string | null, catalog: any[]): any | null 
   const normalized = normalizeText(token);
   const explicitButton = normalized.match(/^(?:select|choose|details)[_-]([a-z0-9-]+)/i);
   if (explicitButton) {
-    const sku = explicitButton[1].toUpperCase();
-    return catalog.find((item: any) => String(item.sku || "").toUpperCase() === sku) || null;
+    const token = explicitButton[1].toUpperCase();
+    return catalog.find((item: any) => {
+      const sku = String(item.sku || "").toUpperCase();
+      const id = String(item.id || "").toUpperCase();
+      return (sku && sku === token) || (id && id === token);
+    }) || null;
   }
 
   const exactSku = catalog.find((item: any) => {
     const sku = String(item.sku || "").toUpperCase();
-    return sku && normalized.includes(sku.toLowerCase());
+    const id = String(item.id || "").toLowerCase();
+    return (sku && normalized.includes(sku.toLowerCase())) || (id && normalized.includes(id));
   });
   if (exactSku) return exactSku;
 
@@ -1042,6 +1043,12 @@ function findCatalogSelection(token: string | null, catalog: any[]): any | null 
   }
 
   return null;
+}
+
+function findSingleCatalogSelection(data: AnyRecord): AnyRecord | null {
+  const catalog = getCatalogSelectionPool(data);
+  if (catalog.length !== 1) return null;
+  return catalog[0] || null;
 }
 
 function buildResponsePayload(args: {
@@ -1708,7 +1715,7 @@ async function handleKateFlow(args: {
 
   if (selectedFromCatalog) {
     data.selected_product = selectedFromCatalog;
-    data.selected_sku = selectedFromCatalog.sku;
+    data.selected_sku = selectedFromCatalog.sku || selectedFromCatalog.id;
     data.selected_name = selectedFromCatalog.name;
     data.selected_price = selectedFromCatalog.price;
     data.kate_selected_template_id = matchKateTemplateForProduct(selectedFromCatalog)?.id || null;
@@ -1749,7 +1756,7 @@ async function handleKateFlow(args: {
   }
 
   const hasColor = data.cor === "prata" || data.cor === "dourada";
-  const hasSelectedProduct = !!data.selected_sku;
+  const hasSelectedProduct = !!(data.selected_sku || data.selected_product?.id);
   const hasPhoto = !!data.kate_customer_photo_url;
   const hasPreview = !!data.kate_preview_image_url;
   const hasPreviewApproved = data.kate_preview_approved === true;
@@ -2273,17 +2280,24 @@ async function handleMaluFlow(args: {
     resetMaluFlowState(data);
   }
 
-  const selectedFromCatalog = findCatalogSelection(
+  const selectionToken = [buttonResponseId, catalogSelectionHint, message].filter(Boolean).join(" ");
+  const normalizedSelectionToken = normalizeText(selectionToken);
+  const isChoiceText = /escolher este|quero este|escolher|quero esse|quero esse modelo|preview|previa|prévia|testar|provar/.test(normalizedSelectionToken);
+  const isDetailsText = /ver mais|detalhes|mais detalhes/.test(normalizedSelectionToken);
+  let selectedFromCatalog = findCatalogSelection(
     buttonResponseId || catalogSelectionHint || message,
     getCatalogSelectionPool(data),
   );
-  const wantsDetails = /^details[_-]/i.test(String(buttonResponseId || message || ""));
+  if (!selectedFromCatalog && (isChoiceText || isDetailsText || (mediaType === "image" && mediaUrl))) {
+    selectedFromCatalog = findSingleCatalogSelection(data);
+  }
+  const wantsDetails = /^details[_-]/i.test(String(buttonResponseId || "")) || isDetailsText;
   const wantsMoreOptions = detectMoreOptionsIntent(message) || /^more_options$/i.test(String(buttonResponseId || ""));
   const wantsCatalogResend = detectCatalogResendIntent(message);
 
   if (selectedFromCatalog) {
     data.selected_product = selectedFromCatalog;
-    data.selected_sku = selectedFromCatalog.sku;
+    data.selected_sku = selectedFromCatalog.sku || selectedFromCatalog.id;
     data.selected_name = selectedFromCatalog.name;
     data.selected_price = selectedFromCatalog.price;
 
@@ -2293,7 +2307,7 @@ async function handleMaluFlow(args: {
         selectedFromCatalog.description || null,
         selectedFromCatalog.color ? `Cor: ${selectedFromCatalog.color}` : null,
         selectedFromCatalog.price_formatted ? `Valor: ${selectedFromCatalog.price_formatted}` : null,
-        "Se quiser testar no rosto, toque em Escolher este ou me envie uma selfie de frente.",
+        "Se quiser testar no rosto, toque em Quero este ou me envie uma selfie de frente.",
       ].filter(Boolean).join("\n\n");
 
       await persistConversation(supabase, conversation.id, "malu", "malu_detalhes", conversation.current_node || null, data);
@@ -2311,7 +2325,7 @@ async function handleMaluFlow(args: {
     }
   }
 
-  const hasSelectedProduct = !!data.selected_sku;
+  const hasSelectedProduct = !!(data.selected_sku || data.selected_product?.id);
   const hasPhoto = !!data.malu_customer_photo_url;
   const hasPreview = !!data.malu_preview_image_url;
 
@@ -2383,7 +2397,7 @@ Separei alguns modelos disponíveis. Você pode escolher um modelo ou me mandar 
       collectedData: data,
       agent: "malu",
       useProductButtons: true,
-      postCatalogMessage: "Gostou de algum modelo? Toque em Escolher este que eu te peço a selfie para testar.",
+      postCatalogMessage: "Gostou de algum modelo? Toque em Quero este que eu te peço a selfie para testar.",
     });
   }
 

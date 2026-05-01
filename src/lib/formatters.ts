@@ -5,6 +5,7 @@
 const categoryDisplayMap: Record<string, string> = {
   aliancas: 'Alianças',
   pingente: 'Pingente',
+  oculos: 'Óculos',
   aneis: 'Anéis',
   personalizacao: 'Personalização',
 };
@@ -62,6 +63,7 @@ export function normalizeForFilter(text: string): string {
 export const allowedCategories = [
   { value: 'aliancas', label: 'Alianças' },
   { value: 'pingente', label: 'Pingente' },
+  { value: 'oculos', label: 'Óculos' },
   { value: 'aneis', label: 'Anéis' },
   { value: 'personalizacao', label: 'Personalização' },
 ];

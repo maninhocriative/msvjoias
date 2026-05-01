@@ -360,7 +360,6 @@ const Products = () => {
                       onValueChange={setBulkCategory}
                       placeholder="Selecione uma categoria"
                     />
-
                   </div>
                   <div className="flex gap-2 justify-end">
                     <Button variant="outline" onClick={() => setBulkCategoryDialogOpen(false)}>
@@ -437,7 +436,6 @@ const Products = () => {
                       onValueChange={(value) => setFormData({ ...formData, category: value })}
                       placeholder="Selecione uma categoria"
                     />
-
                   </div>
                 </div>
                 <div className="space-y-2">

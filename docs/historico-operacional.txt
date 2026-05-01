@@ -224,3 +224,63 @@ Validacao feita em producao por chamada direta ao endpoint aline-reply
 Observacao importante
 - Como nao ha produtos category=oculos cadastrados, ainda nao foi possivel validar envio real de cards de oculos.
 - Proximo passo operacional: cadastrar/importar modelos de oculos com category=oculos, image_url, preco e estoque para a Malu enviar os cards pela Z-API.
+
+2026-05-01 - Ajustes nos cards da Malu e cadastro de categorias
+
+Contexto
+- Teste real no WhatsApp mostrou que o card de oculos estava saindo com tres botoes:
+  - Ver mais
+  - Escolher
+  - Escolher este
+- O desejado e apenas dois botoes:
+  - Ver mais
+  - Quero este
+- Ao tocar/escolher e enviar a selfie, a Malu nao entrava no gerador de imagens da OpenAI; ela voltava para a mensagem generica de mostrar modelos.
+
+Mudancas feitas
+- supabase/functions/aline-reply/index.ts
+  - Cards da Malu agora enviam somente dois botoes por produto:
+    - Ver mais
+    - Quero este
+  - A Malu agora reconhece selecao mesmo quando a Z-API entrega apenas texto como "Escolher este", "Quero este", "Uma previa" ou "testar".
+  - Se houver apenas um modelo recente no catalogo e o cliente enviar uma selfie, a Malu assume esse modelo como selecionado e chama generateMaluPreview.
+  - A selecao de produto agora tambem compara pelo id do produto, porque os primeiros oculos cadastrados estavam com sku vazio.
+  - Mantido uso do gerador de imagens da OpenAI dentro de generateMaluPreview.
+
+- src/lib/formatters.ts
+  - Adicionada categoria oculos na lista permitida e no mapa de exibicao.
+
+- src/pages/Products.tsx
+  - Integrado com a melhoria remota de CategorySelect dinamico.
+  - O cadastro/edicao de produto e a edicao em massa usam seletor de categorias com acao "Nova categoria".
+  - Assim e possivel cadastrar category=oculos e outras categorias novas sem alterar codigo novamente.
+
+Validacao pendente
+- Rodar diff --check.
+- Fazer deploy de aline-reply.
+- Testar no WhatsApp:
+  - card de oculos com somente Ver mais e Quero este;
+  - clicar Quero este;
+  - enviar selfie;
+  - confirmar chamada da previa e envio da imagem gerada.
+
+Validacao feita
+- diff --check passou para os arquivos alterados.
+- Deploy de aline-reply feito no Supabase.
+- Chamada direta ao endpoint aline-reply com "oculos":
+  - agente malu;
+  - node catalogo_oculos;
+  - 2 produtos retornados;
+  - primeiro card retornou 2 botoes: Ver mais, Quero este.
+- Chamada direta com button_response_id=select_<id_do_produto>:
+  - agente malu;
+  - node malu_selfie;
+  - produto selecionado reconhecido mesmo com sku vazio.
+- Chamada direta enviando imagem de teste invalida apos a escolha:
+  - agente malu;
+  - node malu_preview_falhou;
+  - resposta amigavel de instabilidade.
+  - Isso confirma que o fluxo entrou no bloco de generateMaluPreview; a URL invalida foi usada apenas para evitar enviar imagem real no teste.
+
+Validacao local bloqueada
+- npm run build nao rodou porque o comando vite nao esta disponivel no node_modules/.bin desta maquina.
