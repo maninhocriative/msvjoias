@@ -36,6 +36,13 @@ interface ProductWithStock extends Product {
 
 const Products = () => {
   const navigate = useNavigate();
+  const { categories: dbCategories } = useCategories();
+  const formatCategory = (slug: string | null | undefined): string => {
+    if (!slug) return '';
+    const found = dbCategories.find(c => c.slug === slug);
+    if (found) return found.label;
+    return slug.charAt(0).toUpperCase() + slug.slice(1);
+  };
   const [products, setProducts] = useState<ProductWithStock[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
