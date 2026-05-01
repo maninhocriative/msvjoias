@@ -101,3 +101,42 @@ Validacao pendente
 - Testar no WhatsApp se os cards aparecem com "Quero mais".
 - Testar clique em "Quero mais" para Kate e Keila.
 - Deployar zapi-unified e aline-reply apos validacao local basica.
+
+2026-05-01 - Troca de fluxo de aliancas para pingentes
+
+Contexto
+- Depois de entrar no fluxo de aliancas, ao pedir pingentes a resposta inicial da Kate aparecia.
+- Na mensagem seguinte com a cor, como "prata", o sistema podia voltar para o contexto de aliancas e enviar catalogo de alianças.
+- Isso indicava que o roteamento dependia demais de active_agent/current_node e podia ser contaminado por estado antigo.
+
+Mudanca feita
+- supabase/functions/aline-reply/index.ts
+  - shouldRouteToKate agora tambem considera memoria recente da Kate.
+  - Se a Kate foi acionada recentemente para pingente e o cliente responde com cor de pingente ("dourada" ou "prata"), a conversa continua com Kate mesmo que exista memoria antiga de Keila.
+  - persistConversation agora lança erro se a atualizacao de aline_conversations falhar, evitando falha silenciosa de estado.
+
+Validacao pendente
+- Deployar aline-reply.
+- Testar sequencia:
+  - "pingentes"
+  - "prata"
+- Confirmar que o catalogo retornado e de pingentes, nao aliancas.
+
+Resultado da validacao
+- Foi encontrado erro no banco de producao:
+  - aline_conversations_active_agent_check ainda nao aceitava active_agent = 'kate'.
+- Isso impedia persistir o estado da Kate; a resposta inicial aparecia, mas a proxima mensagem voltava para Keila/aliancas.
+
+Correcao aplicada no banco de producao
+- Ajustadas constraints via SQL pontual no Supabase:
+  - aline_conversations_active_agent_check aceita aline, keila, kate, human.
+  - customer_agent_memory_agent_slug_check aceita aline, keila, kate.
+  - aline_messages_role_check aceita user, aline, keila, kate, human.
+- Foi evitado supabase db push porque a lista de migrations local/remoto esta desalinhada por timestamps antigos.
+
+Validacao feita em producao
+- Sequencia testada com telefone de teste:
+  - "alianças de casamento" -> agente keila, node keila_prazo
+  - "prata" -> agente keila, node keila_orcamento
+  - "pingentes" -> agente kate, node kate_cor
+  - "prata" -> agente kate, node catalogo_pingente, produtos de pingente

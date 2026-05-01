@@ -229,11 +229,28 @@ function shouldRouteToKate(
   text: string,
   data: AnyRecord,
   currentNode: string,
+  kateMemory?: AnyRecord | null,
+  keilaMemory?: AnyRecord | null,
 ): boolean {
+  const normalized = normalizeText(text);
+  const isPendantColorAnswer = /^(dourada|dourado|prata|prateada|prateado)$/.test(normalized);
+  const kateSeenAt = kateMemory?.last_seen_at ? new Date(kateMemory.last_seen_at).getTime() : 0;
+  const keilaSeenAt = keilaMemory?.last_seen_at ? new Date(keilaMemory.last_seen_at).getTime() : 0;
+  const kateWasRecent =
+    Number.isFinite(kateSeenAt) &&
+    kateSeenAt > 0 &&
+    Date.now() - kateSeenAt <= 30 * 60 * 1000 &&
+    kateSeenAt >= keilaSeenAt;
+  const kateHadPendantContext =
+    kateMemory?.last_interest === "pingente" ||
+    kateMemory?.preferences?.categoria === "pingente" ||
+    /pingente|fotograv/.test(normalizeText(String(kateMemory?.summary || "")));
+
   return (
     activeAgent === "kate" ||
     data.agente_atual === "kate" ||
     isKateFlowNode(currentNode) ||
+    (isPendantColorAnswer && kateWasRecent && kateHadPendantContext) ||
     detectPendantIntent(text, data, currentNode)
   );
 }
@@ -1074,7 +1091,7 @@ async function persistConversation(
   lastNode: string | null,
   data: AnyRecord,
 ) {
-  await supabase
+  const { error } = await supabase
     .from("aline_conversations")
     .update({
       active_agent: activeAgent,
@@ -1088,6 +1105,11 @@ async function persistConversation(
       agent_handoff_at: activeAgent === "keila" || activeAgent === "kate" ? new Date().toISOString() : null,
     })
     .eq("id", conversationId);
+
+  if (error) {
+    console.error("[ALINE-REPLY] persistConversation failed:", error);
+    throw new Error("persistConversation failed");
+  }
 }
 
 async function saveAssistantMessage(
@@ -2578,7 +2600,15 @@ serve(async (req) => {
     const activeAgent = (conversation.active_agent || baseData.agente_atual || "aline") as ConversationAgent;
     const alineMemory = await loadAgentMemory(supabase, phone, "aline");
     const kateMemory = await loadAgentMemory(supabase, phone, "kate");
-    const routeToKate = shouldRouteToKate(activeAgent, inboundText, baseData, conversation.current_node || "");
+    const keilaMemory = await loadAgentMemory(supabase, phone, "keila");
+    const routeToKate = shouldRouteToKate(
+      activeAgent,
+      inboundText,
+      baseData,
+      conversation.current_node || "",
+      kateMemory,
+      keilaMemory,
+    );
     const routeToKeila =
       !routeToKate && shouldRouteToKeila(activeAgent, inboundText, baseData, conversation.current_node || "");
 
