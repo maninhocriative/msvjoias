@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { buildPhoneVariants, normalizeWhatsappPhone } from "../_shared/phone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -315,18 +316,23 @@ async function upsertConversationAndMessage(args: {
   } = args;
 
   let conversationId: string;
+  const phoneVariants = buildPhoneVariants(phone);
 
   const { data: existingConv } = await supabase
     .from("conversations")
-    .select("id, unread_count")
-    .eq("contact_number", phone)
-    .single();
+    .select("id, unread_count, contact_number, last_message_at, created_at")
+    .in("contact_number", phoneVariants)
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
   if (existingConv) {
     conversationId = existingConv.id;
     await supabase
       .from("conversations")
       .update({
+        contact_number: phone,
         contact_name: contactName || phone,
         platform,
         last_message: content || `[${messageType}]`,
@@ -406,7 +412,8 @@ serve(async (req) => {
     }
 
     let messages = body.messages || [];
-    const phone = body.phone?.replace(/\D/g, "") || null;
+    const phone = normalizeWhatsappPhone(body.phone || body.contact_number || body.contactNumber || null) || null;
+    const phoneVariants = buildPhoneVariants(body.phone || body.contact_number || body.contactNumber || null);
     const lastStructuredMessageContent =
       Array.isArray(messages) && messages.length > 0
         ? messages[messages.length - 1]?.content || null
@@ -422,36 +429,33 @@ serve(async (req) => {
     const buttonResponseId = body.button_response_id || null;
 
     const shouldProxyToUnifiedAgentFlow =
-      !!phone &&
-      !!newMessage &&
       body.skip_aline_reply_proxy !== true &&
       body.force_raw_ai_chat !== true;
 
     if (shouldProxyToUnifiedAgentFlow) {
-      await upsertConversationAndMessage({
-        supabase,
-        phone,
-        contactName,
-        content: String(newMessage || ""),
-        mediaUrl,
-        isFromMe: false,
-        platform: body.platform || (body.isInstagram ? "instagram" : "whatsapp"),
-        messageType: mediaType,
-      });
-
-      const proxyResponse = await fetch(`${supabaseUrl}/functions/v1/aline-reply`, {
+      const proxyResponse = await fetch(`${supabaseUrl}/functions/v1/zapi-unified`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${supabaseServiceKey}`,
         },
         body: JSON.stringify({
-          phone,
-          message: newMessage,
-          contact_name: contactName,
-          media_type: mediaType,
-          media_url: mediaUrl,
-          button_response_id: buttonResponseId,
+          ...body,
+          platform: body.platform || (body.isInstagram ? "instagram" : "whatsapp"),
+          senderName: body.senderName || contactName,
+          contact_name: body.contact_name || contactName,
+          fromMe: false,
+          isFromMe: false,
+          phone: body.phone || body.contact_number || body.contactNumber || phone || undefined,
+          message: body.message || body.text || body.body || body.content || newMessage || undefined,
+          media_type: body.media_type || body.message_type || mediaType || undefined,
+          media_url: body.media_url || mediaUrl || undefined,
+          button_response_id:
+            body.button_response_id ||
+            body.buttonResponseId ||
+            body.buttonId ||
+            buttonResponseId ||
+            undefined,
         }),
       });
 
@@ -467,8 +471,10 @@ serve(async (req) => {
       const { data: state } = await supabase
         .from("conversation_state")
         .select("*")
-        .eq("phone", phone)
-        .single();
+        .in("phone", phoneVariants)
+        .order("updated_at", { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle();
 
       currentState = state;
     }
@@ -486,8 +492,10 @@ serve(async (req) => {
       const { data: alineConversation } = await supabase
         .from("aline_conversations")
         .select("id")
-        .eq("phone", phone)
-        .single();
+        .in("phone", phoneVariants)
+        .order("last_message_at", { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle();
 
       let historyMessages: { role: string; content: string }[] = [];
 
@@ -513,7 +521,7 @@ serve(async (req) => {
         const { data: history } = await supabase
           .from("conversation_events")
           .select("*")
-          .eq("phone", phone)
+          .in("phone", phoneVariants)
           .in("type", ["text", "message"])
           .order("ts", { ascending: true })
           .limit(50);

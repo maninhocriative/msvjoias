@@ -546,10 +546,10 @@ const PublicApiDocs = () => {
               </div>
             </EndpointCard>
 
-            <EndpointCard method="POST" path="/automation-webhook" description="Recebe mensagens de clientes (configure no Z-API)">
+            <EndpointCard method="POST" path="/zapi-webhook" description="Recebe mensagens de clientes e encaminha tudo para o motor unificado dos agentes">
               <div>
                 <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">URL (Configure na Automação)</h4>
-                <CodeBlock code={`${BASE_URL}/automation-webhook`} id="webhook-url" />
+                <CodeBlock code={`${BASE_URL}/zapi-webhook`} id="webhook-url" />
               </div>
 
               <div>
@@ -585,7 +585,7 @@ const PublicApiDocs = () => {
               <CardContent className="p-6">
                 <div className="space-y-4">
                   {[
-                    { step: '1', color: 'bg-blue-500', title: 'Cliente envia mensagem', desc: '/automation-webhook recebe a mensagem' },
+                    { step: '1', color: 'bg-blue-500', title: 'Cliente envia mensagem', desc: '/zapi-webhook recebe a mensagem' },
                     { step: '2', color: 'bg-emerald-500', title: 'Buscar produtos', desc: 'GET /catalog-api com filtros' },
                     { step: '3', color: 'bg-yellow-500', title: 'Criar sessão', desc: 'POST /catalog-session' },
                     { step: '4', color: 'bg-orange-500', title: 'Enviar produtos', desc: 'For Each: /automation-send + /catalog-item' },
@@ -629,7 +629,7 @@ const PublicApiDocs = () => {
                     const fiqonConfig = {
                       httpRequest: {
                         method: "POST",
-                        url: "https://ahbjwpkpxqqrpvpzmqwa.supabase.co/functions/v1/ai-chat",
+                        url: "https://ahbjwpkpxqqrpvpzmqwa.supabase.co/functions/v1/zapi-webhook",
                         headers: {
                           "Content-Type": "application/json",
                           "Authorization": "Bearer {{SUA_ANON_KEY}}"
@@ -688,14 +688,14 @@ const PublicApiDocs = () => {
                       </h4>
                       <div className="relative">
                         <code className="block bg-slate-100 dark:bg-slate-900 p-3 rounded-lg text-xs text-purple-700 dark:text-purple-300 break-all">
-                          https://ahbjwpkpxqqrpvpzmqwa.supabase.co/functions/v1/ai-chat
+                          https://ahbjwpkpxqqrpvpzmqwa.supabase.co/functions/v1/zapi-webhook
                         </code>
                         <Button
                           size="icon"
                           variant="ghost"
                           className="absolute top-1 right-1 h-6 w-6"
                           onClick={() => {
-                            navigator.clipboard.writeText("https://ahbjwpkpxqqrpvpzmqwa.supabase.co/functions/v1/ai-chat");
+                            navigator.clipboard.writeText("https://ahbjwpkpxqqrpvpzmqwa.supabase.co/functions/v1/zapi-webhook");
                             toast({ title: "URL copiada!" });
                           }}
                         >
@@ -934,7 +934,7 @@ return {
                     </div>
                     <div className="flex items-center gap-2 text-cyan-700 dark:text-cyan-300">
                       <span className="w-6 h-6 bg-cyan-500 rounded-full flex items-center justify-center text-white text-xs font-bold">3</span>
-                      <span>HTTP REQUEST chama a Aline (ai-chat)</span>
+                      <span>HTTP REQUEST chama o webhook unificado da Z-API</span>
                     </div>
                   </div>
                   <div className="space-y-2">
@@ -955,11 +955,11 @@ return {
               </CardContent>
             </Card>
 
-            {/* HTTP Request - Chamar Aline */}
-            <EndpointCard method="POST" path="/ai-chat" description="Endpoint principal da IA Aline - conversa com o cliente e retorna produtos">
+            {/* HTTP Request - Webhook unificado */}
+            <EndpointCard method="POST" path="/zapi-webhook" description="Webhook canônico da Z-API: recebe a mensagem, roteia Aline/Keila/Kate e espelha tudo no CRM">
               <div>
                 <h4 className="font-semibold mb-3 text-slate-800 dark:text-slate-200">URL Completa</h4>
-                <CodeBlock code="https://ahbjwpkpxqqrpvpzmqwa.supabase.co/functions/v1/ai-chat" id="aichat-url" />
+                <CodeBlock code="https://ahbjwpkpxqqrpvpzmqwa.supabase.co/functions/v1/zapi-webhook" id="zapi-webhook-manual-url" />
               </div>
 
               <div>

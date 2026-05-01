@@ -530,11 +530,11 @@ const ApiDocs = () => {
 
             <EndpointCard
               method="POST"
-              endpoint="/automation-webhook"
+              endpoint="/zapi-webhook"
               description="Recebe mensagens de clientes da sua automação (Fiqon/ZAPI)"
             >
               <Section title="URL para configurar na automação">
-                <CodeBlock code={`${BASE_URL}/automation-webhook`} id="webhook-url" language="url" />
+                <CodeBlock code={`${BASE_URL}/zapi-webhook`} id="webhook-url" language="url" />
               </Section>
 
               <Section title="Payload esperado">

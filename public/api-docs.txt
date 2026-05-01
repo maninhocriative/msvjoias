@@ -33,7 +33,7 @@ PLATAFORMAS DE AUTOMAÇÃO COMPATÍVEIS:
    - GET /order-detail (detalhe do pedido)
 5. Mensagens
    - POST /automation-send (enviar mensagem)
-   - POST /automation-webhook (receber mensagem)
+   - POST /zapi-webhook (receber mensagem)
 6. Busca Inteligente com IA (GET /ai-catalog-search)
 7. Fluxo Completo de Automação com IA
 8. Interpretação de Referências do Cliente
@@ -695,13 +695,13 @@ RESPOSTA:
 }
 
 ----------------------------------------
-4.2 POST /automation-webhook - Receber
+4.2 POST /zapi-webhook - Receber
 ----------------------------------------
 
-URL: https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co/automation-webhook
+URL: https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co/zapi-webhook
 
 DESCRIÇÃO:
-Recebe mensagens de clientes. Configure este endpoint como webhook na Z-API/FiqOn.
+Recebe mensagens de clientes. Configure este endpoint como webhook canônico da Z-API.
 
 PAYLOAD ESPERADO:
 
@@ -1041,7 +1041,7 @@ BASE URL: https://ahbjwpkpxqqrpvpzmqwa.functions.supabase.co
 | GET    | /orders-pending     | Listar pedidos por status           |
 | GET    | /order-detail       | Detalhe completo do pedido          |
 | POST   | /automation-send    | Enviar mensagem (WhatsApp/IG)       |
-| POST   | /automation-webhook | Receber mensagem do cliente         |
+| POST   | /zapi-webhook       | Receber mensagem do cliente         |
 
 ========================================
 CONTATO E SUPORTE

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { buildPhoneVariants, normalizeWhatsappPhone } from "../_shared/phone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -494,11 +495,14 @@ function buildSummary(data: AnyRecord): string {
 }
 
 async function loadAgentMemory(supabase: any, phone: string, agentSlug: MemoryAgent) {
+  const phoneVariants = buildPhoneVariants(phone);
   const { data } = await supabase
     .from("customer_agent_memory")
     .select("*")
-    .eq("phone", phone)
+    .in("phone", phoneVariants)
     .eq("agent_slug", agentSlug)
+    .order("last_seen_at", { ascending: false, nullsFirst: false })
+    .limit(1)
     .maybeSingle();
 
   return data || null;
@@ -894,15 +898,29 @@ function buildResponsePayload(args: {
 }
 
 async function resolveConversation(supabase: any, phone: string, contactName: string) {
-  const { data: existingConversation, error } = await supabase
+  const phoneVariants = buildPhoneVariants(phone);
+  let { data: existingConversation, error } = await supabase
     .from("aline_conversations")
     .select("*")
-    .eq("phone", phone)
+    .in("phone", phoneVariants)
+    .order("last_message_at", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
   if (error) throw error;
+
+  if (existingConversation?.phone !== phone) {
+    const { data: canonicalized, error: canonicalizeError } = await supabase
+      .from("aline_conversations")
+      .update({ phone })
+      .eq("id", existingConversation.id)
+      .select()
+      .single();
+
+    if (canonicalizeError) throw canonicalizeError;
+    existingConversation = canonicalized;
+  }
 
   if (!existingConversation) {
     const { data: created, error: createError } = await supabase
@@ -1044,14 +1062,27 @@ async function saveAssistantMessage(
 
   const phone = String(agentConversation?.phone || "").trim();
   if (!phone) return;
+  const phoneVariants = buildPhoneVariants(phone);
+
+  const { data: crmConversation } = await supabase
+    .from("conversations")
+    .select("id")
+    .in("contact_number", phoneVariants)
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!crmConversation?.id) return;
 
   await supabase
     .from("conversations")
     .update({
+      contact_number: phone,
       last_message: preview,
       last_message_at: new Date().toISOString(),
     })
-    .eq("contact_number", phone);
+    .eq("id", crmConversation.id);
 }
 
 async function handoffKeilaToHuman(args: {
@@ -1093,10 +1124,14 @@ async function handoffKeilaToHuman(args: {
     })
     .eq("id", conversation.id);
 
+  const phoneVariants = buildPhoneVariants(phone);
   const { data: crmConversation } = await supabase
     .from("conversations")
     .select("id")
-    .eq("contact_number", phone)
+    .in("contact_number", phoneVariants)
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (crmConversation?.id) {
@@ -1265,10 +1300,14 @@ async function handoffKateToHuman(args: {
     })
     .eq("id", conversation.id);
 
+  const phoneVariants = buildPhoneVariants(phone);
   const { data: crmConversation } = await supabase
     .from("conversations")
     .select("id")
-    .eq("contact_number", phone)
+    .in("contact_number", phoneVariants)
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (crmConversation?.id) {
@@ -2438,7 +2477,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    const phone = String(body.phone || "").replace(/\D/g, "");
+    const phone = normalizeWhatsappPhone(body.phone || "");
     const message = String(body.message || "");
     const contactName = String(body.contact_name || "Cliente");
     const buttonResponseId = body.button_response_id ? String(body.button_response_id) : null;

@@ -47,13 +47,13 @@ const Settings = () => {
               <div className="flex gap-2">
                 <Input
                   readOnly
-                  value="https://ahbjwpkpxqqrpvpzmqwa.supabase.co/functions/v1/automation-webhook"
+                  value="https://ahbjwpkpxqqrpvpzmqwa.supabase.co/functions/v1/zapi-webhook"
                   className="font-mono text-sm"
                 />
                 <Button 
                   variant="outline"
                   onClick={() => {
-                    navigator.clipboard.writeText('https://ahbjwpkpxqqrpvpzmqwa.supabase.co/functions/v1/automation-webhook');
+                    navigator.clipboard.writeText('https://ahbjwpkpxqqrpvpzmqwa.supabase.co/functions/v1/zapi-webhook');
                     toast({ title: 'Copiado!', description: 'URL do webhook copiada.' });
                   }}
                 >

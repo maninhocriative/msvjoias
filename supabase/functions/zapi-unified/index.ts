@@ -5,6 +5,7 @@ import {
   releaseZapiGovernorLease,
   sendWithGovernorLease,
 } from "../_shared/zapi-governor.ts";
+import { buildPhoneVariants, normalizeWhatsappPhone } from "../_shared/phone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,13 +14,34 @@ const corsHeaders = {
 
 interface ZAPIMessage {
   phone?: string;
+  contact_number?: string;
+  contactNumber?: string;
+  contact_name?: string;
+  contactName?: string;
+  nome_contato?: string;
+  customer_name?: string;
+  from?: string;
+  remoteJid?: string;
+  chatId?: string;
   isFromMe?: boolean;
   fromMe?: boolean;
+  is_from_me?: boolean;
+  from_me?: boolean;
   isEdit?: boolean;
   senderName?: string;
   pushName?: string;
-  text?: { phone?: string; message?: string; senderName?: string };
+  text?: { phone?: string; message?: string; senderName?: string } | string;
   message?: string;
+  body?: string;
+  content?: string;
+  prompt?: string;
+  messageText?: string;
+  media_url?: string;
+  mediaUrl?: string;
+  message_type?: string;
+  messageType?: string;
+  file_name?: string;
+  fileName?: string;
   image?: { imageUrl?: string; caption?: string };
   audio?: { audioUrl?: string };
   video?: { videoUrl?: string; caption?: string };
@@ -29,10 +51,15 @@ interface ZAPIMessage {
   status?: string;
   ids?: string[];
   messageId?: string;
+  message_id?: string;
   zaapId?: string;
+  zaap_id?: string;
   buttonResponseId?: string;
+  button_response_id?: string;
   buttonId?: string;
   listResponseId?: string;
+  buttonResponseLabel?: string;
+  button_response_label?: string;
   buttonResponse?: {
     buttonId?: string;
     message?: string;
@@ -41,6 +68,98 @@ interface ZAPIMessage {
     buttonId?: string;
     message?: string;
   };
+}
+
+function normalizeString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeInboundPayload(rawPayload: ZAPIMessage): ZAPIMessage {
+  const payload: ZAPIMessage = { ...rawPayload };
+
+  const directText =
+    typeof rawPayload.text === "string"
+      ? normalizeString(rawPayload.text)
+      : normalizeString(rawPayload.text?.message);
+  const messageContent =
+    normalizeString(rawPayload.message) ||
+    directText ||
+    normalizeString(rawPayload.body) ||
+    normalizeString(rawPayload.content) ||
+    normalizeString(rawPayload.prompt) ||
+    normalizeString(rawPayload.messageText);
+  const phoneCandidate =
+    normalizeString(rawPayload.phone) ||
+    normalizeString(rawPayload.contact_number) ||
+    normalizeString(rawPayload.contactNumber) ||
+    normalizeString(rawPayload.from) ||
+    normalizeString(rawPayload.remoteJid) ||
+    normalizeString(rawPayload.chatId) ||
+    (typeof rawPayload.text === "object" ? normalizeString(rawPayload.text?.phone) : "") ||
+    (findNestedString(rawPayload, (candidate) => /^\+?\d{10,15}(?:@[cg]\.us)?$/.test(candidate)) || "");
+  const senderName =
+    normalizeString(rawPayload.senderName) ||
+    normalizeString(rawPayload.pushName) ||
+    normalizeString(rawPayload.contact_name) ||
+    normalizeString(rawPayload.contactName) ||
+    normalizeString(rawPayload.nome_contato) ||
+    normalizeString(rawPayload.customer_name) ||
+    (typeof rawPayload.text === "object" ? normalizeString(rawPayload.text?.senderName) : "");
+  const messageType =
+    normalizeString(rawPayload.message_type) ||
+    normalizeString(rawPayload.messageType) ||
+    "text";
+  const mediaUrl =
+    normalizeString(rawPayload.media_url) ||
+    normalizeString(rawPayload.mediaUrl);
+  const fileName =
+    normalizeString(rawPayload.file_name) ||
+    normalizeString(rawPayload.fileName);
+  const buttonResponseId =
+    normalizeString(rawPayload.buttonResponseId) ||
+    normalizeString(rawPayload.button_response_id) ||
+    normalizeString(rawPayload.buttonId) ||
+    normalizeString(rawPayload.listResponseId);
+  const buttonResponseLabel =
+    normalizeString(rawPayload.buttonResponseLabel) ||
+    normalizeString(rawPayload.button_response_label);
+
+  if (!payload.phone && phoneCandidate) payload.phone = phoneCandidate;
+  if (!payload.senderName && senderName) payload.senderName = senderName;
+  if (!payload.pushName && senderName) payload.pushName = senderName;
+
+  payload.text = {
+    phone: payload.phone || phoneCandidate || undefined,
+    message: messageContent || undefined,
+    senderName: senderName || undefined,
+  };
+
+  if (!payload.message && messageContent) payload.message = messageContent;
+  if (payload.fromMe === undefined && rawPayload.from_me !== undefined) payload.fromMe = !!rawPayload.from_me;
+  if (payload.isFromMe === undefined && rawPayload.is_from_me !== undefined) payload.isFromMe = !!rawPayload.is_from_me;
+  if (!payload.messageId) payload.messageId = normalizeString(rawPayload.message_id) || normalizeString((rawPayload as Record<string, unknown>).id);
+  if (!payload.zaapId) payload.zaapId = normalizeString(rawPayload.zaap_id);
+  if (!payload.buttonResponseId && buttonResponseId) payload.buttonResponseId = buttonResponseId;
+  if (!payload.buttonResponse && (buttonResponseId || buttonResponseLabel)) {
+    payload.buttonResponse = {
+      buttonId: buttonResponseId || undefined,
+      message: buttonResponseLabel || undefined,
+    };
+  }
+
+  if (mediaUrl && !payload.image && !payload.audio && !payload.video && !payload.document) {
+    if (messageType === "image") {
+      payload.image = { imageUrl: mediaUrl, caption: messageContent || undefined };
+    } else if (messageType === "audio") {
+      payload.audio = { audioUrl: mediaUrl };
+    } else if (messageType === "video") {
+      payload.video = { videoUrl: mediaUrl, caption: messageContent || undefined };
+    } else if (messageType === "document") {
+      payload.document = { documentUrl: mediaUrl, fileName: fileName || undefined };
+    }
+  }
+
+  return payload;
 }
 
 function sleep(ms: number) {
@@ -287,7 +406,8 @@ serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
-    const payload: ZAPIMessage = await req.json();
+    const rawPayload: ZAPIMessage = await req.json();
+    const payload = normalizeInboundPayload(rawPayload);
 
     console.log("[ZAPI-UNIFIED] ====== NOVA REQUISIÇÃO ======");
     console.log("[ZAPI-UNIFIED] Payload:", JSON.stringify(payload).substring(0, 1000));
@@ -330,7 +450,8 @@ serve(async (req) => {
     }
 
     const rawPhone = payload.phone || payload.text?.phone || "";
-    const phone = rawPhone.replace(/@[cg]\.us$/, "").replace(/\D/g, "");
+    const phone = normalizeWhatsappPhone(rawPhone);
+    const phoneVariants = buildPhoneVariants(rawPhone);
     const isFromMe = payload.isFromMe === true || payload.fromMe === true;
     const contactName = payload.senderName || payload.pushName || payload.text?.senderName || phone;
 
@@ -464,8 +585,11 @@ serve(async (req) => {
     let conversationId: string;
     const { data: existingConversation } = await supabase
       .from("conversations")
-      .select("id, unread_count")
-      .eq("contact_number", phone)
+      .select("id, unread_count, contact_number, last_message_at, created_at")
+      .in("contact_number", phoneVariants)
+      .order("last_message_at", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (existingConversation?.id) {
@@ -474,6 +598,7 @@ serve(async (req) => {
       await supabase
         .from("conversations")
         .update({
+          contact_number: phone,
           contact_name: contactName,
           last_message: messageContent || `[${messageType}]`,
           unread_count: Number(existingConversation.unread_count || 0) + 1,
