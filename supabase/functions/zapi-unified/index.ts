@@ -292,6 +292,26 @@ function normalizeZapiStatus(status?: string | null) {
   }
 }
 
+function buildSafeAlineFallback(contactName: string) {
+  const firstName = String(contactName || "")
+    .trim()
+    .split(/\s+/)[0]
+    ?.replace(/\d+/g, "")
+    .trim();
+  const greetingName = firstName && firstName.length > 1 ? `, ${firstName}` : "";
+
+  return {
+    success: true,
+    response: `Oi${greetingName}! Sou a Aline da ACIUM Manaus. Posso te ajudar com alianças, pingentes ou algum modelo do catálogo?`,
+    mensagem_whatsapp: `Oi${greetingName}! Sou a Aline da ACIUM Manaus. Posso te ajudar com alianças, pingentes ou algum modelo do catálogo?`,
+    produtos: [],
+    media_items: [],
+    tem_produtos: false,
+    node_tecnico: "abertura",
+    fallback_reason: "aline-reply-unavailable",
+  };
+}
+
 async function sendText(
   phone: string,
   message: string,
@@ -676,29 +696,36 @@ serve(async (req) => {
       }
     }
 
-    const alineResponseRequest = await fetch(`${supabaseUrl}/functions/v1/aline-reply`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${supabaseKey}`,
-      },
-      body: JSON.stringify({
-        phone,
-        message: messageForAline,
-        contact_name: contactName,
-        media_type: messageType,
-        media_url: mediaUrl,
-        button_response_id: buttonResponseId || null,
-        catalog_selection_hint: catalogSelectionHint || null,
-      }),
-    });
+    let alineResponse: any;
 
-    if (!alineResponseRequest.ok) {
-      const errorText = await alineResponseRequest.text();
-      throw new Error(`aline-reply failed: ${alineResponseRequest.status} - ${errorText}`);
+    try {
+      const alineResponseRequest = await fetch(`${supabaseUrl}/functions/v1/aline-reply`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${supabaseKey}`,
+        },
+        body: JSON.stringify({
+          phone,
+          message: messageForAline,
+          contact_name: contactName,
+          media_type: messageType,
+          media_url: mediaUrl,
+          button_response_id: buttonResponseId || null,
+          catalog_selection_hint: catalogSelectionHint || null,
+        }),
+      });
+
+      if (!alineResponseRequest.ok) {
+        const errorText = await alineResponseRequest.text();
+        throw new Error(`aline-reply failed: ${alineResponseRequest.status} - ${errorText}`);
+      }
+
+      alineResponse = await alineResponseRequest.json();
+    } catch (error) {
+      console.error("[ZAPI-UNIFIED] Falha no aline-reply, usando resposta segura:", error);
+      alineResponse = buildSafeAlineFallback(contactName);
     }
-
-    const alineResponse = await alineResponseRequest.json();
 
     if (alineResponse.skipped) {
       return new Response(

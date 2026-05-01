@@ -199,6 +199,59 @@ function detectPendantIntent(text: string, data: AnyRecord, currentNode: string)
   return explicitPendant || data.categoria === "pingente" || String(currentNode || "").startsWith("kate_");
 }
 
+function hasWeddingAllianceContext(data: AnyRecord, currentNode: string): boolean {
+  const selectedSku = normalizeSkuToken(String(data.selected_sku || ""));
+  const selectedName = normalizeText(String(data.selected_name || ""));
+  const triageCategory = normalizeText(String(data.triagem_categoria || ""));
+
+  return (
+    data.finalidade === "casamento" ||
+    triageCategory === "aliancas_casamento" ||
+    isKeilaFlowNode(currentNode) ||
+    /^e0(?:6|7)12\d+/.test(selectedSku) ||
+    /tungsten|alianca|casamento/.test(selectedName)
+  );
+}
+
+function buildAlineFallbackGreeting(contactName: string): string {
+  const firstName = String(contactName || "")
+    .trim()
+    .split(/\s+/)[0]
+    ?.replace(/\d+/g, "")
+    .trim();
+  const greetingName = firstName && firstName.length > 1 ? `, ${firstName}` : "";
+
+  return `Oi${greetingName}! Sou a Aline da ACIUM Manaus. Posso te ajudar com alianças, pingentes ou algum modelo do catálogo?`;
+}
+
+function shouldRouteToKate(
+  activeAgent: ConversationAgent,
+  text: string,
+  data: AnyRecord,
+  currentNode: string,
+): boolean {
+  return (
+    activeAgent === "kate" ||
+    data.agente_atual === "kate" ||
+    isKateFlowNode(currentNode) ||
+    detectPendantIntent(text, data, currentNode)
+  );
+}
+
+function shouldRouteToKeila(
+  activeAgent: ConversationAgent,
+  text: string,
+  data: AnyRecord,
+  currentNode: string,
+): boolean {
+  return (
+    activeAgent === "keila" ||
+    data.agente_atual === "keila" ||
+    hasWeddingAllianceContext(data, currentNode) ||
+    detectMarriageIntent(text, data, currentNode)
+  );
+}
+
 function detectPreviewApprovalIntent(text: string): boolean {
   const normalized = normalizeText(text);
   return /aprov|gostei|pode fazer|pode seguir|quero assim|ficou bom|fechar|sim pode|ta bom|t[aá] lindo/.test(normalized);
@@ -2525,8 +2578,11 @@ serve(async (req) => {
     const activeAgent = (conversation.active_agent || baseData.agente_atual || "aline") as ConversationAgent;
     const alineMemory = await loadAgentMemory(supabase, phone, "aline");
     const kateMemory = await loadAgentMemory(supabase, phone, "kate");
+    const routeToKate = shouldRouteToKate(activeAgent, inboundText, baseData, conversation.current_node || "");
+    const routeToKeila =
+      !routeToKate && shouldRouteToKeila(activeAgent, inboundText, baseData, conversation.current_node || "");
 
-    if (activeAgent === "kate" || detectPendantIntent(inboundText, baseData, conversation.current_node || "")) {
+    if (routeToKate) {
       const kateResponse = await handleKateFlow({
         supabase,
         supabaseUrl,
@@ -2557,7 +2613,7 @@ serve(async (req) => {
       });
     }
 
-    if (activeAgent === "keila" || detectMarriageIntent(inboundText, baseData, conversation.current_node || "")) {
+    if (routeToKeila) {
       const keilaResponse = await handleKeilaFlow({
         supabase,
         supabaseUrl,
@@ -2592,35 +2648,71 @@ serve(async (req) => {
       alineMemory,
     );
 
-    const aiChatResponse = await fetch(`${supabaseUrl}/functions/v1/ai-chat`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${supabaseServiceKey}`,
-      },
-      body: JSON.stringify({
-        phone,
-        message,
-        contact_name: contactName,
-        save_history: false,
-        agent_override: "aline",
-        skip_aline_reply_proxy: true,
-        memory_context: alineMemory?.summary || null,
-        conversation_snapshot: {
+    let aiPayload: AnyRecord | null = null;
+
+    try {
+      const aiChatResponse = await fetch(`${supabaseUrl}/functions/v1/ai-chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({
+          phone,
+          message,
+          contact_name: contactName,
+          save_history: false,
+          agent_override: "aline",
+          skip_aline_reply_proxy: true,
+          memory_context: alineMemory?.summary || null,
+          conversation_snapshot: {
+            categoria: alineData.categoria || null,
+            finalidade: alineData.finalidade || null,
+            cor: alineData.cor || null,
+            triagem_categoria: alineData.triagem_categoria || null,
+          },
+        }),
+      });
+
+      if (!aiChatResponse.ok) {
+        const errorText = await aiChatResponse.text();
+        throw new Error(`ai-chat failed: ${aiChatResponse.status} - ${errorText}`);
+      }
+
+      aiPayload = await aiChatResponse.json();
+    } catch (error) {
+      console.error("[ALINE-REPLY] Falha no ai-chat, usando saudacao segura:", error);
+      aiPayload = {
+        success: true,
+        response: buildAlineFallbackGreeting(contactName),
+        mensagem_whatsapp: buildAlineFallbackGreeting(contactName),
+        filtros: {
+          intencao: "conversa",
+          categoria: alineData.categoria || null,
+          cor: alineData.cor || null,
+          tipo_alianca: alineData.finalidade || null,
+          agente_atual: "aline",
+          acao_sugerida: "continuar_conversa",
+          enviar_catalogo: false,
+          node: "abertura",
+        },
+        produtos: [],
+        total_produtos: 0,
+        tem_produtos: false,
+        memoria: {
+          phone,
+          agente_atual: "aline",
+          stage: "abertura",
           categoria: alineData.categoria || null,
           finalidade: alineData.finalidade || null,
           cor: alineData.cor || null,
-          triagem_categoria: alineData.triagem_categoria || null,
         },
-      }),
-    });
-
-    if (!aiChatResponse.ok) {
-      const errorText = await aiChatResponse.text();
-      throw new Error(`ai-chat failed: ${aiChatResponse.status} - ${errorText}`);
+        node_tecnico: "abertura",
+        categoria_crm: alineData.categoria || null,
+        cor_crm: alineData.cor || null,
+        fallback_reason: "ai-chat-unavailable",
+      };
     }
-
-    const aiPayload = await aiChatResponse.json();
 
     alineData.categoria = aiPayload?.memoria?.categoria || alineData.categoria || null;
     alineData.finalidade = aiPayload?.memoria?.tipo_alianca || alineData.finalidade || null;
