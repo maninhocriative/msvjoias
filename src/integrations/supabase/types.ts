@@ -133,6 +133,8 @@ export type Database = {
       }
       aline_conversations: {
         Row: {
+          active_agent: string
+          agent_handoff_at: string | null
           assigned_at: string | null
           assigned_seller_id: string | null
           assigned_seller_name: string | null
@@ -149,6 +151,8 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          active_agent?: string
+          agent_handoff_at?: string | null
           assigned_at?: string | null
           assigned_seller_id?: string | null
           assigned_seller_name?: string | null
@@ -165,6 +169,8 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          active_agent?: string
+          agent_handoff_at?: string | null
           assigned_at?: string | null
           assigned_seller_id?: string | null
           assigned_seller_name?: string | null
@@ -492,6 +498,51 @@ export type Database = {
         }
         Relationships: []
       }
+      customer_agent_memory: {
+        Row: {
+          agent_slug: string
+          created_at: string
+          customer_name: string | null
+          id: string
+          last_interest: string | null
+          last_product_name: string | null
+          last_product_sku: string | null
+          last_seen_at: string
+          phone: string
+          preferences: Json
+          summary: string | null
+          updated_at: string
+        }
+        Insert: {
+          agent_slug: string
+          created_at?: string
+          customer_name?: string | null
+          id?: string
+          last_interest?: string | null
+          last_product_name?: string | null
+          last_product_sku?: string | null
+          last_seen_at?: string
+          phone: string
+          preferences?: Json
+          summary?: string | null
+          updated_at?: string
+        }
+        Update: {
+          agent_slug?: string
+          created_at?: string
+          customer_name?: string | null
+          id?: string
+          last_interest?: string | null
+          last_product_name?: string | null
+          last_product_sku?: string | null
+          last_seen_at?: string
+          phone?: string
+          preferences?: Json
+          summary?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       customers: {
         Row: {
           cpf: string | null
@@ -628,6 +679,13 @@ export type Database = {
             columns: ["product_interest"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_replaced_message_id_fkey"
+            columns: ["replaced_message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
             referencedColumns: ["id"]
           },
         ]
