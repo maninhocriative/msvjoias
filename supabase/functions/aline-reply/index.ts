@@ -794,6 +794,7 @@ async function searchCatalog(
     const productColor = normalizeText(product.color || "");
     const description = normalizeText(product.description || "");
     const productSku = normalizeText(product.sku || "");
+    const productId = normalizeText(product.id || "");
     const tagsText = Array.isArray(product.tags)
       ? product.tags.map((tag: unknown) => normalizeText(String(tag || ""))).join(" ")
       : normalizeText(String(product.tags || ""));
@@ -812,7 +813,7 @@ async function searchCatalog(
       tagsText.includes("casamento") ||
       /^e0(?:6|7)120\d+/i.test(productSku);
 
-    if (excludedSkus.length > 0 && productSku && excludedSkus.includes(productSku)) {
+    if (excludedSkus.length > 0 && ((productSku && excludedSkus.includes(productSku)) || (productId && excludedSkus.includes(productId)))) {
       return false;
     }
 
@@ -870,12 +871,18 @@ async function searchCatalog(
       if (!matchesColor) return false;
     }
 
+    const variantCount = Array.isArray(product.product_variants) ? product.product_variants.length : 0;
     const stock = (product.product_variants || []).reduce(
       (sum: number, item: any) => sum + Number(item.stock || 0),
       0,
     );
 
-    if (stock <= 0) return false;
+    const allowWithoutVariantStock =
+      requestedCategory === "oculos" &&
+      variantCount === 0 &&
+      !!product.image_url;
+
+    if (stock <= 0 && !allowWithoutVariantStock) return false;
 
     if (maxPrice !== null && Number(product.price || 0) > maxPrice) return false;
 
@@ -903,10 +910,13 @@ async function searchCatalog(
       .filter((variant: any) => Number(variant.stock || 0) > 0)
       .map((variant: any) => String(variant.size));
 
-    const stock = (product.product_variants || []).reduce(
+    const rawStock = (product.product_variants || []).reduce(
       (sum: number, item: any) => sum + Number(item.stock || 0),
       0,
     );
+    const stock = requestedCategory === "oculos" && sizes.length === 0 && rawStock <= 0 && product.image_url
+      ? 1
+      : rawStock;
 
     const mapped: CatalogProduct = {
       id: product.id,
@@ -1888,7 +1898,7 @@ A fotogravação de 1 lado já está inclusa.`;
 
   if (data.catalogo_kate_enviado && !hasSelectedProduct && (wantsCatalogResend || wantsMoreOptions)) {
     const shownSkus = Array.isArray(data.last_catalog)
-      ? data.last_catalog.map((item: any) => String(item?.sku || "")).filter(Boolean)
+      ? data.last_catalog.map((item: any) => String(item?.sku || item?.id || "")).filter(Boolean)
       : [];
     const cards = await fetchKateCatalogCards(wantsMoreOptions ? shownSkus : []);
 
@@ -2349,7 +2359,7 @@ async function handleMaluFlow(args: {
 
   if (!data.catalogo_malu_enviado || (!hasSelectedProduct && (wantsMoreOptions || wantsCatalogResend))) {
     const shownSkus = Array.isArray(data.last_catalog)
-      ? data.last_catalog.map((item: any) => String(item?.sku || "")).filter(Boolean)
+      ? data.last_catalog.map((item: any) => String(item?.sku || item?.id || "")).filter(Boolean)
       : [];
     const cards = await fetchMaluCatalogCards(wantsMoreOptions ? shownSkus : []);
 

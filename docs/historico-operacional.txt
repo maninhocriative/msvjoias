@@ -321,3 +321,41 @@ Mudancas feitas
 Observacao tecnica
 - O gerador de previews ja estava integrado ao gpt-image-1 via endpoint de edicao de imagens da OpenAI.
 - O problema principal era qualidade baixa e prompt permissivo demais; isso foi corrigido para aumentar fidelidade.
+
+2026-05-05 - Catalogo da Malu nao enviava oculos novos
+
+Contexto
+- A Malu continuava enviando apenas os primeiros modelos de oculos, mesmo depois de novos produtos cadastrados.
+- Consulta no banco mostrou que os novos oculos estavam:
+  - active=true
+  - category=oculos
+  - image_url preenchido
+  - sem sku
+  - sem variantes/estoque em product_variants
+- A busca do catalogo filtrava qualquer produto com stock <= 0, por isso os novos modelos ficavam fora.
+
+Mudancas feitas
+- supabase/functions/aline-reply/index.ts
+  - Para category=oculos, produto ativo com image_url e sem variantes agora pode entrar no catalogo.
+  - O estoque mapeado para esses oculos sem variantes passa a ser 1 apenas para permitir envio no card.
+  - O filtro de exclusao do "Quero mais" agora usa sku ou id, evitando falha quando o produto nao tem sku.
+
+Proxima validacao
+- Deployar aline-reply.
+- Chamar o endpoint com "oculos" e confirmar que os modelos novos OCULOS 04, 05, 06, 07 e 08 aparecem nos produtos retornados.
+
+Validacao feita
+- Deploy de aline-reply feito no Supabase.
+- Chamada direta ao endpoint com telefone de teste 559200009950 e mensagem "oculos":
+  - agente malu;
+  - node catalogo_oculos;
+  - 8 produtos retornados.
+- Produtos retornados:
+  - OCULOS 08
+  - OCULOS 07
+  - OCULOS 06
+  - OCULOS 05
+  - OCULOS 04
+  - OCULOS 02
+  - OCULOS-03
+  - OCULOS-01
