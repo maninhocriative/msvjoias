@@ -546,3 +546,27 @@ Validacao concluida
   - use_product_buttons=true.
   - primeiro produto com force_separate_buttons=true.
   - botoes retornados: Ver mais e Quero este.
+
+2026-05-05 - Cordao/corrente vendido separadamente
+
+Contexto
+- Cliente perguntou se o pingente tambem vem com cordao/corrente ou se e so a medalha.
+- A Kate ainda caia no fallback de simulacao, causando resposta repetida e sem esclarecer a duvida.
+
+Mudancas feitas
+- supabase/functions/aline-reply/index.ts
+  - Detector de pergunta sobre produto do pingente agora reconhece cordao, corrente, vem com cordao, teria cordao e so a medalha.
+  - Resposta da Kate passa a informar que o valor e somente do pingente/medalha fotogravavel.
+  - Corrente ou cordao nao acompanha e e vendido separadamente.
+  - A resposta sobre cordao/corrente deixou de depender da simulacao estar marcada no estado; basta estar no fluxo da Kate.
+  - Roteamento passou a reconhecer variacoes por radical: cord, corrente e medalh, evitando cair em triagem.
+
+Proxima validacao
+- Deployar aline-reply.
+- Testar pergunta "teria cordao?" em conversa Kate com simulacao enviada.
+
+Validacao concluida
+- aline-reply deployada no Supabase.
+- Teste direto:
+  - "teria cordao?" -> agente kate, node selecao_pingente, informa que corrente/cordao e vendido separadamente.
+  - "ou e so a medalha?" -> agente kate, node selecao_pingente, informa que o valor e somente do pingente/medalha.

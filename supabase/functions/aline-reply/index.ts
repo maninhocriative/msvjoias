@@ -171,7 +171,7 @@ function detectCategory(text: string, data: AnyRecord): string | null {
     return "oculos";
   }
 
-  if (/pingente|pingentes|medalha|medalhas|medalhinha|colar|cordao|cordão|corrente/.test(searchable)) {
+  if (/pingente|pingentes|medalh|colar|cord|corrente/.test(searchable)) {
     return "pingente";
   }
 
@@ -350,7 +350,7 @@ function buildRuleBasedIntelligence(args: {
   const normalized = normalizeText(text);
   const mentionedCategories = [
     detectCategory(text, {}) === "oculos" ? "oculos" : null,
-    /pingente|pingentes|medalha|medalhas|medalhinha|colar|cordao|corrente|fotograv|gravar foto/.test(normalized)
+    /pingente|pingentes|medalh|colar|cord|corrente|fotograv|gravar foto/.test(normalized)
       ? "pingente"
       : null,
     /alianc|anel|aneis|an[eé]is/.test(normalized) ? "aliancas" : null,
@@ -738,7 +738,7 @@ function detectPreviewRedoIntent(text: string): boolean {
 
 function detectPendantModelQuestion(text: string): boolean {
   const normalized = normalizeText(text);
-  return /vem so o pingente|vem so pingente|corrente inclusa|vem corrente|acompanha corrente|so o pingente|apenas o pingente/.test(
+  return /vem so o pingente|vem so pingente|corrente inclusa|vem corrente|acompanha corrente|vem com corrente|vem com cord|teria cord|tem cord|cord.*inclus|cord|corrente|so a medalh|apenas a medalh|medalh|so o pingente|apenas o pingente/.test(
     normalized,
   );
 }
@@ -2596,8 +2596,8 @@ Esse modelo permite fotogravacao de 1 lado. Me manda agora a foto que voce quer 
     });
   }
 
-  if (hasPreview && !hasPreviewApproved && asksPendantModelQuestion) {
-    const reply = "Sim, esse valor e do pingente fotogravavel. A corrente nao vai junto. Se quiser, posso seguir com esse modelo ou te mostrar outros pingentes.";
+  if (asksPendantModelQuestion) {
+    const reply = "Esse valor e somente do pingente/medalha fotogravavel. Corrente ou cordao nao acompanha; e vendido separadamente. Se voce quiser, eu sigo com esse pingente ou te mostro outros modelos.";
 
     await persistConversation(
       supabase,
