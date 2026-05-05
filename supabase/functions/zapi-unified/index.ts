@@ -918,6 +918,25 @@ serve(async (req) => {
             )
           ).result;
 
+          if (result?.success && product.force_separate_buttons) {
+            await sleep(700);
+            const separateButtons = (
+              await sendWithGovernorLease(sequenceLeaseResult.lease, () =>
+                sendProductChoiceButtons(
+                  phone,
+                  product,
+                  ZAPI_INSTANCE_ID,
+                  ZAPI_TOKEN,
+                  ZAPI_CLIENT_TOKEN,
+                ),
+              )
+            ).result;
+
+            if (!separateButtons?.success) {
+              console.warn("[ZAPI-UNIFIED] Falha ao enviar botoes separados do produto:", separateButtons?.error);
+            }
+          }
+
           if (!result?.success && mediaUrlToSend) {
             console.warn("[ZAPI-UNIFIED] Botão falhou, fallback para mídia simples:", result?.error);
             result = (

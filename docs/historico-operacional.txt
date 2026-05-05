@@ -509,3 +509,40 @@ Validacao concluida
 - Teste direto Malu:
   - "quero oculos" -> agente malu, node catalogo_oculos, 8 produtos.
   - "sim me mande os modelos" -> agente malu, node catalogo_oculos, 8 produtos.
+
+2026-05-05 - Prazo, simulacao de fotogravacao e botoes de oculos
+
+Contexto
+- Cliente perguntou prazo apos receber a imagem do pingente e a Kate caiu no fallback de simulacao.
+- A comunicacao precisa deixar claro que a imagem enviada pela IA e apenas uma simulacao; apos fechamento, o vendedor manda a arte original para aprovacao antes da gravacao.
+- Cards de oculos ainda chegavam no WhatsApp como imagem e legenda, sem os botoes visiveis.
+
+Mudancas feitas
+- supabase/functions/aline-reply/index.ts
+  - Criado detector de pergunta de prazo/entrega para a Kate.
+  - Resposta de prazo: producao/entrega dependem da fila e geralmente ficam de 8 a 24 horas apos pagamento e fechamento.
+  - Mensagens e legendas da Kate trocadas para "simulacao de fotogravacao".
+  - Respostas de simulacao avisam que a arte original sera enviada pelo vendedor para aprovacao antes da gravacao.
+  - Cards da Malu agora marcam force_separate_buttons para garantir botoes separados.
+
+- supabase/functions/zapi-unified/index.ts
+  - Quando um produto vier com force_separate_buttons, o envio manda uma lista de botoes separada apos o card.
+  - Objetivo: garantir que o cliente receba "Ver mais" e "Quero este" mesmo quando o card interativo da Z-API renderiza apenas imagem/legenda.
+
+Proxima validacao
+- Deployar aline-reply e zapi-unified.
+- Testar "quantos dias pra entregar?" em conversa Kate com simulacao enviada.
+- Testar catalogo de oculos no WhatsApp e confirmar botoes visiveis.
+
+Validacao concluida
+- aline-reply deployada no Supabase.
+- zapi-unified deployada no Supabase.
+- Teste direto Kate:
+  - "quero pingente" -> kate_cor.
+  - "prata" -> catalogo_pingente.
+  - "quantos dias pra entregar?" -> kate_prazo com prazo de 8 a 24 horas apos pagamento e fechamento.
+- Teste direto Malu:
+  - "quero oculos" -> catalogo_oculos com 8 produtos.
+  - use_product_buttons=true.
+  - primeiro produto com force_separate_buttons=true.
+  - botoes retornados: Ver mais e Quero este.

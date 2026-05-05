@@ -66,6 +66,7 @@ interface CatalogProduct {
   button_id?: string;
   button_label?: string;
   buttons?: Array<{ id: string; label: string }>;
+  force_separate_buttons?: boolean;
 }
 
 interface KatePendantTemplate {
@@ -294,6 +295,11 @@ function detectPaymentIntent(text: string): boolean {
 function detectDeliveryIntent(text: string): boolean {
   const normalized = normalizeText(text);
   return /entrega|delivery|retirar|retirada|buscar|loja|endereco|endere[cç]o|frete|moto|motoboy/.test(normalized);
+}
+
+function detectDeliveryDeadlineQuestion(text: string): boolean {
+  const normalized = normalizeText(text);
+  return /quantos dias|prazo|quando fica pronto|ficar pronto|fica pronto|tempo para entregar|tempo pra entregar|dias pra entregar|dias para entregar|demora|entregar|entrega/.test(normalized);
 }
 
 function detectCatalogIntent(text: string): boolean {
@@ -1161,6 +1167,21 @@ function formatProductCaption(product: Partial<CatalogProduct>) {
   return lines.join("\n");
 }
 
+function cleanCustomerProductName(name: unknown): string {
+  return String(name || "")
+    .replace(/\bplngente\b/gi, "Pingente")
+    .replace(/\bp[lI]ngente\b/g, "Pingente")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildPendantResultCaption(productName: unknown): string {
+  const cleanName = cleanCustomerProductName(productName);
+  return cleanName
+    ? `Simulacao de fotogravacao - ${cleanName}`
+    : "Simulacao de fotogravacao do pingente";
+}
+
 function detectPendantFamily(product: AnyRecord): string {
   const template = matchKateTemplateForProduct(product);
   const text = normalizeText(`${product?.name || ""} ${product?.description || ""} ${product?.sku || ""}`);
@@ -1463,6 +1484,7 @@ function buildMaluCards(products: CatalogProduct[]): CatalogProduct[] {
           label: "Quero este",
         },
       ],
+      force_separate_buttons: true,
     };
   });
 }
@@ -2237,6 +2259,7 @@ async function handleKateFlow(args: {
   const wantsPreviewApproval = detectPreviewApprovalIntent(message);
   const asksPendantModelQuestion = detectPendantModelQuestion(message);
   const asksPendantMaterialQuestion = detectPendantMaterialQuestion(message);
+  const asksDeliveryDeadline = detectDeliveryDeadlineQuestion(message);
 
   const fetchKateCatalogCards = async (excludeSkus: string[] = []) => {
     const searchParams: AnyRecord = {
@@ -2290,7 +2313,7 @@ async function handleKateFlow(args: {
   if (!hasColor) {
     const polishedReply = detectedColor && !["prata", "dourada"].includes(detectedColor)
       ? "Os pingentes fotogravaveis sao de aco e hoje tenho duas opcoes de acabamento: dourado ou prata. Qual voce prefere?"
-      : `Oi, eu sou a Kate. A fotogravacao fica linda para presente: usamos uma foto sua e preparo uma previa no pingente antes de seguir com o pedido.
+      : `Oi, eu sou a Kate. A fotogravacao fica linda para presente: usamos uma foto sua e preparo uma simulacao no pingente antes de seguir com o pedido.
 
 Os pingentes sao de aco, com acabamento dourado ou prata. Qual acabamento voce prefere ver?`;
 
@@ -2374,7 +2397,7 @@ A fotogravação de 1 lado já está inclusa.`;
       collectedData: data,
       agent: "kate",
       useProductButtons: true,
-      postCatalogMessage: "Gostou de algum modelo? Se escolher um, eu já te peço a foto para gerar a prévia 😊",
+      postCatalogMessage: "Gostou de algum modelo? Se escolher um, eu ja te peco a foto para preparar uma simulacao de fotogravacao.",
     });
   }
 
@@ -2442,7 +2465,7 @@ A fotogravação de 1 lado já está inclusa.`;
         collectedData: data,
         agent: "kate",
         useProductButtons: true,
-        postCatalogMessage: "Gostou de algum modelo? Se escolher um, eu já te peço a foto para gerar a prévia 😊",
+        postCatalogMessage: "Gostou de algum modelo? Se escolher um, eu ja te peco a foto para preparar uma simulacao de fotogravacao.",
       });
     }
   }
@@ -2488,7 +2511,7 @@ A fotogravação de 1 lado já está inclusa.`;
         data.kate_preview_status = "sent";
         data.kate_preview_approved = false;
 
-        const reply = `Recebi sua foto! Gerei uma prévia do *${data.selected_name}* para você conferir. Se aprovar, eu sigo para entrega e pagamento 😊`;
+        const reply = `Recebi sua foto! Preparei uma simulacao de fotogravacao do *${cleanCustomerProductName(data.selected_name)}* para voce conferir. Importante: essa imagem e apenas uma simulacao. Apos o fechamento, o vendedor envia a arte original para sua aprovacao antes da gravacao.`;
 
         await persistConversation(
           supabase,
@@ -2510,7 +2533,7 @@ A fotogravação de 1 lado já está inclusa.`;
                 {
                   type: "image",
                   url: previewImageUrl,
-                  caption: `Prévia do ${data.selected_name || "pingente fotogravado"}`,
+                  caption: buildPendantResultCaption(data.selected_name),
                 },
               ]
             : [],
@@ -2521,7 +2544,7 @@ A fotogravação de 1 lado já está inclusa.`;
       } catch (error) {
         console.error("[ALINE-REPLY] Erro ao gerar prévia da Kate:", error);
         const reply =
-          "Recebi sua foto, mas não consegui gerar a prévia automática agora. Vou te encaminhar para nosso atendimento humano finalizar a fotogravação com você 😊";
+          "Recebi sua foto, mas nao consegui preparar a simulacao automatica agora. Vou te encaminhar para nosso atendimento humano finalizar a fotogravacao com voce.";
 
         await persistConversation(
           supabase,
@@ -2546,9 +2569,9 @@ A fotogravação de 1 lado já está inclusa.`;
       }
     }
 
-    const reply = `Perfeito! Você escolheu *${data.selected_name}*. 📸
+    const reply = `Perfeito! Voce escolheu *${cleanCustomerProductName(data.selected_name)}*.
 
-Esse modelo permite fotogravação de 1 lado. Me manda agora a foto que você quer gravar para eu gerar a prévia 😊`;
+Esse modelo permite fotogravacao de 1 lado. Me manda agora a foto que voce quer gravar para eu preparar uma simulacao. Depois do fechamento, o vendedor envia a arte original para sua aprovacao antes da gravacao.`;
 
     data.kate_photo_requested = true;
 
@@ -2574,7 +2597,7 @@ Esse modelo permite fotogravação de 1 lado. Me manda agora a foto que você qu
   }
 
   if (hasPreview && !hasPreviewApproved && asksPendantModelQuestion) {
-    const reply = "Sim, esse valor Ã© do pingente fotogravÃ¡vel. A corrente nÃ£o vai junto. Se quiser, posso seguir com esse modelo ou te mostrar outros pingentes.";
+    const reply = "Sim, esse valor e do pingente fotogravavel. A corrente nao vai junto. Se quiser, posso seguir com esse modelo ou te mostrar outros pingentes.";
 
     await persistConversation(
       supabase,
@@ -2597,13 +2620,36 @@ Esse modelo permite fotogravação de 1 lado. Me manda agora a foto que você qu
     });
   }
 
+  if (asksDeliveryDeadline) {
+    const reply = "A producao e entrega dependem da fila de espera. Geralmente fica pronto de 8 a 24 horas apos pagamento e fechamento do pedido. Se voce aprovar esse pingente, eu sigo com entrega e pagamento.";
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "kate",
+      "kate_prazo",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_prazo");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "kate_prazo",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "kate",
+    });
+  }
   if (hasPreview && !hasPreviewApproved && wantsPreviewRedo && mediaType !== "image") {
     delete data.kate_customer_photo_url;
     delete data.kate_preview_image_url;
     delete data.kate_preview_status;
     delete data.kate_preview_approved;
 
-    const reply = "Claro. Me manda a nova foto que vocÃª quer gravar, que eu gero outra prÃ©via para vocÃª.";
+    const reply = "Claro. Me manda a nova foto que voce quer gravar, que eu preparo outra simulacao para voce.";
 
     await persistConversation(
       supabase,
@@ -2627,7 +2673,7 @@ Esse modelo permite fotogravação de 1 lado. Me manda agora a foto que você qu
   }
 
   if (hasPreview && !hasPreviewApproved && !wantsPreviewApproval && !wantsPreviewRedo && mediaType !== "image") {
-    const reply = "Certo. Quer seguir com esse pingente, ver outros modelos ou mandar uma nova foto para refazer a prÃ©via?";
+    const reply = "Certo. Quer seguir com esse pingente, ver outros modelos ou mandar uma nova foto para refazer a simulacao?";
 
     await persistConversation(
       supabase,
@@ -2666,7 +2712,7 @@ Esse modelo permite fotogravação de 1 lado. Me manda agora a foto que você qu
         data.kate_preview_image_url = previewImageUrl;
         data.kate_preview_status = "resent";
 
-        const reply = "Perfeito! Gerei uma nova prévia com essa foto para você conferir 😊";
+        const reply = "Perfeito! Preparei uma nova simulacao com essa foto para voce conferir. Lembrando: essa imagem e apenas uma simulacao; depois do fechamento, o vendedor envia a arte original para sua aprovacao antes da gravacao.";
 
         await persistConversation(
           supabase,
@@ -2688,7 +2734,7 @@ Esse modelo permite fotogravação de 1 lado. Me manda agora a foto que você qu
                 {
                   type: "image",
                   url: previewImageUrl,
-                  caption: `Nova prévia do ${data.selected_name || "pingente fotogravado"}`,
+                  caption: buildPendantResultCaption(data.selected_name),
                 },
               ]
             : [],
@@ -2707,7 +2753,7 @@ Esse modelo permite fotogravação de 1 lado. Me manda agora a foto que você qu
       delete data.kate_preview_status;
       delete data.kate_preview_approved;
 
-      const reply = "Claro! Me manda outra foto que eu gero uma nova prévia para você 😊";
+      const reply = "Claro! Me manda outra foto que eu preparo uma nova simulacao para voce.";
 
       await persistConversation(
         supabase,
@@ -2734,7 +2780,7 @@ Esse modelo permite fotogravação de 1 lado. Me manda agora a foto que você qu
       data.kate_preview_approved = true;
     } else {
       const reply =
-        "Se essa prévia ficou boa, me confirma que eu sigo para entrega e pagamento. Se preferir, você também pode me mandar outra foto 😊";
+        "Se essa simulacao ficou boa, me confirma que eu sigo para entrega e pagamento. Se preferir, voce tambem pode me mandar outra foto.";
 
       await persistConversation(
         supabase,
@@ -2759,9 +2805,9 @@ Esse modelo permite fotogravação de 1 lado. Me manda agora a foto que você qu
   }
 
   if (hasSelectedProduct && (data.kate_preview_approved === true) && !hasDelivery) {
-    const reply = `Perfeito! Prévia aprovada para *${data.selected_name}*. ✨
+    const reply = `Perfeito! Simulacao aprovada para *${cleanCustomerProductName(data.selected_name)}*.
 
-Você vai retirar na loja ou prefere delivery? Depois eu confirmo a forma de pagamento: Pix, Crediario Bemol ou cartão de crédito.`;
+Voce vai retirar na loja ou prefere delivery? Depois eu confirmo a forma de pagamento: Pix, Crediario Bemol ou cartao de credito.`;
 
     await persistConversation(
       supabase,
@@ -2820,7 +2866,7 @@ Você vai retirar na loja ou prefere delivery? Depois eu confirmo a forma de pag
     });
   }
 
-  const reply = "Se quiser, posso te reenviar os modelos ou gerar outra prévia com uma nova foto 😊";
+  const reply = "Se quiser, posso te reenviar os modelos ou preparar outra simulacao com uma nova foto.";
 
   await persistConversation(
     supabase,
