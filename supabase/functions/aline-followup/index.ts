@@ -12,6 +12,8 @@ interface FollowupConfig {
   message: string;
 }
 
+type AgentSlug = "aline" | "keila" | "kate" | "malu";
+
 const SAFE_MIN_FIRST_INTERVAL_MINUTES = 60;
 const SAFE_MAX_ATTEMPTS = 3;
 const MAX_SENDS_PER_RUN = 20;
@@ -24,6 +26,12 @@ const SAFE_DEFAULT_MESSAGES = [
   "Oi! Passando para saber se voce quer retomar o atendimento. Se fizer sentido, eu continuo com voce por aqui.",
   "Voltei so para confirmar se ainda quer ver as opcoes com calma. Se preferir, posso retomar exatamente de onde paramos.",
   "Este e meu ultimo lembrete automatico. Quando quiser retomar, e so me chamar que eu sigo com voce.",
+];
+
+const KATE_MOTHERS_DAY_FALLBACK_MESSAGES = [
+  "Oi! Passando rapidinho: os pingentes fotogravados sao uma opcao linda para o Dia das Maes. Se quiser, eu te mostro os modelos disponiveis e ja preparo a previa com a foto que voce escolher.",
+  "Ainda da para escolher um pingente fotogravado de aco para presentear no Dia das Maes. Posso te ajudar a escolher entre acabamento dourado e prata e seguir com a previa pelo WhatsApp.",
+  "Ultimo lembrete por aqui: se quiser garantir o pingente fotogravado para o Dia das Maes, me chama que eu retomo de onde paramos.",
 ];
 
 function sleep(ms: number) {
@@ -59,6 +67,108 @@ function buildSafeFollowupConfig(
     intervalMinutes,
     message: customMessages?.[index] || SAFE_DEFAULT_MESSAGES[index],
   }));
+}
+
+function normalizeText(text: string): string {
+  return String(text || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+}
+
+function formatCurrency(value: unknown): string | null {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return null;
+  return `R$ ${number.toFixed(2).replace(".", ",")}`;
+}
+
+function isPendantConversation(conversation: any): boolean {
+  const data = conversation?.collected_data || {};
+  const searchable = normalizeText(
+    [
+      conversation?.active_agent,
+      conversation?.current_node,
+      data.categoria,
+      data.triagem_categoria,
+      data.selected_name,
+      data.last_intent,
+      data.customer_stage,
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
+
+  return (
+    conversation?.active_agent === "kate" ||
+    data.categoria === "pingente" ||
+    /kate|pingente|fotograv|medalha|colar/.test(searchable)
+  );
+}
+
+async function getActivePendantOffer(supabase: any) {
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("offers")
+    .select("id, promotional_price, gift_description, end_date, products(id, name, price, category)")
+    .eq("active", true)
+    .lte("start_date", now)
+    .gte("end_date", now)
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  if (error) {
+    console.error("[ALINE-FOLLOWUP] Erro ao buscar oferta de pingente:", error);
+    return null;
+  }
+
+  return (data || []).find((offer: any) => {
+    const product = Array.isArray(offer.products) ? offer.products[0] : offer.products;
+    const category = normalizeText(String(product?.category || ""));
+    const name = normalizeText(String(product?.name || ""));
+    return category.includes("pingente") || /pingente|fotograv|medalha/.test(name);
+  }) || null;
+}
+
+function buildKateMothersDayFollowupMessage(
+  followupIndex: number,
+  offer: any | null,
+  conversation: any,
+): string {
+  const product = Array.isArray(offer?.products) ? offer.products[0] : offer?.products;
+  const productName =
+    conversation?.collected_data?.selected_name ||
+    product?.name ||
+    "pingente fotogravado";
+  const price = formatCurrency(offer?.promotional_price || product?.price);
+  const gift = offer?.gift_description ? `\n\nTem tambem: ${offer.gift_description}` : "";
+
+  if (offer && followupIndex === 0) {
+    return `Oi! Passando rapidinho porque esse presente combina muito com o Dia das Maes: o *${productName}* de aco com fotogravacao fica personalizado com uma foto especial.${price ? `\n\nOferta ativa: ${price}.` : ""}${gift}\n\nSe quiser, eu te mostro os modelos e ja preparo a previa pelo WhatsApp.`;
+  }
+
+  if (offer && followupIndex === 1) {
+    return `Ainda posso te ajudar com o *${productName}* de aco para o Dia das Maes.${price ? ` A oferta esta por ${price}.` : ""}\n\nMe responde com acabamento *dourado* ou *prata* que eu sigo com as opcoes.`;
+  }
+
+  return KATE_MOTHERS_DAY_FALLBACK_MESSAGES[Math.min(followupIndex, KATE_MOTHERS_DAY_FALLBACK_MESSAGES.length - 1)];
+}
+
+function resolveFollowupMessage(args: {
+  conversation: any;
+  config: FollowupConfig;
+  followupIndex: number;
+  pendantOffer: any | null;
+}) {
+  if (isPendantConversation(args.conversation)) {
+    return buildKateMothersDayFollowupMessage(
+      args.followupIndex,
+      args.pendantOffer,
+      args.conversation,
+    );
+  }
+
+  return args.config.message;
 }
 
 async function sendTextMessage(
@@ -255,9 +365,9 @@ serve(async (req) => {
 
     const { data: activeConversations, error: fetchError } = await supabase
       .from("aline_conversations")
-      .select("id, phone, status, current_node, followup_count, last_message_at, active_agent")
+      .select("id, phone, status, current_node, followup_count, last_message_at, active_agent, collected_data")
       .eq("status", "active")
-      .eq("active_agent", "aline")
+      .in("active_agent", ["aline", "keila", "kate", "malu"])
       .lt("followup_count", safeMaxAttempts)
       .order("last_message_at", { ascending: true, nullsFirst: true })
       .limit(200);
@@ -294,7 +404,11 @@ serve(async (req) => {
       if (!lastMessage) continue;
 
       const isLastMessageFromBot =
-        lastMessage.role === "assistant" || lastMessage.role === "aline";
+        lastMessage.role === "assistant" ||
+        lastMessage.role === "aline" ||
+        lastMessage.role === "keila" ||
+        lastMessage.role === "kate" ||
+        lastMessage.role === "malu";
       if (!isLastMessageFromBot) continue;
 
       const lastMessageTime = new Date(
@@ -356,10 +470,17 @@ serve(async (req) => {
     }> = [];
     let throttled = false;
     let throttleMessage: string | null = null;
+    const pendantOffer = await getActivePendantOffer(supabase);
 
     for (let index = 0; index < queue.length; index += 1) {
       const { conversation, config, crmConversation } = queue[index];
       const followupNumber = Number(conversation.followup_count || 0) + 1;
+      const message = resolveFollowupMessage({
+        conversation,
+        config,
+        followupIndex: followupNumber - 1,
+        pendantOffer,
+      });
 
       try {
         const governorResult = await sendWithZapiGovernor(
@@ -374,7 +495,7 @@ serve(async (req) => {
               zapiToken,
               zapiClientToken,
               conversation.phone,
-              config.message,
+              message,
             ),
         );
 
@@ -401,15 +522,15 @@ serve(async (req) => {
 
         await supabase.from("aline_messages").insert({
           conversation_id: conversation.id,
-          role: "assistant",
-          message: config.message,
+          role: (conversation.active_agent || "aline") as AgentSlug,
+          message,
           node: conversation.current_node,
         });
 
         if (crmConversation?.id) {
           await supabase.from("messages").insert({
             conversation_id: crmConversation.id,
-            content: config.message,
+            content: message,
             message_type: "text",
             is_from_me: true,
             status: "sent",
@@ -418,7 +539,7 @@ serve(async (req) => {
           await supabase
             .from("conversations")
             .update({
-              last_message: config.message.substring(0, 80) + (config.message.length > 80 ? "..." : ""),
+              last_message: message.substring(0, 80) + (message.length > 80 ? "..." : ""),
               last_message_at: new Date().toISOString(),
               lead_status:
                 followupNumber === 1 && crmConversation.lead_status === "novo"

@@ -152,7 +152,7 @@ function formatCurrency(value: unknown): string | null {
 function detectColor(text: string): string | null {
   const normalized = normalizeText(text);
 
-  if (/(dourada|dourado|ouro|gold|amarela|amarelo)/.test(normalized)) return "dourada";
+  if (/(dourada|dourado|amarela|amarelo)/.test(normalized)) return "dourada";
   if (/(prata|prateada|prateado|aco|aço|silver|cinza)/.test(normalized)) return "prata";
   if (/(preta|preto|black|escura|escuro)/.test(normalized)) return "preta";
   if (/(azul|blue)/.test(normalized)) return "azul";
@@ -431,9 +431,10 @@ function buildRuleBasedIntelligence(args: {
   const delivery = detectDeliveryIntent(text);
   const catalog = detectCatalogIntent(text);
   const price = detectPriceIntent(text);
+  const pendantMaterialQuestion = detectPendantMaterialQuestion(text);
   const targetAgent = contextualAgent !== "unknown" ? contextualAgent : activeAgent;
 
-  if (buttonOrChoice || preview || payment || delivery || catalog || price) {
+  if (buttonOrChoice || preview || payment || delivery || catalog || price || pendantMaterialQuestion) {
     return {
       intent: buttonOrChoice
         ? "escolha_produto"
@@ -445,9 +446,11 @@ function buildRuleBasedIntelligence(args: {
               ? "entrega"
               : catalog
                 ? "catalogo"
-                : "preco",
+                : price
+                  ? "preco"
+                  : "duvida_geral",
       targetAgent,
-      confidence: targetAgent !== "aline" ? 0.82 : 0.68,
+      confidence: targetAgent !== "aline" ? 0.84 : 0.68,
       shouldSwitchAgent: false,
       customerStage: buttonOrChoice
         ? "escolheu_produto"
@@ -459,7 +462,9 @@ function buildRuleBasedIntelligence(args: {
               ? "negociando_entrega"
               : catalog
                 ? "vendo_catalogo"
-                : "consultando_preco",
+                : price
+                  ? "consultando_preco"
+                  : "duvida_produto",
       extracted: {
         ...extracted,
         quer_previa: preview || undefined,
@@ -722,7 +727,21 @@ function detectPreviewApprovalIntent(text: string): boolean {
 
 function detectPreviewRedoIntent(text: string): boolean {
   const normalized = normalizeText(text);
-  return /outra foto|trocar foto|manda outra|vou mandar outra|refaz|refazer|mudar foto/.test(normalized);
+  return /outra foto|trocar foto|manda outra|vou mandar outra|refaz|refazer|mudar foto|nova com foto|nova foto|gerar nova|gera uma nova/.test(normalized);
+}
+
+function detectPendantModelQuestion(text: string): boolean {
+  const normalized = normalizeText(text);
+  return /vem so o pingente|vem so pingente|corrente inclusa|vem corrente|acompanha corrente|so o pingente|apenas o pingente/.test(
+    normalized,
+  );
+}
+
+function detectPendantMaterialQuestion(text: string): boolean {
+  const normalized = normalizeText(text);
+  return /material|e ouro|eh ouro|ouro|banhado|folheado|aco|aço|inox|grama|gramas|peso|pesa|pesado|leve/.test(
+    normalized,
+  );
 }
 
 function normalizeSkuToken(value: string): string {
@@ -844,7 +863,7 @@ function customerDoesNotKnowSize(text: string): boolean {
 
 function detectCatalogResendIntent(text: string): boolean {
   const normalized = normalizeText(text);
-  const asksToSend = /(envia|enviar|manda|manda ai|mostra|mostrar|quero ver|me manda|me envia)/.test(normalized);
+  const asksToSend = /(envia|enviar|mande|manda|manda ai|mostra|mostrar|quero ver|me manda|me mande|me envia|sim.*modelos|pode.*modelos)/.test(normalized);
   const mentionsCatalog = /(modelo|modelos|opcao|opcoes|catalogo|alianca|aliancas|pingente|pingentes|oculos|armacao)/.test(normalized);
   return asksToSend && mentionsCatalog;
 }
@@ -889,6 +908,7 @@ function extractRingSizes(text: string, currentNode: string): { size1: string | 
 function resetCatalogChoice(data: AnyRecord) {
   delete data.catalogo_keila_enviado;
   delete data.catalogo_kate_enviado;
+  delete data.catalogo_malu_enviado;
   delete data.catalogo_orcamento_relaxado;
   delete data.last_catalog;
   delete data.selected_product;
@@ -1157,8 +1177,8 @@ function buildPendantPreviewPrompt(product: AnyRecord): string {
   const family = detectPendantFamily(product);
   const color = detectColor(`${product?.color || ""} ${product?.name || ""} ${product?.description || ""}`);
   const colorInstruction = color
-    ? `Preserve a cor do metal do template (${color === "dourada" ? "dourado" : "prata"}).`
-    : "Preserve exatamente a cor do metal do template.";
+    ? `Preserve o acabamento de aço do template (${color === "dourada" ? "aço com acabamento dourado" : "aço prata"}).`
+    : "Preserve exatamente o acabamento de aço do template.";
   const familyInstruction =
     family === "redondo"
       ? "O pingente é redondo. A fotogravação deve respeitar a área circular, com rosto centralizado, escala equilibrada e margem segura nas bordas."
@@ -1293,8 +1313,8 @@ async function searchCatalog(
       const normalizedRequestedColor =
         requestedColor === "prata"
           ? ["prata", "aco", "aço", "silver"]
-          : requestedColor === "dourada"
-            ? ["dourada", "dourado", "ouro", "gold", "amarela", "amarelo"]
+        : requestedColor === "dourada"
+            ? ["dourada", "dourado", "amarela", "amarelo"]
             : requestedColor === "preta"
               ? ["preta", "preto", "black", "negra", "escura", "escuro"]
               : requestedColor === "azul"
@@ -1403,6 +1423,7 @@ function buildKateCards(products: CatalogProduct[]): CatalogProduct[] {
     const captionLines = [
       `*${product.name}*`,
       product.color ? `🎨 Cor: ${product.color}` : null,
+      "🔩 Material: aço",
       product.sku ? `📦 Cód: ${product.sku}` : null,
       product.price_formatted ? `💰 Valor da unidade: ${product.price_formatted}` : null,
       "📸 Fotogravação de 1 lado inclusa.",
@@ -2212,6 +2233,10 @@ async function handleKateFlow(args: {
   const hasPayment = !!data.payment_method;
   const wantsCatalogResend = detectCatalogResendIntent(message);
   const wantsMoreOptions = detectMoreOptionsIntent(message);
+  const wantsPreviewRedo = detectPreviewRedoIntent(message);
+  const wantsPreviewApproval = detectPreviewApprovalIntent(message);
+  const asksPendantModelQuestion = detectPendantModelQuestion(message);
+  const asksPendantMaterialQuestion = detectPendantMaterialQuestion(message);
 
   const fetchKateCatalogCards = async (excludeSkus: string[] = []) => {
     const searchParams: AnyRecord = {
@@ -2239,12 +2264,35 @@ async function handleKateFlow(args: {
     return buildKateCards(filtered);
   };
 
-  if (!hasColor) {
-    const reply = detectedColor && !["prata", "dourada"].includes(detectedColor)
-      ? "Para pingentes com fotogravação, hoje eu tenho modelos em dourada e prata. Qual dessas cores você prefere? 💫"
-      : `Perfeito! Vou te transferir para a Kate, nossa especialista em pingentes fotogravados. 💫
+  if (asksPendantMaterialQuestion && !hasColor) {
+    const reply = "Nossos pingentes fotogravaveis sao de aco, nao sao de ouro. O dourado e o prata sao acabamentos do aco. O peso varia conforme o modelo; escolhendo um modelo eu confirmo com a loja. Quer ver os modelos com acabamento dourado ou prata?";
 
-Oi! Sou a Kate. Qual cor você prefere para o pingente: dourada ou prata?`;
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "kate",
+      "kate_duvida_produto",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_duvida_produto");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "kate_duvida_produto",
+      collectedData: data,
+      agent: "kate",
+    });
+  }
+
+  if (!hasColor) {
+    const polishedReply = detectedColor && !["prata", "dourada"].includes(detectedColor)
+      ? "Os pingentes fotogravaveis sao de aco e hoje tenho duas opcoes de acabamento: dourado ou prata. Qual voce prefere?"
+      : `Oi, eu sou a Kate. A fotogravacao fica linda para presente: usamos uma foto sua e preparo uma previa no pingente antes de seguir com o pedido.
+
+Os pingentes sao de aco, com acabamento dourado ou prata. Qual acabamento voce prefere ver?`;
 
     await persistConversation(
       supabase,
@@ -2254,12 +2302,12 @@ Oi! Sou a Kate. Qual cor você prefere para o pingente: dourada ou prata?`;
       conversation.current_node || null,
       data,
     );
-    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_cor");
+    await saveAssistantMessage(supabase, conversation.id, "kate", polishedReply, "kate_cor");
     await saveAgentMemory(supabase, phone, "kate", contactName, data);
 
     return buildResponsePayload({
       phone,
-      message: reply,
+      message: polishedReply,
       node: "kate_cor",
       collectedData: data,
       agent: "kate",
@@ -2399,6 +2447,30 @@ A fotogravação de 1 lado já está inclusa.`;
     }
   }
 
+  if (asksPendantMaterialQuestion) {
+    const reply = "Nossos pingentes fotogravaveis sao de aco, nao sao de ouro. O dourado e o prata sao acabamentos do aco. Sobre peso em gramas, varia conforme o modelo; se voce escolher um especifico, eu confirmo o peso certinho com a loja.";
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "kate",
+      "kate_duvida_produto",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_duvida_produto");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "kate_duvida_produto",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "kate",
+    });
+  }
+
   if (hasSelectedProduct && !hasPhoto) {
     if (mediaType === "image" && mediaUrl) {
       data.kate_customer_photo_url = mediaUrl;
@@ -2501,6 +2573,83 @@ Esse modelo permite fotogravação de 1 lado. Me manda agora a foto que você qu
     });
   }
 
+  if (hasPreview && !hasPreviewApproved && asksPendantModelQuestion) {
+    const reply = "Sim, esse valor Ã© do pingente fotogravÃ¡vel. A corrente nÃ£o vai junto. Se quiser, posso seguir com esse modelo ou te mostrar outros pingentes.";
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "kate",
+      "selecao_pingente",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "selecao_pingente");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "selecao_pingente",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "kate",
+    });
+  }
+
+  if (hasPreview && !hasPreviewApproved && wantsPreviewRedo && mediaType !== "image") {
+    delete data.kate_customer_photo_url;
+    delete data.kate_preview_image_url;
+    delete data.kate_preview_status;
+    delete data.kate_preview_approved;
+
+    const reply = "Claro. Me manda a nova foto que vocÃª quer gravar, que eu gero outra prÃ©via para vocÃª.";
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "kate",
+      "kate_foto",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_foto");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "kate_foto",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "kate",
+    });
+  }
+
+  if (hasPreview && !hasPreviewApproved && !wantsPreviewApproval && !wantsPreviewRedo && mediaType !== "image") {
+    const reply = "Certo. Quer seguir com esse pingente, ver outros modelos ou mandar uma nova foto para refazer a prÃ©via?";
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "kate",
+      "selecao_pingente",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "selecao_pingente");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "selecao_pingente",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "kate",
+    });
+  }
+
   if (hasPreview && !hasPreviewApproved) {
     if (mediaType === "image" && mediaUrl) {
       data.kate_customer_photo_url = mediaUrl;
@@ -2552,7 +2701,7 @@ Esse modelo permite fotogravação de 1 lado. Me manda agora a foto que você qu
       }
     }
 
-    if (detectPreviewRedoIntent(message)) {
+    if (wantsPreviewRedo) {
       delete data.kate_customer_photo_url;
       delete data.kate_preview_image_url;
       delete data.kate_preview_status;
@@ -2581,7 +2730,7 @@ Esse modelo permite fotogravação de 1 lado. Me manda agora a foto que você qu
       });
     }
 
-    if (detectPreviewApprovalIntent(message)) {
+    if (wantsPreviewApproval) {
       data.kate_preview_approved = true;
     } else {
       const reply =
@@ -2742,6 +2891,22 @@ async function handleMaluFlow(args: {
   const wantsDetails = /^details[_-]/i.test(String(buttonResponseId || "")) || isDetailsText;
   const wantsMoreOptions = detectMoreOptionsIntent(message) || /^more_options$/i.test(String(buttonResponseId || ""));
   const wantsCatalogResend = detectCatalogResendIntent(message);
+  const explicitEyewearCatalogRequest =
+    !buttonResponseId &&
+    !catalogSelectionHint &&
+    (detectCategory(message, {}) === "oculos" || wantsCatalogResend || wantsMoreOptions);
+
+  if (explicitEyewearCatalogRequest && !selectedFromCatalog) {
+    delete data.selected_product;
+    delete data.selected_sku;
+    delete data.selected_name;
+    delete data.selected_price;
+    delete data.malu_customer_photo_url;
+    delete data.malu_preview_image_url;
+    delete data.malu_preview_status;
+    delete data.malu_preview_approved;
+    data.catalogo_malu_enviado = false;
+  }
 
   if (selectedFromCatalog) {
     data.selected_product = selectedFromCatalog;

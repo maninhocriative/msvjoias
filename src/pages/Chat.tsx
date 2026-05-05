@@ -136,6 +136,7 @@ const Chat = () => {
   const shouldAutoScroll = useRef(true);
   const lastMessageCount = useRef(0);
   const relatedConversationIdsRef = useRef<Set<string>>(new Set());
+  const relatedAlineConversationIdsRef = useRef<Set<string>>(new Set());
 
   const { toast } = useToast();
   const { onlineSellers, startChatting, stopChatting } = useSellerPresence();
@@ -654,39 +655,40 @@ const Chat = () => {
       );
 
       const alineConversationId = alineConversationResult?.data?.id;
+      relatedAlineConversationIdsRef.current = new Set(alineConversationId ? [alineConversationId] : []);
 
       if (phone && alineConversationId) {
         const { data: alineHistory, error: alineHistoryError } = await supabase
           .from('aline_messages')
           .select('id, message, created_at, role')
           .eq('conversation_id', alineConversationId)
-          .neq('role', 'user')
           .order('created_at', { ascending: true })
-          .limit(200);
+          .limit(400);
 
         if (!alineHistoryError && alineHistory?.length) {
-          const mirroredOutgoingText = mergedMessages.filter(
+          const mirroredTextMessages = mergedMessages.filter(
             (message) =>
-              message.is_from_me &&
               !message.media_url &&
               (message.message_type === 'text' || !message.message_type) &&
               message.content?.trim(),
           );
 
-          const fallbackAgentMessages = alineHistory
+          const fallbackAlineMessages = alineHistory
             .filter((entry) => entry.message?.trim())
             .filter((entry) => {
               const entryTime = new Date(entry.created_at || '').getTime();
+              const entryIsFromMe = entry.role !== 'user';
 
-              return !mirroredOutgoingText.some((message) => {
+              return !mirroredTextMessages.some((message) => {
                 const messageTime = new Date(message.created_at || '').getTime();
                 const sameContent = message.content?.trim() === entry.message.trim();
+                const sameDirection = message.is_from_me === entryIsFromMe;
                 const closeEnough =
                   Number.isFinite(entryTime) &&
                   Number.isFinite(messageTime) &&
                   Math.abs(messageTime - entryTime) <= 30000;
 
-                return sameContent && closeEnough;
+                return sameDirection && sameContent && closeEnough;
               });
             })
             .map(
@@ -696,14 +698,14 @@ const Chat = () => {
                 content: entry.message,
                 message_type: 'text',
                 media_url: null,
-                is_from_me: true,
-                status: 'sent',
+                is_from_me: entry.role !== 'user',
+                status: entry.role === 'user' ? 'received' : 'sent',
                 created_at: entry.created_at || new Date().toISOString(),
               }),
             );
 
-          if (fallbackAgentMessages.length > 0) {
-            mergedMessages = [...mergedMessages, ...fallbackAgentMessages].sort(
+          if (fallbackAlineMessages.length > 0) {
+            mergedMessages = [...mergedMessages, ...fallbackAlineMessages].sort(
               (a, b) =>
                 new Date(a.created_at || '').getTime() -
                 new Date(b.created_at || '').getTime(),
@@ -859,26 +861,31 @@ const Chat = () => {
         )
         .subscribe();
 
-      const alineChannel = selectedAlineConversationId
-        ? supabase
-            .channel(`aline-messages-${selectedAlineConversationId}`)
-            .on(
-              'postgres_changes',
-              {
-                event: '*',
-                schema: 'public',
-                table: 'aline_messages',
-                filter: `conversation_id=eq.${selectedAlineConversationId}`,
-              },
-              () => {
-                fetchMessages(
-                  selectedConversation.id,
-                  selectedConversation.contact_number,
-                );
-              },
-            )
-            .subscribe()
-        : null;
+      const alineChannel = supabase
+        .channel(`aline-messages-related-${selectedConversation.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'aline_messages',
+          },
+          (payload) => {
+            const changedMessage = payload.new as { conversation_id?: string } | null;
+            if (
+              changedMessage?.conversation_id &&
+              !relatedAlineConversationIdsRef.current.has(changedMessage.conversation_id)
+            ) {
+              return;
+            }
+
+            fetchMessages(
+              selectedConversation.id,
+              selectedConversation.contact_number,
+            );
+          },
+        )
+        .subscribe();
 
       const pollInterval = setInterval(
         () => fetchMessages(selectedConversation.id, selectedConversation.contact_number),
@@ -888,9 +895,7 @@ const Chat = () => {
       return () => {
         supabase.removeChannel(channel);
         supabase.removeChannel(phoneConversationChannel);
-        if (alineChannel) {
-          supabase.removeChannel(alineChannel);
-        }
+        supabase.removeChannel(alineChannel);
         clearInterval(pollInterval);
         stopChatting();
       };

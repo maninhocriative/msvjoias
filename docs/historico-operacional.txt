@@ -404,3 +404,108 @@ Validacao publicada
   - em seguida "quero pingente fotogravado" no mesmo telefone -> agente kate, node kate_cor.
   - "quero oculos e pingente" -> node triagem_inteligente_duvida com pergunta de esclarecimento.
   - "quero falar com atendente" -> node human_handoff_fechamento com resposta amigavel.
+
+2026-05-05 - Chat e abordagem da Kate
+
+Contexto
+- No painel, algumas mensagens do cliente nao apareciam quando estavam apenas no historico dos agentes.
+- A Kate estava respondendo "gerar outra previa com uma nova foto" mesmo quando o cliente nao tinha enviado foto nova e estava apenas perguntando sobre o pingente.
+- A primeira abordagem da Kate para "fotogravacao" estava muito brusca, indo direto para cor sem explicar a proposta.
+
+Mudancas feitas
+- src/pages/Chat.tsx
+  - O carregamento do chat agora une mensagens da tabela messages com o historico aline_messages.
+  - Mensagens role=user do historico dos agentes tambem entram no painel quando nao ha espelho na tabela messages.
+  - A deduplicacao considera conteudo, direcao e janela de tempo para evitar duplicar mensagens que ja estao em messages.
+  - O realtime de aline_messages agora escuta a tabela dos agentes e refaz o merge quando chega mensagem relacionada.
+
+- supabase/functions/aline-reply/index.ts
+  - Kate agora distingue pedido de refazer previa, aprovacao de previa e duvida sobre o produto.
+  - Se o cliente pergunta se "vem so o pingente", a Kate responde sobre o produto em vez de pedir nova foto.
+  - Se o cliente pede nova previa sem enviar foto, a Kate pede a nova foto de forma clara.
+  - Se ha uma previa antiga e a mensagem nao e aprovacao nem pedido de refazer, a Kate pergunta se o cliente quer seguir, ver outros modelos ou mandar nova foto.
+  - A abordagem inicial da Kate foi suavizada para explicar a fotogravacao e depois perguntar a cor.
+
+Proxima validacao
+- Deployar aline-reply.
+- Testar conversa nova com "Quero saber mais sobre fotogravacao para o Dia das Maes".
+- Testar cliente em fluxo de previa antiga perguntando "vem so o pingente?".
+- Rodar build do frontend se dependencias locais permitirem.
+
+2026-05-05 - Follow-up de pingentes para Dia das Maes
+
+Contexto
+- O sistema ja tinha a funcao aline-followup com Z-API e janela segura, mas ela processava apenas conversas do agente Aline.
+- Precisamos que a Kate deixe clientes de pingentes em follow-up automatico quando nao responderem, usando oferta ativa cadastrada no sistema e abordagem de Dia das Maes.
+
+Mudancas feitas
+- supabase/functions/aline-followup/index.ts
+  - Follow-up agora considera conversas ativas dos agentes Aline, Keila, Kate e Malu, mantendo a regra de disparar apenas quando a ultima mensagem foi do agente.
+  - Conversas de pingente/Kate recebem mensagem especial de Dia das Maes.
+  - A mensagem busca oferta ativa em offers associada a produto de pingente/fotogravacao.
+  - Se existir oferta ativa, o follow-up cita produto, valor promocional e brinde/descricao cadastrada.
+  - Se nao existir oferta ativa, usa uma regua segura de fallback para pingente fotogravado de Dia das Maes.
+  - O envio continua usando Z-API com governor na lane followup.
+  - O historico salva o role do agente ativo, por exemplo kate, em vez de um assistant generico.
+
+Proxima validacao
+- Deployar aline-followup.
+- Rodar uma chamada manual segura da funcao para confirmar que compila.
+- Testar em conversa Kate inativa com ultima mensagem da Kate e followup_count abaixo do limite.
+
+2026-05-05 - Material correto dos pingentes
+
+Contexto
+- Os pingentes nao sao de ouro. Eles sao de aco, com acabamento dourado ou prata.
+- A comunicacao da Kate e dos follow-ups precisava evitar qualquer interpretacao de "ouro".
+- Cliente perguntou "quantos gramas pesa?" e a Kate caiu no fallback de previa, em vez de responder sobre o produto.
+
+Mudancas feitas
+- supabase/functions/aline-reply/index.ts
+  - Removido "ouro/gold" como sinonimo automatico de cor dourada.
+  - Cards de pingente agora informam Material: aco.
+  - Prompt da previa passa a falar em acabamento de aco, nao "cor do metal" de forma ambigua.
+  - Abordagem inicial da Kate informa que os pingentes sao de aco com acabamento dourado ou prata.
+  - Perguntas sobre material, ouro, banhado, folheado, aco, peso e gramas agora recebem resposta propria da Kate.
+  - Resposta padrao: pingentes fotogravaveis sao de aco, nao ouro; peso varia por modelo e deve ser confirmado com a loja.
+
+- supabase/functions/aline-followup/index.ts
+  - Mensagens de follow-up de Dia das Maes passaram a dizer pingente de aco e acabamento dourado/prata.
+
+Proxima validacao
+- Deployar aline-reply e aline-followup.
+- Testar "quero saber fotogravacao", "e ouro?", "quantos gramas pesa?" e "quero mais".
+
+Ajustes complementares
+- Corrigido card de pingente para exibir Material: aco na Kate, nao nos cards de alianca da Keila.
+- resetCatalogChoice agora tambem limpa catalogo_malu_enviado.
+- Quando o cliente volta pedindo "quero oculos", "sim me mande os modelos", "quero ver modelos" ou "quero mais", a Malu limpa selecao/previa antiga e força novo envio dos cards de oculos.
+- Pergunta "e ouro?" em contexto de Kate passa a ficar no agente Kate e responder sobre material, sem cair em pergunta de triagem.
+
+2026-05-05 - Ajuste fino Malu/Kate pos-teste
+
+Contexto
+- Em teste direto, "quero oculos" enviava o catalogo, mas "sim me mande os modelos" caia em selecao sem produto.
+- Em teste direto, "e ouro?" antes da cor ainda repetia a pergunta de cor da Kate.
+
+Mudancas feitas
+- supabase/functions/aline-reply/index.ts
+  - detectCatalogResendIntent passou a reconhecer "mande", "me mande", "sim ... modelos" e "pode ... modelos".
+  - Kate agora responde duvidas de material/peso mesmo antes da escolha de cor.
+  - A resposta reforca que o pingente e de aco, nao ouro, e que dourado/prata sao acabamentos do aco.
+  - Corrigido retorno da nova resposta de material da Kate para incluir collectedData e evitar erro 500.
+
+Proxima validacao
+- Deployar aline-reply.
+- Testar "quero oculos" seguido de "sim me mande os modelos".
+- Testar "quero pingente" seguido de "e ouro?".
+
+Validacao concluida
+- aline-reply deployada no Supabase.
+- aline-followup redeployada no Supabase.
+- Teste direto Kate:
+  - "quero pingente" -> agente kate, node kate_cor.
+  - "e ouro?" -> agente kate, node kate_duvida_produto, resposta informa aco/nao ouro.
+- Teste direto Malu:
+  - "quero oculos" -> agente malu, node catalogo_oculos, 8 produtos.
+  - "sim me mande os modelos" -> agente malu, node catalogo_oculos, 8 produtos.
