@@ -137,6 +137,7 @@ const Chat = () => {
   const lastMessageCount = useRef(0);
   const relatedConversationIdsRef = useRef<Set<string>>(new Set());
   const relatedAlineConversationIdsRef = useRef<Set<string>>(new Set());
+  const fetchMessagesRequestRef = useRef(0);
 
   const { toast } = useToast();
   const { onlineSellers, startChatting, stopChatting } = useSellerPresence();
@@ -607,6 +608,9 @@ const Chat = () => {
   }, []);
 
   const fetchMessages = useCallback(async (conversationId: string, phone?: string) => {
+    const requestId = fetchMessagesRequestRef.current + 1;
+    fetchMessagesRequestRef.current = requestId;
+
     try {
       const phoneVariants = phone ? buildPhoneVariants(phone) : [];
       const [crmConversationsResult, alineConversationResult] = await Promise.all([
@@ -712,6 +716,10 @@ const Chat = () => {
             );
           }
         }
+      }
+
+      if (requestId !== fetchMessagesRequestRef.current) {
+        return;
       }
 
       setMessages(mergedMessages);

@@ -571,6 +571,23 @@ Validacao concluida
   - "teria cordao?" -> agente kate, node selecao_pingente, informa que corrente/cordao e vendido separadamente.
   - "ou e so a medalha?" -> agente kate, node selecao_pingente, informa que o valor e somente do pingente/medalha.
 
+2026-05-05 - Otimizacao do carregamento do chat
+
+Contexto
+- Mensagens estavam demorando para carregar no painel do chat.
+- A primeira tentativa de otimizacao alterou a forma de buscar/ordenar mensagens e poderia deixar o chat visualmente baguncado.
+- A prioridade passou a ser manter o comportamento anterior de mensagens, com uma otimizacao segura contra corrida de requisicoes.
+
+Mudancas feitas
+- src/pages/Chat.tsx
+  - Restaurada a logica anterior de busca, merge, ordenacao e realtime de mensagens.
+  - Mantido apenas controle de requisicao para ignorar resultado antigo quando o usuario troca de conversa rapidamente.
+  - Isso evita que uma busca lenta de conversa anterior sobrescreva o chat atual sem mudar a ordem das mensagens.
+
+Proxima validacao
+- Rodar checagem/build local se as dependencias estiverem disponiveis.
+- Abrir o chat e confirmar que as mensagens voltaram a aparecer na ordem normal.
+
 2026-05-05 - Malu confirmacao curta para catalogo de oculos
 
 Contexto
