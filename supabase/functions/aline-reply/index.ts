@@ -10,6 +10,32 @@ const corsHeaders = {
 type MemoryAgent = "aline" | "keila" | "kate" | "malu";
 type ConversationAgent = "aline" | "keila" | "kate" | "malu" | "human";
 type AnyRecord = Record<string, any>;
+type ConversationIntent =
+  | "produto_aliancas"
+  | "produto_pingentes"
+  | "produto_oculos"
+  | "atendimento_humano"
+  | "pagamento"
+  | "entrega"
+  | "catalogo"
+  | "preco"
+  | "previa"
+  | "foto_cliente"
+  | "escolha_produto"
+  | "duvida_geral"
+  | "indefinido";
+
+interface ConversationIntelligence {
+  intent: ConversationIntent;
+  targetAgent: ConversationAgent | "unknown";
+  confidence: number;
+  shouldSwitchAgent: boolean;
+  customerStage: string;
+  extracted: AnyRecord;
+  source: "rules" | "openai" | "hybrid";
+  needsClarification: boolean;
+  clarificationQuestion?: string | null;
+}
 
 interface ResponseMediaItem {
   type: "image" | "video";
@@ -234,6 +260,400 @@ function buildAlineFallbackGreeting(contactName: string): string {
   const greetingName = firstName && firstName.length > 1 ? `, ${firstName}` : "";
 
   return `Oi${greetingName}! Sou a Aline da ACIUM Manaus. Posso te ajudar com alianças, pingentes ou algum modelo do catálogo?`;
+}
+
+function normalizeConversationAgent(value: unknown): ConversationAgent | "unknown" {
+  const agent = String(value || "").toLowerCase();
+  if (agent === "aline" || agent === "keila" || agent === "kate" || agent === "malu" || agent === "human") {
+    return agent;
+  }
+  return "unknown";
+}
+
+function agentForCategory(category: string | null): ConversationAgent | "unknown" {
+  if (category === "oculos") return "malu";
+  if (category === "pingente") return "kate";
+  if (category === "aliancas" || category === "aneis") return "keila";
+  return "unknown";
+}
+
+function detectHumanIntent(text: string): boolean {
+  const normalized = normalizeText(text);
+  return /atendente|humano|vendedor|vendedora|pessoa|falar com alguem|chama alguem|me liga|reclam|problema|suporte/.test(
+    normalized,
+  );
+}
+
+function detectPaymentIntent(text: string): boolean {
+  const normalized = normalizeText(text);
+  return /pix|cartao|cart[aã]o|credito|cr[eé]dito|debito|d[eé]bito|crediario|bemol|pagar|pagamento|parcel/.test(
+    normalized,
+  );
+}
+
+function detectDeliveryIntent(text: string): boolean {
+  const normalized = normalizeText(text);
+  return /entrega|delivery|retirar|retirada|buscar|loja|endereco|endere[cç]o|frete|moto|motoboy/.test(normalized);
+}
+
+function detectCatalogIntent(text: string): boolean {
+  const normalized = normalizeText(text);
+  return /catalogo|cat[aá]logo|modelos|opcoes|op[cç][oõ]es|mostra|mostrar|ver mais|quero mais|tem mais|disponivel|disponiveis/.test(
+    normalized,
+  );
+}
+
+function detectPriceIntent(text: string): boolean {
+  const normalized = normalizeText(text);
+  return /valor|preco|pre[cç]o|quanto|orcamento|or[cç]amento|ate quanto|faixa/.test(normalized);
+}
+
+function detectChoiceIntent(text: string, buttonResponseId?: string | null, catalogSelectionHint?: string | null): boolean {
+  const combined = normalizeText(`${text || ""} ${buttonResponseId || ""} ${catalogSelectionHint || ""}`);
+  return /quero este|quero esse|escolher|escolhi|ficar com esse|gostei desse|esse modelo|este modelo/.test(combined);
+}
+
+function detectPreviewIntent(text: string, mediaType?: string | null): boolean {
+  const normalized = normalizeText(text);
+  return (
+    mediaType === "image" ||
+    /previa|pr[eé]via|selfie|foto|testar|provar|simular|gerar imagem|como fica|fotograv/.test(normalized)
+  );
+}
+
+function detectBudgetValue(text: string): number | null {
+  const normalized = normalizeText(text).replace(/\./g, "").replace(",", ".");
+  const match = normalized.match(/(?:r\$|ate|at[eé]|maximo|max|orcamento|or[cç]amento)?\s*(\d{2,6}(?:\.\d{1,2})?)/);
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function buildRuleBasedIntelligence(args: {
+  text: string;
+  data: AnyRecord;
+  activeAgent: ConversationAgent;
+  currentNode: string;
+  mediaType?: string | null;
+  buttonResponseId?: string | null;
+  catalogSelectionHint?: string | null;
+}): ConversationIntelligence {
+  const { text, data, activeAgent, currentNode, mediaType, buttonResponseId, catalogSelectionHint } = args;
+  const explicitCategory = detectCategory(text, {});
+  const categoryAgent = agentForCategory(explicitCategory);
+  const normalized = normalizeText(text);
+  const mentionedCategories = [
+    detectCategory(text, {}) === "oculos" ? "oculos" : null,
+    /pingente|pingentes|medalha|medalhas|medalhinha|colar|cordao|corrente|fotograv|gravar foto/.test(normalized)
+      ? "pingente"
+      : null,
+    /alianc|anel|aneis|an[eé]is/.test(normalized) ? "aliancas" : null,
+  ].filter(Boolean);
+  const uniqueMentionedCategories = [...new Set(mentionedCategories)];
+  const extracted: AnyRecord = {};
+  const budget = detectBudgetValue(text);
+  if (budget) extracted.orcamento_valor = budget;
+  const color = detectColor(text);
+  if (color) extracted.cor = color;
+
+  if (mediaType === "image") {
+    return {
+      intent: "foto_cliente",
+      targetAgent: activeAgent === "kate" || activeAgent === "malu" ? activeAgent : "unknown",
+      confidence: activeAgent === "kate" || activeAgent === "malu" ? 0.92 : 0.62,
+      shouldSwitchAgent: false,
+      customerStage: "enviou_foto",
+      extracted: { ...extracted, tem_foto_cliente: true },
+      source: "rules",
+      needsClarification: activeAgent !== "kate" && activeAgent !== "malu",
+      clarificationQuestion:
+        activeAgent !== "kate" && activeAgent !== "malu"
+          ? "Essa foto e para uma previa de pingente ou de oculos?"
+          : null,
+    };
+  }
+
+  if (uniqueMentionedCategories.length > 1 && !buttonResponseId) {
+    return {
+      intent: "indefinido",
+      targetAgent: "unknown",
+      confidence: 0.52,
+      shouldSwitchAgent: false,
+      customerStage: "intencao_ambigua",
+      extracted,
+      source: "rules",
+      needsClarification: true,
+      clarificationQuestion: "Voce quer ver aliancas, pingentes ou oculos agora?",
+    };
+  }
+
+  if (categoryAgent !== "unknown") {
+    const intent: ConversationIntent =
+      explicitCategory === "oculos"
+        ? "produto_oculos"
+        : explicitCategory === "pingente"
+          ? "produto_pingentes"
+          : "produto_aliancas";
+    return {
+      intent,
+      targetAgent: categoryAgent,
+      confidence: 0.96,
+      shouldSwitchAgent: activeAgent !== categoryAgent,
+      customerStage: "produto_identificado",
+      extracted: { ...extracted, categoria: explicitCategory },
+      source: "rules",
+      needsClarification: false,
+      clarificationQuestion: null,
+    };
+  }
+
+  if (detectHumanIntent(text)) {
+    return {
+      intent: "atendimento_humano",
+      targetAgent: "human",
+      confidence: 0.9,
+      shouldSwitchAgent: activeAgent !== "human",
+      customerStage: "handoff_humano",
+      extracted,
+      source: "rules",
+      needsClarification: false,
+      clarificationQuestion: null,
+    };
+  }
+
+  const contextualAgent =
+    activeAgent !== "aline" && activeAgent !== "human"
+      ? activeAgent
+      : agentForCategory(data.categoria || null);
+  const buttonOrChoice = detectChoiceIntent(text, buttonResponseId, catalogSelectionHint);
+  const preview = detectPreviewIntent(text, mediaType);
+  const payment = detectPaymentIntent(text);
+  const delivery = detectDeliveryIntent(text);
+  const catalog = detectCatalogIntent(text);
+  const price = detectPriceIntent(text);
+  const targetAgent = contextualAgent !== "unknown" ? contextualAgent : activeAgent;
+
+  if (buttonOrChoice || preview || payment || delivery || catalog || price) {
+    return {
+      intent: buttonOrChoice
+        ? "escolha_produto"
+        : preview
+          ? "previa"
+          : payment
+            ? "pagamento"
+            : delivery
+              ? "entrega"
+              : catalog
+                ? "catalogo"
+                : "preco",
+      targetAgent,
+      confidence: targetAgent !== "aline" ? 0.82 : 0.68,
+      shouldSwitchAgent: false,
+      customerStage: buttonOrChoice
+        ? "escolheu_produto"
+        : preview
+          ? "quer_previa"
+          : payment
+            ? "negociando_pagamento"
+            : delivery
+              ? "negociando_entrega"
+              : catalog
+                ? "vendo_catalogo"
+                : "consultando_preco",
+      extracted: {
+        ...extracted,
+        quer_previa: preview || undefined,
+      },
+      source: "rules",
+      needsClarification: false,
+      clarificationQuestion: null,
+    };
+  }
+
+  return {
+    intent: "duvida_geral",
+    targetAgent: targetAgent || "unknown",
+    confidence: activeAgent !== "aline" ? 0.7 : 0.55,
+    shouldSwitchAgent: false,
+    customerStage: "duvida_geral",
+    extracted,
+    source: "rules",
+    needsClarification: false,
+    clarificationQuestion: null,
+  };
+}
+
+function parseOpenAIJson(content: string): AnyRecord | null {
+  try {
+    const cleaned = String(content || "").trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+    return JSON.parse(cleaned);
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function classifyConversationWithOpenAI(args: {
+  text: string;
+  data: AnyRecord;
+  activeAgent: ConversationAgent;
+  currentNode: string;
+  ruleResult: ConversationIntelligence;
+}): Promise<ConversationIntelligence | null> {
+  const openAIApiKey = Deno.env.get("OPENAI_API_KEY");
+  if (!openAIApiKey || !args.text.trim()) return null;
+
+  try {
+    const model = Deno.env.get("OPENAI_INTELLIGENCE_MODEL") || "gpt-4o-mini";
+    const state = {
+      activeAgent: args.activeAgent,
+      currentNode: args.currentNode,
+      categoria: args.data.categoria || null,
+      selected_name: args.data.selected_name || null,
+      selected_sku: args.data.selected_sku || null,
+      last_intent: args.data.last_intent || null,
+      customer_stage: args.data.customer_stage || null,
+    };
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${openAIApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0,
+        max_tokens: 280,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content:
+              "Voce classifica intencao de cliente de WhatsApp para CRM ACIUM. Responda somente JSON valido. Agentes: aline triagem, keila aliancas/aneis, kate pingentes/fotogravacao, malu oculos, human atendimento humano. Intencoes permitidas: produto_aliancas, produto_pingentes, produto_oculos, atendimento_humano, pagamento, entrega, catalogo, preco, previa, foto_cliente, escolha_produto, duvida_geral, indefinido. Seja conservador: se o produto citado for claro, escolha o agente desse produto mesmo que o contexto anterior seja outro. Se ambiguo entre produtos, needsClarification=true.",
+          },
+          {
+            role: "user",
+            content: JSON.stringify({
+              mensagem: args.text,
+              estado_atual: state,
+              regra_previa: args.ruleResult,
+              formato_resposta: {
+                intent: "uma intencao permitida",
+                targetAgent: "aline|keila|kate|malu|human|unknown",
+                confidence: "0 a 1",
+                customerStage: "curto_em_snake_case",
+                extracted: "objeto com sinais uteis",
+                needsClarification: "boolean",
+                clarificationQuestion: "pergunta curta ou null",
+              },
+            }),
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) return null;
+    const json = await response.json();
+    const parsed = parseOpenAIJson(json?.choices?.[0]?.message?.content || "");
+    if (!parsed) return null;
+
+    const targetAgent = normalizeConversationAgent(parsed.targetAgent);
+    const confidence = Math.max(0, Math.min(1, Number(parsed.confidence) || 0));
+    const intent = String(parsed.intent || "indefinido") as ConversationIntent;
+    const allowedIntents: ConversationIntent[] = [
+      "produto_aliancas",
+      "produto_pingentes",
+      "produto_oculos",
+      "atendimento_humano",
+      "pagamento",
+      "entrega",
+      "catalogo",
+      "preco",
+      "previa",
+      "foto_cliente",
+      "escolha_produto",
+      "duvida_geral",
+      "indefinido",
+    ];
+    if (!allowedIntents.includes(intent) || confidence < 0.6) return null;
+
+    return {
+      intent,
+      targetAgent,
+      confidence,
+      shouldSwitchAgent: targetAgent !== "unknown" && targetAgent !== args.activeAgent,
+      customerStage: String(parsed.customerStage || args.ruleResult.customerStage || "classificado_ia"),
+      extracted: parsed.extracted && typeof parsed.extracted === "object" ? parsed.extracted : {},
+      source: "openai",
+      needsClarification: Boolean(parsed.needsClarification),
+      clarificationQuestion: parsed.clarificationQuestion || null,
+    };
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function buildConversationIntelligence(args: {
+  text: string;
+  data: AnyRecord;
+  activeAgent: ConversationAgent;
+  currentNode: string;
+  mediaType?: string | null;
+  buttonResponseId?: string | null;
+  catalogSelectionHint?: string | null;
+}): Promise<ConversationIntelligence> {
+  const ruleResult = buildRuleBasedIntelligence(args);
+
+  if (ruleResult.needsClarification) {
+    return ruleResult;
+  }
+
+  if (ruleResult.confidence >= 0.78 && !ruleResult.needsClarification) {
+    return ruleResult;
+  }
+
+  const aiResult = await classifyConversationWithOpenAI({
+    text: args.text,
+    data: args.data,
+    activeAgent: args.activeAgent,
+    currentNode: args.currentNode,
+    ruleResult,
+  });
+
+  if (!aiResult) return ruleResult;
+
+  const ruleProductAgent =
+    ruleResult.targetAgent === "keila" || ruleResult.targetAgent === "kate" || ruleResult.targetAgent === "malu";
+  if (ruleProductAgent && ruleResult.confidence >= 0.78 && aiResult.confidence < 0.9) {
+    return ruleResult;
+  }
+
+  return {
+    ...ruleResult,
+    ...aiResult,
+    extracted: { ...ruleResult.extracted, ...aiResult.extracted },
+    source: "hybrid",
+  };
+}
+
+function applyIntelligenceToData(data: AnyRecord, intelligence: ConversationIntelligence) {
+  data.conversation_intelligence = intelligence;
+  data.last_intent = intelligence.intent;
+  data.customer_stage = intelligence.customerStage;
+  data.intent_confidence = intelligence.confidence;
+  data.intent_source = intelligence.source;
+  data.needs_clarification = intelligence.needsClarification;
+  data.intended_agent = intelligence.targetAgent;
+
+  const extracted = intelligence.extracted || {};
+  for (const [key, value] of Object.entries(extracted)) {
+    if (value !== undefined && value !== null && value !== "" && data[key] === undefined) {
+      data[key] = value;
+    }
+  }
+
+  if (extracted.categoria) data.categoria = extracted.categoria;
+  if (intelligence.targetAgent !== "unknown") data.agente_atual = intelligence.targetAgent;
 }
 
 function shouldRouteToKate(
@@ -653,6 +1073,13 @@ async function saveAgentMemory(
     numeracao_status: data.numeracao_status || null,
     delivery_method: data.delivery_method || null,
     payment_method: data.payment_method || null,
+    last_intent: data.last_intent || null,
+    customer_stage: data.customer_stage || null,
+    intent_confidence: data.intent_confidence || null,
+    intent_source: data.intent_source || null,
+    intended_agent: data.intended_agent || null,
+    quer_previa: data.quer_previa || null,
+    tem_foto_cliente: data.tem_foto_cliente || null,
   };
 
   await supabase.from("customer_agent_memory").upsert(
@@ -689,6 +1116,13 @@ function hydrateDataWithMemory(data: AnyRecord, memory: AnyRecord | null) {
   if (!data.numeracao_status && preferences.numeracao_status) data.numeracao_status = preferences.numeracao_status;
   if (!data.delivery_method && preferences.delivery_method) data.delivery_method = preferences.delivery_method;
   if (!data.payment_method && preferences.payment_method) data.payment_method = preferences.payment_method;
+  if (!data.last_intent && preferences.last_intent) data.last_intent = preferences.last_intent;
+  if (!data.customer_stage && preferences.customer_stage) data.customer_stage = preferences.customer_stage;
+  if (!data.intent_confidence && preferences.intent_confidence) data.intent_confidence = preferences.intent_confidence;
+  if (!data.intent_source && preferences.intent_source) data.intent_source = preferences.intent_source;
+  if (!data.intended_agent && preferences.intended_agent) data.intended_agent = preferences.intended_agent;
+  if (!data.quer_previa && preferences.quer_previa) data.quer_previa = preferences.quer_previa;
+  if (!data.tem_foto_cliente && preferences.tem_foto_cliente) data.tem_foto_cliente = preferences.tem_foto_cliente;
   if (!data.selected_sku && memory.last_product_sku) data.selected_sku = memory.last_product_sku;
   if (!data.selected_name && memory.last_product_name) data.selected_name = memory.last_product_name;
 
@@ -3167,7 +3601,50 @@ serve(async (req) => {
     const kateMemory = await loadAgentMemory(supabase, phone, "kate");
     const keilaMemory = await loadAgentMemory(supabase, phone, "keila");
     const maluMemory = await loadAgentMemory(supabase, phone, "malu");
+    const intelligence = await buildConversationIntelligence({
+      text: inboundText,
+      data: baseData,
+      activeAgent,
+      currentNode: conversation.current_node || "",
+      mediaType,
+      buttonResponseId,
+      catalogSelectionHint,
+    });
+    applyIntelligenceToData(baseData, intelligence);
+
+    if (intelligence.needsClarification && intelligence.clarificationQuestion && !buttonResponseId) {
+      const reply = intelligence.clarificationQuestion;
+      const clarificationPayload = buildResponsePayload({
+        phone,
+        message: reply,
+        node: "triagem_inteligente_duvida",
+        collectedData: baseData,
+        agent: activeAgent,
+      });
+
+      return new Response(JSON.stringify(clarificationPayload), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (intelligence.targetAgent === "human") {
+      const reply = "Perfeito, vou chamar um atendente para te ajudar por aqui.";
+      const humanPayload = buildResponsePayload({
+        phone,
+        message: reply,
+        node: "human_handoff_fechamento",
+        collectedData: baseData,
+        agent: "human",
+      });
+
+      return new Response(JSON.stringify(humanPayload), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const intelligenceAgent = intelligence.targetAgent;
     const routeToMalu =
+      intelligenceAgent === "malu" ||
       explicitCategory === "oculos" ||
       (explicitCategory !== "pingente" &&
         explicitCategory !== "aliancas" &&
@@ -3175,6 +3652,7 @@ serve(async (req) => {
         shouldRouteToMalu(activeAgent, inboundText, baseData, conversation.current_node || ""));
     const routeToKate =
       !routeToMalu &&
+      (intelligenceAgent === "kate" ||
       (explicitCategory === "pingente" ||
         (explicitCategory !== "aliancas" &&
           explicitCategory !== "aneis" &&
@@ -3185,13 +3663,14 @@ serve(async (req) => {
             conversation.current_node || "",
             kateMemory,
             keilaMemory,
-          )));
+          ))));
     const routeToKeila =
       !routeToMalu &&
       !routeToKate &&
+      (intelligenceAgent === "keila" ||
       (explicitCategory === "aliancas" ||
         explicitCategory === "aneis" ||
-        shouldRouteToKeila(activeAgent, inboundText, baseData, conversation.current_node || ""));
+        shouldRouteToKeila(activeAgent, inboundText, baseData, conversation.current_node || "")));
 
     if (routeToMalu) {
       const maluResponse = await handleMaluFlow({

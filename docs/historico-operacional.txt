@@ -359,3 +359,48 @@ Validacao feita
   - OCULOS 02
   - OCULOS-03
   - OCULOS-01
+
+2026-05-05 - Camada de inteligencia dos agentes
+
+Contexto
+- O objetivo agora e deixar Aline, Keila, Kate e Malu mais autonomas, sem quebrar os fluxos que ja estao funcionando.
+- O roteamento anterior era majoritariamente deterministico e podia perder mudancas sutis de intencao, estagio comercial e duvidas secundarias.
+
+Mudancas feitas
+- supabase/functions/aline-reply/index.ts
+  - Criada uma camada hibrida de Conversation Intelligence antes do roteamento dos agentes.
+  - A camada usa regras locais para casos obvios e OpenAI como classificador de apoio quando a confianca fica baixa ou a intencao fica ambigua.
+  - Novas intencoes tratadas: produto_aliancas, produto_pingentes, produto_oculos, atendimento_humano, pagamento, entrega, catalogo, preco, previa, foto_cliente, escolha_produto e duvida_geral.
+  - A decisao agora identifica agente-alvo, confianca, estagio do cliente, sinais extraidos e necessidade de pergunta de esclarecimento.
+  - Se o cliente mistura produtos na mesma mensagem, o sistema pergunta de forma curta qual produto ele quer ver.
+  - Se o cliente pedir humano, o fluxo muda para atendimento humano com mensagem amigavel.
+  - A memoria dos agentes agora salva sinais de inteligencia: ultima intencao, estagio comercial, confianca, origem da decisao, agente pretendido, desejo de previa e recebimento de foto.
+
+Proxima validacao
+- Rodar validacoes locais de TypeScript/deno check quando disponivel.
+- Deployar aline-reply.
+- Testar mensagens diretas:
+  - cliente em aliancas pedindo oculos deve ir para Malu;
+  - cliente em oculos pedindo pingente deve ir para Kate;
+  - cliente enviando foto em Malu/Kate deve continuar no agente correto;
+  - mensagem ambigua entre produtos deve pedir esclarecimento.
+
+Ajustes apos validacao inicial
+- A mensagem ambigua "quero oculos e pingente" estava sendo resolvida pela IA para um agente, mas o comportamento correto e perguntar qual produto o cliente quer ver agora.
+- A camada de inteligencia agora preserva a pergunta de esclarecimento quando as regras locais detectam ambiguidade explicita.
+- O pedido "quero falar com atendente" gerou 502 na primeira tentativa de handoff generico.
+- O handoff humano foi alinhado ao padrao ja usado por Keila/Kate, em vez de usar um node novo de handoff.
+- Ajuste complementar: a deteccao de ambiguidade agora procura mencoes independentes de pingente mesmo quando "oculos" aparece primeiro na frase.
+- Ajuste complementar: o handoff humano passou a usar o mesmo padrao dos handoffs existentes, marcando status human_takeover, active_agent human, assignment_reason e acionando aline-takeover.
+- Ajuste de seguranca para producao: os retornos novos de duvida ambigua e pedido humano foram deixados sem persistencia complexa nesta primeira etapa, porque os testes publicados indicaram 502 apenas nesses retornos antecipados. A mensagem recebida do cliente continua salva; a persistencia fina desses dois nodes fica para uma migracao controlada.
+- Causa real do 502 identificada: os retornos antecipados estavam devolvendo o payload puro dentro do handler HTTP. Corrigido para retornar new Response(JSON.stringify(payload)) como a Edge Function espera.
+
+Validacao publicada
+- Deploy de aline-reply feito no Supabase.
+- Testes diretos na Edge Function:
+  - "quero aliancas de casamento" -> agente keila, node keila_prazo.
+  - em seguida "tem oculos?" no mesmo telefone -> agente malu, node catalogo_oculos, 8 produtos.
+  - "quero oculos" -> agente malu, node catalogo_oculos, 8 produtos.
+  - em seguida "quero pingente fotogravado" no mesmo telefone -> agente kate, node kate_cor.
+  - "quero oculos e pingente" -> node triagem_inteligente_duvida com pergunta de esclarecimento.
+  - "quero falar com atendente" -> node human_handoff_fechamento com resposta amigavel.
