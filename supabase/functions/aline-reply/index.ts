@@ -2937,10 +2937,17 @@ async function handleMaluFlow(args: {
   const wantsDetails = /^details[_-]/i.test(String(buttonResponseId || "")) || isDetailsText;
   const wantsMoreOptions = detectMoreOptionsIntent(message) || /^more_options$/i.test(String(buttonResponseId || ""));
   const wantsCatalogResend = detectCatalogResendIntent(message);
+  const confirmsCatalogRequest =
+    /^(sim|s|pode|quero|ok|claro|manda|mande|ver|modelos|ver modelos|me manda|me mande)( os modelos)?$/.test(
+      normalizedSelectionToken,
+    ) ||
+    /ver modelos|mostrar modelos|mande os modelos|manda os modelos|me mande os modelos|me manda os modelos/.test(
+      normalizedSelectionToken,
+    );
   const explicitEyewearCatalogRequest =
     !buttonResponseId &&
     !catalogSelectionHint &&
-    (detectCategory(message, {}) === "oculos" || wantsCatalogResend || wantsMoreOptions);
+    (detectCategory(message, {}) === "oculos" || wantsCatalogResend || wantsMoreOptions || confirmsCatalogRequest);
 
   if (explicitEyewearCatalogRequest && !selectedFromCatalog) {
     delete data.selected_product;
@@ -3002,7 +3009,7 @@ async function handleMaluFlow(args: {
     return buildMaluCards(catalog);
   };
 
-  if (!data.catalogo_malu_enviado || (!hasSelectedProduct && (wantsMoreOptions || wantsCatalogResend))) {
+  if (!data.catalogo_malu_enviado || (!hasSelectedProduct && (wantsMoreOptions || wantsCatalogResend || confirmsCatalogRequest))) {
     const shownSkus = Array.isArray(data.last_catalog)
       ? data.last_catalog.map((item: any) => String(item?.sku || item?.id || "")).filter(Boolean)
       : [];

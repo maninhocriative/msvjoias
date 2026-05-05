@@ -570,3 +570,27 @@ Validacao concluida
 - Teste direto:
   - "teria cordao?" -> agente kate, node selecao_pingente, informa que corrente/cordao e vendido separadamente.
   - "ou e so a medalha?" -> agente kate, node selecao_pingente, informa que o valor e somente do pingente/medalha.
+
+2026-05-05 - Malu confirmacao curta para catalogo de oculos
+
+Contexto
+- No WhatsApp, a Malu continuava respondendo "Posso te mostrar os modelos..." quando o cliente respondia "Sim" ou "Ver modelos".
+- Isso impedia o envio dos cards de oculos mesmo com o catalogo disponivel.
+
+Mudancas feitas
+- supabase/functions/aline-reply/index.ts
+  - Fluxo da Malu agora reconhece confirmacoes curtas de catalogo: sim, pode, quero, ver, modelos e ver modelos.
+  - Tambem reconhece frases como "me mande os modelos", "manda os modelos" e "mostrar modelos".
+  - Essas respostas limpam selecao/previa antiga e forcam novo envio de catalogo de oculos.
+
+Proxima validacao
+- Deployar aline-reply.
+- Testar no fluxo da Malu: "quero oculos", "sim", "ver modelos" e "sim me mande os modelos".
+
+Validacao concluida
+- aline-reply deployada no Supabase.
+- Teste direto:
+  - "Sim" apos entrada no fluxo da Malu -> catalogo_oculos com 8 produtos.
+  - "Ver modelos" apos entrada no fluxo da Malu -> catalogo_oculos com 8 produtos.
+  - "sim me mande os modelos" apos entrada no fluxo da Malu -> catalogo_oculos com 8 produtos.
+  - Todos retornaram use_product_buttons=true; primeiro produto com force_separate_buttons=true.
