@@ -48,6 +48,10 @@ export type Conversation = {
   last_message_at?: string;
   unread_count: number;
   lead_status?: LeadStatus;
+  contact_presence?: string | null;
+  contact_is_online?: boolean | null;
+  contact_last_seen_at?: string | null;
+  contact_presence_updated_at?: string | null;
   created_at?: string;
   updated_at?: string;
 };

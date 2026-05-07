@@ -735,7 +735,7 @@ function shouldRouteToMalu(
 
 function detectPreviewApprovalIntent(text: string): boolean {
   const normalized = normalizeText(text);
-  return /aprov|gostei|pode fazer|pode seguir|quero assim|ficou bom|fechar|sim pode|ta bom|t[aá] lindo/.test(normalized);
+  return /aprov|gostei|pode fazer|pode seguir|quero assim|quero esse|quero este|vou ficar|fico com|esse mesmo|isso mesmo|isso msm|perfeito|pode ser|ficou bom|fechar|finalizar|comprar|sim pode|sim|ok|blz|beleza|ta bom|t[aá] bom|t[aá] lindo/.test(normalized);
 }
 
 function detectPreviewRedoIntent(text: string): boolean {
@@ -753,6 +753,27 @@ function detectPendantModelQuestion(text: string): boolean {
 function detectPendantMaterialQuestion(text: string): boolean {
   const normalized = normalizeText(text);
   return /material|e ouro|eh ouro|ouro|banhado|folheado|aco|aço|inox|grama|gramas|peso|pesa|pesado|leve/.test(
+    normalized,
+  );
+}
+
+function detectPriceQuestion(text: string): boolean {
+  const normalized = normalizeText(text);
+  return /qual valor|valor|pre[cç]o|preco|quanto custa|quanto sai|quanto fica|custa quanto|qto|quanto e|quanto é/.test(
+    normalized,
+  );
+}
+
+function detectStoreAddressQuestion(text: string): boolean {
+  const normalized = normalizeText(text);
+  return /endere[cç]o|onde fica|localiza[cç]ao|localizacao|qual a loja|loja fica|shopping|retirar na loja|buscar na loja/.test(
+    normalized,
+  );
+}
+
+function detectComplaintOrFrustration(text: string): boolean {
+  const normalized = normalizeText(text);
+  return /merda|ruim|horr[ií]vel|p[eé]ssim|chatead|puta|puto|raiva|irritad|reclama|nao gostei|não gostei|cancelar|desistir|demora demais|ninguem responde|ninguém responde/.test(
     normalized,
   );
 }
@@ -2269,6 +2290,9 @@ async function handleKateFlow(args: {
   const asksPendantModelQuestion = detectPendantModelQuestion(message);
   const asksPendantMaterialQuestion = detectPendantMaterialQuestion(message);
   const asksDeliveryDeadline = detectDeliveryDeadlineQuestion(message);
+  const asksPrice = detectPriceQuestion(message);
+  const asksStoreAddress = detectStoreAddressQuestion(message);
+  const isComplaintOrFrustration = detectComplaintOrFrustration(message);
 
   const fetchKateCatalogCards = async (excludeSkus: string[] = []) => {
     const searchParams: AnyRecord = {
@@ -2295,6 +2319,120 @@ async function handleKateFlow(args: {
 
     return buildKateCards(filtered);
   };
+
+  if (isComplaintOrFrustration) {
+    data.kate_needs_human = true;
+    data.agente_atual = "human";
+    const reply = "Sinto muito por essa experiência. Vou pausar o atendimento automático e chamar um vendedor agora para resolver com você sem ficar repetindo mensagem.";
+
+    await supabase
+      .from("aline_conversations")
+      .update({
+        status: "human_takeover",
+        active_agent: "human",
+        assignment_reason: "Kate acionou atendimento humano por insatisfacao/reclamacao do cliente",
+        collected_data: data,
+        last_message_at: new Date().toISOString(),
+        agent_handoff_at: new Date().toISOString(),
+      })
+      .eq("id", conversation.id);
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "human_takeover");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "human_takeover",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "human",
+    });
+  }
+
+  if (mediaType === "audio" && /audio recebido/.test(normalizedMessage)) {
+    data.kate_needs_human = true;
+    data.agente_atual = "human";
+    const reply = "Recebi seu áudio. Para não te responder errado, vou chamar um vendedor para ouvir e continuar seu atendimento por aqui.";
+
+    await supabase
+      .from("aline_conversations")
+      .update({
+        status: "human_takeover",
+        active_agent: "human",
+        assignment_reason: "Kate encaminhou atendimento humano para audio sem transcricao",
+        collected_data: data,
+        last_message_at: new Date().toISOString(),
+        agent_handoff_at: new Date().toISOString(),
+      })
+      .eq("id", conversation.id);
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "human_takeover");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "human_takeover",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "human",
+    });
+  }
+
+  if (asksStoreAddress) {
+    if (hasSelectedProduct) data.delivery_method = "retirada";
+    const nextLine = hasSelectedProduct && !hasPayment
+      ? "\n\nSe você for retirar na loja, me confirma também a forma de pagamento: Pix, Crediario Bemol ou cartão de crédito?"
+      : "";
+    const reply = `Nossa loja fica no Shopping Sumaúma, Av. Noel Nutels, 1762 - Cidade Nova, Manaus - AM.${nextLine}`;
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "kate",
+      hasSelectedProduct ? "kate_pagamento" : "kate_endereco",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_endereco");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: hasSelectedProduct ? "kate_pagamento" : "kate_endereco",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "kate",
+    });
+  }
+
+  if (hasSelectedProduct && asksPrice) {
+    const price = formatCurrency(data.selected_price || data.selected_product?.price);
+    const productName = cleanCustomerProductName(data.selected_name || "pingente fotogravado");
+    const reply = `${productName}${price ? ` fica ${price}` : "está com valor no card enviado"}. Esse valor é somente do pingente/medalha fotogravável; corrente ou cordão é vendido separadamente.
+
+Posso seguir com retirada na loja ou delivery? Depois do fechamento, o vendedor envia a arte original para sua aprovação antes da gravação.`;
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "kate",
+      "kate_entrega",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_valor");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "kate_entrega",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "kate",
+    });
+  }
 
   if (asksPendantMaterialQuestion && !hasColor) {
     const reply = "Nossos pingentes fotogravaveis sao de aco, nao sao de ouro. O dourado e o prata sao acabamentos do aco. O peso varia conforme o modelo; escolhendo um modelo eu confirmo com a loja. Quer ver os modelos com acabamento dourado ou prata?";
@@ -2625,7 +2763,7 @@ A fotogravação de 1 lado já está inclusa.`;
       }
     }
 
-    if (hasDelivery || hasPayment || wantsCloseWithoutPhoto) {
+    if (hasDelivery || hasPayment || wantsCloseWithoutPhoto || wantsPreviewApproval) {
       if (!hasDelivery) {
         const reply = `Perfeito, seguimos com *${cleanCustomerProductName(data.selected_name)}* sem simulacao.
 

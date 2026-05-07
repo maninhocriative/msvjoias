@@ -80,13 +80,13 @@ const MessageItem = memo(({
   return (
     <div
       className={cn(
-        'flex w-full mb-2.5',
+        'flex w-full mb-3.5',
         isMe ? 'justify-end pl-8 sm:pl-12' : 'justify-start pr-8 sm:pr-12',
       )}
     >
       <div
         className={cn(
-          'relative w-fit min-w-0 max-w-[92%] sm:max-w-[86%] lg:max-w-[78%] xl:max-w-[72%] px-4 py-3 border shadow-[0_24px_50px_-34px_rgba(15,23,42,0.95)] backdrop-blur-sm',
+          'relative w-fit min-w-0 max-w-[92%] sm:max-w-[86%] lg:max-w-[78%] xl:max-w-[72%] px-4 py-3 border shadow-[0_24px_50px_-34px_rgba(15,23,42,0.95)] backdrop-blur-sm clear-both',
           isMe
             ? 'bg-[linear-gradient(160deg,rgba(16,185,129,0.95),rgba(5,150,105,0.92))] text-white border-emerald-400/20'
             : 'bg-slate-900/88 text-slate-100 border-white/8',
@@ -102,7 +102,7 @@ const MessageItem = memo(({
           <button
             type="button"
             onClick={() => onStartEdit?.(message)}
-            className="absolute -top-2 left-2 sm:left-auto sm:right-2 inline-flex items-center gap-1 rounded-full border border-white/10 bg-slate-950/85 px-2.5 py-1 text-[11px] text-slate-200 shadow-sm transition-colors hover:border-emerald-400/40 hover:text-white"
+            className="absolute -top-3 left-2 sm:left-auto sm:right-2 inline-flex items-center gap-1 rounded-full border border-white/10 bg-slate-950/95 px-2.5 py-1 text-[11px] text-slate-200 shadow-sm transition-colors hover:border-emerald-400/40 hover:text-white"
           >
             <Pencil className="w-3 h-3" />
             Editar

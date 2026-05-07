@@ -1,10 +1,39 @@
 Historico operacional - ACIUM CRM
-Atualizado em: 2026-05-01
+Atualizado em: 2026-05-07
 
 Objetivo deste arquivo
 - Registrar, em texto simples, as mudancas feitas no projeto.
 - Manter os proximos passos visiveis antes de qualquer nova alteracao.
 - Ser atualizado sempre que uma nova mudanca for feita no repositorio.
+
+2026-05-07 - Recuperacao de venda Kate e midias do chat
+
+Contexto
+- Cliente aprovava o pingente ou perguntava valor/endereco e a Kate repetia pedido de foto/simulacao, derrubando fechamento.
+- Links temporarios de arquivos da Z-API apareciam como texto no chat.
+- O realtime de conversas fazia reload completo a cada alteracao, deixando o chat com sensacao de atualizacao constante.
+
+Mudancas feitas
+- supabase/functions/aline-reply/index.ts
+  - A Kate reconhece confirmacoes como "perfeito", "isso mesmo" e "quero este" e segue para entrega/pagamento sem obrigar foto.
+  - Perguntas de valor respondem o preco do pingente escolhido e reforcam que corrente/cordao e vendido separadamente.
+  - Perguntas de endereco respondem o endereco da loja: Shopping Sumauma, Av. Noel Nutels, 1762 - Cidade Nova, Manaus - AM.
+  - Reclamacoes/insatisfacao e audios sem transcricao pausam o agente e chamam atendimento humano.
+- supabase/functions/zapi-unified/index.ts
+  - URLs temporarias de imagem/audio/video/documento passam a ser salvas como midia, nao como texto solto.
+- src/pages/Chat.tsx
+  - Realtime de conversas agora atualiza a lista em memoria, sem buscar todas as conversas a cada evento.
+
+Proximos passos
+- Testar com lead real: aprovacao do pingente -> entrega -> pagamento -> handoff/venda.
+- Confirmar no WhatsApp que links Backblaze aparecem como imagens/arquivos.
+- Acompanhar logs da Kate nos primeiros atendimentos apos deploy.
+
+Validacao concluida
+- TypeScript passou com node_modules/typescript/bin/tsc --noEmit.
+- git diff --check passou.
+- Supabase deploy concluido para aline-reply e zapi-unified no projeto ahbjwpkpxqqrpvpzmqwa.
+- Migracao 20260507103000_conversation_contact_presence.sql aplicada no banco remoto via supabase db query --linked.
 
 2026-05-01 - Correcao emergencial dos agentes para novos contatos
 
@@ -659,6 +688,43 @@ Proxima validacao
 Validacao concluida
 - git diff --check executado sem erros.
 - node node_modules/typescript/bin/tsc --noEmit executado com sucesso.
+
+2026-05-07 - Chat humano, anexos e presenca Z-API
+
+Contexto
+- Precisamos revisar envio humano de varias imagens e audio.
+- O layout da lista/chat parecia com mensagens e cards muito grudados.
+- Foi solicitada a possibilidade de mostrar online/visto por ultimo do lead em tempo real via Z-API.
+
+Mudancas feitas
+- src/pages/Chat.tsx
+  - Envio de varios anexos ganhou preview local para imagem, audio e video enquanto o upload/envio acontece.
+  - Gravacao de audio passou a preferir OGG/Opus quando suportado, com fallback para WebM/Opus/WebM.
+  - Cancelar gravacao agora marca a gravacao como cancelada antes do stop, evitando envio acidental.
+  - Lista de conversas ganhou espacamento entre cards.
+  - Header da conversa passa a mostrar online, digitando, gravando audio ou visto por ultimo quando houver dados de presenca.
+  - Conversa selecionada e atualizada quando realtime de conversations traz novos dados.
+- src/components/chat/ConversationItem.tsx
+  - Cards da lista ficaram mais compactos e com espaco entre si.
+  - Badge de presenca aparece na lista quando o lead esta online/digitando/gravando.
+- src/components/chat/MessageItem.tsx
+  - Aumentado espacamento vertical entre mensagens para reduzir sensacao de sobreposicao.
+- supabase/functions/zapi-unified/index.ts
+  - Adicionado suporte ao callback PresenceChatCallback da Z-API.
+  - Estados AVAILABLE, UNAVAILABLE, COMPOSING, PAUSED e RECORDING sao normalizados e salvos na conversa.
+- supabase/migrations/20260507103000_conversation_contact_presence.sql
+  - Adicionados campos de presenca do contato em conversations.
+
+Observacao
+- A Z-API documenta o webhook de presenca em update-webhook-chat-presence e envia type=PresenceChatCallback com phone, status e lastSeen.
+- Para funcionar em tempo real, o webhook de presenca precisa estar ativo na Z-API apontando para o endpoint HTTPS atual do CRM.
+
+Proxima validacao
+- Aplicar migracao no Supabase.
+- Deployar zapi-unified.
+- Rodar TypeScript.
+- Testar callback PresenceChatCallback simulado.
+- Testar no navegador envio de varias imagens e audio.
 
 2026-05-05 - Otimizacao do carregamento do chat
 

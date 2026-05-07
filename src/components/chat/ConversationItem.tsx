@@ -144,12 +144,23 @@ const ConversationItem = memo(
     const displayName = customerProfile?.name || conv.contact_name || conv.contact_number;
     const lastMsgTime = (conv as any).last_message_at || conv.created_at;
     const previewText = conv.last_message || 'Sem mensagens';
+    const contactPresence = String(conv.contact_presence || '').toLowerCase();
+    const isContactOnline =
+      conv.contact_is_online || ['available', 'composing', 'recording'].includes(contactPresence);
+    const contactPresenceLabel =
+      contactPresence === 'composing'
+        ? 'digitando'
+        : contactPresence === 'recording'
+          ? 'gravando'
+          : isContactOnline
+            ? 'online'
+            : '';
 
     return (
       <button
         onClick={onClick}
         className={cn(
-          'w-full min-w-0 px-3.5 py-3.5 flex items-start gap-3 text-left transition-all relative group rounded-[22px] border shadow-[0_20px_50px_-38px_rgba(15,23,42,0.9)]',
+          'w-full min-w-0 px-3.5 py-3 flex items-start gap-3 text-left transition-all relative group rounded-2xl border shadow-[0_18px_42px_-36px_rgba(15,23,42,0.9)]',
           isSelected
             ? 'border-emerald-500/35 bg-[linear-gradient(160deg,rgba(16,185,129,0.16),rgba(15,23,42,0.92))] ring-1 ring-emerald-500/20'
             : 'border-white/[0.06] bg-slate-900/55 hover:bg-slate-900/75 hover:border-white/12',
@@ -257,13 +268,20 @@ const ConversationItem = memo(
                 IG
               </span>
             )}
+
+            {contactPresenceLabel && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/15">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                {contactPresenceLabel}
+              </span>
+            )}
           </div>
 
           <p
             title={previewText}
             style={twoLineClamp}
             className={cn(
-              'text-[11px] leading-5 break-words min-h-[2.5rem] pr-1',
+              'text-[11px] leading-[1.45] break-words min-h-[2.1rem] pr-1',
               hasUnread ? 'text-slate-300' : 'text-slate-500',
             )}
           >

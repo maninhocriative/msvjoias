@@ -78,6 +78,27 @@ function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function detectMediaUrlFromText(value: string): { type: "image" | "audio" | "video" | "document"; url: string } | null {
+  const url = value.trim();
+  if (!/^https?:\/\//i.test(url)) return null;
+
+  const lower = url.toLowerCase();
+  if (/\.(jpg|jpeg|png|webp|gif)(?:$|[?#])/.test(lower) || /temp-file-download\/.*(?:=\.jpg|=\.jpeg|=\.png|=\.webp)/.test(lower)) {
+    return { type: "image", url };
+  }
+  if (/\.(mp4|mov|webm|m4v)(?:$|[?#])/.test(lower)) {
+    return { type: "video", url };
+  }
+  if (/\.(mp3|ogg|opus|wav|m4a|webm)(?:$|[?#])/.test(lower)) {
+    return { type: "audio", url };
+  }
+  if (/\.(pdf|doc|docx|xls|xlsx|txt|zip)(?:$|[?#])/.test(lower)) {
+    return { type: "document", url };
+  }
+
+  return null;
+}
+
 function normalizeInboundPayload(rawPayload: ZAPIMessage): ZAPIMessage {
   const payload: ZAPIMessage = { ...rawPayload };
 
@@ -312,6 +333,40 @@ function normalizeZapiStatus(status?: string | null) {
   }
 }
 
+function parseZapiPresenceDate(value: unknown): string | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const millis = value > 10_000_000_000 ? value : value * 1000;
+    return new Date(millis).toISOString();
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    const trimmed = value.trim();
+    const numeric = Number(trimmed);
+
+    if (Number.isFinite(numeric)) {
+      const millis = numeric > 10_000_000_000 ? numeric : numeric * 1000;
+      return new Date(millis).toISOString();
+    }
+
+    const parsed = new Date(trimmed);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+  }
+
+  return null;
+}
+
+function normalizePresenceStatus(value: unknown) {
+  const normalized = String(value || "unknown").trim().toLowerCase();
+
+  if (["available", "online"].includes(normalized)) return "available";
+  if (["unavailable", "offline"].includes(normalized)) return "unavailable";
+  if (["composing", "typing"].includes(normalized)) return "composing";
+  if (["paused"].includes(normalized)) return "paused";
+  if (["recording"].includes(normalized)) return "recording";
+
+  return normalized || "unknown";
+}
+
 function buildSafeAlineFallback(contactName: string) {
   const firstName = String(contactName || "")
     .trim()
@@ -532,6 +587,11 @@ serve(async (req) => {
 
     const eventType = payload.type || payload.event || "";
     const hasError = !!(payload as any).error;
+    const isPresenceCallback =
+      eventType === "PresenceChatCallback" ||
+      eventType === "presence-chat" ||
+      eventType === "presence_update" ||
+      eventType === "PresenceCallback";
     const isStatusCallback =
       eventType === "DeliveryCallback" ||
       eventType === "ReadCallback" ||
@@ -539,6 +599,57 @@ serve(async (req) => {
       eventType === "MessageStatusCallback" ||
       eventType === "message-status-update" ||
       hasError;
+
+    if (isPresenceCallback) {
+      const rawPresencePhone =
+        payload.phone ||
+        (payload as any).chatId ||
+        (payload as any).participantPhone ||
+        (payload as any).from ||
+        "";
+      const presencePhone = normalizeWhatsappPhone(rawPresencePhone);
+      const presenceVariants = buildPhoneVariants(rawPresencePhone);
+      const presence = normalizePresenceStatus(
+        (payload as any).status ||
+          (payload as any).presence ||
+          (payload as any).presenceStatus ||
+          (payload as any).state,
+      );
+      const nowIso = new Date().toISOString();
+      const lastSeenAt =
+        parseZapiPresenceDate((payload as any).lastSeen) ||
+        parseZapiPresenceDate((payload as any).lastSeenAt) ||
+        (presence === "unavailable" ? nowIso : null);
+      const isOnline = ["available", "composing", "recording"].includes(presence);
+
+      if (presenceVariants.length > 0) {
+        const { error: presenceError } = await supabase
+          .from("conversations")
+          .update({
+            contact_presence: presence,
+            contact_is_online: isOnline,
+            contact_last_seen_at: lastSeenAt,
+            contact_presence_updated_at: nowIso,
+          })
+          .in("contact_number", presenceVariants);
+
+        if (presenceError) {
+          console.warn("[ZAPI-UNIFIED] Presenca recebida, mas as colunas ainda nao estao aplicadas:", presenceError.message);
+        }
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          type: "presence_update",
+          phone: presencePhone,
+          presence,
+          is_online: isOnline,
+          last_seen_at: lastSeenAt,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     const statusMessageIds = [
       ...(Array.isArray(payload.ids) ? payload.ids : []),
@@ -630,6 +741,21 @@ serve(async (req) => {
     if (!messageContent && buttonResponseId) {
       messageContent = buttonResponseId;
       messageType = "button_reply";
+    }
+
+    if (messageType === "text" && !mediaUrl && messageContent) {
+      const detectedMedia = detectMediaUrlFromText(messageContent);
+      if (detectedMedia) {
+        messageType = detectedMedia.type;
+        mediaUrl = detectedMedia.url;
+        messageContent = detectedMedia.type === "image"
+          ? ""
+          : detectedMedia.type === "audio"
+            ? "[Áudio recebido]"
+            : detectedMedia.type === "video"
+              ? ""
+              : detectedMedia.url.split("/").pop() || "Arquivo recebido";
+      }
     }
 
     if (!phone) {

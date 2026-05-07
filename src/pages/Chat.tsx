@@ -98,6 +98,37 @@ const buildPhoneVariants = (phone: string) => {
   return Array.from(variants);
 };
 
+const formatContactPresence = (conversation: Conversation | null) => {
+  if (!conversation) return '';
+
+  const presence = String(conversation.contact_presence || '').toLowerCase();
+
+  if (conversation.contact_is_online || presence === 'available') return 'online agora';
+  if (presence === 'composing') return 'digitando...';
+  if (presence === 'recording') return 'gravando audio...';
+
+  const lastSeen = conversation.contact_last_seen_at || conversation.contact_presence_updated_at;
+  if (!lastSeen) return '';
+
+  const date = new Date(lastSeen);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.max(0, Math.floor(diffMs / 60000));
+
+  if (diffMins < 1) return 'visto agora';
+  if (diffMins < 60) return `visto ha ${diffMins}m`;
+
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `visto ha ${diffHours}h`;
+
+  return `visto em ${date.toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+  })}`;
+};
+
 interface ChatComposerProps {
   disabled: boolean;
   fileInputRef: React.RefObject<HTMLInputElement>;
@@ -216,6 +247,7 @@ const Chat = () => {
   const [editingMessageDraft, setEditingMessageDraft] = useState('');
   const [editingMessageBusyId, setEditingMessageBusyId] = useState<string | null>(null);
   const audioStreamRef = useRef<MediaStream | null>(null);
+  const recordingCancelledRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1055,6 +1087,10 @@ const Chat = () => {
 
         const conversationList = data || [];
         setConversations(conversationList);
+        setSelectedConversation((prev) => {
+          if (!prev) return prev;
+          return conversationList.find((conversation) => conversation.id === prev.id) || prev;
+        });
 
         if (conversationList.length > 0) {
           const phones = Array.from(
@@ -1135,7 +1171,39 @@ const Chat = () => {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'conversations' },
-        () => fetchConversations(false),
+        (payload) => {
+          const eventType = payload.eventType;
+
+          if (eventType === 'DELETE') {
+            const deleted = payload.old as Partial<Conversation>;
+            if (!deleted?.id) return;
+
+            setConversations((prev) => prev.filter((conversation) => conversation.id !== deleted.id));
+            setSelectedConversation((prev) => (prev?.id === deleted.id ? null : prev));
+            return;
+          }
+
+          const updated = payload.new as Conversation;
+          if (!updated?.id) return;
+
+          setConversations((prev) => {
+            const exists = prev.some((conversation) => conversation.id === updated.id);
+            const next = exists
+              ? prev.map((conversation) =>
+                  conversation.id === updated.id ? { ...conversation, ...updated } : conversation,
+                )
+              : [updated, ...prev];
+
+            return next.sort(
+              (a, b) =>
+                new Date(b.last_message_at || b.created_at).getTime() -
+                new Date(a.last_message_at || a.created_at).getTime(),
+            );
+          });
+          setSelectedConversation((prev) =>
+            prev?.id === updated.id ? { ...prev, ...updated } : prev,
+          );
+        },
       )
       .subscribe();
 
@@ -1299,12 +1367,18 @@ const Chat = () => {
 
       const optimisticEntries = files.map((file) => {
         const messageType = getAttachmentMessageType(file);
+        const localPreviewUrl =
+          messageType === 'image' || messageType === 'audio' || messageType === 'video'
+            ? URL.createObjectURL(file)
+            : null;
         return {
           file,
           messageType,
+          localPreviewUrl,
           tempId: addOptimisticMessage(
             getAttachmentDisplayLabel(file, messageType),
             messageType,
+            localPreviewUrl,
           ),
         };
       });
@@ -1341,6 +1415,13 @@ const Chat = () => {
 
         setTimeout(() => {
           removeOptimisticMessages(successfulUploads.map((item) => item.tempId));
+          optimisticEntries
+            .filter((entry) =>
+              successfulUploads.some((item) => item.tempId === entry.tempId),
+            )
+            .forEach((entry) => {
+              if (entry.localPreviewUrl) URL.revokeObjectURL(entry.localPreviewUrl);
+            });
         }, 300);
 
         if (successfulUploads.length !== files.length) {
@@ -1442,8 +1523,9 @@ const Chat = () => {
     }
 
     try {
-      const audioFile = new File([blob], `audio-${Date.now()}.webm`, {
-        type: 'audio/webm',
+      const isOgg = blob.type.includes('ogg');
+      const audioFile = new File([blob], `audio-${Date.now()}.${isOgg ? 'ogg' : 'webm'}`, {
+        type: blob.type || 'audio/webm',
       });
       await sendAttachments([audioFile]);
     } catch {
@@ -1459,8 +1541,14 @@ const Chat = () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioStreamRef.current = stream;
+      recordingCancelledRef.current = false;
 
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      const preferredMimeType = MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
+        ? 'audio/ogg;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : 'audio/webm';
+      const recorder = new MediaRecorder(stream, { mimeType: preferredMimeType });
       const chunks: Blob[] = [];
 
       recorder.ondataavailable = (event) => {
@@ -1470,8 +1558,10 @@ const Chat = () => {
       };
 
       recorder.onstop = async () => {
-        const blob = new Blob(chunks, { type: 'audio/webm' });
-        await uploadAudio(blob);
+        const blob = new Blob(chunks, { type: preferredMimeType });
+        if (!recordingCancelledRef.current) {
+          await uploadAudio(blob);
+        }
         stream.getTracks().forEach((track) => track.stop());
         audioStreamRef.current = null;
       };
@@ -1500,6 +1590,8 @@ const Chat = () => {
   };
 
   const cancelRecording = () => {
+    recordingCancelledRef.current = true;
+
     if (mediaRecorder && mediaRecorder.state !== 'inactive') {
       mediaRecorder.stop();
     }
@@ -1735,6 +1827,7 @@ const Chat = () => {
   const currentSellerFirstName = currentSellerName.split(' ')[0];
   const currentSellerInitial = currentSellerName.charAt(0).toUpperCase() || 'V';
   const isSaleFinalized = selectedConversation?.lead_status === 'vendido';
+  const contactPresenceLabel = formatContactPresence(selectedConversation);
 
   const currentAgentSlug = isCurrentHumanTakeover
     ? 'human'
@@ -2056,16 +2149,18 @@ const Chat = () => {
               </p>
             </div>
           ) : (
-            filteredConversations.map((conv) => (
-              <ConversationItem
-                key={conv.id}
-                conv={conv}
-                isSelected={selectedConversation?.id === conv.id}
-                customerProfile={customerProfiles[conv.contact_number]}
-                alineData={alineStatusMap[conv.contact_number]}
-                onClick={() => setSelectedConversation(conv)}
-              />
-            ))
+            <div className="space-y-2 px-2 pb-3">
+              {filteredConversations.map((conv) => (
+                <ConversationItem
+                  key={conv.id}
+                  conv={conv}
+                  isSelected={selectedConversation?.id === conv.id}
+                  customerProfile={customerProfiles[conv.contact_number]}
+                  alineData={alineStatusMap[conv.contact_number]}
+                  onClick={() => setSelectedConversation(conv)}
+                />
+              ))}
+            </div>
           )}
         </div>
       </div>
@@ -2181,9 +2276,26 @@ const Chat = () => {
                       )}
                     </div>
 
-                    <p className="text-[10px] text-slate-600 truncate">
-                      {selectedConversation.contact_number}
-                    </p>
+                    <div className="flex items-center gap-1.5 text-[10px] text-slate-600 truncate">
+                      <span className="truncate">{selectedConversation.contact_number}</span>
+                      {contactPresenceLabel && (
+                        <>
+                          <span className="text-slate-700">•</span>
+                          <span
+                            className={cn(
+                              'truncate',
+                              selectedConversation.contact_is_online ||
+                                selectedConversation.contact_presence === 'composing' ||
+                                selectedConversation.contact_presence === 'recording'
+                                ? 'text-emerald-400'
+                                : 'text-slate-500',
+                            )}
+                          >
+                            {contactPresenceLabel}
+                          </span>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
 
