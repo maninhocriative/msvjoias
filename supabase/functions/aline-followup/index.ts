@@ -15,6 +15,7 @@ interface FollowupConfig {
 type AgentSlug = "aline" | "keila" | "kate" | "malu";
 
 const SAFE_MIN_FIRST_INTERVAL_MINUTES = 60;
+const KATE_PENDANT_FIRST_INTERVAL_MINUTES = 5;
 const SAFE_MAX_ATTEMPTS = 3;
 const MAX_SENDS_PER_RUN = 20;
 const SEND_PAUSE_MS = 1200;
@@ -29,7 +30,7 @@ const SAFE_DEFAULT_MESSAGES = [
 ];
 
 const KATE_MOTHERS_DAY_FALLBACK_MESSAGES = [
-  "Oi! Passando rapidinho: os pingentes fotogravados sao uma opcao linda para o Dia das Maes. Se quiser, eu te mostro os modelos disponiveis e ja preparo a previa com a foto que voce escolher.",
+  "Como voce nao falou nada, vou te mandar os modelos de pingentes fotogravaveis dourados e prata para voce ver com calma.",
   "Ainda da para escolher um pingente fotogravado de aco para presentear no Dia das Maes. Posso te ajudar a escolher entre acabamento dourado e prata e seguir com a previa pelo WhatsApp.",
   "Ultimo lembrete por aqui: se quiser garantir o pingente fotogravado para o Dia das Maes, me chama que eu retomo de onde paramos.",
 ];
@@ -81,6 +82,51 @@ function formatCurrency(value: unknown): string | null {
   const number = Number(value);
   if (!Number.isFinite(number) || number <= 0) return null;
   return `R$ ${number.toFixed(2).replace(".", ",")}`;
+}
+
+function isPendantProduct(product: any): boolean {
+  const category = normalizeText(String(product?.category || ""));
+  const name = normalizeText(String(product?.name || ""));
+  const description = normalizeText(String(product?.description || ""));
+  return category.includes("pingente") || /pingente|medalha|fotograv/.test(`${name} ${description}`);
+}
+
+function isPendantColor(product: any): boolean {
+  const searchable = normalizeText(
+    `${product?.color || ""} ${product?.name || ""} ${product?.description || ""} ${
+      Array.isArray(product?.tags) ? product.tags.join(" ") : product?.tags || ""
+    }`,
+  );
+  return /dourad|prata|pratead|aco|aço|inox/.test(searchable);
+}
+
+function buildPendantFollowupCard(product: any) {
+  const price = formatCurrency(product.price);
+  const caption = [
+    `*${product.name}*`,
+    product.color ? `Cor: ${product.color}` : null,
+    "Material: aço",
+    product.sku ? `Cód: ${product.sku}` : null,
+    price ? `Valor da unidade: ${price}` : null,
+    "Fotogravação de 1 lado inclusa.",
+  ].filter(Boolean).join("\n");
+
+  return {
+    id: product.id,
+    sku: product.sku,
+    name: product.name,
+    price: product.price,
+    color: product.color,
+    image_url: product.image_url,
+    video_url: product.video_url,
+    caption,
+    button_id: `select_${product.sku || product.id}`,
+    button_label: "Quero este",
+    buttons: [
+      { id: `details_${product.sku || product.id}`, label: "Ver mais" },
+      { id: `select_${product.sku || product.id}`, label: "Quero este" },
+    ],
+  };
 }
 
 function isPendantConversation(conversation: any): boolean {
@@ -188,6 +234,159 @@ async function sendTextMessage(
     },
     body: JSON.stringify({ phone, message }),
   });
+}
+
+async function sendInteractiveProductCard(
+  zapiInstanceId: string,
+  zapiToken: string,
+  zapiClientToken: string,
+  phone: string,
+  product: any,
+): Promise<Response> {
+  return fetch(`https://api.z-api.io/instances/${zapiInstanceId}/token/${zapiToken}/send-button-list`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Client-Token": zapiClientToken,
+    },
+    body: JSON.stringify({
+      phone,
+      message: product.caption || product.name || "Produto",
+      buttonList: {
+        buttons: product.buttons,
+        ...(product.video_url ? { video: product.video_url } : {}),
+        ...(!product.video_url && product.image_url ? { image: product.image_url } : {}),
+      },
+    }),
+  });
+}
+
+async function getKatePendantCatalog(supabase: any) {
+  const { data, error } = await supabase
+    .from("products")
+    .select("id, name, sku, price, image_url, video_url, category, color, description, tags, created_at")
+    .eq("active", true)
+    .order("created_at", { ascending: false })
+    .limit(80);
+
+  if (error) {
+    console.error("[ALINE-FOLLOWUP] Erro ao buscar catalogo de pingentes:", error);
+    return [];
+  }
+
+  return (data || [])
+    .filter((product: any) => isPendantProduct(product) && isPendantColor(product))
+    .map(buildPendantFollowupCard);
+}
+
+async function sendKatePendantCatalogFollowup(args: {
+  supabase: any;
+  zapiInstanceId: string;
+  zapiToken: string;
+  zapiClientToken: string;
+  conversation: any;
+  crmConversation: any;
+  message: string;
+}) {
+  const { supabase, zapiInstanceId, zapiToken, zapiClientToken, conversation, crmConversation, message } = args;
+  const products = await getKatePendantCatalog(supabase);
+  let sentProducts = 0;
+
+  await sendWithZapiGovernor(
+    supabase,
+    { lane: "followup", bypassBurstLimit: false },
+    () => sendTextMessage(zapiInstanceId, zapiToken, zapiClientToken, conversation.phone, message),
+  );
+
+  for (const product of products) {
+    const result = await sendWithZapiGovernor(
+      supabase,
+      { lane: "followup", bypassBurstLimit: false },
+      () => sendInteractiveProductCard(zapiInstanceId, zapiToken, zapiClientToken, conversation.phone, product),
+    );
+
+    if (!result.blocked && result.result?.ok) {
+      sentProducts += 1;
+      if (crmConversation?.id) {
+        await supabase.from("messages").insert({
+          conversation_id: crmConversation.id,
+          content: product.caption || product.name || "Produto",
+          message_type: product.video_url ? "video" : product.image_url ? "image" : "text",
+          media_url: product.video_url || product.image_url || null,
+          is_from_me: true,
+          status: "sent",
+        });
+      }
+    }
+
+    await sleep(SEND_PAUSE_MS);
+  }
+
+  const finalQuestion = "Gostou de algum modelo? Se sim, toque em *Quero este* no pingente escolhido que eu sigo com voce.";
+  await sendWithZapiGovernor(
+    supabase,
+    { lane: "followup", bypassBurstLimit: false },
+    () => sendTextMessage(zapiInstanceId, zapiToken, zapiClientToken, conversation.phone, finalQuestion),
+  );
+
+  const collectedData = {
+    ...(conversation.collected_data || {}),
+    catalogo_kate_enviado: true,
+    last_catalog: products.map((product: any) => ({
+      id: product.id,
+      sku: product.sku,
+      name: product.name,
+      price: product.price,
+      color: product.color,
+      image_url: product.image_url,
+      video_url: product.video_url,
+    })),
+    catalog_history: products.map((product: any) => ({
+      id: product.id,
+      sku: product.sku,
+      name: product.name,
+      price: product.price,
+      color: product.color,
+      image_url: product.image_url,
+      video_url: product.video_url,
+    })),
+  };
+
+  await supabase.from("aline_messages").insert([
+    {
+      conversation_id: conversation.id,
+      role: "kate",
+      message,
+      node: conversation.current_node,
+    },
+    {
+      conversation_id: conversation.id,
+      role: "kate",
+      message: finalQuestion,
+      node: "catalogo_pingente_followup",
+    },
+  ]);
+
+  if (crmConversation?.id) {
+    await supabase.from("messages").insert([
+      {
+        conversation_id: crmConversation.id,
+        content: message,
+        message_type: "text",
+        is_from_me: true,
+        status: "sent",
+      },
+      {
+        conversation_id: crmConversation.id,
+        content: finalQuestion,
+        message_type: "text",
+        is_from_me: true,
+        status: "sent",
+      },
+    ]);
+  }
+
+  return { products, sentProducts, collectedData, finalQuestion };
 }
 
 async function notifyTeamAboutBuyer(
@@ -397,7 +596,14 @@ serve(async (req) => {
 
     for (const conversation of activeConversations) {
       const followupCount = Number(conversation.followup_count || 0);
-      const nextConfig = safeFollowupConfig[followupCount];
+      const isKatePendant = isPendantConversation(conversation);
+      const nextConfig = followupCount === 0 && isKatePendant
+        ? {
+            ...safeFollowupConfig[followupCount],
+            intervalMinutes: KATE_PENDANT_FIRST_INTERVAL_MINUTES,
+            message: KATE_MOTHERS_DAY_FALLBACK_MESSAGES[0],
+          }
+        : safeFollowupConfig[followupCount];
       if (!nextConfig) continue;
 
       const lastMessage = await getLastConversationMessage(supabase, conversation.id);
@@ -483,6 +689,51 @@ serve(async (req) => {
       });
 
       try {
+        if (followupNumber === 1 && isPendantConversation(conversation)) {
+          const catalogResult = await sendKatePendantCatalogFollowup({
+            supabase,
+            zapiInstanceId,
+            zapiToken,
+            zapiClientToken,
+            conversation,
+            crmConversation,
+            message,
+          });
+
+          await supabase
+            .from("aline_conversations")
+            .update({
+              followup_count: followupNumber,
+              last_message_at: new Date().toISOString(),
+              current_node: "catalogo_pingente_followup",
+              collected_data: catalogResult.collectedData,
+            })
+            .eq("id", conversation.id);
+
+          if (crmConversation?.id) {
+            await supabase
+              .from("conversations")
+              .update({
+                last_message: catalogResult.finalQuestion.substring(0, 80),
+                last_message_at: new Date().toISOString(),
+                lead_status: crmConversation.lead_status === "novo" ? "frio" : crmConversation.lead_status,
+              })
+              .eq("id", crmConversation.id);
+          }
+
+          results.push({
+            phone: conversation.phone,
+            success: true,
+            followupNumber,
+          });
+
+          if (index < queue.length - 1) {
+            await sleep(SEND_PAUSE_MS);
+          }
+
+          continue;
+        }
+
         const governorResult = await sendWithZapiGovernor(
           supabase,
           {
