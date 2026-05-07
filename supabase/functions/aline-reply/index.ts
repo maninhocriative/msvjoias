@@ -287,7 +287,7 @@ function detectHumanIntent(text: string): boolean {
 
 function detectHarassmentIntent(text: string): boolean {
   const normalized = normalizeText(text);
-  return /pelad|nude|manda foto sua|foto sua|manda uma foto sua|quero ver voce|quero te ver|gostosa|delicia|sexo|sexual|buceta|priqueta|piroca|pau|rola|safad|tesao|tesão|assedi/.test(
+  return /pelad|nude|manda (uma )?foto sua pelad|quero ver voce pelad|quero te ver pelad|gostosa|delicia|sexo|sexual|buceta|priqueta|piroca|pau|rola|safad|tesao|tesão|assedi/.test(
     normalized,
   );
 }
@@ -735,7 +735,7 @@ function shouldRouteToMalu(
 
 function detectPreviewApprovalIntent(text: string): boolean {
   const normalized = normalizeText(text);
-  return /aprov|gostei|pode fazer|pode seguir|quero assim|quero esse|quero este|vou ficar|fico com|esse mesmo|isso mesmo|isso msm|perfeito|pode ser|ficou bom|fechar|finalizar|comprar|sim pode|sim|ok|blz|beleza|ta bom|t[aá] bom|t[aá] lindo/.test(normalized);
+  return /aprov|gostei|pode fazer|pode seguir|quero assim|quero esse|quero este|vou ficar|fico com|esse mesmo|isso mesmo|isso msm|perfeito|pode ser|ficou bom|fechar|finalizar|comprar|sim pode|\bsim\b|\bok\b|\bblz\b|beleza|ta bom|t[aá] bom|t[aá] lindo/.test(normalized);
 }
 
 function detectPreviewRedoIntent(text: string): boolean {
@@ -771,11 +771,28 @@ function detectStoreAddressQuestion(text: string): boolean {
   );
 }
 
+function detectFinishPhotosQuestion(text: string): boolean {
+  const normalized = normalizeText(text);
+  return /foto|fotos|imagem|imagens|acabamento|acabamentos|ver dourad|ver prata|mostrar dourad|mostrar prata/.test(
+    normalized,
+  );
+}
+
 function detectComplaintOrFrustration(text: string): boolean {
   const normalized = normalizeText(text);
   return /merda|ruim|horr[ií]vel|p[eé]ssim|chatead|puta|puto|raiva|irritad|reclama|nao gostei|não gostei|cancelar|desistir|demora demais|ninguem responde|ninguém responde/.test(
     normalized,
   );
+}
+
+function detectGenericDoubt(text: string): boolean {
+  const normalized = normalizeText(text);
+  return /\bduvida\b|d[uú]vida|estou com essa|tenho uma pergunta|pergunta/.test(normalized);
+}
+
+function detectOnlyLaughter(text: string): boolean {
+  const normalized = normalizeText(text).replace(/[^a-z]/g, "");
+  return /^(rs|rss|kk|kkk|kkkk|haha|hahaha|hehe|hehehe)$/.test(normalized);
 }
 
 function normalizeSkuToken(value: string): string {
@@ -2292,7 +2309,10 @@ async function handleKateFlow(args: {
   const asksDeliveryDeadline = detectDeliveryDeadlineQuestion(message);
   const asksPrice = detectPriceQuestion(message);
   const asksStoreAddress = detectStoreAddressQuestion(message);
+  const asksFinishPhotos = detectFinishPhotosQuestion(message);
   const isComplaintOrFrustration = detectComplaintOrFrustration(message);
+  const asksGenericDoubt = detectGenericDoubt(message);
+  const isOnlyLaughter = detectOnlyLaughter(message);
 
   const fetchKateCatalogCards = async (excludeSkus: string[] = []) => {
     const searchParams: AnyRecord = {
@@ -2318,6 +2338,53 @@ async function handleKateFlow(args: {
     });
 
     return buildKateCards(filtered);
+  };
+
+  const sendKateCatalogForBothFinishes = async (reply: string) => {
+    const previousColor = data.cor;
+    delete data.cor;
+    const cards = await fetchKateCatalogCards([]);
+    if (previousColor === "prata" || previousColor === "dourada") {
+      data.cor = previousColor;
+    }
+
+    if (cards.length > 0) {
+      data.catalogo_kate_enviado = true;
+      data.last_catalog = cards.map((product) => ({
+        id: product.id,
+        sku: product.sku,
+        name: product.name,
+        price: product.price,
+        color: product.color,
+        image_url: product.image_url,
+        video_url: product.video_url,
+      }));
+      data.catalog_history = mergeCatalogHistory(data.catalog_history, data.last_catalog);
+    }
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "kate",
+      "catalogo_pingente",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "catalogo_pingente");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "catalogo_pingente",
+      products: cards,
+      collectedData: data,
+      agent: "kate",
+      useProductButtons: cards.length > 0,
+      postCatalogMessage: cards.length > 0
+        ? "Gostou de algum modelo? Toque em Quero este no pingente escolhido que eu sigo com voce."
+        : undefined,
+    });
   };
 
   if (isComplaintOrFrustration) {
@@ -2375,6 +2442,108 @@ async function handleKateFlow(args: {
       selectedProduct: data.selected_product || null,
       collectedData: data,
       agent: "human",
+    });
+  }
+
+  if (!hasSelectedProduct && asksFinishPhotos) {
+    return await sendKateCatalogForBothFinishes(
+      "Tenho sim. Vou te mandar os modelos com acabamento dourado e prata para voce comparar pelas fotos.",
+    );
+  }
+
+  if (asksPendantModelQuestion) {
+    const reply = "Esse valor e somente do pingente/medalha fotogravavel. Corrente ou cordao nao acompanha; e vendido separadamente. Se quiser corrente, o vendedor confirma as opcoes e valores separados.";
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "kate",
+      "kate_duvida_produto",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_duvida_produto");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "kate_duvida_produto",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "kate",
+    });
+  }
+
+  if (asksDeliveryDeadline) {
+    const reply = "A producao e entrega dependem da fila de espera. Geralmente fica pronto de 8 a 24 horas apos pagamento e fechamento do pedido.";
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "kate",
+      "kate_prazo",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_prazo");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "kate_prazo",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "kate",
+    });
+  }
+
+  if (hasSelectedProduct && asksGenericDoubt) {
+    const reply = "Claro, pode perguntar. E so para deixar essa parte bem clara: o valor do card e do pingente/medalha fotogravavel; corrente ou cordao e vendido separadamente.";
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "kate",
+      "kate_duvida_produto",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_duvida_produto");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "kate_duvida_produto",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "kate",
+    });
+  }
+
+  if (hasSelectedProduct && hasDelivery && !hasPayment && isOnlyLaughter) {
+    const reply = "Tranquilo. Quando quiser finalizar, me diga se prefere Pix, Crediario Bemol ou cartao de credito que eu encaminho para o vendedor concluir com voce.";
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "kate",
+      "kate_pagamento",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_pagamento");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "kate_pagamento",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "kate",
     });
   }
 

@@ -14,6 +14,7 @@ Contexto
 - O realtime de conversas fazia reload completo a cada alteracao, deixando o chat com sensacao de atualizacao constante.
 - O follow-up automatico dos agentes estava sem agendamento ativo depois de uma migration antiga que removeu o cron.
 - Ajuste solicitado: se cliente de pingentes nao responder em 5 minutos, Kate deve mandar os modelos dourados e prata e perguntar se gostou de algum.
+- Novo erro visto em producao: Kate repetia apresentacao ao receber perguntas de fotos/prazo, confundia "com simulacao" com "sem simulacao" e transformava duvida sobre cordao em nova selecao.
 
 Mudancas feitas
 - supabase/functions/aline-reply/index.ts
@@ -31,7 +32,13 @@ Mudancas feitas
 - supabase/functions/aline-followup/index.ts
   - Primeiro follow-up de conversa da Kate/pingentes agora dispara apos 5 minutos.
   - O disparo envia texto curto, todos os cards de pingentes dourados/prata com botoes e pergunta final "Gostou de algum modelo?".
-- O catalogo enviado fica salvo em collected_data para o clique em "Quero este" seguir o fluxo normal da Kate.
+  - O catalogo enviado fica salvo em collected_data para o clique em "Quero este" seguir o fluxo normal da Kate.
+- supabase/functions/aline-reply/index.ts
+  - Detector de assedio ficou mais restrito para evitar falso positivo em lead legitimo de fotogravacao.
+  - "sim" agora precisa ser palavra isolada; "simulacao" nao conta mais como aprovacao/fechamento.
+  - Perguntas sobre fotos/acabamentos antes da cor disparam catalogo dourado e prata em vez de repetir apresentacao.
+  - Perguntas de prazo e de corrente/cordao agora sao respondidas antes do bloco de selecao/foto.
+  - Risadas ou duvidas durante pagamento nao reiniciam o fluxo.
 
 Proximos passos
 - Testar com lead real: aprovacao do pingente -> entrega -> pagamento -> handoff/venda.
@@ -46,6 +53,8 @@ Validacao concluida
 - Migracao 20260507114500_enable_aline_followup_cron.sql aplicada no banco remoto; cron criado com id 17.
 - aline-followup deployada no Supabase com o disparo de catalogo da Kate.
 - Validacao manual por invoke nao foi executada porque a CLI local nao oferece esse comando com project-ref e uma chamada HTTP direta poderia disparar mensagens reais imediatamente.
+- aline-reply deployada no Supabase apos correcoes de prioridade da Kate.
+- Validacao local: git diff --check e TypeScript passaram.
 
 2026-05-01 - Correcao emergencial dos agentes para novos contatos
 
