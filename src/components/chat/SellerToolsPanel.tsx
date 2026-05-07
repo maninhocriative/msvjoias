@@ -307,9 +307,10 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-emerald-500" />
-      </div>
+      <div
+        className="h-full w-12 shrink-0 border-l border-white/5 bg-slate-950/50"
+        aria-hidden="true"
+      />
     );
   }
 

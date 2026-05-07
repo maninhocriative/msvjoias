@@ -641,6 +641,25 @@ Validacao parcial
 - npm ci foi tentado, mas expirou antes de concluir; node_modules permanece fora do controle do Git.
 - node node_modules/typescript/bin/tsc --noEmit executado com sucesso.
 
+2026-05-07 - Spinner solto na lateral do chat
+
+Contexto
+- No chat da Acium aparecia um icone circular verde de carregamento na borda direita da conversa.
+- O icone vinha do estado de loading do painel SellerToolsPanel, que renderizava apenas o spinner enquanto carregava.
+
+Mudancas feitas
+- src/components/chat/SellerToolsPanel.tsx
+  - O estado inicial de loading agora reserva a largura da barra lateral sem exibir spinner.
+  - Isso evita o circulo verde solto na lateral do chat durante a troca/carregamento da conversa.
+
+Proxima validacao
+- Rodar TypeScript.
+- Abrir o chat e trocar conversas para confirmar que o spinner lateral nao aparece mais.
+
+Validacao concluida
+- git diff --check executado sem erros.
+- node node_modules/typescript/bin/tsc --noEmit executado com sucesso.
+
 2026-05-05 - Otimizacao do carregamento do chat
 
 Contexto
