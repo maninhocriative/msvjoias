@@ -33,6 +33,16 @@ Mudancas feitas
   - Primeiro follow-up de conversa da Kate/pingentes agora dispara apos 5 minutos.
   - O disparo envia texto curto, todos os cards de pingentes dourados/prata com botoes e pergunta final "Gostou de algum modelo?".
   - O catalogo enviado fica salvo em collected_data para o clique em "Quero este" seguir o fluxo normal da Kate.
+  - Adicionado modo manual controlado force=true para disparar agora apenas leads Kate/pingentes sem resposta, mantendo limite por lote e governor da Z-API.
+  - Modo manual tambem ignora a checagem de tempo, evitando descarte por diferenca de relogio/data da Edge Function.
+  - Disparo manual da Kate limitado a 10 leads por request para evitar timeout ao enviar todos os cards de pingente.
+  - Modo manual passou a buscar somente followup_count=0 para nao repetir disparo em lead que ja recebeu follow-up.
+  - Quando ha follow-up de catalogo completo da Kate, a fila automatica tambem processa 1 lead por execucao para nao estourar timeout.
+
+Disparo manual em producao:
+- Primeira tentativa com lote grande estourou timeout da Edge Function antes de marcar todos os leads.
+- Depois do ajuste para lote unitario, foram confirmados disparos com sucesso para 559282767683 e 559284145527.
+- Um lead havia sido marcado antes do ajuste e recebeu follow-up 2; o modo manual foi corrigido para evitar repeticao.
 - supabase/functions/aline-reply/index.ts
   - Detector de assedio ficou mais restrito para evitar falso positivo em lead legitimo de fotogravacao.
   - "sim" agora precisa ser palavra isolada; "simulacao" nao conta mais como aprovacao/fechamento.

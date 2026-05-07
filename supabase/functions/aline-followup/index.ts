@@ -491,6 +491,9 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const body = await req.json().catch(() => ({}));
+    const forceKatePendants =
+      body.force === true &&
+      (body.agent === "kate" || body.only_pendants === true || body.category === "pingente");
 
     if (body.buttonResponse && body.phone) {
       const { data: crmConversation } = await supabase
@@ -518,7 +521,7 @@ serve(async (req) => {
       );
     }
 
-    if (!isWithinBusinessHours()) {
+    if (!forceKatePendants && !isWithinBusinessHours()) {
       return new Response(
         JSON.stringify({
           success: true,
@@ -562,14 +565,17 @@ serve(async (req) => {
       (aiConfig?.followup_messages as string[] | null) || null,
     );
 
-    const { data: activeConversations, error: fetchError } = await supabase
+    let conversationsQuery = supabase
       .from("aline_conversations")
       .select("id, phone, status, current_node, followup_count, last_message_at, active_agent, collected_data")
       .eq("status", "active")
-      .in("active_agent", ["aline", "keila", "kate", "malu"])
-      .lt("followup_count", safeMaxAttempts)
-      .order("last_message_at", { ascending: true, nullsFirst: true })
       .limit(200);
+
+    conversationsQuery = forceKatePendants
+      ? conversationsQuery.eq("active_agent", "kate").eq("followup_count", 0).order("last_message_at", { ascending: false, nullsFirst: false })
+      : conversationsQuery.in("active_agent", ["aline", "keila", "kate", "malu"]).lt("followup_count", safeMaxAttempts).order("last_message_at", { ascending: true, nullsFirst: true });
+
+    const { data: activeConversations, error: fetchError } = await conversationsQuery;
 
     if (fetchError) {
       throw fetchError;
@@ -593,21 +599,36 @@ serve(async (req) => {
       config: FollowupConfig;
       crmConversation: any;
     }> = [];
+    const debugSkips: Record<string, number> = {};
+    const addDebugSkip = (reason: string) => {
+      debugSkips[reason] = (debugSkips[reason] || 0) + 1;
+    };
 
     for (const conversation of activeConversations) {
+      if (forceKatePendants && !isPendantConversation(conversation)) {
+        addDebugSkip("not_pendant");
+        continue;
+      }
+
       const followupCount = Number(conversation.followup_count || 0);
       const isKatePendant = isPendantConversation(conversation);
       const nextConfig = followupCount === 0 && isKatePendant
         ? {
             ...safeFollowupConfig[followupCount],
-            intervalMinutes: KATE_PENDANT_FIRST_INTERVAL_MINUTES,
+            intervalMinutes: forceKatePendants ? 0 : KATE_PENDANT_FIRST_INTERVAL_MINUTES,
             message: KATE_MOTHERS_DAY_FALLBACK_MESSAGES[0],
           }
         : safeFollowupConfig[followupCount];
-      if (!nextConfig) continue;
+      if (!nextConfig) {
+        addDebugSkip("no_config");
+        continue;
+      }
 
       const lastMessage = await getLastConversationMessage(supabase, conversation.id);
-      if (!lastMessage) continue;
+      if (!lastMessage) {
+        addDebugSkip("no_last_message");
+        continue;
+      }
 
       const isLastMessageFromBot =
         lastMessage.role === "assistant" ||
@@ -615,13 +636,17 @@ serve(async (req) => {
         lastMessage.role === "keila" ||
         lastMessage.role === "kate" ||
         lastMessage.role === "malu";
-      if (!isLastMessageFromBot) continue;
+      if (!isLastMessageFromBot) {
+        addDebugSkip(`last_role_${lastMessage.role || "unknown"}`);
+        continue;
+      }
 
       const lastMessageTime = new Date(
         lastMessage.created_at || conversation.last_message_at || 0,
       ).getTime();
       const elapsedMinutes = (now - lastMessageTime) / 60000;
-      if (!Number.isFinite(lastMessageTime) || elapsedMinutes < nextConfig.intervalMinutes) {
+      if (!forceKatePendants && (!Number.isFinite(lastMessageTime) || elapsedMinutes < nextConfig.intervalMinutes)) {
+        addDebugSkip("too_early");
         continue;
       }
 
@@ -641,10 +666,12 @@ serve(async (req) => {
           crmConversation.lead_status,
         )
       ) {
+        addDebugSkip(`status_${crmConversation.lead_status}`);
         continue;
       }
 
       if (Number(crmConversation?.unread_count || 0) > 0) {
+        addDebugSkip("unread_count");
         continue;
       }
 
@@ -653,6 +680,20 @@ serve(async (req) => {
         config: nextConfig,
         crmConversation,
       });
+    }
+
+    if (body.debug === true) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          debug: true,
+          forceKatePendants,
+          activeCount: activeConversations.length,
+          eligibleCount: eligibleConversations.length,
+          skips: debugSkips,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     if (eligibleConversations.length === 0) {
@@ -667,7 +708,15 @@ serve(async (req) => {
       );
     }
 
-    const queue = eligibleConversations.slice(0, MAX_SENDS_PER_RUN);
+    const hasCatalogCardFollowup = eligibleConversations.some(({ conversation }) => {
+      return Number(conversation.followup_count || 0) === 0 && isPendantConversation(conversation);
+    });
+    const manualBatchLimit = forceKatePendants
+      ? Math.min(Math.max(Number(body.limit || 10), 1), 10)
+      : hasCatalogCardFollowup
+        ? 1
+        : MAX_SENDS_PER_RUN;
+    const queue = eligibleConversations.slice(0, manualBatchLimit);
     const results: Array<{
       phone: string;
       success: boolean;
