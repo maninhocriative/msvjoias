@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { memo, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase, Conversation, Message, LeadStatus } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import {
@@ -98,11 +98,101 @@ const buildPhoneVariants = (phone: string) => {
   return Array.from(variants);
 };
 
+interface ChatComposerProps {
+  disabled: boolean;
+  fileInputRef: React.RefObject<HTMLInputElement>;
+  onFileUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onCaptureScreenshot: () => void;
+  onStartRecording: () => void;
+  onSendMessage: (message: string) => Promise<void> | void;
+}
+
+const ChatComposer = memo(function ChatComposer({
+  disabled,
+  fileInputRef,
+  onFileUpload,
+  onCaptureScreenshot,
+  onStartRecording,
+  onSendMessage,
+}: ChatComposerProps) {
+  const [draft, setDraft] = useState('');
+  const canSend = draft.trim().length > 0 && !disabled;
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!canSend) return;
+
+    const messageText = draft;
+    setDraft('');
+    await onSendMessage(messageText);
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="flex items-end gap-2">
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        onChange={onFileUpload}
+        accept="image/*,audio/*,video/*,.pdf,.doc,.docx"
+        multiple
+      />
+
+      <div className="flex items-center gap-1 shrink-0">
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={disabled}
+          className="p-2 rounded-lg text-slate-600 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+        >
+          <Paperclip className="w-4 h-4" />
+        </button>
+
+        <button
+          type="button"
+          onClick={onCaptureScreenshot}
+          disabled={disabled}
+          className="hidden sm:block p-2 rounded-lg text-slate-600 hover:text-cyan-400 hover:bg-cyan-500/10 transition-colors"
+        >
+          <Camera className="w-4 h-4" />
+        </button>
+      </div>
+
+      <div className="flex-1 relative min-w-0">
+        <Input
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder="Digite uma mensagem..."
+          disabled={disabled}
+          className="bg-slate-800/60 border-white/5 text-white placeholder:text-slate-600 h-10 pr-10 focus-visible:ring-emerald-500/30 rounded-xl text-sm"
+        />
+        {canSend && (
+          <button
+            type="submit"
+            className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 bg-emerald-500 hover:bg-emerald-600 rounded-md flex items-center justify-center transition-colors"
+          >
+            <Send className="w-3 h-3 text-white" />
+          </button>
+        )}
+      </div>
+
+      {!disabled && (
+        <button
+          type="button"
+          onClick={onStartRecording}
+          className="p-2 rounded-lg text-slate-600 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors shrink-0"
+        >
+          <Mic className="w-4 h-4" />
+        </button>
+      )}
+    </form>
+  );
+});
+
 const Chat = () => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [newMessage, setNewMessage] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 200);
 
@@ -125,10 +215,6 @@ const Chat = () => {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingMessageDraft, setEditingMessageDraft] = useState('');
   const [editingMessageBusyId, setEditingMessageBusyId] = useState<string | null>(null);
-  const selectedAlineConversationId = selectedConversation
-    ? alineStatusMap[selectedConversation.contact_number]?.id || null
-    : null;
-
   const audioStreamRef = useRef<MediaStream | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -138,6 +224,7 @@ const Chat = () => {
   const relatedConversationIdsRef = useRef<Set<string>>(new Set());
   const relatedAlineConversationIdsRef = useRef<Set<string>>(new Set());
   const fetchMessagesRequestRef = useRef(0);
+  const messagesCacheRef = useRef<Map<string, Message[]>>(new Map());
 
   const { toast } = useToast();
   const { onlineSellers, startChatting, stopChatting } = useSellerPresence();
@@ -610,6 +697,14 @@ const Chat = () => {
   const fetchMessages = useCallback(async (conversationId: string, phone?: string) => {
     const requestId = fetchMessagesRequestRef.current + 1;
     fetchMessagesRequestRef.current = requestId;
+    const cacheKey = `${conversationId}:${phone || ''}`;
+    const cachedMessages = messagesCacheRef.current.get(cacheKey);
+
+    if (cachedMessages) {
+      setMessages(cachedMessages);
+    } else {
+      setMessages([]);
+    }
 
     try {
       const phoneVariants = phone ? buildPhoneVariants(phone) : [];
@@ -660,6 +755,13 @@ const Chat = () => {
 
       const alineConversationId = alineConversationResult?.data?.id;
       relatedAlineConversationIdsRef.current = new Set(alineConversationId ? [alineConversationId] : []);
+
+      if (requestId !== fetchMessagesRequestRef.current) {
+        return;
+      }
+
+      messagesCacheRef.current.set(cacheKey, mergedMessages);
+      setMessages(mergedMessages);
 
       if (phone && alineConversationId) {
         const { data: alineHistory, error: alineHistoryError } = await supabase
@@ -722,6 +824,7 @@ const Chat = () => {
         return;
       }
 
+      messagesCacheRef.current.set(cacheKey, mergedMessages);
       setMessages(mergedMessages);
 
       const latestVisibleMessage = [...mergedMessages]
@@ -913,7 +1016,6 @@ const Chat = () => {
   }, [
     selectedConversation?.id,
     selectedConversation?.contact_number,
-    selectedAlineConversationId,
     fetchMessages,
     fetchAlineStatus,
     startChatting,
@@ -1272,7 +1374,7 @@ const Chat = () => {
     ],
   );
 
-  const sendMessageDirect = async (messageText: string) => {
+  const sendMessageDirect = useCallback(async (messageText: string) => {
     const trimmedMessage = messageText.trim();
     if (!trimmedMessage || !selectedConversation) return;
 
@@ -1294,17 +1396,14 @@ const Chat = () => {
         variant: 'destructive',
       });
     }
-  };
-
-  const sendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!newMessage.trim() || !selectedConversation) return;
-
-    const messageText = newMessage;
-    setNewMessage('');
-    await sendMessageDirect(messageText);
-  };
+  }, [
+    addOptimisticMessage,
+    invokeAutomationSend,
+    markOptimisticFailed,
+    removeOptimisticMessages,
+    selectedConversation,
+    toast,
+  ]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -2305,64 +2404,14 @@ const Chat = () => {
                   </div>
                 )}
 
-                <form onSubmit={sendMessage} className="flex items-end gap-2">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    className="hidden"
-                    onChange={handleFileUpload}
-                    accept="image/*,audio/*,video/*,.pdf,.doc,.docx"
-                    multiple
-                  />
-
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={isRecording}
-                      className="p-2 rounded-lg text-slate-600 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
-                    >
-                      <Paperclip className="w-4 h-4" />
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={captureAndSendScreenshot}
-                      disabled={isRecording}
-                      className="hidden sm:block p-2 rounded-lg text-slate-600 hover:text-cyan-400 hover:bg-cyan-500/10 transition-colors"
-                    >
-                      <Camera className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  <div className="flex-1 relative min-w-0">
-                    <Input
-                      value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
-                      placeholder="Digite uma mensagem..."
-                      disabled={isRecording}
-                      className="bg-slate-800/60 border-white/5 text-white placeholder:text-slate-600 h-10 pr-10 focus-visible:ring-emerald-500/30 rounded-xl text-sm"
-                    />
-                    {newMessage.trim() && (
-                      <button
-                        type="submit"
-                        className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 bg-emerald-500 hover:bg-emerald-600 rounded-md flex items-center justify-center transition-colors"
-                      >
-                        <Send className="w-3 h-3 text-white" />
-                      </button>
-                    )}
-                  </div>
-
-                  {!isRecording && (
-                    <button
-                      type="button"
-                      onClick={startRecording}
-                      className="p-2 rounded-lg text-slate-600 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors shrink-0"
-                    >
-                      <Mic className="w-4 h-4" />
-                    </button>
-                  )}
-                </form>
+                <ChatComposer
+                  disabled={isRecording}
+                  fileInputRef={fileInputRef}
+                  onFileUpload={handleFileUpload}
+                  onCaptureScreenshot={captureAndSendScreenshot}
+                  onStartRecording={startRecording}
+                  onSendMessage={sendMessageDirect}
+                />
               </div>
             </div>
           </>

@@ -618,6 +618,29 @@ Validacao concluida
 - Teste "Quero este" retornou kate_foto com texto deixando simulacao opcional.
 - Teste "sem foto, vou retirar na loja" avancou para kate_pagamento, sem repetir pedido de foto.
 
+2026-05-06 - Otimizacao de troca e digitacao no chat
+
+Contexto
+- A troca de conversa no CRM estava lenta.
+- A digitacao no campo de mensagem travava porque cada tecla atualizava estado no componente principal do chat.
+
+Mudancas feitas
+- src/pages/Chat.tsx
+  - Adicionado cache em memoria por conversa para mostrar mensagens ja carregadas imediatamente ao alternar conversas.
+  - O carregamento agora renderiza primeiro as mensagens da tabela principal e depois complementa com historico dos agentes, sem esperar tudo para mostrar algo.
+  - Removida dependencia que podia refazer inscricoes/reloads ao carregar status da Aline.
+  - Campo de digitacao foi isolado no componente ChatComposer com estado local, evitando re-render do chat inteiro a cada tecla.
+
+Proxima validacao
+- Rodar build local se as dependencias estiverem disponiveis.
+- Testar no CRM: alternar entre conversas grandes e digitar mensagens longas sem travamento.
+
+Validacao parcial
+- git diff --check executado sem erros.
+- npm run build nao rodou porque vite nao esta instalado no node_modules local.
+- npm ci foi tentado, mas expirou antes de concluir; node_modules permanece fora do controle do Git.
+- node node_modules/typescript/bin/tsc --noEmit executado com sucesso.
+
 2026-05-05 - Otimizacao do carregamento do chat
 
 Contexto
