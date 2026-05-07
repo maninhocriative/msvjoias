@@ -12,6 +12,7 @@ Contexto
 - Cliente aprovava o pingente ou perguntava valor/endereco e a Kate repetia pedido de foto/simulacao, derrubando fechamento.
 - Links temporarios de arquivos da Z-API apareciam como texto no chat.
 - O realtime de conversas fazia reload completo a cada alteracao, deixando o chat com sensacao de atualizacao constante.
+- O follow-up automatico dos agentes estava sem agendamento ativo depois de uma migration antiga que removeu o cron.
 
 Mudancas feitas
 - supabase/functions/aline-reply/index.ts
@@ -23,6 +24,9 @@ Mudancas feitas
   - URLs temporarias de imagem/audio/video/documento passam a ser salvas como midia, nao como texto solto.
 - src/pages/Chat.tsx
   - Realtime de conversas agora atualiza a lista em memoria, sem buscar todas as conversas a cada evento.
+- supabase/migrations/20260507114500_enable_aline_followup_cron.sql
+  - Reativado o cron aline-followup-job a cada 10 minutos.
+  - A propria funcao aline-followup continua respeitando horario comercial, tentativas maximas e controle de vazao da Z-API.
 
 Proximos passos
 - Testar com lead real: aprovacao do pingente -> entrega -> pagamento -> handoff/venda.
@@ -34,6 +38,7 @@ Validacao concluida
 - git diff --check passou.
 - Supabase deploy concluido para aline-reply e zapi-unified no projeto ahbjwpkpxqqrpvpzmqwa.
 - Migracao 20260507103000_conversation_contact_presence.sql aplicada no banco remoto via supabase db query --linked.
+- Migracao 20260507114500_enable_aline_followup_cron.sql aplicada no banco remoto; cron criado com id 17.
 
 2026-05-01 - Correcao emergencial dos agentes para novos contatos
 
