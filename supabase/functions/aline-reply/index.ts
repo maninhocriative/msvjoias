@@ -285,6 +285,13 @@ function detectHumanIntent(text: string): boolean {
   );
 }
 
+function detectHarassmentIntent(text: string): boolean {
+  const normalized = normalizeText(text);
+  return /pelad|nude|manda foto sua|foto sua|manda uma foto sua|quero ver voce|quero te ver|gostosa|delicia|sexo|sexual|buceta|priqueta|piroca|pau|rola|safad|tesao|tesão|assedi/.test(
+    normalized,
+  );
+}
+
 function detectPaymentIntent(text: string): boolean {
   const normalized = normalizeText(text);
   return /pix|cartao|cart[aã]o|credito|cr[eé]dito|debito|d[eé]bito|crediario|bemol|pagar|pagamento|parcel/.test(
@@ -2253,10 +2260,12 @@ async function handleKateFlow(args: {
   const hasPreviewApproved = data.kate_preview_approved === true;
   const hasDelivery = !!data.delivery_method;
   const hasPayment = !!data.payment_method;
+  const normalizedMessage = normalizeText(message);
   const wantsCatalogResend = detectCatalogResendIntent(message);
   const wantsMoreOptions = detectMoreOptionsIntent(message);
   const wantsPreviewRedo = detectPreviewRedoIntent(message);
   const wantsPreviewApproval = detectPreviewApprovalIntent(message);
+  const wantsCloseWithoutPhoto = /fechar|finalizar|comprar|quero comprar|vou querer|pode seguir|seguir sem foto|sem foto|sem simulacao|nao quero foto|nao precisa de foto/.test(normalizedMessage);
   const asksPendantModelQuestion = detectPendantModelQuestion(message);
   const asksPendantMaterialQuestion = detectPendantMaterialQuestion(message);
   const asksDeliveryDeadline = detectDeliveryDeadlineQuestion(message);
@@ -2397,7 +2406,7 @@ A fotogravação de 1 lado já está inclusa.`;
       collectedData: data,
       agent: "kate",
       useProductButtons: true,
-      postCatalogMessage: "Gostou de algum modelo? Se escolher um, eu ja te peco a foto para preparar uma simulacao de fotogravacao.",
+      postCatalogMessage: "Gostou de algum modelo? Toque em Quero este. A foto para simulacao ajuda na escolha, mas tambem posso seguir para fechamento sem foto.",
     });
   }
 
@@ -2408,7 +2417,54 @@ A fotogravação de 1 lado já está inclusa.`;
     const cards = await fetchKateCatalogCards(wantsMoreOptions ? shownSkus : []);
 
     if (cards.length === 0 && wantsMoreOptions) {
-      const reply = "No momento esses são os modelos fotograváveis que tenho nessa cor. Se quiser, eu posso te mostrar a outra cor disponível 😊";
+      const originalColor = data.cor === "prata" || data.cor === "dourada" ? data.cor : null;
+      const alternateColor = originalColor === "prata" ? "dourada" : originalColor === "dourada" ? "prata" : null;
+
+      if (alternateColor) {
+        data.cor = alternateColor;
+        const alternateCards = await fetchKateCatalogCards([]);
+
+        if (alternateCards.length > 0) {
+          data.last_catalog = alternateCards.map((product) => ({
+            id: product.id,
+            sku: product.sku,
+            name: product.name,
+            price: product.price,
+            color: product.color,
+            image_url: product.image_url,
+            video_url: product.video_url,
+          }));
+          data.catalog_history = mergeCatalogHistory(data.catalog_history, data.last_catalog);
+
+          const reply = `Na cor ${originalColor} eu ja te mostrei os modelos disponiveis. Para nao te deixar sem opcao, separei tambem os pingentes fotogravaveis no acabamento ${alternateColor}.`;
+
+          await persistConversation(
+            supabase,
+            conversation.id,
+            "kate",
+            "catalogo_pingente",
+            conversation.current_node || null,
+            data,
+          );
+          await saveAssistantMessage(supabase, conversation.id, "kate", reply, "catalogo_pingente");
+          await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+          return buildResponsePayload({
+            phone,
+            message: reply,
+            node: "catalogo_pingente",
+            products: alternateCards,
+            collectedData: data,
+            agent: "kate",
+            useProductButtons: true,
+            postCatalogMessage: "Gostou de algum modelo? Toque em Quero este. Se quiser, posso preparar uma simulacao com foto, mas tambem consigo seguir para fechamento sem foto.",
+          });
+        }
+
+        data.cor = originalColor;
+      }
+
+      const reply = "Eu ja te mostrei os modelos fotogravaveis disponiveis agora. Se algum te agradou, toque em Quero este que eu sigo com voce; a simulacao com foto e opcional para ajudar na escolha.";
 
       await persistConversation(
         supabase,
@@ -2465,7 +2521,7 @@ A fotogravação de 1 lado já está inclusa.`;
         collectedData: data,
         agent: "kate",
         useProductButtons: true,
-        postCatalogMessage: "Gostou de algum modelo? Se escolher um, eu ja te peco a foto para preparar uma simulacao de fotogravacao.",
+        postCatalogMessage: "Gostou de algum modelo? Toque em Quero este. A foto para simulacao ajuda na escolha, mas tambem posso seguir para fechamento sem foto.",
       });
     }
   }
@@ -2569,9 +2625,73 @@ A fotogravação de 1 lado já está inclusa.`;
       }
     }
 
+    if (hasDelivery || hasPayment || wantsCloseWithoutPhoto) {
+      if (!hasDelivery) {
+        const reply = `Perfeito, seguimos com *${cleanCustomerProductName(data.selected_name)}* sem simulacao.
+
+Voce vai retirar na loja ou prefere delivery? Depois do fechamento, o vendedor envia a arte original para sua aprovacao antes da gravacao.`;
+
+        await persistConversation(
+          supabase,
+          conversation.id,
+          "kate",
+          "kate_entrega",
+          conversation.current_node || null,
+          data,
+        );
+        await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_entrega");
+        await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+        return buildResponsePayload({
+          phone,
+          message: reply,
+          node: "kate_entrega",
+          selectedProduct: data.selected_product || null,
+          collectedData: data,
+          agent: "kate",
+        });
+      }
+
+      if (!hasPayment) {
+        const reply = "Perfeito. E a forma de pagamento vai ser Pix, Crediario Bemol ou cartao de credito?";
+
+        await persistConversation(
+          supabase,
+          conversation.id,
+          "kate",
+          "kate_pagamento",
+          conversation.current_node || null,
+          data,
+        );
+        await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_pagamento");
+        await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+        return buildResponsePayload({
+          phone,
+          message: reply,
+          node: "kate_pagamento",
+          selectedProduct: data.selected_product || null,
+          collectedData: data,
+          agent: "kate",
+        });
+      }
+
+      return await handoffKateToHuman({
+        supabase,
+        supabaseUrl,
+        supabaseServiceKey,
+        conversation,
+        phone,
+        contactName,
+        data,
+      });
+    }
+
     const reply = `Perfeito! Voce escolheu *${cleanCustomerProductName(data.selected_name)}*.
 
-Esse modelo permite fotogravacao de 1 lado. Me manda agora a foto que voce quer gravar para eu preparar uma simulacao. Depois do fechamento, o vendedor envia a arte original para sua aprovacao antes da gravacao.`;
+Esse modelo permite fotogravacao de 1 lado. Se quiser ver antes, me manda a foto que voce quer gravar e eu preparo uma simulacao para ajudar na escolha.
+
+Se preferir seguir sem simulacao, posso avancar com entrega e pagamento agora. Depois do fechamento, o vendedor envia a arte original para sua aprovacao antes da gravacao.`;
 
     data.kate_photo_requested = true;
 
@@ -3815,6 +3935,37 @@ serve(async (req) => {
     baseData.triagem_categoria = detectClassification(inboundText, baseData) || baseData.triagem_categoria || null;
 
     const activeAgent = (conversation.active_agent || baseData.agente_atual || "aline") as ConversationAgent;
+    if (detectHarassmentIntent(inboundText)) {
+      baseData.harassment_detected = true;
+      baseData.last_intent = "assedio";
+      baseData.customer_stage = "seguranca_assedio";
+
+      const reply = "Esta conversa foi registrada com seu numero e as mensagens recebidas. Mensagens de assedio nao serao atendidas. Nossa equipe responsavel foi acionada e, se continuar, o caso sera encaminhado as autoridades competentes, incluindo a policia.";
+
+      await persistConversation(
+        supabase,
+        conversation.id,
+        activeAgent,
+        "seguranca_assedio",
+        conversation.current_node || null,
+        baseData,
+      );
+      await saveAssistantMessage(supabase, conversation.id, activeAgent, reply, "seguranca_assedio");
+
+      return new Response(
+        JSON.stringify(
+          buildResponsePayload({
+            phone,
+            message: reply,
+            node: "seguranca_assedio",
+            collectedData: baseData,
+            agent: activeAgent,
+          }),
+        ),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const alineMemory = await loadAgentMemory(supabase, phone, "aline");
     const kateMemory = await loadAgentMemory(supabase, phone, "kate");
     const keilaMemory = await loadAgentMemory(supabase, phone, "keila");

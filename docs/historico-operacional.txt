@@ -571,6 +571,53 @@ Validacao concluida
   - "teria cordao?" -> agente kate, node selecao_pingente, informa que corrente/cordao e vendido separadamente.
   - "ou e so a medalha?" -> agente kate, node selecao_pingente, informa que o valor e somente do pingente/medalha.
 
+2026-05-06 - Regra de seguranca para assedio
+
+Contexto
+- Clientes estavam enviando mensagens de assedio/pedido inadequado de foto para os agentes.
+- Os agentes continuavam tentando vender ou redirecionar produto.
+
+Mudancas feitas
+- supabase/functions/aline-reply/index.ts
+  - Criado detector de assedio antes do roteamento dos agentes.
+  - Quando detectado, a conversa e marcada como harassment_detected e node seguranca_assedio.
+  - A resposta informa que o numero e as mensagens foram registrados, que assedio nao sera atendido, que a equipe responsavel foi acionada e que o caso pode ser encaminhado as autoridades/policia se continuar.
+  - A regra roda antes de Aline, Kate, Keila ou Malu responderem sobre produtos.
+
+Proxima validacao
+- Deployar aline-reply.
+- Testar frases de assedio do print e confirmar node seguranca_assedio.
+
+Validacao concluida
+- aline-reply deployada no Supabase.
+- Teste direto no lead real 559591124920 retornou node seguranca_assedio.
+- Teste via zapi-unified no mesmo lead retornou text_sent=true e aline_node=seguranca_assedio, confirmando envio pela Z-API.
+
+2026-05-06 - Recuperacao de venda no fluxo da Kate
+
+Contexto
+- Cliente tocava em "Quero mais" e, quando acabavam os itens da cor atual, a Kate respondia que nao tinha mais modelos, sem tentar outra alternativa.
+- Depois de "Quero este", a Kate insistia na foto para simulacao; se o cliente nao enviasse foto, a venda ficava parada.
+
+Mudancas feitas
+- supabase/functions/aline-reply/index.ts
+  - Quando "Quero mais" nao encontra novos pingentes na cor atual, a Kate tenta automaticamente o acabamento alternativo, mantendo envio de catalogo com botoes.
+  - Se nao houver alternativa, a mensagem fica comercial e orienta seguir com um modelo ja mostrado.
+  - A foto para simulacao passou a ser opcional no texto do catalogo e na selecao do pingente.
+  - Se o cliente quiser fechar sem foto, informar entrega ou informar pagamento, a Kate avanca para entrega/pagamento em vez de repetir pedido de foto.
+
+Proxima validacao
+- Deployar aline-reply.
+- Testar: catalogo de pingentes -> Quero mais -> deve mandar outra cor se houver.
+- Testar: Quero este -> "sem foto" ou "vou retirar na loja" -> deve avancar para entrega/pagamento.
+
+Validacao concluida
+- aline-reply deployada no Supabase.
+- Teste "quero pingente prata" retornou catalogo_pingente com produtos.
+- Teste "quero mais" depois do catalogo prata retornou catalogo_pingente com 3 produtos no acabamento dourada.
+- Teste "Quero este" retornou kate_foto com texto deixando simulacao opcional.
+- Teste "sem foto, vou retirar na loja" avancou para kate_pagamento, sem repetir pedido de foto.
+
 2026-05-05 - Otimizacao do carregamento do chat
 
 Contexto
