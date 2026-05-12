@@ -99,6 +99,28 @@ function detectMediaUrlFromText(value: string): { type: "image" | "audio" | "vid
   return null;
 }
 
+function coerceSelectedPrice(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return null;
+  const normalized = value.replace(/[^0-9,.-]/g, "").replace(".", "").replace(",", ".");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatSelectedPrice(value: unknown): string | null {
+  const parsed = coerceSelectedPrice(value);
+  if (parsed === null) return null;
+  return parsed.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function buildSelectedProductNote(selectedSku: string | null, selectedName: string | null, selectedPrice: unknown): string {
+  const lines = ["Modelo escolhido pelo cliente:"];
+  if (selectedName) lines.push(`Produto: ${selectedName}`);
+  if (selectedSku) lines.push(`SKU: ${selectedSku}`);
+  const priceLabel = formatSelectedPrice(selectedPrice);
+  if (priceLabel) lines.push(`Valor: ${priceLabel}`);
+  return lines.join("\n");
+}
 function normalizeInboundPayload(rawPayload: ZAPIMessage): ZAPIMessage {
   const payload: ZAPIMessage = { ...rawPayload };
 
@@ -189,13 +211,16 @@ function normalizeInboundPayload(rawPayload: ZAPIMessage): ZAPIMessage {
   }
 
   if (mediaUrl && !payload.image && !payload.audio && !payload.video && !payload.document) {
-    if (messageType === "image") {
+    const inferredMedia = detectMediaUrlFromText(mediaUrl);
+    const effectiveMessageType = inferredMedia?.type || messageType;
+
+    if (effectiveMessageType === "image") {
       payload.image = { imageUrl: mediaUrl, caption: messageContent || undefined };
-    } else if (messageType === "audio") {
+    } else if (effectiveMessageType === "audio") {
       payload.audio = { audioUrl: mediaUrl };
-    } else if (messageType === "video") {
+    } else if (effectiveMessageType === "video") {
       payload.video = { videoUrl: mediaUrl, caption: messageContent || undefined };
-    } else if (messageType === "document") {
+    } else if (effectiveMessageType === "document") {
       payload.document = { documentUrl: mediaUrl, fileName: fileName || undefined };
     }
   }
@@ -711,14 +736,10 @@ serve(async (req) => {
     let messageType = "text";
     let mediaUrl: string | null = null;
 
-    if (payload.text?.message) {
-      messageContent = payload.text.message;
-    } else if (typeof payload.message === "string" && payload.message) {
-      messageContent = payload.message;
-    } else if (payload.image) {
+    if (payload.image) {
       messageType = "image";
       mediaUrl = payload.image.imageUrl || payload.image.url || payload.image.mediaUrl || null;
-      messageContent = payload.image.caption || "";
+      messageContent = payload.image.caption || payload.text?.message || "";
     } else if (payload.audio) {
       messageType = "audio";
       mediaUrl = payload.audio.audioUrl || payload.audio.url || payload.audio.mediaUrl || null;
@@ -726,11 +747,15 @@ serve(async (req) => {
     } else if (payload.video) {
       messageType = "video";
       mediaUrl = payload.video.videoUrl || payload.video.url || payload.video.mediaUrl || null;
-      messageContent = payload.video.caption || "";
+      messageContent = payload.video.caption || payload.text?.message || "";
     } else if (payload.document) {
       messageType = "document";
       mediaUrl = payload.document.documentUrl || payload.document.url || payload.document.mediaUrl || null;
-      messageContent = payload.document.fileName || "";
+      messageContent = payload.document.fileName || payload.text?.message || "";
+    } else if (payload.text?.message) {
+      messageContent = payload.text.message;
+    } else if (typeof payload.message === "string" && payload.message) {
+      messageContent = payload.message;
     }
 
     if (!messageContent && buttonResponseLabel) {
@@ -743,7 +768,7 @@ serve(async (req) => {
       messageType = "button_reply";
     }
 
-    if (messageType === "text" && !mediaUrl && messageContent) {
+    if (!mediaUrl && messageContent) {
       const detectedMedia = detectMediaUrlFromText(messageContent);
       if (detectedMedia) {
         messageType = detectedMedia.type;
@@ -969,6 +994,14 @@ serve(async (req) => {
     const useProductButtons = alineResponse.use_product_buttons === true;
     const postCatalogMessage = alineResponse.mensagem_pos_catalogo || null;
     const actionButtons = Array.isArray(alineResponse.action_buttons) ? alineResponse.action_buttons : [];
+    const selectedProduct = alineResponse.produto_selecionado || null;
+    const selectedMemory = alineResponse.memoria || {};
+    const selectedSku = selectedProduct?.sku || selectedMemory?.produto_sku || null;
+    const selectedName = selectedProduct?.name || selectedProduct?.nome || selectedMemory?.produto_nome || null;
+    const selectedPrice = selectedProduct?.price ?? selectedProduct?.preco ?? selectedMemory?.produto_preco ?? null;
+    const selectedProductShouldBeLogged = Boolean(
+      selectedSku || selectedName,
+    ) && /kate_foto|kate_entrega|kate_pagamento|human_takeover|selecao_pingente/i.test(String(alineResponse.node_tecnico || ""));
 
     let textSent = false;
     let productsSent = 0;
@@ -1279,6 +1312,42 @@ serve(async (req) => {
       await releaseZapiGovernorLease(sequenceLeaseResult.lease);
     }
 
+    if (selectedProductShouldBeLogged) {
+      try {
+        await supabase.from("conversation_state").upsert(
+          {
+            phone,
+            selected_sku: selectedSku,
+            selected_name: selectedName,
+            selected_price: coerceSelectedPrice(selectedPrice),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "phone" },
+        );
+
+        const note = buildSelectedProductNote(selectedSku, selectedName, selectedPrice);
+        const { data: lastNote } = await supabase
+          .from("messages")
+          .select("id, content")
+          .eq("conversation_id", conversationId)
+          .eq("message_type", "internal_note")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (lastNote?.content !== note) {
+          await supabase.from("messages").insert({
+            conversation_id: conversationId,
+            content: note,
+            message_type: "internal_note",
+            is_from_me: false,
+            status: "internal",
+          });
+        }
+      } catch (error) {
+        console.warn("[ZAPI-UNIFIED] Aviso ao salvar produto escolhido para o vendedor:", error);
+      }
+    }
     if (productsSent > 0) {
       try {
         const { data: sessionId } = await supabase.rpc("create_catalog_session", {

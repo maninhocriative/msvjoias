@@ -780,7 +780,7 @@ function detectFinishPhotosQuestion(text: string): boolean {
 
 function detectComplaintOrFrustration(text: string): boolean {
   const normalized = normalizeText(text);
-  return /merda|ruim|horr[ií]vel|p[eé]ssim|chatead|puta|puto|raiva|irritad|reclama|nao gostei|não gostei|cancelar|desistir|demora demais|ninguem responde|ninguém responde/.test(
+  return /merda|ruim|horr[ií]vel|p[eé]ssim|chatead|puta|puto|raiva|irritad|reclama|nao gostei|não gostei|cancelar|desistir|demora demais|ninguem responde|ninguém responde|so sabe|só sabe|sempre a mesma|mesma resposta|nao responde|não responde/.test(
     normalized,
   );
 }
@@ -793,6 +793,36 @@ function detectGenericDoubt(text: string): boolean {
 function detectOnlyLaughter(text: string): boolean {
   const normalized = normalizeText(text).replace(/[^a-z]/g, "");
   return /^(rs|rss|kk|kkk|kkkk|haha|hahaha|hehe|hehehe)$/.test(normalized);
+}
+
+function detectPayNowTodayQuestion(text: string): boolean {
+  const normalized = normalizeText(text);
+  return /(pagando agora|pagar agora|se eu pagar|fechando agora|fechar agora).*(hoje|hj|mesmo dia|finaliza|fica pronto|entrega)|(?:hoje|hj).*(pagando agora|pagar agora|fechando agora|fechar agora|finaliza)/.test(
+    normalized,
+  );
+}
+
+function detectUnresolvedCommercialQuestion(text: string): boolean {
+  const normalized = normalizeText(text);
+  if (!normalized) return false;
+
+  return /\?|qual|como|quando|onde|prazo|entrega|retirada|delivery|endereço|endereco|cordão|cordao|corrente|medalha|vem com|acompanha|somente|só|so|grama|gramas|peso|material|aço|aco|inox|garantia|finaliza|fecha|fechar|pedido|pagamento|pix|cartão|cartao|crediario|crediário|bemol|so sabe|só sabe|dúvida|duvida/.test(
+    normalized,
+  );
+}
+function detectInboundImageUrl(text: string): string | null {
+  const trimmed = String(text || "").trim();
+  if (!/^https?:\/\//i.test(trimmed)) return null;
+  const lower = trimmed.toLowerCase();
+  if (/\.(jpg|jpeg|png|webp)(?:$|[?#])/.test(lower) || /temp-file-download\/.*(?:=\.jpg|=\.jpeg|=\.png|=\.webp)/.test(lower)) {
+    return trimmed;
+  }
+  return null;
+}
+
+function isSimpleColorChoice(text: string): boolean {
+  const normalized = normalizeText(text).replace(/[^a-z]/g, "");
+  return normalized === "prata" || normalized === "dourada" || normalized === "dourado";
 }
 
 function normalizeSkuToken(value: string): string {
@@ -2313,6 +2343,10 @@ async function handleKateFlow(args: {
   const isComplaintOrFrustration = detectComplaintOrFrustration(message);
   const asksGenericDoubt = detectGenericDoubt(message);
   const isOnlyLaughter = detectOnlyLaughter(message);
+  const asksPayNowToday = detectPayNowTodayQuestion(message);
+  const inboundImageUrl = detectInboundImageUrl(message);
+  const effectiveMediaType = mediaType === "image" || inboundImageUrl ? "image" : mediaType;
+  const effectiveMediaUrl = mediaUrl || inboundImageUrl;
 
   const fetchKateCatalogCards = async (excludeSkus: string[] = []) => {
     const searchParams: AnyRecord = {
@@ -2347,6 +2381,48 @@ async function handleKateFlow(args: {
     if (previousColor === "prata" || previousColor === "dourada") {
       data.cor = previousColor;
     }
+
+    if (cards.length > 0) {
+      data.catalogo_kate_enviado = true;
+      data.last_catalog = cards.map((product) => ({
+        id: product.id,
+        sku: product.sku,
+        name: product.name,
+        price: product.price,
+        color: product.color,
+        image_url: product.image_url,
+        video_url: product.video_url,
+      }));
+      data.catalog_history = mergeCatalogHistory(data.catalog_history, data.last_catalog);
+    }
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "kate",
+      "catalogo_pingente",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "catalogo_pingente");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "catalogo_pingente",
+      products: cards,
+      collectedData: data,
+      agent: "kate",
+      useProductButtons: cards.length > 0,
+      postCatalogMessage: cards.length > 0
+        ? "Gostou de algum modelo? Toque em Quero este no pingente escolhido que eu sigo com voce."
+        : undefined,
+    });
+  };
+
+  const sendKateCatalogForCurrentColor = async (reply: string) => {
+    const cards = await fetchKateCatalogCards([]);
 
     if (cards.length > 0) {
       data.catalogo_kate_enviado = true;
@@ -2445,6 +2521,12 @@ async function handleKateFlow(args: {
     });
   }
 
+  if (!hasSelectedProduct && hasColor && isSimpleColorChoice(message)) {
+    return await sendKateCatalogForCurrentColor(
+      `Perfeito, vou te mostrar os pingentes fotogravaveis no acabamento ${data.cor}. A fotogravacao de 1 lado ja esta inclusa.`,
+    );
+  }
+
   if (!hasSelectedProduct && asksFinishPhotos) {
     return await sendKateCatalogForBothFinishes(
       "Tenho sim. Vou te mandar os modelos com acabamento dourado e prata para voce comparar pelas fotos.",
@@ -2476,7 +2558,9 @@ async function handleKateFlow(args: {
   }
 
   if (asksDeliveryDeadline) {
-    const reply = "A producao e entrega dependem da fila de espera. Geralmente fica pronto de 8 a 24 horas apos pagamento e fechamento do pedido.";
+    const reply = asksPayNowToday
+      ? "Pagando e fechando agora, o pedido entra na fila de producao hoje. Geralmente fica pronto de 8 a 24 horas apos pagamento e fechamento; se houver vaga na fila, pode ficar ainda hoje. Para eu seguir, escolha um modelo ou toque em Quero este no card."
+      : "A producao e entrega dependem da fila de espera. Geralmente fica pronto de 8 a 24 horas apos pagamento e fechamento do pedido.";
 
     await persistConversation(
       supabase,
@@ -2570,6 +2654,35 @@ async function handleKateFlow(args: {
       message: reply,
       node: hasSelectedProduct ? "kate_pagamento" : "kate_endereco",
       selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "kate",
+    });
+  }
+
+  if (!hasSelectedProduct && asksPayNowToday) {
+    const reply = data.cor === "prata" || data.cor === "dourada"
+      ? `Sim. Pagando e fechando agora, o pedido entra na fila de producao hoje. Geralmente fica pronto de 8 a 24 horas; se a fila permitir, pode finalizar ainda hoje. Vou te mandar os modelos ${data.cor} para voce escolher.`
+      : "Sim. Pagando e fechando agora, o pedido entra na fila de producao hoje. Geralmente fica pronto de 8 a 24 horas; se a fila permitir, pode finalizar ainda hoje. Voce prefere ver os modelos prata ou dourado?";
+
+    if (data.cor === "prata" || data.cor === "dourada") {
+      return await sendKateCatalogForCurrentColor(reply);
+    }
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "kate",
+      "kate_cor",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_cor");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "kate_cor",
       collectedData: data,
       agent: "kate",
     });
@@ -2858,8 +2971,8 @@ A fotogravação de 1 lado já está inclusa.`;
   }
 
   if (hasSelectedProduct && !hasPhoto) {
-    if (mediaType === "image" && mediaUrl) {
-      data.kate_customer_photo_url = mediaUrl;
+    if (effectiveMediaType === "image" && effectiveMediaUrl) {
+      data.kate_customer_photo_url = effectiveMediaUrl;
       data.kate_photo_requested = true;
 
       try {
@@ -2867,7 +2980,7 @@ A fotogravação de 1 lado já está inclusa.`;
           supabase,
           phone,
           selectedProduct: data.selected_product || {},
-          customerPhotoUrl: mediaUrl,
+          customerPhotoUrl: effectiveMediaUrl,
         });
 
         data.kate_preview_image_url = previewImageUrl;
@@ -3070,7 +3183,7 @@ Se preferir seguir sem simulacao, posso avancar com entrega e pagamento agora. D
       agent: "kate",
     });
   }
-  if (hasPreview && !hasPreviewApproved && wantsPreviewRedo && mediaType !== "image") {
+  if (hasPreview && !hasPreviewApproved && wantsPreviewRedo && effectiveMediaType !== "image") {
     delete data.kate_customer_photo_url;
     delete data.kate_preview_image_url;
     delete data.kate_preview_status;
@@ -3099,7 +3212,7 @@ Se preferir seguir sem simulacao, posso avancar com entrega e pagamento agora. D
     });
   }
 
-  if (hasPreview && !hasPreviewApproved && !wantsPreviewApproval && !wantsPreviewRedo && mediaType !== "image") {
+  if (hasPreview && !hasPreviewApproved && !wantsPreviewApproval && !wantsPreviewRedo && effectiveMediaType !== "image") {
     const reply = "Certo. Quer seguir com esse pingente, ver outros modelos ou mandar uma nova foto para refazer a simulacao?";
 
     await persistConversation(
@@ -3124,8 +3237,8 @@ Se preferir seguir sem simulacao, posso avancar com entrega e pagamento agora. D
   }
 
   if (hasPreview && !hasPreviewApproved) {
-    if (mediaType === "image" && mediaUrl) {
-      data.kate_customer_photo_url = mediaUrl;
+    if (effectiveMediaType === "image" && effectiveMediaUrl) {
+      data.kate_customer_photo_url = effectiveMediaUrl;
       data.kate_preview_approved = false;
 
       try {
@@ -3133,7 +3246,7 @@ Se preferir seguir sem simulacao, posso avancar com entrega e pagamento agora. D
           supabase,
           phone,
           selectedProduct: data.selected_product || {},
-          customerPhotoUrl: mediaUrl,
+          customerPhotoUrl: effectiveMediaUrl,
         });
 
         data.kate_preview_image_url = previewImageUrl;
@@ -3293,6 +3406,35 @@ Voce vai retirar na loja ou prefere delivery? Depois eu confirmo a forma de paga
     });
   }
 
+  if (detectUnresolvedCommercialQuestion(message)) {
+    data.kate_needs_human = true;
+    data.agente_atual = "human";
+    data.handoff_reason = "pergunta_comercial_nao_resolvida";
+    const reply = "Para não te responder errado, vou chamar um vendedor para continuar daqui. Ele vai ver o modelo escolhido e sua dúvida no histórico.";
+
+    await supabase
+      .from("aline_conversations")
+      .update({
+        status: "human_takeover",
+        active_agent: "human",
+        assignment_reason: "Kate encaminhou pergunta comercial nao resolvida para humano",
+        collected_data: data,
+        last_message_at: new Date().toISOString(),
+        agent_handoff_at: new Date().toISOString(),
+      })
+      .eq("id", conversation.id);
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "human_takeover");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "human_takeover",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "human",
+    });
+  }
   const reply = "Se quiser, posso te reenviar os modelos ou preparar outra simulacao com uma nova foto.";
 
   await persistConversation(

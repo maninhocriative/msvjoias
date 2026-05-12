@@ -797,3 +797,17 @@ Validacao concluida
   - "Ver modelos" apos entrada no fluxo da Malu -> catalogo_oculos com 8 produtos.
   - "sim me mande os modelos" apos entrada no fluxo da Malu -> catalogo_oculos com 8 produtos.
   - Todos retornaram use_product_buttons=true; primeiro produto com force_separate_buttons=true.
+
+2026-05-12 - Correção Kate: inteligência comercial e visibilidade para vendedor
+- Reforcei a detecção de frustração/pergunta repetida para evitar que a Kate continue respondendo sempre o mesmo fallback.
+- Perguntas comerciais não resolvidas pela Kate agora são encaminhadas para atendimento humano com histórico preservado.
+- Links de imagem recebidos como texto continuam sendo tratados como foto para simulação quando aplicável.
+- Produto escolhido pelo cliente agora é salvo em conversation_state e exibido como nota interna no chat para o vendedor humano ver SKU, nome e valor.
+- Ajustei o chat para renderizar notas internas sem enviar essas informações ao WhatsApp do cliente.
+Próximos passos: validar em produção se a escolha do pingente aparece para o vendedor e se dúvidas como prazo, pagamento hoje e cordão não caem mais no fallback repetido.
+
+2026-05-12 - Correção Z-API: imagens recebidas no chat
+- Ajustei o webhook zapi-unified para priorizar payloads de mídia antes de texto quando a Z-API envia image/audio/video/document junto com mensagem.
+- Links temporários de imagem da Z-API/Backblaze agora são inferidos como message_type=image e salvos em media_url, evitando que o vendedor receba apenas o link no chat.
+- Mantive o link original apenas como URL de mídia, para o componente do chat renderizar a imagem clicável.
+Próximos passos: validar com uma foto real enviada pelo WhatsApp se a mensagem aparece como imagem no CRM e se a Kate usa essa imagem para simulação quando houver produto escolhido.

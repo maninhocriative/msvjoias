@@ -63,7 +63,21 @@ const MessageItem = memo(({
   onSaveEdit,
 }: MessageItemProps) => {
   const isMe = message.is_from_me;
+  const isInternalNote = message.message_type === 'internal_note';
   const isDeleted = Boolean(message.deleted_at);
+
+  if (isInternalNote) {
+    return (
+      <div className="flex w-full justify-center my-3 px-4">
+        <div className="max-w-[88%] rounded-2xl border border-amber-400/20 bg-amber-500/10 px-3.5 py-2 text-center text-[13px] leading-5 text-amber-100 shadow-sm">
+          <p className="whitespace-pre-wrap" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+            {message.content}
+          </p>
+          <span className="mt-1 block text-[10px] text-amber-100/55">{formatTime(message.created_at || '')}</span>
+        </div>
+      </div>
+    );
+  }
   const hasMedia =
     (message.message_type === 'image' ||
       message.message_type === 'audio' ||
