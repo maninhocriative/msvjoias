@@ -147,10 +147,19 @@ const ChatComposer = memo(function ChatComposer({
   onSendMessage,
 }: ChatComposerProps) {
   const [draft, setDraft] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const canSend = draft.trim().length > 0 && !disabled;
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    textarea.style.height = '0px';
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+  }, [draft]);
+
+  const handleSubmit = async (event?: React.FormEvent) => {
+    event?.preventDefault();
     if (!canSend) return;
 
     const messageText = draft;
@@ -159,7 +168,7 @@ const ChatComposer = memo(function ChatComposer({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex items-end gap-2">
+    <form onSubmit={handleSubmit} className="flex items-end gap-2 rounded-none">
       <input
         ref={fileInputRef}
         type="file"
@@ -169,53 +178,64 @@ const ChatComposer = memo(function ChatComposer({
         multiple
       />
 
-      <div className="flex items-center gap-1 shrink-0">
+      <div className="flex items-center gap-1 shrink-0 pb-1">
         <button
           type="button"
+          aria-label="Anexar arquivos"
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled}
-          className="p-2 rounded-lg text-slate-600 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+          className="grid h-10 w-10 place-items-center rounded-full text-slate-400 transition-colors hover:bg-white/5 hover:text-emerald-300 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <Paperclip className="w-4 h-4" />
+          <Paperclip className="w-5 h-5" />
         </button>
 
         <button
           type="button"
+          aria-label="Enviar captura de tela"
           onClick={onCaptureScreenshot}
           disabled={disabled}
-          className="hidden sm:block p-2 rounded-lg text-slate-600 hover:text-cyan-400 hover:bg-cyan-500/10 transition-colors"
+          className="hidden sm:grid h-10 w-10 place-items-center rounded-full text-slate-400 transition-colors hover:bg-white/5 hover:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <Camera className="w-4 h-4" />
+          <Camera className="w-5 h-5" />
         </button>
       </div>
 
-      <div className="flex-1 relative min-w-0">
-        <Input
+      <div className="flex-1 min-w-0 rounded-3xl border border-white/8 bg-slate-900/85 px-4 py-2 shadow-inner shadow-black/20 focus-within:border-emerald-400/25">
+        <textarea
+          ref={textareaRef}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          placeholder="Digite uma mensagem..."
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault();
+              void handleSubmit();
+            }
+          }}
+          placeholder="Digite uma mensagem"
           disabled={disabled}
-          className="bg-slate-800/60 border-white/5 text-white placeholder:text-slate-600 h-10 pr-10 focus-visible:ring-emerald-500/30 rounded-xl text-sm"
+          rows={1}
+          className="block max-h-[120px] min-h-[24px] w-full resize-none bg-transparent text-[15px] leading-6 text-slate-100 outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-60"
         />
-        {canSend && (
-          <button
-            type="submit"
-            className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 bg-emerald-500 hover:bg-emerald-600 rounded-md flex items-center justify-center transition-colors"
-          >
-            <Send className="w-3 h-3 text-white" />
-          </button>
-        )}
       </div>
 
-      {!disabled && (
+      {canSend ? (
+        <button
+          type="submit"
+          aria-label="Enviar mensagem"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-emerald-500 text-white transition-colors hover:bg-emerald-400"
+        >
+          <Send className="w-4 h-4" />
+        </button>
+      ) : !disabled ? (
         <button
           type="button"
+          aria-label="Gravar áudio"
           onClick={onStartRecording}
-          className="p-2 rounded-lg text-slate-600 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors shrink-0"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-slate-900/85 text-slate-300 transition-colors hover:bg-white/5 hover:text-emerald-300"
         >
-          <Mic className="w-4 h-4" />
+          <Mic className="w-5 h-5" />
         </button>
-      )}
+      ) : null}
     </form>
   );
 });
@@ -792,9 +812,6 @@ const Chat = () => {
         return;
       }
 
-      messagesCacheRef.current.set(cacheKey, mergedMessages);
-      setMessages(mergedMessages);
-
       if (phone && alineConversationId) {
         const { data: alineHistory, error: alineHistoryError } = await supabase
           .from('aline_messages')
@@ -995,10 +1012,19 @@ const Chat = () => {
             table: 'conversations',
             filter: `contact_number=eq.${selectedConversation.contact_number}`,
           },
-          () => {
-            fetchMessages(
-              selectedConversation.id,
-              selectedConversation.contact_number,
+          (payload) => {
+            const updatedConversation = payload.new as Conversation;
+            setSelectedConversation((prev) =>
+              prev && prev.id === selectedConversation.id
+                ? { ...prev, ...updatedConversation }
+                : prev,
+            );
+            setConversations((prev) =>
+              prev.map((conversation) =>
+                conversation.id === updatedConversation.id
+                  ? { ...conversation, ...updatedConversation }
+                  : conversation,
+              ),
             );
           },
         )
@@ -1030,16 +1056,10 @@ const Chat = () => {
         )
         .subscribe();
 
-      const pollInterval = setInterval(
-        () => fetchMessages(selectedConversation.id, selectedConversation.contact_number),
-        15000,
-      );
-
       return () => {
         supabase.removeChannel(channel);
         supabase.removeChannel(phoneConversationChannel);
         supabase.removeChannel(alineChannel);
-        clearInterval(pollInterval);
         stopChatting();
       };
     }

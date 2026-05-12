@@ -94,21 +94,21 @@ const MessageItem = memo(({
   return (
     <div
       className={cn(
-        'flex w-full mb-3.5',
-        isMe ? 'justify-end pl-8 sm:pl-12' : 'justify-start pr-8 sm:pr-12',
+        'flex w-full',
+        isMe ? 'justify-end pl-10 sm:pl-16' : 'justify-start pr-10 sm:pr-16',
       )}
     >
       <div
         className={cn(
-          'relative w-fit min-w-0 max-w-[92%] sm:max-w-[86%] lg:max-w-[78%] xl:max-w-[72%] px-4 py-3 border shadow-[0_24px_50px_-34px_rgba(15,23,42,0.95)] backdrop-blur-sm clear-both',
+          'group/message relative w-fit min-w-0 max-w-[90%] sm:max-w-[82%] lg:max-w-[72%] xl:max-w-[66%] px-3.5 py-2 border shadow-[0_10px_24px_-22px_rgba(0,0,0,0.9)] clear-both',
           isMe
-            ? 'bg-[linear-gradient(160deg,rgba(16,185,129,0.95),rgba(5,150,105,0.92))] text-white border-emerald-400/20'
-            : 'bg-slate-900/88 text-slate-100 border-white/8',
+            ? 'bg-[#005c4b] text-white border-emerald-300/10'
+            : 'bg-[#202c33] text-slate-100 border-white/6',
           showTail
             ? isMe
-              ? 'rounded-[24px] rounded-tr-md mt-2'
-              : 'rounded-[24px] rounded-tl-md mt-2'
-            : 'rounded-[24px]',
+              ? 'rounded-2xl rounded-tr-sm mt-1.5 mb-0.5'
+              : 'rounded-2xl rounded-tl-sm mt-1.5 mb-0.5'
+            : 'rounded-2xl my-0.5',
         )}
         style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
       >
@@ -116,7 +116,7 @@ const MessageItem = memo(({
           <button
             type="button"
             onClick={() => onStartEdit?.(message)}
-            className="absolute -top-3 left-2 sm:left-auto sm:right-2 inline-flex items-center gap-1 rounded-full border border-white/10 bg-slate-950/95 px-2.5 py-1 text-[11px] text-slate-200 shadow-sm transition-colors hover:border-emerald-400/40 hover:text-white"
+            className="absolute right-1.5 top-1.5 z-10 inline-flex items-center gap-1 rounded-full border border-white/10 bg-slate-950/90 px-2 py-1 text-[10px] text-slate-200 opacity-0 shadow-sm transition-opacity hover:border-emerald-400/40 hover:text-white group-hover/message:opacity-100 focus:opacity-100"
           >
             <Pencil className="w-3 h-3" />
             Editar
@@ -166,7 +166,7 @@ const MessageItem = memo(({
                 alt="Imagem"
                 loading="lazy"
                 decoding="async"
-                className="block w-full max-w-[280px] sm:max-w-[360px] lg:max-w-[460px] rounded-2xl cursor-pointer hover:opacity-90 transition-opacity mb-2 bg-slate-700/50"
+                className="block w-full max-w-[260px] sm:max-w-[340px] lg:max-w-[420px] rounded-xl cursor-pointer bg-slate-700/50 transition-opacity hover:opacity-90"
                 style={{
                   aspectRatio: '4 / 3',
                   objectFit: 'cover',
@@ -229,7 +229,7 @@ const MessageItem = memo(({
             {showTextContent && (
               <p
                 className={cn(
-                  'text-[15px] leading-7 whitespace-pre-wrap tracking-[0.01em]',
+                  'text-[14.5px] leading-6 whitespace-pre-wrap',
                   hasMedia && 'mt-1',
                 )}
                 style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
@@ -238,7 +238,7 @@ const MessageItem = memo(({
               </p>
             )}
 
-            <div className="flex items-center gap-2 justify-end mt-2 -mb-0.5 ml-auto w-fit">
+            <div className="flex items-center gap-1.5 justify-end mt-1 -mb-0.5 ml-auto w-fit">
               <span
                 className={cn(
                   'text-[10px]',

@@ -818,3 +818,12 @@ Próximos passos: validar com uma foto real enviada pelo WhatsApp se a mensagem 
 - A memória do agente passou a salvar e reidratar esses campos para reduzir perda de contexto entre mensagens e trocas de agente.
 - O payload de resposta agora expõe esses sinais na memória para o webhook/chat manter o vendedor humano informado.
 Próximos passos: validar em produção se perguntas de preço, prazo, pagamento, entrega, material e escolha de produto não caem mais em respostas genéricas.
+
+2026-05-12 - Primeira melhoria UX do chat estilo WhatsApp
+- Composer do chat trocado para textarea responsiva, com Enter para enviar e Shift+Enter para quebrar linha.
+- Botões de anexo, captura, áudio e envio redesenhados em formato circular, reduzindo travamentos ao digitar.
+- Carregamento de mensagens otimizado para não aplicar setMessages intermediário antes de mesclar histórico dos agentes.
+- Removido polling de mensagens a cada 15 segundos; realtime passa a ser a fonte principal, evitando atualização constante e sensação de chat recarregando.
+- Atualizações da conversa atual agora alteram apenas metadados, sem recarregar toda a lista de mensagens.
+- Balões de mensagem ajustados para espaçamento menor, cores próximas ao WhatsApp e botão Editar dentro do balão apenas no hover, evitando sobreposição visual.
+Próximos passos: validar no navegador troca rápida de conversas, digitação longa, envio de múltiplas imagens e áudio humano.
