@@ -811,3 +811,10 @@ Próximos passos: validar em produção se a escolha do pingente aparece para o 
 - Links temporários de imagem da Z-API/Backblaze agora são inferidos como message_type=image e salvos em media_url, evitando que o vendedor receba apenas o link no chat.
 - Mantive o link original apenas como URL de mídia, para o componente do chat renderizar a imagem clicável.
 Próximos passos: validar com uma foto real enviada pelo WhatsApp se a mensagem aparece como imagem no CRM e se a Kate usa essa imagem para simulação quando houver produto escolhido.
+
+2026-05-12 - Memória vendedora comum para todos os agentes
+- Adicionada camada comum de contexto comercial no aline-reply para Aline, Keila, Kate e Malu.
+- Cada mensagem do cliente agora atualiza etapa da venda, última pergunta, tipo de dúvida, sinal de compra e resumo do contexto vendedor.
+- A memória do agente passou a salvar e reidratar esses campos para reduzir perda de contexto entre mensagens e trocas de agente.
+- O payload de resposta agora expõe esses sinais na memória para o webhook/chat manter o vendedor humano informado.
+Próximos passos: validar em produção se perguntas de preço, prazo, pagamento, entrega, material e escolha de produto não caem mais em respostas genéricas.

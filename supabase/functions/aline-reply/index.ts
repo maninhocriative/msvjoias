@@ -1136,8 +1136,93 @@ function buildSummary(data: AnyRecord): string {
   if (data.delivery_method) parts.push(`entrega=${data.delivery_method}`);
   if (data.payment_method) parts.push(`pagamento=${data.payment_method}`);
   if (data.selected_name) parts.push(`produto=${data.selected_name}`);
+  if (data.sales_stage) parts.push(`etapa=${data.sales_stage}`);
+  if (data.last_question_kind) parts.push(`ultima_duvida=${data.last_question_kind}`);
+  if (data.pending_customer_question) parts.push(`pendente=${data.pending_customer_question}`);
 
   return parts.join(" | ");
+}
+
+function detectCustomerQuestionKind(text: string, intelligence?: ConversationIntelligence | null): string | null {
+  const normalized = normalizeText(text);
+  if (!normalized) return null;
+
+  if (detectPriceQuestion(text) || detectPriceIntent(text)) return "preco";
+  if (detectDeliveryDeadlineQuestion(text) || detectPayNowTodayQuestion(text)) return "prazo_entrega";
+  if (detectDeliveryIntent(text)) return "entrega_retirada";
+  if (detectPaymentIntent(text)) return "pagamento";
+  if (detectStoreAddressQuestion(text)) return "endereco_loja";
+  if (detectPendantMaterialQuestion(text)) return "material";
+  if (detectPendantModelQuestion(text)) return "corrente_ou_medalha";
+  if (detectFinishPhotosQuestion(text)) return "acabamento_fotos";
+  if (detectCatalogIntent(text)) return "catalogo";
+  if (detectChoiceIntent(text)) return "escolha_produto";
+  if (detectPreviewIntent(text)) return "simulacao_previa";
+  if (detectHumanIntent(text)) return "atendimento_humano";
+  if (detectComplaintOrFrustration(text)) return "frustracao";
+  if (intelligence?.intent && intelligence.intent !== "indefinido") return intelligence.intent;
+  if (/\?|qual|como|quando|onde|porque|por que|tem|pode|consegue|sabe|duvida|dúvida/.test(normalized)) return "duvida_comercial";
+
+  return null;
+}
+
+function inferSalesStage(data: AnyRecord, intelligence: ConversationIntelligence): string {
+  if (data.payment_method && data.delivery_method && data.selected_sku) return "pronto_para_humano_fechar";
+  if (data.delivery_method && data.selected_sku) return "definindo_pagamento";
+  if (data.selected_sku && (data.kate_preview_approved || data.malu_preview_approved)) return "confirmando_entrega";
+  if (data.selected_sku && (data.kate_preview_image_url || data.malu_preview_image_url)) return "simulacao_enviada";
+  if (data.selected_sku) return "produto_escolhido";
+  if (Array.isArray(data.last_catalog) && data.last_catalog.length > 0) return "catalogo_enviado";
+  if (data.categoria) return "produto_identificado";
+  return intelligence.customerStage || "triagem";
+}
+
+function buildSellerContextSummary(data: AnyRecord): string {
+  const parts: string[] = [];
+  if (data.contact_name) parts.push(`cliente ${data.contact_name}`);
+  if (data.categoria) parts.push(`interesse em ${data.categoria}`);
+  if (data.selected_name) parts.push(`escolheu ${data.selected_name}`);
+  if (data.selected_sku) parts.push(`sku ${data.selected_sku}`);
+  if (data.cor) parts.push(`cor ${data.cor}`);
+  if (data.delivery_method) parts.push(`entrega ${data.delivery_method}`);
+  if (data.payment_method) parts.push(`pagamento ${data.payment_method}`);
+  if (data.last_question_kind) parts.push(`ultima duvida: ${data.last_question_kind}`);
+  return parts.join("; ");
+}
+
+function updateSellerContextMemory(data: AnyRecord, args: {
+  text: string;
+  mediaType?: string | null;
+  intelligence: ConversationIntelligence;
+  activeAgent: ConversationAgent;
+}) {
+  const now = new Date().toISOString();
+  const text = String(args.text || "").trim();
+  const questionKind = detectCustomerQuestionKind(text, args.intelligence);
+
+  data.last_customer_message = text || (args.mediaType === "image" ? "[imagem recebida]" : args.mediaType === "audio" ? "[audio recebido]" : "");
+  data.last_customer_message_at = now;
+  data.last_customer_intent = args.intelligence.intent;
+  data.last_customer_agent_context = args.activeAgent;
+  data.sales_stage = inferSalesStage(data, args.intelligence);
+  data.sales_next_best_action = args.intelligence.customerStage;
+
+  if (questionKind) {
+    data.last_customer_question = text || `[${questionKind}]`;
+    data.last_question_kind = questionKind;
+    data.pending_customer_question = questionKind;
+    const history = Array.isArray(data.customer_question_history) ? data.customer_question_history : [];
+    data.customer_question_history = [
+      ...history.slice(-7),
+      { at: now, kind: questionKind, text: text || `[${questionKind}]`, agent: args.activeAgent },
+    ];
+  }
+
+  if (args.intelligence.intent === "escolha_produto" || data.selected_sku) {
+    data.buying_signal_detected = true;
+  }
+
+  data.seller_context_summary = buildSellerContextSummary(data);
 }
 
 async function loadAgentMemory(supabase: any, phone: string, agentSlug: MemoryAgent) {
@@ -1181,6 +1266,15 @@ async function saveAgentMemory(
     intended_agent: data.intended_agent || null,
     quer_previa: data.quer_previa || null,
     tem_foto_cliente: data.tem_foto_cliente || null,
+    sales_stage: data.sales_stage || null,
+    seller_context_summary: data.seller_context_summary || null,
+    last_customer_message: data.last_customer_message || null,
+    last_customer_message_at: data.last_customer_message_at || null,
+    last_customer_question: data.last_customer_question || null,
+    last_question_kind: data.last_question_kind || null,
+    pending_customer_question: data.pending_customer_question || null,
+    customer_question_history: data.customer_question_history || [],
+    buying_signal_detected: data.buying_signal_detected || null,
   };
 
   await supabase.from("customer_agent_memory").upsert(
@@ -1224,6 +1318,15 @@ function hydrateDataWithMemory(data: AnyRecord, memory: AnyRecord | null) {
   if (!data.intended_agent && preferences.intended_agent) data.intended_agent = preferences.intended_agent;
   if (!data.quer_previa && preferences.quer_previa) data.quer_previa = preferences.quer_previa;
   if (!data.tem_foto_cliente && preferences.tem_foto_cliente) data.tem_foto_cliente = preferences.tem_foto_cliente;
+  if (!data.sales_stage && preferences.sales_stage) data.sales_stage = preferences.sales_stage;
+  if (!data.seller_context_summary && preferences.seller_context_summary) data.seller_context_summary = preferences.seller_context_summary;
+  if (!data.last_customer_message && preferences.last_customer_message) data.last_customer_message = preferences.last_customer_message;
+  if (!data.last_customer_message_at && preferences.last_customer_message_at) data.last_customer_message_at = preferences.last_customer_message_at;
+  if (!data.last_customer_question && preferences.last_customer_question) data.last_customer_question = preferences.last_customer_question;
+  if (!data.last_question_kind && preferences.last_question_kind) data.last_question_kind = preferences.last_question_kind;
+  if (!data.pending_customer_question && preferences.pending_customer_question) data.pending_customer_question = preferences.pending_customer_question;
+  if (!data.customer_question_history && preferences.customer_question_history) data.customer_question_history = preferences.customer_question_history;
+  if (!data.buying_signal_detected && preferences.buying_signal_detected) data.buying_signal_detected = preferences.buying_signal_detected;
   if (!data.selected_sku && memory.last_product_sku) data.selected_sku = memory.last_product_sku;
   if (!data.selected_name && memory.last_product_name) data.selected_name = memory.last_product_name;
 
@@ -1681,6 +1784,12 @@ function buildResponsePayload(args: {
       numeracao_status: collectedData.numeracao_status || null,
       entrega: collectedData.delivery_method || null,
       pagamento: collectedData.payment_method || null,
+      sales_stage: collectedData.sales_stage || null,
+      seller_context_summary: collectedData.seller_context_summary || null,
+      last_customer_question: collectedData.last_customer_question || null,
+      last_question_kind: collectedData.last_question_kind || null,
+      pending_customer_question: collectedData.pending_customer_question || null,
+      buying_signal_detected: collectedData.buying_signal_detected || null,
     },
     use_product_buttons: useProductButtons,
     agente_atual: agent,
@@ -4429,6 +4538,12 @@ serve(async (req) => {
       catalogSelectionHint,
     });
     applyIntelligenceToData(baseData, intelligence);
+    updateSellerContextMemory(baseData, {
+      text: inboundText,
+      mediaType,
+      intelligence,
+      activeAgent,
+    });
 
     if (intelligence.needsClarification && intelligence.clarificationQuestion && !buttonResponseId) {
       const reply = intelligence.clarificationQuestion;
