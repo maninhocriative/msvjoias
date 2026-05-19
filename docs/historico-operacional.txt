@@ -841,3 +841,9 @@ Próximos passos: validar no navegador com dois usuários logados se o status on
 - Quando o usuário acessou no dia atual, a tela mostra "Acessou hoje às HH:mm".
 - Usuários sem registro de presença continuam mostrando a data de cadastro como fallback.
 Próximos passos: validar no navegador se Tatiane e demais usuários online exibem a data/hora de acesso correta.
+
+2026-05-19 - Mais detalhes de presença na página de usuários
+- O texto "Online agora" na lista de usuários passou a aparecer em verde quando o usuário está online.
+- Adicionei métricas do dia por usuário: atendimentos assumidos/encaminhados e quantidade de mensagens nas conversas atendidas.
+- A página agora também escuta eventos de atribuição e novas mensagens para atualizar esses indicadores em tempo real.
+Próximos passos: validar se os totais batem com o histórico de atribuições do chat para cada vendedor.

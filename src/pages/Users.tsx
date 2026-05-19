@@ -27,7 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Pencil, Trash2, Users, Shield, UserCog, ShoppingBag, Loader2, Circle, MessageCircle, Clock } from 'lucide-react';
+import { Pencil, Trash2, Users, Shield, UserCog, ShoppingBag, Loader2, Circle, MessageCircle, Clock, Send } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useUserRole, AppRole } from '@/hooks/useUserRole';
 import { useNavigate } from 'react-router-dom';
@@ -46,6 +46,13 @@ interface UserPresence {
   chat_started_at: string | null;
 }
 
+interface UserActivityStats {
+  conversationsToday: number;
+  messagesToday: number;
+  customerMessagesToday: number;
+  lastHandledAt: string | null;
+}
+
 interface UserWithRole {
   id: string;
   email: string;
@@ -55,6 +62,7 @@ interface UserWithRole {
   role_id: string | null;
   created_at: string;
   presence: UserPresence | null;
+  stats: UserActivityStats;
 }
 
 const ONLINE_WINDOW_MS = 5 * 60 * 1000;
@@ -115,9 +123,18 @@ const formatAccessDate = (lastSeenAt: string | null | undefined, createdAt: stri
   return `Último acesso em ${lastSeen.toLocaleDateString('pt-BR')} às ${time}`;
 };
 
+const emptyStats = (): UserActivityStats => ({
+  conversationsToday: 0,
+  messagesToday: 0,
+  customerMessagesToday: 0,
+  lastHandledAt: null,
+});
+
+const normalizePhone = (phone: string | null | undefined) => phone?.replace(/\D/g, '') || '';
+
 const formatChatPhone = (phone: string | null | undefined) => {
   if (!phone) return null;
-  const digits = phone.replace(/\D/g, '');
+  const digits = normalizePhone(phone);
   if (digits.length >= 4) return `final ${digits.slice(-4)}`;
   return phone;
 };
@@ -146,6 +163,99 @@ const UsersPage = () => {
     }
   }, [isAdmin, roleLoading, navigate, toast]);
 
+  const fetchTodayStats = useCallback(async () => {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const statsByUser = new Map<string, UserActivityStats>();
+
+    const { data: events, error: eventsError } = await supabase
+      .from('conversation_events')
+      .select('phone, ts, payload')
+      .eq('type', 'assignment')
+      .gte('ts', startOfDay.toISOString())
+      .order('ts', { ascending: false });
+
+    if (eventsError) throw eventsError;
+
+    const phonesBySeller = new Map<string, Set<string>>();
+    const sellerByPhone = new Map<string, Set<string>>();
+
+    (events || []).forEach((event) => {
+      const payload = event.payload as {
+        action?: string;
+        seller_id?: string | null;
+      } | null;
+      const sellerId = payload?.seller_id;
+      const action = payload?.action;
+
+      if (!sellerId || (action !== 'takeover' && action !== 'auto_forward')) return;
+
+      const phone = normalizePhone(event.phone);
+      if (!phone) return;
+
+      if (!statsByUser.has(sellerId)) statsByUser.set(sellerId, emptyStats());
+      const stats = statsByUser.get(sellerId)!;
+      stats.lastHandledAt = stats.lastHandledAt && event.ts
+        ? new Date(stats.lastHandledAt).getTime() > new Date(event.ts).getTime()
+          ? stats.lastHandledAt
+          : event.ts
+        : event.ts || stats.lastHandledAt;
+
+      if (!phonesBySeller.has(sellerId)) phonesBySeller.set(sellerId, new Set());
+      phonesBySeller.get(sellerId)!.add(phone);
+
+      if (!sellerByPhone.has(phone)) sellerByPhone.set(phone, new Set());
+      sellerByPhone.get(phone)!.add(sellerId);
+    });
+
+    phonesBySeller.forEach((phones, sellerId) => {
+      if (!statsByUser.has(sellerId)) statsByUser.set(sellerId, emptyStats());
+      statsByUser.get(sellerId)!.conversationsToday = phones.size;
+    });
+
+    const phones = Array.from(sellerByPhone.keys());
+    if (phones.length === 0) return statsByUser;
+
+    const { data: conversations, error: conversationsError } = await supabase
+      .from('conversations')
+      .select('id, contact_number')
+      .in('contact_number', phones);
+
+    if (conversationsError) throw conversationsError;
+
+    const sellersByConversation = new Map<string, Set<string>>();
+    (conversations || []).forEach((conversation) => {
+      const sellers = sellerByPhone.get(normalizePhone(conversation.contact_number));
+      if (sellers) sellersByConversation.set(conversation.id, sellers);
+    });
+
+    const conversationIds = Array.from(sellersByConversation.keys());
+    if (conversationIds.length === 0) return statsByUser;
+
+    const { data: messages, error: messagesError } = await supabase
+      .from('messages')
+      .select('conversation_id, is_from_me, created_at')
+      .in('conversation_id', conversationIds)
+      .gte('created_at', startOfDay.toISOString());
+
+    if (messagesError) throw messagesError;
+
+    (messages || []).forEach((message) => {
+      const sellers = sellersByConversation.get(message.conversation_id);
+      if (!sellers) return;
+
+      sellers.forEach((sellerId) => {
+        if (!statsByUser.has(sellerId)) statsByUser.set(sellerId, emptyStats());
+        const stats = statsByUser.get(sellerId)!;
+        stats.messagesToday += 1;
+        if (!message.is_from_me) stats.customerMessagesToday += 1;
+      });
+    });
+
+    return statsByUser;
+  }, []);
+
   const fetchUsers = useCallback(async () => {
     try {
       const { data: profiles, error: profilesError } = await supabase
@@ -168,6 +278,7 @@ const UsersPage = () => {
 
       if (presenceError) throw presenceError;
 
+      const statsByUser = await fetchTodayStats();
       const rolesByUser = new Map((roles || []).map(role => [role.user_id, role]));
       const presenceByUser = new Map((presenceRows || []).map(row => [row.user_id, row as UserPresence]));
 
@@ -182,6 +293,7 @@ const UsersPage = () => {
           role_id: userRole?.id || null,
           created_at: profile.created_at,
           presence: presenceByUser.get(profile.id) || null,
+          stats: statsByUser.get(profile.id) || emptyStats(),
         };
       }).sort((a, b) => {
         const aOnline = isPresenceOnline(a.presence);
@@ -204,7 +316,7 @@ const UsersPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [fetchTodayStats, toast]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -216,6 +328,8 @@ const UsersPage = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, fetchUsers)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'user_roles' }, fetchUsers)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'seller_presence' }, fetchUsers)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversation_events' }, fetchUsers)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, fetchUsers)
       .subscribe();
 
     const interval = window.setInterval(fetchUsers, 60000);
@@ -437,7 +551,7 @@ const UsersPage = () => {
                         </p>
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                           <span>{formatAccessDate(user.presence?.last_seen_at, user.created_at)}</span>
-                          <span className="inline-flex items-center gap-1">
+                          <span className={cn('inline-flex items-center gap-1', isOnline && 'font-medium text-emerald-500')}>
                             <Clock className="w-3 h-3" />
                             {isOnline ? 'Online agora' : formatLastSeen(user.presence?.last_seen_at)}
                           </span>
@@ -447,6 +561,14 @@ const UsersPage = () => {
                               Atendendo conversa {chatPhone}
                             </span>
                           )}
+                          <span className="inline-flex items-center gap-1">
+                            <Users className="w-3 h-3" />
+                            {user.stats.conversationsToday} atendimentos hoje
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <Send className="w-3 h-3" />
+                            {user.stats.messagesToday} mensagens ({user.stats.customerMessagesToday} do cliente)
+                          </span>
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center justify-end gap-2">
