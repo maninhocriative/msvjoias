@@ -100,6 +100,21 @@ const formatLastSeen = (lastSeenAt: string | null | undefined) => {
   return `Visto em ${new Date(lastSeenAt).toLocaleDateString('pt-BR')}`;
 };
 
+const formatAccessDate = (lastSeenAt: string | null | undefined, createdAt: string) => {
+  if (!lastSeenAt) {
+    return `Cadastrado em ${new Date(createdAt).toLocaleDateString('pt-BR')}`;
+  }
+
+  const lastSeen = new Date(lastSeenAt);
+  const today = new Date();
+  const time = lastSeen.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const isToday = lastSeen.toDateString() === today.toDateString();
+
+  if (isToday) return `Acessou hoje às ${time}`;
+
+  return `Último acesso em ${lastSeen.toLocaleDateString('pt-BR')} às ${time}`;
+};
+
 const formatChatPhone = (phone: string | null | undefined) => {
   if (!phone) return null;
   const digits = phone.replace(/\D/g, '');
@@ -421,7 +436,7 @@ const UsersPage = () => {
                           {user.full_name || 'Sem nome'}
                         </p>
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                          <span>Desde {new Date(user.created_at).toLocaleDateString('pt-BR')}</span>
+                          <span>{formatAccessDate(user.presence?.last_seen_at, user.created_at)}</span>
                           <span className="inline-flex items-center gap-1">
                             <Clock className="w-3 h-3" />
                             {isOnline ? 'Online agora' : formatLastSeen(user.presence?.last_seen_at)}

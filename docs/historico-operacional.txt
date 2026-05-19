@@ -835,3 +835,9 @@ Próximos passos: validar no navegador troca rápida de conversas, digitação l
 - O AuthContext passou a registrar heartbeat de presença para usuários logados no sistema inteiro, não só no chat.
 - Ajustei o hook do chat para não marcar o vendedor como offline apenas por sair da tela de chat.
 Próximos passos: validar no navegador com dois usuários logados se o status online/offline e último acesso atualizam em tempo real.
+
+2026-05-19 - Ajuste de último acesso na página de usuários
+- Troquei a linha principal da lista de usuários para mostrar último acesso real, não a data de criação da conta.
+- Quando o usuário acessou no dia atual, a tela mostra "Acessou hoje às HH:mm".
+- Usuários sem registro de presença continuam mostrando a data de cadastro como fallback.
+Próximos passos: validar no navegador se Tatiane e demais usuários online exibem a data/hora de acesso correta.
