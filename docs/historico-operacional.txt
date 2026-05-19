@@ -853,3 +853,9 @@ Próximos passos: validar se os totais batem com o histórico de atribuições d
 - Se o vendedor estiver atendendo uma conversa agora, ela entra nos atendimentos de hoje mesmo sem novo evento de atribuição.
 - Quando o vendedor troca de conversa, o realtime de seller_presence dispara nova leitura e atualiza os totais automaticamente para todos os usuários.
 Próximos passos: validar na tela se Tatiane aparece com pelo menos 1 atendimento enquanto estiver em atendimento ativo.
+
+2026-05-19 - Relatorio de falhas dos agentes para priorizacao
+- Criei docs/relatorio-agentes-chat-2026-05-19.txt com analise dos erros observados nos agentes do chat.
+- O relatorio lista falhas por impacto, principais causas provaveis no fluxo e plano P0/P1/P2 para corrigir amanha.
+- A consulta direta de conversas pelo cliente publico retornou vazia por RLS; o relatorio foi baseado nos prints reais e na leitura do fluxo aline-reply.
+Proximos passos: implementar primeiro as correcoes P0 da Kate/Malu e depois criar uma funcao administrativa read-only para auditoria quantitativa.

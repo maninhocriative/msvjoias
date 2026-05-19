@@ -1,0 +1,173 @@
+RELATORIO - ANALISE DOS AGENTES NO CHAT ACIUM
+Data: 2026-05-19
+Objetivo: levantar erros observados nas conversas dos agentes e priorizar melhorias para executar amanha.
+
+LIMITACAO DA ANALISE
+- A consulta direta via chave publica retornou vazia por seguranca/RLS, entao este relatorio usa os prints reais enviados, a leitura do fluxo em supabase/functions/aline-reply/index.ts e o comportamento observado no CRM.
+- Para uma auditoria quantitativa completa amanha, o ideal e criar uma funcao administrativa somente leitura para exportar amostras anonimizadas de aline_messages, messages, aline_conversations e conversation_state.
+
+RESUMO EXECUTIVO
+Os agentes evoluiram, mas ainda ha perda de venda por tres causas principais:
+1. Fallback repetitivo: quando o cliente faz pergunta comercial fora do passo esperado, a Kate/Malu/Keila voltam a uma pergunta padrao em vez de responder.
+2. Estado preso: o sistema guarda produto/etapa, mas as respostas ainda priorizam o node atual em alguns pontos, causando insistencia em foto/simulacao ou catalogo quando o cliente ja escolheu ou perguntou outra coisa.
+3. Falta de criterio de handoff: quando o agente nao sabe responder, deveria encaminhar para humano com resumo. Em alguns casos ele tenta continuar e irrita o cliente.
+
+ERROS OBSERVADOS NOS PRINTS
+
+1. Kate ignora perguntas de prazo e fechamento
+Exemplo observado:
+- Cliente pergunta: "Queria saber primeiro qual o prazo de entrega?"
+- Kate responde corretamente uma vez.
+- Cliente pergunta: "Pagando agora, finaliza hj mesmo?"
+- Kate volta para: "Se quiser, posso te reenviar os modelos ou preparar outra simulacao com uma nova foto."
+Impacto: cliente estava em sinal forte de compra e recebeu resposta fora do assunto.
+Causa provavel: fallback de selecao/simulacao ainda ganha prioridade depois de pergunta de prazo/pagamento.
+Correcao recomendada:
+- Criar camada obrigatoria antes do fallback: se pending_customer_question ou pergunta detectada for prazo/pagamento/entrega, responder isso antes de qualquer CTA padrao.
+- Se a pergunta for sobre fechar hoje, responder: "Se fechar e pagar agora, depende da fila, geralmente fica entre 8 e 24 horas apos pagamento e fechamento. Vou chamar um vendedor para confirmar a fila atual antes de voce pagar."
+
+2. Kate insiste em foto/simulacao depois que o cliente escolhe produto
+Exemplo observado:
+- Cliente toca em "Quero este".
+- Agente ainda pede foto ou pergunta simulacao repetidamente.
+- Cliente queria comprar sem mandar foto.
+Impacto: venda morre porque o cliente precisa fazer uma acao extra que nao e obrigatoria.
+Correcao recomendada:
+- Separar claramente duas trilhas: "comprar com simulacao" e "comprar sem simulacao".
+- Ao detectar escolha de produto, perguntar uma unica vez: "Quer ver uma simulacao antes ou prefere seguir direto para entrega e pagamento?"
+- Se cliente responder "quero este", "perfeito", "isso", "pode ser", assumir compra sem simulacao, pedir entrega/pagamento e chamar humano.
+
+3. Perguntas sobre corrente/cordao nao sao respondidas sempre
+Exemplo observado:
+- Cliente pergunta: "Teria cordao?", "vem com cordao?", "Ou e so a medalha?"
+- Agente repetiu CTA generico.
+Impacto: quebra confianca, porque o cliente perguntou algo simples de produto.
+Correcao recomendada:
+- Resposta fixa da Kate: "Esse valor e somente do pingente/medalha. Corrente ou cordao sao vendidos separadamente. Posso te mostrar opcoes de corrente tambem."
+- Depois da resposta, retomar compra: "Quer seguir com esse pingente e escolher a corrente depois?"
+
+4. Perguntas de endereco e retirada precisam ser tratadas como venda quente
+Exemplo observado:
+- Cliente pergunta endereco da loja depois de demonstrar interesse.
+- Agente volta ao fallback de modelos/simulacao.
+Impacto: perda direta de cliente que queria ir a loja ou finalizar.
+Correcao recomendada:
+- Pergunta de endereco deve sempre responder endereco/retirada e perguntar proximo passo.
+- Se endereco nao estiver configurado em tabela, chamar humano em vez de inventar ou repetir fallback.
+
+5. Oculos/Malu ainda tem problema de catalogo e botoes
+Exemplos observados anteriormente:
+- Cliente pede oculos, Malu responde "Posso mostrar modelos..." repetidamente, mas nao envia cards.
+- Cards de oculos aparecem sem botoes em alguns momentos.
+Impacto: cliente nao consegue escolher produto, fluxo trava.
+Correcao recomendada:
+- Padronizar envio de catalogo da Malu usando a mesma saida de payload para Z-API que ja funciona nos outros produtos.
+- Criar teste de regressao local para: "quero oculos" -> "ver modelos" -> products + useProductButtons=true + dois botoes.
+- Garantir que produtos novos de categoria oculos entram no filtro por category/tags/nome.
+
+6. Respostas repetidas irritam clientes
+Exemplos observados:
+- "Se quiser, posso te reenviar..." repetido varias vezes.
+- "Certo. Quer seguir..." repetido apos perguntas diferentes.
+Impacto: cliente percebe bot burro e abandona.
+Correcao recomendada:
+- Criar contador por mensagem/fallback no collected_data.
+- Se o mesmo fallback seria enviado pela segunda vez na mesma conversa, bloquear e chamar humano com resumo.
+- Criar regra: nunca enviar o mesmo texto duas vezes seguidas para o cliente.
+
+7. Assedio esta parcialmente tratado
+Exemplo observado:
+- Cliente assedia e agente agora responde com aviso de registro/autoridades.
+Risco:
+- Depois do aviso, se o cliente volta com frase normal, o fluxo pode reabrir sem bloqueio firme.
+Correcao recomendada:
+- Manter harassment_detected no estado.
+- Se reincidir, nao responder venda; marcar lead para humano/seguranca e pausar automacao por um periodo.
+
+8. Previa/simulacao precisa deixar claro que nao e arte final
+Status observado:
+- Ja houve ajuste no texto, mas precisa virar regra central para todas as entregas de simulacao.
+Correcao recomendada:
+- Toda imagem de pingente deve vir com legenda: "Simulacao de fotogravacao - a arte final sera enviada pelo vendedor para aprovacao antes da gravacao."
+- Evitar a palavra "previa" sozinha; usar "simulacao".
+
+9. Produto escolhido precisa ficar mais visivel para humano
+Status observado:
+- Ja existe nota interna, mas precisamos validar se aparece em todos os casos: botao, texto "quero este", selecao por imagem/card e escolha manual.
+Correcao recomendada:
+- Ao reconhecer produto, salvar selected_name, selected_sku, selected_price e selected_product em conversation_state.
+- Sempre gerar nota interna no chat quando selected_product mudar.
+
+10. Falta painel de auditoria dos agentes
+Problema:
+- Hoje dependemos de prints para diagnosticar perda de venda.
+Correcao recomendada:
+- Criar relatorio administrativo com ultimas 24h/7 dias:
+  - conversas por agente;
+  - mensagens repetidas;
+  - perguntas sem resposta;
+  - handoffs para humano;
+  - clientes que escolheram produto mas nao fecharam;
+  - clientes que perguntaram preco/prazo/endereco/cordao e receberam fallback.
+
+PRIORIDADE PARA AMANHA
+
+P0 - Resolver perda direta de venda
+1. Antes de qualquer fallback da Kate, responder perguntas comerciais detectadas: prazo, pagar hoje, endereco, cordao/corrente, material, valor, entrega, retirada.
+2. Se cliente escolheu produto, permitir seguir sem simulacao e avancar para entrega/pagamento.
+3. Bloquear repeticao de mesma resposta duas vezes seguidas; na segunda, chamar humano.
+4. Corrigir Malu/oculos para sempre enviar catalogo com botoes quando cliente pede modelos.
+
+P1 - Melhorar memoria e contexto
+5. Reforcar estado selected_product e nota interna em todos os caminhos.
+6. Criar trilha de venda por etapa: interesse -> catalogo -> escolha -> simulacao opcional -> entrega -> pagamento -> humano.
+7. Se cliente muda assunto/produto, trocar agente antes de responder.
+
+P2 - Medicao e controle
+8. Criar funcao administrativa read-only para gerar relatorio real das conversas sem depender de print.
+9. Criar testes de regressao com frases reais dos prints.
+10. Criar dashboard simples de falhas dos agentes.
+
+TESTES QUE DEVEM VIRAR REGRESSAO
+
+Kate - perguntas comerciais
+- Cliente: "Queria saber primeiro qual o prazo de entrega?"
+  Esperado: informar 8 a 24 horas apos pagamento e fechamento, dependendo da fila.
+- Cliente: "Pagando agora, finaliza hj mesmo?"
+  Esperado: responder que depende da fila e chamar/encaminhar vendedor para confirmar disponibilidade atual.
+- Cliente: "Uma duvida, e somente o pingente? Sem cordao?"
+  Esperado: informar que corrente/cordao e vendido separadamente.
+- Cliente: "Qual endereco de vcs?"
+  Esperado: responder endereco configurado ou chamar humano se nao houver endereco seguro no sistema.
+
+Kate - escolha sem simulacao
+- Cliente: "Quero este"
+  Esperado: reconhecer produto e perguntar simulacao ou seguir direto.
+- Cliente: "Sem simulacao"
+  Esperado: avancar para entrega/pagamento.
+- Cliente: "Delivery"
+  Esperado: guardar delivery e perguntar pagamento.
+- Cliente: "Pix"
+  Esperado: encaminhar humano com resumo e marcar venda quente.
+
+Malu - catalogo
+- Cliente: "Quero oculos"
+  Esperado: Malu assume contexto.
+- Cliente: "Ver modelos"
+  Esperado: enviar cards com botoes via Z-API.
+- Cliente: "Quero este"
+  Esperado: reconhecer modelo e perguntar selfie opcional ou encaminhar compra.
+
+Anti-repeticao
+- Se a proxima resposta calculada for igual a ultima mensagem enviada, nao enviar; usar resposta contextual ou humano.
+
+RECOMENDACAO DE IMPLEMENTACAO
+Amanha devemos mexer primeiro em supabase/functions/aline-reply/index.ts, com mudancas pequenas:
+1. Criar handleCommercialQuestionBeforeFallback(data, message, agent).
+2. Criar shouldEscalateRepeatedFallback(data, reply).
+3. Criar handleSelectedProductNextStep(data, message) para compra com/sem simulacao.
+4. Padronizar respostas fixas de Kate: prazo, material, cordao, endereco, pagamento.
+5. Adicionar testes locais/simulados para essas frases.
+
+OBSERVACAO FINAL
+A prioridade nao e deixar o agente mais falante; e deixar ele vendedor: responder a pergunta do cliente, nao repetir CTA, reconhecer compra quente e chamar humano na hora certa.
