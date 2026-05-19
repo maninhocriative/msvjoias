@@ -143,7 +143,6 @@ export const useSellerPresence = () => {
     return () => {
       clearInterval(heartbeatInterval);
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      setOffline();
     };
   }, [user, setOnline, setOffline]);
 

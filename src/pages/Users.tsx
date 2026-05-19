@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -27,12 +27,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Pencil, Trash2, Users, Shield, UserCog, ShoppingBag, Loader2 } from 'lucide-react';
+import { Pencil, Trash2, Users, Shield, UserCog, ShoppingBag, Loader2, Circle, MessageCircle, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useUserRole, AppRole } from '@/hooks/useUserRole';
 import { useNavigate } from 'react-router-dom';
 import { InviteUserDialog } from '@/components/users/InviteUserDialog';
 import { PendingUsersSection } from '@/components/users/PendingUsersSection';
+import { cn } from '@/lib/utils';
+
+interface UserPresence {
+  id: string;
+  user_id: string;
+  full_name: string | null;
+  is_online: boolean | null;
+  last_seen_at: string | null;
+  is_chatting: boolean | null;
+  current_chat_phone: string | null;
+  chat_started_at: string | null;
+}
 
 interface UserWithRole {
   id: string;
@@ -42,7 +54,10 @@ interface UserWithRole {
   role: AppRole;
   role_id: string | null;
   created_at: string;
+  presence: UserPresence | null;
 }
+
+const ONLINE_WINDOW_MS = 5 * 60 * 1000;
 
 const roleLabels: Record<string, string> = {
   admin: 'Administrador',
@@ -60,6 +75,36 @@ const roleColors: Record<string, string> = {
   admin: 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400',
   gerente: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
   vendedor: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
+};
+
+const isPresenceOnline = (presence: UserPresence | null) => {
+  if (!presence?.is_online || !presence.last_seen_at) return false;
+  return new Date(presence.last_seen_at).getTime() > Date.now() - ONLINE_WINDOW_MS;
+};
+
+const formatLastSeen = (lastSeenAt: string | null | undefined) => {
+  if (!lastSeenAt) return 'Nunca entrou';
+
+  const diffMs = Date.now() - new Date(lastSeenAt).getTime();
+  const minutes = Math.max(0, Math.floor(diffMs / 60000));
+
+  if (minutes < 1) return 'Visto agora';
+  if (minutes < 60) return `Visto há ${minutes} min`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Visto há ${hours} h`;
+
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `Visto há ${days} d`;
+
+  return `Visto em ${new Date(lastSeenAt).toLocaleDateString('pt-BR')}`;
+};
+
+const formatChatPhone = (phone: string | null | undefined) => {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length >= 4) return `final ${digits.slice(-4)}`;
+  return phone;
 };
 
 const UsersPage = () => {
@@ -84,15 +129,9 @@ const UsersPage = () => {
       });
       navigate('/');
     }
-  }, [isAdmin, roleLoading, navigate]);
+  }, [isAdmin, roleLoading, navigate, toast]);
 
-  useEffect(() => {
-    if (isAdmin) {
-      fetchUsers();
-    }
-  }, [isAdmin]);
-
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
@@ -107,17 +146,36 @@ const UsersPage = () => {
 
       if (rolesError) throw rolesError;
 
+      const { data: presenceRows, error: presenceError } = await supabase
+        .from('seller_presence')
+        .select('id, user_id, full_name, is_online, last_seen_at, is_chatting, current_chat_phone, chat_started_at')
+        .order('last_seen_at', { ascending: false });
+
+      if (presenceError) throw presenceError;
+
+      const rolesByUser = new Map((roles || []).map(role => [role.user_id, role]));
+      const presenceByUser = new Map((presenceRows || []).map(row => [row.user_id, row as UserPresence]));
+
       const usersWithRoles: UserWithRole[] = (profiles || []).map(profile => {
-        const userRole = roles?.find(r => r.user_id === profile.id);
+        const userRole = rolesByUser.get(profile.id);
         return {
           id: profile.id,
           email: '',
           full_name: profile.full_name,
           avatar_url: profile.avatar_url,
-          role: userRole?.role as AppRole || null,
+          role: (userRole?.role as AppRole) || null,
           role_id: userRole?.id || null,
           created_at: profile.created_at,
+          presence: presenceByUser.get(profile.id) || null,
         };
+      }).sort((a, b) => {
+        const aOnline = isPresenceOnline(a.presence);
+        const bOnline = isPresenceOnline(b.presence);
+        if (aOnline !== bOnline) return aOnline ? -1 : 1;
+        const aSeen = a.presence?.last_seen_at ? new Date(a.presence.last_seen_at).getTime() : 0;
+        const bSeen = b.presence?.last_seen_at ? new Date(b.presence.last_seen_at).getTime() : 0;
+        if (aSeen !== bSeen) return bSeen - aSeen;
+        return (a.full_name || '').localeCompare(b.full_name || '');
       });
 
       setUsers(usersWithRoles);
@@ -131,7 +189,27 @@ const UsersPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    fetchUsers();
+
+    const channel = supabase
+      .channel('users-page-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, fetchUsers)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_roles' }, fetchUsers)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'seller_presence' }, fetchUsers)
+      .subscribe();
+
+    const interval = window.setInterval(fetchUsers, 60000);
+
+    return () => {
+      window.clearInterval(interval);
+      supabase.removeChannel(channel);
+    };
+  }, [isAdmin, fetchUsers]);
 
   const handleEditRole = (user: UserWithRole) => {
     setEditingUser(user);
@@ -235,20 +313,20 @@ const UsersPage = () => {
     return null;
   }
 
+  const onlineCount = users.filter(user => isPresenceOnline(user.presence)).length;
+
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-8 max-w-[1400px] mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Usuários</h1>
-          <p className="text-muted-foreground mt-1">Gerencie permissões e acessos</p>
+          <p className="text-muted-foreground mt-1">Gerencie permissões, acessos e presença em tempo real</p>
         </div>
         <InviteUserDialog onSuccess={fetchUsers} />
       </div>
 
-      {/* Pending approvals section */}
       <PendingUsersSection onApprovalChange={fetchUsers} />
 
-      {/* Permissions legend */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
         <Card className="border-rose-200 dark:border-rose-900/50">
           <CardContent className="flex items-center gap-3 p-4">
@@ -285,14 +363,17 @@ const UsersPage = () => {
         </Card>
       </div>
 
-      {/* Users list */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex flex-wrap items-center gap-2">
             <Users className="w-5 h-5" />
             Usuários Ativos
             <span className="ml-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-muted text-muted-foreground">
               {users.length}
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+              <Circle className="w-2 h-2 fill-current" />
+              {onlineCount} online
             </span>
           </CardTitle>
         </CardHeader>
@@ -308,76 +389,111 @@ const UsersPage = () => {
             </div>
           ) : (
             <div className="grid gap-2">
-              {users.map((user) => (
-                <div
-                  key={user.id}
-                  className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50 cursor-pointer transition-colors group"
-                  onClick={() => navigate(`/users/${user.id}`)}
-                >
-                  <div className="flex items-center gap-4 flex-1 min-w-0">
-                    <Avatar className="w-10 h-10 border">
-                      <AvatarImage src={user.avatar_url || undefined} />
-                      <AvatarFallback className="bg-muted text-muted-foreground text-sm font-medium">
-                        {getInitials(user.full_name)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-foreground truncate">
-                        {user.full_name || 'Sem nome'}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Desde {new Date(user.created_at).toLocaleDateString('pt-BR')}
-                      </p>
+              {users.map((user) => {
+                const isOnline = isPresenceOnline(user.presence);
+                const isChatting = Boolean(isOnline && user.presence?.is_chatting);
+                const chatPhone = formatChatPhone(user.presence?.current_chat_phone);
+
+                return (
+                  <div
+                    key={user.id}
+                    className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50 cursor-pointer transition-colors group"
+                    onClick={() => navigate(`/users/${user.id}`)}
+                  >
+                    <div className="flex items-center gap-4 flex-1 min-w-0">
+                      <div className="relative shrink-0">
+                        <Avatar className="w-10 h-10 border">
+                          <AvatarImage src={user.avatar_url || undefined} />
+                          <AvatarFallback className="bg-muted text-muted-foreground text-sm font-medium">
+                            {getInitials(user.full_name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span
+                          className={cn(
+                            'absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background',
+                            isChatting ? 'bg-cyan-500' : isOnline ? 'bg-emerald-500' : 'bg-slate-500'
+                          )}
+                          title={isChatting ? 'Em atendimento' : isOnline ? 'Online agora' : 'Offline'}
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-foreground truncate">
+                          {user.full_name || 'Sem nome'}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                          <span>Desde {new Date(user.created_at).toLocaleDateString('pt-BR')}</span>
+                          <span className="inline-flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {isOnline ? 'Online agora' : formatLastSeen(user.presence?.last_seen_at)}
+                          </span>
+                          {isChatting && chatPhone && (
+                            <span className="inline-flex items-center gap-1 text-cyan-500">
+                              <MessageCircle className="w-3 h-3" />
+                              Atendendo conversa {chatPhone}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        {isChatting ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-cyan-500/10 text-cyan-500 border border-cyan-500/20">
+                            <MessageCircle className="w-3 h-3" />
+                            Atendendo
+                          </span>
+                        ) : isOnline ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                            <Circle className="w-2 h-2 fill-current" />
+                            Online
+                          </span>
+                        ) : null}
+                        {user.role ? (
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${roleColors[user.role]}`}>
+                            {roleIcons[user.role]}
+                            {roleLabels[user.role]}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">Sem permissão</span>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      {user.role ? (
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${roleColors[user.role]}`}>
-                          {roleIcons[user.role]}
-                          {roleLabels[user.role]}
-                        </span>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">Sem permissão</span>
-                      )}
+                    <div className="flex items-center gap-1 ml-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEditRole(user);
+                        }}
+                        title="Editar permissão"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openDeleteDialog(user);
+                        }}
+                        disabled={deletingId === user.id}
+                        title="Excluir usuário"
+                        className="hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        {deletingId === user.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 ml-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleEditRole(user);
-                      }}
-                      title="Editar permissão"
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openDeleteDialog(user);
-                      }}
-                      disabled={deletingId === user.id}
-                      title="Excluir usuário"
-                      className="hover:bg-destructive/10 hover:text-destructive"
-                    >
-                      {deletingId === user.id ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-4 h-4" />
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Edit role dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
@@ -418,7 +534,6 @@ const UsersPage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Delete confirmation dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>

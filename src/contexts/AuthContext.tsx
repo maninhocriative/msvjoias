@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
@@ -50,11 +50,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (error) {
         console.error('Error fetching profile:', error);
-        return;
+        return null;
       }
       setProfile(data);
+      return data;
     } catch (error) {
       console.error('Error fetching profile:', error);
+      return null;
     }
   };
 
@@ -92,6 +94,47 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => subscription.unsubscribe();
   }, []);
 
+  const updatePresence = useCallback(async (isOnline: boolean) => {
+    if (!user) return;
+
+    try {
+      await supabase
+        .from('seller_presence')
+        .upsert({
+          user_id: user.id,
+          full_name: profile?.full_name || user.user_metadata?.full_name || user.email || 'Usuário',
+          is_online: isOnline,
+          last_seen_at: new Date().toISOString(),
+          ...(isOnline ? {} : {
+            is_chatting: false,
+            current_chat_phone: null,
+            chat_started_at: null,
+          }),
+        }, {
+          onConflict: 'user_id',
+        });
+    } catch (error) {
+      console.error('Error updating user presence:', error);
+    }
+  }, [user, profile?.full_name]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    updatePresence(true);
+    const heartbeatInterval = window.setInterval(() => updatePresence(true), 30000);
+    const handleBeforeUnload = () => {
+      updatePresence(false);
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.clearInterval(heartbeatInterval);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [user, updatePresence]);
+
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({
       email,
@@ -117,6 +160,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const signOut = async () => {
+    await updatePresence(false);
     await supabase.auth.signOut();
     setUser(null);
     setSession(null);

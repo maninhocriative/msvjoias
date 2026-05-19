@@ -827,3 +827,11 @@ Próximos passos: validar em produção se perguntas de preço, prazo, pagamento
 - Atualizações da conversa atual agora alteram apenas metadados, sem recarregar toda a lista de mensagens.
 - Balões de mensagem ajustados para espaçamento menor, cores próximas ao WhatsApp e botão Editar dentro do balão apenas no hover, evitando sobreposição visual.
 Próximos passos: validar no navegador troca rápida de conversas, digitação longa, envio de múltiplas imagens e áudio humano.
+
+2026-05-19 - Usuários com login em tempo real
+- Atualizei a página de Usuários para juntar perfis, permissões e seller_presence.
+- A lista agora mostra usuários online, em atendimento, último acesso e conversa em atendimento quando houver.
+- A página assina mudanças em tempo real de profiles, user_roles e seller_presence para atualizar sem recarregar.
+- O AuthContext passou a registrar heartbeat de presença para usuários logados no sistema inteiro, não só no chat.
+- Ajustei o hook do chat para não marcar o vendedor como offline apenas por sair da tela de chat.
+Próximos passos: validar no navegador com dois usuários logados se o status online/offline e último acesso atualizam em tempo real.
