@@ -163,7 +163,7 @@ const UsersPage = () => {
     }
   }, [isAdmin, roleLoading, navigate, toast]);
 
-  const fetchTodayStats = useCallback(async () => {
+  const fetchTodayStats = useCallback(async (presenceRows: UserPresence[] = []) => {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
@@ -202,6 +202,21 @@ const UsersPage = () => {
           : event.ts
         : event.ts || stats.lastHandledAt;
 
+      if (!phonesBySeller.has(sellerId)) phonesBySeller.set(sellerId, new Set());
+      phonesBySeller.get(sellerId)!.add(phone);
+
+      if (!sellerByPhone.has(phone)) sellerByPhone.set(phone, new Set());
+      sellerByPhone.get(phone)!.add(sellerId);
+    });
+
+    presenceRows.forEach((presence) => {
+      const sellerId = presence.user_id;
+      const phone = normalizePhone(presence.current_chat_phone);
+      const isCurrentChat = presence.is_chatting && phone;
+
+      if (!sellerId || !isCurrentChat) return;
+
+      if (!statsByUser.has(sellerId)) statsByUser.set(sellerId, emptyStats());
       if (!phonesBySeller.has(sellerId)) phonesBySeller.set(sellerId, new Set());
       phonesBySeller.get(sellerId)!.add(phone);
 
@@ -278,9 +293,10 @@ const UsersPage = () => {
 
       if (presenceError) throw presenceError;
 
-      const statsByUser = await fetchTodayStats();
+      const normalizedPresenceRows = (presenceRows || []) as UserPresence[];
+      const statsByUser = await fetchTodayStats(normalizedPresenceRows);
       const rolesByUser = new Map((roles || []).map(role => [role.user_id, role]));
-      const presenceByUser = new Map((presenceRows || []).map(row => [row.user_id, row as UserPresence]));
+      const presenceByUser = new Map(normalizedPresenceRows.map(row => [row.user_id, row]));
 
       const usersWithRoles: UserWithRole[] = (profiles || []).map(profile => {
         const userRole = rolesByUser.get(profile.id);

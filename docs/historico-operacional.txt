@@ -847,3 +847,9 @@ Próximos passos: validar no navegador se Tatiane e demais usuários online exib
 - Adicionei métricas do dia por usuário: atendimentos assumidos/encaminhados e quantidade de mensagens nas conversas atendidas.
 - A página agora também escuta eventos de atribuição e novas mensagens para atualizar esses indicadores em tempo real.
 Próximos passos: validar se os totais batem com o histórico de atribuições do chat para cada vendedor.
+
+2026-05-19 - Contabilizar atendimento atual em usuários
+- Ajustei os indicadores da página de usuários para contar também a conversa em atendimento no seller_presence.
+- Se o vendedor estiver atendendo uma conversa agora, ela entra nos atendimentos de hoje mesmo sem novo evento de atribuição.
+- Quando o vendedor troca de conversa, o realtime de seller_presence dispara nova leitura e atualiza os totais automaticamente para todos os usuários.
+Próximos passos: validar na tela se Tatiane aparece com pelo menos 1 atendimento enquanto estiver em atendimento ativo.
