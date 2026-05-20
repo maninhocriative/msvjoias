@@ -878,3 +878,10 @@ Validacao concluida em 2026-05-20
 - Adicionei trava anti-repeticao: se a Kate tentaria enviar o mesmo fallback generico pela segunda vez, ela encaminha para humano e marca o lead como humano.
 - Edge Function aline-reply deployada no Supabase apos a alteracao.
 Proximos passos: testar com frases reais dos prints: "Pagando agora, finaliza hj mesmo?", "Quero este", "Isso mesmo", "Quantos gramas pesa?" e repeticao do fallback.
+
+2026-05-20 - Ajustes de Kate e tag Acao humana
+- Corrigi o filtro/contador Acao humana no chat para contar tambem conversas em human_takeover, nao apenas lead_status humano/venda_iniciada.
+- Ajustei a Kate para responder perguntas de parcelamento no cartao: ACIUM divide em ate 3x sem juros.
+- Corrigi o roteamento de contexto romantico: quando a conversa ja e de fotogravacao/pingente, termos como namorado/namorados nao devem puxar o fluxo de aliancas sem mencao clara de alianca ou anel.
+- Build do frontend validado com sucesso e edge function aline-reply deployada no Supabase.
+Proximos passos: validar no CRM se Franciane aparece no contador Acao humana e testar "fotogravacao para namorado" sem cair na Keila.

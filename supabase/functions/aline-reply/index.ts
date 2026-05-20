@@ -299,6 +299,12 @@ function detectPaymentIntent(text: string): boolean {
   );
 }
 
+function detectCardInstallmentQuestion(text: string): boolean {
+  const normalized = normalizeText(text);
+  return /(quantas|qts|vezes|parcela|parcelas|parcelar|divide|dividir|sem juros).*(cartao|cartao de credito|credito|sem juros)|cartao.*(quantas|vezes|parcela|parcelas|sem juros)/.test(
+    normalized,
+  );
+}
 function detectDeliveryIntent(text: string): boolean {
   const normalized = normalizeText(text);
   return /entrega|delivery|retirar|retirada|buscar|loja|endereco|endere[cç]o|frete|moto|motoboy/.test(normalized);
@@ -363,7 +369,22 @@ function buildRuleBasedIntelligence(args: {
     /alianc|anel|aneis|an[eé]is/.test(normalized) ? "aliancas" : null,
   ].filter(Boolean);
   const uniqueMentionedCategories = [...new Set(mentionedCategories)];
+  const hasPendantContext = data.categoria === "pingente" || String(currentNode || "").startsWith("kate_") || /fotograv|pingente|medalh/.test(normalizeText(String(data.last_interest || data.customer_stage || "")));
+  const isRomanticGiftContext = /namorad|dia dos namorad|presente.*namorad/.test(normalized);
+  const mentionsAllianceProduct = /alianc|anel|aneis|an[eé]is/.test(normalized);
   const extracted: AnyRecord = {};
+  if (hasPendantContext && isRomanticGiftContext && !mentionsAllianceProduct) {
+    return {
+      intent: "produto_pingentes",
+      targetAgent: "kate",
+      confidence: 0.94,
+      shouldSwitchAgent: activeAgent !== "kate",
+      customerStage: "fotogravacao_presente_namorado",
+      extracted: { ...extracted, categoria: "pingente", ocasiao: "namorados" },
+      source: "rules",
+      needsClarification: false,
+    };
+  }
   const budget = detectBudgetValue(text);
   if (budget) extracted.orcamento_valor = budget;
   const color = detectColor(text);
@@ -2449,6 +2470,7 @@ async function handleKateFlow(args: {
   const asksGenericDoubt = detectGenericDoubt(message);
   const isOnlyLaughter = detectOnlyLaughter(message);
   const asksPayNowToday = detectPayNowTodayQuestion(message);
+  const asksCardInstallments = detectCardInstallmentQuestion(message);
   const inboundImageUrl = detectInboundImageUrl(message);
   const effectiveMediaType = mediaType === "image" || inboundImageUrl ? "image" : mediaType;
   const effectiveMediaUrl = mediaUrl || inboundImageUrl;
@@ -2766,6 +2788,34 @@ async function handleKateFlow(args: {
     });
   }
 
+  if (asksCardInstallments) {
+    if (hasSelectedProduct) data.payment_method = "cartao";
+    const reply = hasSelectedProduct
+      ? hasDelivery
+        ? "No cartao de credito, a ACIUM divide em ate 3x sem juros. Ja deixei cartao anotado para o vendedor finalizar com voce com seguranca."
+        : "No cartao de credito, a ACIUM divide em ate 3x sem juros. Se voce quiser seguir no cartao, me confirma se sera retirada na loja ou delivery que eu deixo tudo pronto para o vendedor finalizar."
+      : "No cartao de credito, a ACIUM divide em ate 3x sem juros. Me diga qual pingente voce gostou que eu sigo com voce.";
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "kate",
+      hasSelectedProduct ? "kate_pagamento" : "kate_duvida_produto",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, hasSelectedProduct ? "kate_pagamento" : "kate_duvida_produto");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: hasSelectedProduct ? "kate_pagamento" : "kate_duvida_produto",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "kate",
+    });
+  }
   if (asksPayNowToday) {
     const reply = hasSelectedProduct
       ? "Pagando e fechando agora, o pedido entra na fila de producao hoje. Geralmente fica pronto de 8 a 24 horas apos pagamento e fechamento; se houver vaga na fila, pode ficar ainda hoje. Para confirmar a fila atual antes do pagamento, me diga se prefere retirada na loja ou delivery."

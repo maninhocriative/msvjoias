@@ -303,13 +303,18 @@ const Chat = () => {
     [alineStatusMap],
   );
 
+  const isActionHumanConversation = useCallback((conv: Conversation) => {
+    const leadStatus = conv.lead_status || 'novo';
+    return leadStatus === 'humano' || leadStatus === 'venda_iniciada' || getIsHumanTakeover(conv.contact_number);
+  }, [getIsHumanTakeover]);
+
   const matchesStatusFilter = useCallback((conv: Conversation, status: string) => {
     const leadStatus = conv.lead_status || 'novo';
     if (status === 'acao_humana') {
-      return leadStatus === 'humano' || leadStatus === 'venda_iniciada';
+      return isActionHumanConversation(conv);
     }
     return status === 'all' || leadStatus === status;
-  }, []);
+  }, [isActionHumanConversation]);
 
   const matchesAttendantFilter = useCallback(
     (conv: Conversation, attendant: string) => {
@@ -1793,10 +1798,10 @@ const Chat = () => {
       novo: source.filter((c) => (c.lead_status || 'novo') === 'novo').length,
       frio: source.filter((c) => c.lead_status === 'frio').length,
       quente: source.filter((c) => c.lead_status === 'quente').length,
-      acao_humana: source.filter((c) => c.lead_status === 'humano' || c.lead_status === 'venda_iniciada').length,
+      acao_humana: source.filter((c) => isActionHumanConversation(c)).length,
       vendido: source.filter((c) => c.lead_status === 'vendido').length,
     };
-  }, [searchedConversations, filterAttendant, matchesAttendantFilter]);
+  }, [searchedConversations, filterAttendant, matchesAttendantFilter, isActionHumanConversation]);
 
   const attendantCounts = useMemo(() => {
     const source =
