@@ -885,3 +885,10 @@ Proximos passos: testar com frases reais dos prints: "Pagando agora, finaliza hj
 - Corrigi o roteamento de contexto romantico: quando a conversa ja e de fotogravacao/pingente, termos como namorado/namorados nao devem puxar o fluxo de aliancas sem mencao clara de alianca ou anel.
 - Build do frontend validado com sucesso e edge function aline-reply deployada no Supabase.
 Proximos passos: validar no CRM se Franciane aparece no contador Acao humana e testar "fotogravacao para namorado" sem cair na Keila.
+
+2026-05-20 - Chaveiro enviado para atendimento humano
+- Adicionei detector especifico para chaveiro/porta-chave.
+- Como ainda nao existe fluxo automatico de chaveiro, o agente agora encaminha direto para vendedor humano antes de qualquer roteamento para Keila/Kate/Malu.
+- O handoff salva current_node=human_chaveiro, active_agent=human, status=human_takeover e lead_status=humano para aparecer na tag Acao humana.
+- Edge Function aline-reply deployada no Supabase apos a correcao.
+Proximos passos: validar com mensagem "chaveiro" em conversa de alianca e confirmar que nao transfere para Keila.

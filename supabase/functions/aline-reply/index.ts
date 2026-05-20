@@ -186,6 +186,10 @@ function detectCategory(text: string, data: AnyRecord): string | null {
   return data.categoria || null;
 }
 
+function detectKeychainIntent(text: string): boolean {
+  const normalized = normalizeText(text);
+  return /chaveiro|chaveiros|porta chave|porta-chave/.test(normalized);
+}
 function detectAllianceType(text: string, data: AnyRecord): string | null {
   const normalized = normalizeText(text);
 
@@ -381,6 +385,18 @@ function buildRuleBasedIntelligence(args: {
       shouldSwitchAgent: activeAgent !== "kate",
       customerStage: "fotogravacao_presente_namorado",
       extracted: { ...extracted, categoria: "pingente", ocasiao: "namorados" },
+      source: "rules",
+      needsClarification: false,
+    };
+  }
+  if (detectKeychainIntent(text)) {
+    return {
+      intent: "atendimento_humano",
+      targetAgent: "human",
+      confidence: 0.96,
+      shouldSwitchAgent: activeAgent !== "human",
+      customerStage: "produto_chaveiro_humano",
+      extracted: { ...extracted, categoria: "chaveiro" },
       source: "rules",
       needsClarification: false,
     };
@@ -4584,6 +4600,41 @@ serve(async (req) => {
     baseData.triagem_categoria = detectClassification(inboundText, baseData) || baseData.triagem_categoria || null;
 
     const activeAgent = (conversation.active_agent || baseData.agente_atual || "aline") as ConversationAgent;
+    if (detectKeychainIntent(inboundText)) {
+      baseData.categoria = "chaveiro";
+      baseData.agente_atual = "human";
+      baseData.handoff_reason = "produto_chaveiro_sem_fluxo";
+      const reply = "Perfeito, vou chamar um vendedor para te ajudar com chaveiro. Esse produto ainda nao esta no atendimento automatico, entao ele continua com voce pelo humano.";
+
+      await supabase
+        .from("aline_conversations")
+        .update({
+          status: "human_takeover",
+          active_agent: "human",
+          assignment_reason: "Cliente pediu chaveiro; produto sem fluxo automatico",
+          collected_data: baseData,
+          current_node: "human_chaveiro",
+          last_message_at: new Date().toISOString(),
+          agent_handoff_at: new Date().toISOString(),
+        })
+        .eq("id", conversation.id);
+      await saveAssistantMessage(supabase, conversation.id, "human", reply, "human_chaveiro");
+      await saveAgentMemory(supabase, phone, "aline", contactName, baseData);
+      await updateCrmLeadStatus(supabase, phone, "humano");
+
+      return new Response(
+        JSON.stringify(
+          buildResponsePayload({
+            phone,
+            message: reply,
+            node: "human_chaveiro",
+            collectedData: baseData,
+            agent: "human",
+          }),
+        ),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
     if (detectHarassmentIntent(inboundText)) {
       baseData.harassment_detected = true;
       baseData.last_intent = "assedio";
