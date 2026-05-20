@@ -76,6 +76,7 @@ function getConversationStageMeta(conv: Conversation, alineData?: AlineConversat
   const leadStatus = conv.lead_status || 'novo';
   const node = String(alineData?.current_node || '').toLowerCase();
   const data = alineData?.collected_data || {};
+  const text = String(conv.last_message || '').toLowerCase();
 
   if (leadStatus === 'humano' || alineData?.status === 'human_takeover') {
     return { label: 'Ação humana', className: 'bg-amber-500/15 text-amber-300 border-amber-500/20' };
@@ -113,6 +114,28 @@ function getConversationStageMeta(conv: Conversation, alineData?: AlineConversat
     return { label: 'Catálogo enviado', className: 'bg-sky-500/15 text-sky-300 border-sky-500/20' };
   }
 
+
+  if (
+    text.includes('atendimento humano') ||
+    text.includes('vou te encaminhar') ||
+    text.includes('vendedor envia') ||
+    text.includes('finalizar seu')
+  ) {
+    return { label: 'Acao humana', className: 'bg-amber-500/15 text-amber-300 border-amber-500/20' };
+  }
+
+  if (
+    text.includes('voce escolheu') ||
+    text.includes('você escolheu') ||
+    text.includes('produto selecionado') ||
+    text.includes('seguimos com')
+  ) {
+    return { label: 'Venda iniciada', className: 'bg-teal-500/15 text-teal-300 border-teal-500/20' };
+  }
+
+  if (text.includes('gostou de algum modelo') || text.includes('catalogo') || text.includes('catálogo')) {
+    return { label: 'Catalogo enviado', className: 'bg-sky-500/15 text-sky-300 border-sky-500/20' };
+  }
   return null;
 }
 function getAgentMeta(alineData?: AlineConversation, isSaleFinalized?: boolean) {

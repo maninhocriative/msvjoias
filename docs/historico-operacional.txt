@@ -898,3 +898,9 @@ Proximos passos: validar com mensagem "chaveiro" em conversa de alianca e confir
 - As tags/badges agora entram no mesmo ciclo de renderizacao da lista, evitando aparecerem atrasadas apos abrir o chat.
 - Tambem mapeei perfis por variacoes de telefone para reduzir falhas quando Z-API/Supabase alternam formatos com e sem DDI.
 Proximos passos: validar build e testar abertura do chat em producao para confirmar que a lista nao aparece sem tags.
+
+2026-05-20 - Chat: badges/tags imediatas e classificacao visual
+- Corrigi o carregamento inicial das tags para buscar aline_conversations e customers em lotes, evitando falha silenciosa quando ha muitos telefones.
+- Todos os pontos da lista/cabecalho agora buscam status e perfil por variacoes do telefone, reduzindo divergencia com/sem DDI ou nono digito.
+- Adicionei classificacao visual por ultima mensagem para conversas antigas entrarem em Acao humana, Venda iniciada ou Catalogo enviado mesmo antes de abrir a conversa.
+Proximos passos: validar build e depois analisar a paginacao de mensagens estilo WhatsApp com foco em risco baixo.

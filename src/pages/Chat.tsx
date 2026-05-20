@@ -101,6 +101,14 @@ const buildPhoneVariants = (phone: string) => {
   return Array.from(variants);
 };
 
+const chunkArray = <T,>(items: T[], size: number): T[][] => {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+};
+
 const formatContactPresence = (conversation: Conversation | null) => {
   if (!conversation) return '';
 
@@ -298,15 +306,51 @@ const Chat = () => {
     return profileName || userMetadataName || emailName || 'Vendedor';
   }, [profile?.full_name, user?.user_metadata, user?.email]);
 
-  const getIsHumanTakeover = useCallback(
-    (phone: string) => alineStatusMap[phone]?.status === 'human_takeover',
+  const getAlineDataForPhone = useCallback(
+    (phone: string) => {
+      for (const variant of buildPhoneVariants(phone)) {
+        const data = alineStatusMap[variant];
+        if (data) return data;
+      }
+      return undefined;
+    },
     [alineStatusMap],
   );
 
+  const getCustomerProfileForPhone = useCallback(
+    (phone: string) => {
+      for (const variant of buildPhoneVariants(phone)) {
+        const data = customerProfiles[variant];
+        if (data) return data;
+      }
+      return undefined;
+    },
+    [customerProfiles],
+  );
+
+  const getIsHumanTakeover = useCallback(
+    (phone: string) => getAlineDataForPhone(phone)?.status === 'human_takeover',
+    [getAlineDataForPhone],
+  );
+
+  const getDerivedActionStage = useCallback((conv: Conversation) => {
+    const text = String(conv.last_message || '').toLowerCase();
+    return (
+      text.includes('atendimento humano') ||
+      text.includes('vou te encaminhar') ||
+      text.includes('vendedor envia') ||
+      text.includes('finalizar seu') ||
+      text.includes('seguimos com') ||
+      text.includes('sem simulacao') ||
+      text.includes('sem simulação') ||
+      text.includes('forma de pagamento')
+    );
+  }, []);
+
   const isActionHumanConversation = useCallback((conv: Conversation) => {
     const leadStatus = conv.lead_status || 'novo';
-    return leadStatus === 'humano' || leadStatus === 'venda_iniciada' || getIsHumanTakeover(conv.contact_number);
-  }, [getIsHumanTakeover]);
+    return leadStatus === 'humano' || leadStatus === 'venda_iniciada' || getIsHumanTakeover(conv.contact_number) || getDerivedActionStage(conv);
+  }, [getIsHumanTakeover, getDerivedActionStage]);
 
   const matchesStatusFilter = useCallback((conv: Conversation, status: string) => {
     const leadStatus = conv.lead_status || 'novo';
@@ -318,7 +362,7 @@ const Chat = () => {
 
   const matchesAttendantFilter = useCallback(
     (conv: Conversation, attendant: string) => {
-      const isHuman = getIsHumanTakeover(conv.contact_number);
+      const isHuman = getIsHumanTakeover(conv.contact_number) || getDerivedActionStage(conv);
 
       if (attendant === 'all') return true;
       if (attendant === 'vendedor') return isHuman;
@@ -326,7 +370,7 @@ const Chat = () => {
 
       return true;
     },
-    [getIsHumanTakeover],
+    [getIsHumanTakeover, getDerivedActionStage],
   );
 
   const updateLeadStatus = async (conversationId: string, status: LeadStatus) => {
@@ -567,7 +611,7 @@ const Chat = () => {
       }
 
       const customerName =
-        customerProfiles[selectedConversation.contact_number]?.name ||
+        getCustomerProfileForPhone(selectedConversation.contact_number)?.name ||
         selectedConversation.contact_name ||
         null;
 
@@ -1125,34 +1169,49 @@ const Chat = () => {
             new Set(conversationList.flatMap((c) => buildPhoneVariants(c.contact_number))),
           );
 
-          const [{ data: alineData }, { data: customersData }] = await Promise.all([
-            supabase
-              .from('aline_conversations')
-              .select(
-                'id, phone, status, active_agent, assigned_seller_id, assigned_seller_name, assignment_reason, assigned_at, current_node, collected_data',
-              )
-              .in('phone', phones),
-            supabase
-              .from('customers')
-              .select('whatsapp, name, profile_pic_url')
-              .in('whatsapp', phones),
+          const phoneChunks = chunkArray(phones, 150);
+
+          const [alineResults, customerResults] = await Promise.all([
+            Promise.all(
+              phoneChunks.map((chunk) =>
+                supabase
+                  .from('aline_conversations')
+                  .select(
+                    'id, phone, status, active_agent, assigned_seller_id, assigned_seller_name, assignment_reason, assigned_at, current_node, collected_data',
+                  )
+                  .in('phone', chunk),
+              ),
+            ),
+            Promise.all(
+              phoneChunks.map((chunk) =>
+                supabase
+                  .from('customers')
+                  .select('whatsapp, name, profile_pic_url')
+                  .in('whatsapp', chunk),
+              ),
+            ),
           ]);
 
-          alineData?.forEach((ac) => {
+          const alineData = alineResults.flatMap((result) => result.data || []);
+          const customersData = customerResults.flatMap((result) => result.data || []);
+
+          alineData.forEach((ac) => {
             statusMap[ac.phone] = ac;
             buildPhoneVariants(ac.phone).forEach((variant) => {
               statusMap[variant] = ac;
             });
           });
 
-          customersData?.forEach((customer) => {
-            profilesMap[customer.whatsapp] = {
+          customersData.forEach((customer) => {
+            const profile = {
               whatsapp: customer.whatsapp,
               name: customer.name,
               profile_pic_url: customer.profile_pic_url,
             };
+
+            profilesMap[customer.whatsapp] = profile;
             buildPhoneVariants(customer.whatsapp).forEach((variant) => {
-              profilesMap[variant] = profilesMap[customer.whatsapp];
+              profilesMap[variant] = profile;
             });
           });
         }
@@ -1241,21 +1300,24 @@ const Chat = () => {
 
           if (updated?.phone) {
             setAlineStatusMap((prev) => {
-              const current = prev[updated.phone];
+              const variants = buildPhoneVariants(updated.phone);
+              const current = variants.map((variant) => prev[variant]).find(Boolean);
 
               if (
                 current?.status === updated.status &&
                 current?.active_agent === updated.active_agent &&
                 current?.assigned_seller_id === updated.assigned_seller_id &&
-                current?.assigned_seller_name === updated.assigned_seller_name
+                current?.assigned_seller_name === updated.assigned_seller_name &&
+                current?.current_node === updated.current_node
               ) {
                 return prev;
               }
 
-              return {
-                ...prev,
-                [updated.phone]: updated,
-              };
+              const next = { ...prev };
+              variants.forEach((variant) => {
+                next[variant] = updated;
+              });
+              return next;
             });
           }
         },
@@ -1805,10 +1867,10 @@ const Chat = () => {
           );
 
     return {
-      aline: source.filter((conv) => !getIsHumanTakeover(conv.contact_number)).length,
-      vendedor: source.filter((conv) => getIsHumanTakeover(conv.contact_number)).length,
+      aline: source.filter((conv) => !(getIsHumanTakeover(conv.contact_number) || getDerivedActionStage(conv))).length,
+      vendedor: source.filter((conv) => getIsHumanTakeover(conv.contact_number) || getDerivedActionStage(conv)).length,
     };
-  }, [searchedConversations, filterStatus, matchesStatusFilter, getIsHumanTakeover]);
+  }, [searchedConversations, filterStatus, matchesStatusFilter, getIsHumanTakeover, getDerivedActionStage]);
 
   const groupedMessages = useMemo(() => {
     return messages.reduce((groups, message) => {
@@ -1844,7 +1906,7 @@ const Chat = () => {
   );
 
   const currentAlineData = selectedConversation
-    ? alineStatusMap[selectedConversation.contact_number]
+    ? getAlineDataForPhone(selectedConversation.contact_number)
     : null;
 
   const isCurrentHumanTakeover = currentAlineData?.status === 'human_takeover';
@@ -2180,8 +2242,8 @@ const Chat = () => {
                   key={conv.id}
                   conv={conv}
                   isSelected={selectedConversation?.id === conv.id}
-                  customerProfile={customerProfiles[conv.contact_number]}
-                  alineData={alineStatusMap[conv.contact_number]}
+                  customerProfile={getCustomerProfileForPhone(conv.contact_number)}
+                  alineData={getAlineDataForPhone(conv.contact_number)}
                   onClick={() => setSelectedConversation(conv)}
                 />
               ))}
@@ -2230,10 +2292,10 @@ const Chat = () => {
                   </button>
 
                   <div className="relative shrink-0">
-                    {customerProfiles[selectedConversation.contact_number]?.profile_pic_url ? (
+                    {getCustomerProfileForPhone(selectedConversation.contact_number)?.profile_pic_url ? (
                       <img
                         src={
-                          customerProfiles[selectedConversation.contact_number]
+                          getCustomerProfileForPhone(selectedConversation.contact_number)
                             .profile_pic_url
                         }
                         alt=""
@@ -2274,7 +2336,7 @@ const Chat = () => {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-semibold text-white truncate">
-                        {customerProfiles[selectedConversation.contact_number]?.name ||
+                        {getCustomerProfileForPhone(selectedConversation.contact_number)?.name ||
                           selectedConversation.contact_name ||
                           selectedConversation.contact_number}
                       </p>
@@ -2592,7 +2654,7 @@ const Chat = () => {
           onOpenChange={setFinalizeDialogOpen}
           sellerName={currentLoggedSellerName}
           customerName={
-            customerProfiles[selectedConversation.contact_number]?.name ||
+            getCustomerProfileForPhone(selectedConversation.contact_number)?.name ||
             selectedConversation.contact_name ||
             'Cliente'
           }
@@ -2607,10 +2669,10 @@ const Chat = () => {
           onOpenChange={setAssignDialogOpen}
           conversationPhone={selectedConversation.contact_number}
           currentSellerId={
-            alineStatusMap[selectedConversation.contact_number]?.assigned_seller_id
+            getAlineDataForPhone(selectedConversation.contact_number)?.assigned_seller_id
           }
           currentSellerName={
-            alineStatusMap[selectedConversation.contact_number]?.assigned_seller_name
+            getAlineDataForPhone(selectedConversation.contact_number)?.assigned_seller_name
           }
           onAssigned={() => {
             fetchConversations(false);
