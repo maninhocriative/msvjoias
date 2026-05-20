@@ -2438,6 +2438,7 @@ async function handleKateFlow(args: {
   const wantsPreviewRedo = detectPreviewRedoIntent(message);
   const wantsPreviewApproval = detectPreviewApprovalIntent(message);
   const wantsCloseWithoutPhoto = /fechar|finalizar|comprar|quero comprar|vou querer|pode seguir|seguir sem foto|sem foto|sem simulacao|nao quero foto|nao precisa de foto/.test(normalizedMessage);
+  const wantsProceedWithSelectedProduct = /quero este|quero esse|esse mesmo|essa mesma|isso mesmo|isso msm|perfeito|pode ser|vou querer|quero comprar/.test(normalizedMessage);
   const asksPendantModelQuestion = detectPendantModelQuestion(message);
   const asksPendantMaterialQuestion = detectPendantMaterialQuestion(message);
   const asksDeliveryDeadline = detectDeliveryDeadlineQuestion(message);
@@ -2765,12 +2766,14 @@ async function handleKateFlow(args: {
     });
   }
 
-  if (!hasSelectedProduct && asksPayNowToday) {
-    const reply = data.cor === "prata" || data.cor === "dourada"
-      ? `Sim. Pagando e fechando agora, o pedido entra na fila de producao hoje. Geralmente fica pronto de 8 a 24 horas; se a fila permitir, pode finalizar ainda hoje. Vou te mandar os modelos ${data.cor} para voce escolher.`
-      : "Sim. Pagando e fechando agora, o pedido entra na fila de producao hoje. Geralmente fica pronto de 8 a 24 horas; se a fila permitir, pode finalizar ainda hoje. Voce prefere ver os modelos prata ou dourado?";
+  if (asksPayNowToday) {
+    const reply = hasSelectedProduct
+      ? "Pagando e fechando agora, o pedido entra na fila de producao hoje. Geralmente fica pronto de 8 a 24 horas apos pagamento e fechamento; se houver vaga na fila, pode ficar ainda hoje. Para confirmar a fila atual antes do pagamento, me diga se prefere retirada na loja ou delivery."
+      : data.cor === "prata" || data.cor === "dourada"
+        ? `Sim. Pagando e fechando agora, o pedido entra na fila de producao hoje. Geralmente fica pronto de 8 a 24 horas; se a fila permitir, pode finalizar ainda hoje. Vou te mandar os modelos ${data.cor} para voce escolher.`
+        : "Sim. Pagando e fechando agora, o pedido entra na fila de producao hoje. Geralmente fica pronto de 8 a 24 horas; se a fila permitir, pode finalizar ainda hoje. Voce prefere ver os modelos prata ou dourado?";
 
-    if (data.cor === "prata" || data.cor === "dourada") {
+    if (!hasSelectedProduct && (data.cor === "prata" || data.cor === "dourada")) {
       return await sendKateCatalogForCurrentColor(reply);
     }
 
@@ -2778,17 +2781,18 @@ async function handleKateFlow(args: {
       supabase,
       conversation.id,
       "kate",
-      "kate_cor",
+      hasSelectedProduct ? "kate_entrega" : "kate_cor",
       conversation.current_node || null,
       data,
     );
-    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_cor");
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, hasSelectedProduct ? "kate_entrega" : "kate_cor");
     await saveAgentMemory(supabase, phone, "kate", contactName, data);
 
     return buildResponsePayload({
       phone,
       message: reply,
-      node: "kate_cor",
+      node: hasSelectedProduct ? "kate_entrega" : "kate_cor",
+      selectedProduct: data.selected_product || null,
       collectedData: data,
       agent: "kate",
     });
@@ -2822,8 +2826,10 @@ Posso seguir com retirada na loja ou delivery? Depois do fechamento, o vendedor 
     });
   }
 
-  if (asksPendantMaterialQuestion && !hasColor) {
-    const reply = "Nossos pingentes fotogravaveis sao de aco, nao sao de ouro. O dourado e o prata sao acabamentos do aco. O peso varia conforme o modelo; escolhendo um modelo eu confirmo com a loja. Quer ver os modelos com acabamento dourado ou prata?";
+  if (asksPendantMaterialQuestion) {
+    const reply = hasSelectedProduct
+      ? "Nossos pingentes fotogravaveis sao de aco, nao sao de ouro. O dourado e o prata sao acabamentos do aco. O peso varia conforme o modelo; para nao te passar dado errado, o vendedor confirma o peso exato do modelo escolhido antes do fechamento."
+      : "Nossos pingentes fotogravaveis sao de aco, nao sao de ouro. O dourado e o prata sao acabamentos do aco. O peso varia conforme o modelo; escolhendo um modelo eu confirmo com a loja. Quer ver os modelos com acabamento dourado ou prata?";
 
     await persistConversation(
       supabase,
@@ -3152,7 +3158,7 @@ A fotogravação de 1 lado já está inclusa.`;
       }
     }
 
-    if (hasDelivery || hasPayment || wantsCloseWithoutPhoto || wantsPreviewApproval) {
+    if (hasDelivery || hasPayment || wantsCloseWithoutPhoto || wantsPreviewApproval || wantsProceedWithSelectedProduct) {
       if (!hasDelivery) {
         const reply = `Perfeito, seguimos com *${cleanCustomerProductName(data.selected_name)}* sem simulacao.
 
@@ -3544,7 +3550,41 @@ Voce vai retirar na loja ou prefere delivery? Depois eu confirmo a forma de paga
       agent: "human",
     });
   }
-  const reply = "Se quiser, posso te reenviar os modelos ou preparar outra simulacao com uma nova foto.";
+  const fallbackReply = "Se quiser, posso te reenviar os modelos ou preparar outra simulacao com uma nova foto.";
+
+  if (data.kate_last_fallback_reply === fallbackReply) {
+    data.kate_needs_human = true;
+    data.agente_atual = "human";
+    data.handoff_reason = "fallback_repetido_kate";
+    const reply = "Para nao ficar repetindo resposta e te atrapalhar, vou chamar um vendedor para continuar daqui. Ele vai ver o modelo escolhido e o historico da conversa.";
+
+    await supabase
+      .from("aline_conversations")
+      .update({
+        status: "human_takeover",
+        active_agent: "human",
+        assignment_reason: "Kate encaminhou por fallback repetido",
+        collected_data: data,
+        last_message_at: new Date().toISOString(),
+        agent_handoff_at: new Date().toISOString(),
+      })
+      .eq("id", conversation.id);
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "human_takeover");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+    await updateCrmLeadStatus(supabase, phone, "humano");
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "human_takeover",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "human",
+    });
+  }
+
+  data.kate_last_fallback_reply = fallbackReply;
+  const reply = fallbackReply;
 
   await persistConversation(
     supabase,

@@ -870,3 +870,11 @@ Validacao concluida em 2026-05-20
 - Build de producao executado com sucesso no worktree local crm_acium_work.
 - Edge Function aline-reply deployada no Supabase com a marcacao automatica de humano/venda_iniciada.
 - Proximo passo apos push: validar no CRM se o filtro Acao humana mostra conversas de atendimento humano e venda iniciada com a badge de estagio.
+
+2026-05-20 - Kate P0: respostas comerciais antes do fallback
+- Ajustei a Kate para tratar pergunta de pagamento/fechamento hoje antes de cair em CTA generico.
+- Quando ha produto escolhido, respostas como "quero este", "perfeito" e "isso mesmo" agora avancam para entrega/pagamento sem obrigar o cliente a enviar foto.
+- Perguntas sobre material/peso passam a ser respondidas mesmo com acabamento ja escolhido: pingentes sao de aco, acabamento dourado/prata, peso confirmado pelo vendedor conforme modelo.
+- Adicionei trava anti-repeticao: se a Kate tentaria enviar o mesmo fallback generico pela segunda vez, ela encaminha para humano e marca o lead como humano.
+- Edge Function aline-reply deployada no Supabase apos a alteracao.
+Proximos passos: testar com frases reais dos prints: "Pagando agora, finaliza hj mesmo?", "Quero este", "Isso mesmo", "Quantos gramas pesa?" e repeticao do fallback.
