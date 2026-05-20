@@ -947,3 +947,17 @@ Validacao em 2026-05-20 - Alerta forte para atendimento humano
 - Build de producao validado com sucesso no worktree local crm_acium_work.
 - Mudanca pronta para publicacao via push do frontend.
 Proximos passos: testar no navegador com permissao de notificacao liberada e primeiro clique na tela para permitir audio.
+
+2026-05-20 - Links rastreaveis de influenciadores
+- Criei a estrutura de banco influencers e influencer_leads para cadastrar parceiros e atribuir leads por codigo.
+- Adicionei a tela /influencers para gerar links WhatsApp codificados, copiar/abrir links e monitorar leads, compradores e faturamento por parceiro.
+- Integrei o menu lateral com a nova tela Influencers.
+- Ajustei o webhook zapi-unified para detectar codigos #ACIUMP-CODIGO nas mensagens recebidas, limpar o codigo da conversa e registrar o lead para o parceiro correto.
+Proximos passos: aplicar SQL no Supabase, validar build, deployar zapi-unified e testar um link real.
+
+Validacao em 2026-05-20 - Links rastreaveis de influenciadores
+- SQL aplicado diretamente no Supabase com tabelas influencers e influencer_leads.
+- Policy de influencer_leads ajustada para usuarios autenticados lerem no CRM e escrita ficar restrita ao service_role/webhook.
+- Build de producao validado com sucesso no worktree local crm_acium_work.
+- Edge Function zapi-unified deployada para capturar codigos #ACIUMP-CODIGO.
+Proximos passos: criar um parceiro em /influencers, abrir/copiar o link gerado e enviar uma mensagem real pelo WhatsApp para validar atribuicao.

@@ -239,6 +239,62 @@ function generateHash(phone: string, message: string): string {
   return `${phone}_${msgKey}_${minuteKey}`;
 }
 
+function detectInfluencerCode(message: string): string | null {
+  const match = String(message || "").match(/#?ACIUMP[-_\s]?([A-Z0-9]{4,24})/i);
+  return match?.[1]?.toUpperCase() || null;
+}
+
+function stripInfluencerCode(message: string): string {
+  return String(message || "")
+    .replace(/#?ACIUMP[-_\s]?[A-Z0-9]{4,24}/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+async function recordInfluencerLead(
+  supabase: any,
+  code: string | null,
+  args: {
+    conversationId: string;
+    phone: string;
+    contactName: string;
+    firstMessage: string;
+  },
+) {
+  if (!code) return;
+
+  const { data: influencer, error: influencerError } = await supabase
+    .from("influencers")
+    .select("id, code, active")
+    .eq("code", code)
+    .eq("active", true)
+    .maybeSingle();
+
+  if (influencerError || !influencer?.id) {
+    console.warn("[ZAPI-UNIFIED] Codigo de influencer nao encontrado:", code, influencerError?.message || "");
+    return;
+  }
+
+  const { error } = await supabase
+    .from("influencer_leads")
+    .upsert(
+      {
+        influencer_id: influencer.id,
+        conversation_id: args.conversationId,
+        contact_name: args.contactName,
+        contact_phone: args.phone,
+        first_message: args.firstMessage,
+        last_seen_at: new Date().toISOString(),
+        metadata: { source: "whatsapp_link", code },
+      },
+      { onConflict: "influencer_id,contact_phone" },
+    );
+
+  if (error) {
+    console.error("[ZAPI-UNIFIED] Erro ao registrar lead de influencer:", error);
+  }
+}
+
 function buildHeaders(clientToken?: string) {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -768,6 +824,11 @@ serve(async (req) => {
       messageType = "button_reply";
     }
 
+    const influencerCode = detectInfluencerCode(messageContent);
+    if (influencerCode && messageType === "text") {
+      messageContent = stripInfluencerCode(messageContent) || "Oi! Vim pelo link de divulgacao.";
+    }
+
     if (!mediaUrl && messageContent) {
       const detectedMedia = detectMediaUrlFromText(messageContent);
       if (detectedMedia) {
@@ -894,6 +955,13 @@ serve(async (req) => {
 
       conversationId = createdConversation.id;
     }
+
+    await recordInfluencerLead(supabase, influencerCode, {
+      conversationId,
+      phone,
+      contactName,
+      firstMessage: messageContent,
+    });
 
     const zapiMessageId = payload.messageId || payload.zaapId || null;
 

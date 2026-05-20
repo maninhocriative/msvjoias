@@ -27,6 +27,7 @@ import {
   Trophy,
   Moon,
   Sun,
+  Megaphone,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
@@ -61,6 +62,7 @@ const NAV_GROUPS = [
       { to: '/reports', label: 'Relatórios', icon: BarChart3 },
       { to: '/seller-monitor', label: 'Monitor', icon: Activity },
       { to: '/importar-leads', label: 'Importar Leads', icon: FileSpreadsheet },
+      { to: '/influencers', label: 'Influencers', icon: Megaphone },
     ],
   },
   {
