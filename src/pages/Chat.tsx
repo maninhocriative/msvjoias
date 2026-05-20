@@ -55,6 +55,8 @@ interface AlineConversation {
   assigned_seller_name?: string;
   assignment_reason?: string;
   assigned_at?: string;
+  current_node?: string;
+  collected_data?: Record<string, any> | null;
 }
 
 interface CustomerProfile {
@@ -74,6 +76,7 @@ const statusFilters = [
   { key: 'novo', label: 'Novos', color: 'bg-slate-400' },
   { key: 'frio', label: 'Frios', color: 'bg-blue-400' },
   { key: 'quente', label: 'Quentes', color: 'bg-orange-400' },
+  { key: 'acao_humana', label: 'Ação humana', color: 'bg-amber-400' },
   { key: 'vendido', label: 'Vendidos', color: 'bg-emerald-400' },
 ];
 
@@ -302,6 +305,9 @@ const Chat = () => {
 
   const matchesStatusFilter = useCallback((conv: Conversation, status: string) => {
     const leadStatus = conv.lead_status || 'novo';
+    if (status === 'acao_humana') {
+      return leadStatus === 'humano' || leadStatus === 'venda_iniciada';
+    }
     return status === 'all' || leadStatus === status;
   }, []);
 
@@ -921,7 +927,7 @@ const Chat = () => {
       const { data } = await supabase
         .from('aline_conversations')
         .select(
-          'id, phone, status, active_agent, assigned_seller_id, assigned_seller_name, assignment_reason, assigned_at',
+          'id, phone, status, active_agent, assigned_seller_id, assigned_seller_name, assignment_reason, assigned_at, current_node, collected_data',
         )
         .in('phone', phoneVariants)
         .order('created_at', { ascending: false })
@@ -1121,7 +1127,7 @@ const Chat = () => {
             supabase
               .from('aline_conversations')
               .select(
-                'id, phone, status, active_agent, assigned_seller_id, assigned_seller_name, assignment_reason, assigned_at',
+                'id, phone, status, active_agent, assigned_seller_id, assigned_seller_name, assignment_reason, assigned_at, current_node, collected_data',
               )
               .in('phone', phones),
             supabase
@@ -1787,6 +1793,7 @@ const Chat = () => {
       novo: source.filter((c) => (c.lead_status || 'novo') === 'novo').length,
       frio: source.filter((c) => c.lead_status === 'frio').length,
       quente: source.filter((c) => c.lead_status === 'quente').length,
+      acao_humana: source.filter((c) => c.lead_status === 'humano' || c.lead_status === 'venda_iniciada').length,
       vendido: source.filter((c) => c.lead_status === 'vendido').length,
     };
   }, [searchedConversations, filterAttendant, matchesAttendantFilter]);

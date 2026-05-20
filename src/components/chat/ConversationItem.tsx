@@ -1,6 +1,6 @@
 import { memo, type CSSProperties } from 'react';
 import { cn } from '@/lib/utils';
-import { Bot, Crown, Glasses, UserCheck, Instagram, CheckCircle2, Clock, Sparkles } from 'lucide-react';
+import { Bot, Crown, Glasses, UserCheck, Instagram, Clock, Sparkles } from 'lucide-react';
 import type { Conversation, LeadStatus } from '@/lib/supabase';
 
 interface CustomerProfile {
@@ -17,6 +17,8 @@ interface AlineConversation {
   assigned_seller_id?: string;
   assigned_seller_name?: string;
   assigned_at?: string;
+  current_node?: string;
+  collected_data?: Record<string, any> | null;
 }
 
 interface ConversationItemProps {
@@ -58,6 +60,8 @@ const STATUS_CONFIG: Record<
   comprador: { dot: 'bg-emerald-400', label: 'Comprador', bg: 'bg-emerald-500/10', text: 'text-emerald-400' },
   sem_interesse: { dot: 'bg-red-400', label: 'Sem interesse', bg: 'bg-red-500/10', text: 'text-red-400' },
   vendido: { dot: 'bg-emerald-400', label: 'Vendido', bg: 'bg-emerald-500/15', text: 'text-emerald-300' },
+  humano: { dot: 'bg-amber-400', label: 'Humano', bg: 'bg-amber-500/15', text: 'text-amber-300' },
+  venda_iniciada: { dot: 'bg-teal-400', label: 'Venda iniciada', bg: 'bg-teal-500/15', text: 'text-teal-300' },
   perdido: { dot: 'bg-red-400', label: 'Perdido', bg: 'bg-red-500/10', text: 'text-red-400' },
 };
 
@@ -68,6 +72,49 @@ const twoLineClamp: CSSProperties = {
   overflow: 'hidden',
 };
 
+function getConversationStageMeta(conv: Conversation, alineData?: AlineConversation) {
+  const leadStatus = conv.lead_status || 'novo';
+  const node = String(alineData?.current_node || '').toLowerCase();
+  const data = alineData?.collected_data || {};
+
+  if (leadStatus === 'humano' || alineData?.status === 'human_takeover') {
+    return { label: 'Ação humana', className: 'bg-amber-500/15 text-amber-300 border-amber-500/20' };
+  }
+
+  if (leadStatus === 'venda_iniciada') {
+    return { label: 'Venda iniciada', className: 'bg-teal-500/15 text-teal-300 border-teal-500/20' };
+  }
+
+  if (leadStatus === 'vendido') {
+    return { label: 'Venda finalizada', className: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' };
+  }
+
+  if (data.kate_preview_image_url || data.malu_preview_image_url || node.includes('preview')) {
+    return { label: 'Simulação enviada', className: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/20' };
+  }
+
+  if (node.includes('foto')) {
+    return { label: 'Aguardando foto', className: 'bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/20' };
+  }
+
+  if (node.includes('pagamento') || data.payment_method) {
+    return { label: 'Pagamento', className: 'bg-blue-500/15 text-blue-300 border-blue-500/20' };
+  }
+
+  if (node.includes('entrega') || data.delivery_method) {
+    return { label: 'Entrega', className: 'bg-violet-500/15 text-violet-300 border-violet-500/20' };
+  }
+
+  if (data.selected_sku || data.selected_name || node.includes('selecao')) {
+    return { label: 'Modelo escolhido', className: 'bg-teal-500/15 text-teal-300 border-teal-500/20' };
+  }
+
+  if (node.includes('catalogo')) {
+    return { label: 'Catálogo enviado', className: 'bg-sky-500/15 text-sky-300 border-sky-500/20' };
+  }
+
+  return null;
+}
 function getAgentMeta(alineData?: AlineConversation, isSaleFinalized?: boolean) {
   const isHumanTakeover = alineData?.status === 'human_takeover';
   const activeAgent = alineData?.active_agent || 'aline';
@@ -140,6 +187,7 @@ const ConversationItem = memo(
     const sellerFirstName = sellerName.split(' ')[0];
     const sellerInitial = sellerName.charAt(0).toUpperCase() || 'V';
     const leadStatus = (conv.lead_status as LeadStatus) || 'novo';
+    const stageMeta = getConversationStageMeta(conv, alineData);
     const statusCfg = STATUS_CONFIG[leadStatus] ?? STATUS_CONFIG.novo;
     const displayName = customerProfile?.name || conv.contact_name || conv.contact_number;
     const lastMsgTime = (conv as any).last_message_at || conv.created_at;
@@ -254,14 +302,12 @@ const ConversationItem = memo(
                 {agentMeta.label}
               </span>
             )}
-
-            {isSaleFinalized && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                <CheckCircle2 className="w-2.5 h-2.5 shrink-0" />
-                Venda finalizada
+            {stageMeta && (
+              <span className={cn('inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold border', stageMeta.className)}>
+                <Sparkles className="w-2.5 h-2.5 shrink-0" />
+                {stageMeta.label}
               </span>
             )}
-
             {isInstagram && (
               <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/15">
                 <Instagram className="w-2.5 h-2.5 shrink-0" />

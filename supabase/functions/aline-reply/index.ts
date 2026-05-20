@@ -1989,6 +1989,31 @@ async function saveAssistantMessage(
     .eq("id", crmConversation.id);
 }
 
+async function updateCrmLeadStatus(supabase: any, phone: string, leadStatus: string) {
+  const cleanPhone = String(phone || "").trim();
+  if (!cleanPhone) return;
+
+  const phoneVariants = buildPhoneVariants(cleanPhone);
+  const { data: crmConversation } = await supabase
+    .from("conversations")
+    .select("id")
+    .in("contact_number", phoneVariants)
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!crmConversation?.id) return;
+
+  const { error } = await supabase
+    .from("conversations")
+    .update({ lead_status: leadStatus })
+    .eq("id", crmConversation.id);
+
+  if (error) {
+    console.error("[ALINE-REPLY] updateCrmLeadStatus failed:", error);
+  }
+}
 async function handoffKeilaToHuman(args: {
   supabase: any;
   supabaseUrl: string;
@@ -2028,22 +2053,7 @@ async function handoffKeilaToHuman(args: {
     })
     .eq("id", conversation.id);
 
-  const phoneVariants = buildPhoneVariants(phone);
-  const { data: crmConversation } = await supabase
-    .from("conversations")
-    .select("id")
-    .in("contact_number", phoneVariants)
-    .order("last_message_at", { ascending: false, nullsFirst: false })
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (crmConversation?.id) {
-    await supabase
-      .from("conversations")
-      .update({ lead_status: "comprador" })
-      .eq("id", crmConversation.id);
-  }
+  await updateCrmLeadStatus(supabase, phone, "venda_iniciada");
 
   try {
     await fetch(`${supabaseUrl}/functions/v1/aline-takeover`, {
@@ -2286,22 +2296,7 @@ async function handoffKateToHuman(args: {
     })
     .eq("id", conversation.id);
 
-  const phoneVariants = buildPhoneVariants(phone);
-  const { data: crmConversation } = await supabase
-    .from("conversations")
-    .select("id")
-    .in("contact_number", phoneVariants)
-    .order("last_message_at", { ascending: false, nullsFirst: false })
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (crmConversation?.id) {
-    await supabase
-      .from("conversations")
-      .update({ lead_status: "comprador" })
-      .eq("id", crmConversation.id);
-  }
+  await updateCrmLeadStatus(supabase, phone, "venda_iniciada");
 
   try {
     await fetch(`${supabaseUrl}/functions/v1/aline-takeover`, {
@@ -2590,6 +2585,7 @@ async function handleKateFlow(args: {
       .eq("id", conversation.id);
     await saveAssistantMessage(supabase, conversation.id, "kate", reply, "human_takeover");
     await saveAgentMemory(supabase, phone, "kate", contactName, data);
+    await updateCrmLeadStatus(supabase, phone, "humano");
 
     return buildResponsePayload({
       phone,
@@ -2619,6 +2615,7 @@ async function handleKateFlow(args: {
       .eq("id", conversation.id);
     await saveAssistantMessage(supabase, conversation.id, "kate", reply, "human_takeover");
     await saveAgentMemory(supabase, phone, "kate", contactName, data);
+    await updateCrmLeadStatus(supabase, phone, "humano");
 
     return buildResponsePayload({
       phone,
@@ -3108,6 +3105,7 @@ A fotogravação de 1 lado já está inclusa.`;
         );
         await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_preview");
         await saveAgentMemory(supabase, phone, "kate", contactName, data);
+        await updateCrmLeadStatus(supabase, phone, "venda_iniciada");
 
         return buildResponsePayload({
           phone,
@@ -3373,6 +3371,7 @@ Se preferir seguir sem simulacao, posso avancar com entrega e pagamento agora. D
         );
         await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_preview");
         await saveAgentMemory(supabase, phone, "kate", contactName, data);
+        await updateCrmLeadStatus(supabase, phone, "venda_iniciada");
 
         return buildResponsePayload({
           phone,
@@ -3534,6 +3533,7 @@ Voce vai retirar na loja ou prefere delivery? Depois eu confirmo a forma de paga
       .eq("id", conversation.id);
     await saveAssistantMessage(supabase, conversation.id, "kate", reply, "human_takeover");
     await saveAgentMemory(supabase, phone, "kate", contactName, data);
+    await updateCrmLeadStatus(supabase, phone, "humano");
 
     return buildResponsePayload({
       phone,
@@ -3768,6 +3768,7 @@ Quer ficar com esse, testar outro modelo ou falar com atendente?`;
         await persistConversation(supabase, conversation.id, "malu", "malu_preview", conversation.current_node || null, data);
         await saveAssistantMessage(supabase, conversation.id, "malu", reply, "malu_preview");
         await saveAgentMemory(supabase, phone, "malu", contactName, data);
+        await updateCrmLeadStatus(supabase, phone, "venda_iniciada");
 
         return buildResponsePayload({
           phone,

@@ -859,3 +859,14 @@ Próximos passos: validar na tela se Tatiane aparece com pelo menos 1 atendiment
 - O relatorio lista falhas por impacto, principais causas provaveis no fluxo e plano P0/P1/P2 para corrigir amanha.
 - A consulta direta de conversas pelo cliente publico retornou vazia por RLS; o relatorio foi baseado nos prints reais e na leitura do fluxo aline-reply.
 Proximos passos: implementar primeiro as correcoes P0 da Kate/Malu e depois criar uma funcao administrativa read-only para auditoria quantitativa.
+2026-05-20 - Fila automatica de acao humana e venda iniciada no chat
+- Adicionei o status/filtro Acao humana no CRM para reunir conversas marcadas como humano ou venda_iniciada.
+- O chat agora reconhece os novos lead_status humano e venda_iniciada no seletor de status e na lista de conversas.
+- A lista de conversas passou a mostrar uma badge de estagio, como Acao humana, Venda iniciada, Simulacao enviada, Aguardando foto, Pagamento, Entrega, Modelo escolhido e Catalogo enviado.
+- O agente agora atualiza automaticamente o lead_status da conversa no CRM quando encaminha para humano ou quando gera simulacao de pingente/oculos.
+Proximos passos: validar build, testar filtro Acao humana no chat e deployar a edge function aline-reply.
+
+Validacao concluida em 2026-05-20
+- Build de producao executado com sucesso no worktree local crm_acium_work.
+- Edge Function aline-reply deployada no Supabase com a marcacao automatica de humano/venda_iniciada.
+- Proximo passo apos push: validar no CRM se o filtro Acao humana mostra conversas de atendimento humano e venda iniciada com a badge de estagio.

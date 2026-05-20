@@ -6,7 +6,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Snowflake, Flame, ShoppingBag, ThumbsDown, User } from 'lucide-react';
+import { Snowflake, Flame, ShoppingBag, ThumbsDown, User, UserCheck, Sparkles } from 'lucide-react';
 import { LeadStatus } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
 
@@ -16,6 +16,8 @@ const leadStatusConfig: Record<LeadStatus, { label: string; icon: React.ReactNod
   quente: { label: 'Quente', icon: <Flame className="w-4 h-4" />, color: 'bg-orange-500' },
   comprador: { label: 'Comprador', icon: <ShoppingBag className="w-4 h-4" />, color: 'bg-green-500' },
   sem_interesse: { label: 'Sem Interesse', icon: <ThumbsDown className="w-4 h-4" />, color: 'bg-red-500' },
+  humano: { label: 'Humano', icon: <UserCheck className="w-4 h-4" />, color: 'bg-amber-500' },
+  venda_iniciada: { label: 'Venda Iniciada', icon: <Sparkles className="w-4 h-4" />, color: 'bg-teal-500' },
 };
 
 interface LeadStatusSelectProps {

@@ -37,7 +37,9 @@ export type LeadStatus =
   | 'sem_interesse'
   | 'qualificado'
   | 'vendido'
-  | 'perdido';
+  | 'perdido'
+  | 'humano'
+  | 'venda_iniciada';
 
 export type Conversation = {
   id: string;
