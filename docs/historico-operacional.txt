@@ -922,3 +922,16 @@ Proximos passos: commitar/pushar a fase 1 e validar em producao a abertura do ch
 - Produção nao possui a coluna updated_at em public.conversations; o select otimizado passou a pedir essa coluna e a consulta da lista falhou inteira.
 - Removi updated_at de CONVERSATION_LIST_SELECT, mantendo apenas colunas confirmadas no schema remoto.
 Proximos passos: validar build, commitar e subir hotfix para restaurar a listagem do chat.
+
+2026-05-20 - Venda iniciada entra na fila humana
+- Ajustei o chat para tratar venda_iniciada como Acao humana tambem no filtro de atendimento Vendedor.
+- A badge de estagio da conversa agora deixa claro quando a venda iniciada esta aguardando humano.
+- A Kate passou a reconhecer confirmacoes depois do catalogo, como "sim", "quero", "perfeito" e "vou querer".
+- Quando ha um unico modelo em contexto e o cliente confirma, a Kate marca a conversa como human_takeover, muda o lead para humano e avisa que um vendedor vai assumir.
+- O handoff final da Kate agora deixa explicito na mensagem que a conversa esta em Acao humana.
+Proximos passos: validar build, deployar aline-reply e testar com cliente que ja escolheu modelo para confirmar que aparece na fila Vendedor/Acao humana.
+
+Validacao em 2026-05-20 - Venda iniciada/Acao humana
+- Build de producao validado com sucesso no worktree local crm_acium_work.
+- Edge Function aline-reply deployada no Supabase com a regra de handoff humano para cliente que confirma modelo/compra.
+Proximos passos: testar no CRM uma conversa com "Quero este" e confirmar que a lista mostra Acao humana/Vendedor sem precisar abrir a conversa.

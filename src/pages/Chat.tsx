@@ -367,7 +367,7 @@ const Chat = () => {
 
   const matchesAttendantFilter = useCallback(
     (conv: Conversation, attendant: string) => {
-      const isHuman = getIsHumanTakeover(conv.contact_number) || getDerivedActionStage(conv);
+      const isHuman = isActionHumanConversation(conv);
 
       if (attendant === 'all') return true;
       if (attendant === 'vendedor') return isHuman;
@@ -375,7 +375,7 @@ const Chat = () => {
 
       return true;
     },
-    [getIsHumanTakeover, getDerivedActionStage],
+    [isActionHumanConversation],
   );
 
   const updateLeadStatus = async (conversationId: string, status: LeadStatus) => {
@@ -1872,10 +1872,10 @@ const Chat = () => {
           );
 
     return {
-      aline: source.filter((conv) => !(getIsHumanTakeover(conv.contact_number) || getDerivedActionStage(conv))).length,
-      vendedor: source.filter((conv) => getIsHumanTakeover(conv.contact_number) || getDerivedActionStage(conv)).length,
+      aline: source.filter((conv) => !isActionHumanConversation(conv)).length,
+      vendedor: source.filter((conv) => isActionHumanConversation(conv)).length,
     };
-  }, [searchedConversations, filterStatus, matchesStatusFilter, getIsHumanTakeover, getDerivedActionStage]);
+  }, [searchedConversations, filterStatus, matchesStatusFilter, isActionHumanConversation]);
 
   const groupedMessages = useMemo(() => {
     return messages.reduce((groups, message) => {

@@ -333,7 +333,7 @@ function detectPriceIntent(text: string): boolean {
 
 function detectChoiceIntent(text: string, buttonResponseId?: string | null, catalogSelectionHint?: string | null): boolean {
   const combined = normalizeText(`${text || ""} ${buttonResponseId || ""} ${catalogSelectionHint || ""}`);
-  return /quero este|quero esse|escolher|escolhi|ficar com esse|gostei desse|esse modelo|este modelo/.test(combined);
+  return /quero este|quero esse|escolher|escolhi|ficar com esse|gostei desse|esse modelo|este modelo|vou querer|quero comprar|pode ser esse|esse mesmo|este mesmo/.test(combined);
 }
 
 function detectPreviewIntent(text: string, mediaType?: string | null): boolean {
@@ -1753,6 +1753,12 @@ function findSingleCatalogSelection(data: AnyRecord): AnyRecord | null {
   return catalog[0] || null;
 }
 
+function detectPostCatalogPositiveIntent(text: string): boolean {
+  const normalized = normalizeText(text);
+  return /^(sim|s|quero|gostei|gostei sim|pode ser|ok|ta bom|beleza|perfeito|esse|este|isso)$/.test(normalized) ||
+    /gostei|quero|pode ser|vou querer|esse mesmo|este mesmo|fechar|finalizar|comprar/.test(normalized);
+}
+
 function buildResponsePayload(args: {
   phone: string;
   message: string;
@@ -2090,7 +2096,7 @@ async function handoffKeilaToHuman(args: {
     })
     .eq("id", conversation.id);
 
-  await updateCrmLeadStatus(supabase, phone, "venda_iniciada");
+  await updateCrmLeadStatus(supabase, phone, "humano");
 
   try {
     await fetch(`${supabaseUrl}/functions/v1/aline-takeover`, {
@@ -2333,7 +2339,7 @@ async function handoffKateToHuman(args: {
     })
     .eq("id", conversation.id);
 
-  await updateCrmLeadStatus(supabase, phone, "venda_iniciada");
+  await updateCrmLeadStatus(supabase, phone, "humano");
 
   try {
     await fetch(`${supabaseUrl}/functions/v1/aline-takeover`, {
@@ -2353,7 +2359,7 @@ async function handoffKateToHuman(args: {
     console.error("[ALINE-REPLY] Erro ao encaminhar pingente para atendimento humano:", error);
   }
 
-  const reply = `Perfeito! Já deixei anotado que será ${deliveryLabel} com pagamento via ${paymentLabel}. Vou te encaminhar agora para nosso atendimento humano finalizar seu pingente fotogravado 💫`;
+  const reply = `Perfeito! Ja deixei anotado que sera ${deliveryLabel} com pagamento via ${paymentLabel}. Essa conversa esta em Acao humana: um vendedor vai assumir daqui para finalizar seu pingente fotogravado.`;
 
   await saveAssistantMessage(supabase, conversation.id, "kate", reply, "human_handoff_pingente");
   await saveAgentMemory(supabase, phone, "kate", contactName, data);
@@ -2469,6 +2475,70 @@ async function handleKateFlow(args: {
   const hasPreviewApproved = data.kate_preview_approved === true;
   const hasDelivery = !!data.delivery_method;
   const hasPayment = !!data.payment_method;
+  const hasCatalogOptions = getCatalogSelectionPool(data).length > 0;
+  const postCatalogPositive = !hasSelectedProduct && hasCatalogOptions && detectPostCatalogPositiveIntent(message);
+
+  if (postCatalogPositive) {
+    const singleOption = findSingleCatalogSelection(data);
+
+    if (singleOption) {
+      data.selected_product = singleOption;
+      data.selected_sku = singleOption.sku || singleOption.id;
+      data.selected_name = singleOption.name;
+      data.selected_price = singleOption.price;
+      data.kate_selected_template_id = matchKateTemplateForProduct(singleOption)?.id || null;
+      data.kate_store_handoff_done = true;
+
+      const reply = `Perfeito! Vou seguir com *${cleanCustomerProductName(data.selected_name)}*. Essa conversa esta em Acao humana: um vendedor vai assumir daqui para finalizar seu pingente fotogravado.`;
+
+      await supabase
+        .from("aline_conversations")
+        .update({
+          status: "human_takeover",
+          active_agent: "human",
+          assignment_reason: `Kate: cliente confirmou interesse em ${data.selected_name || data.selected_sku} apos catalogo`,
+          collected_data: { ...data, agente_atual: "human" },
+          last_message_at: new Date().toISOString(),
+          agent_handoff_at: new Date().toISOString(),
+        })
+        .eq("id", conversation.id);
+
+      await updateCrmLeadStatus(supabase, phone, "humano");
+      await saveAssistantMessage(supabase, conversation.id, "kate", reply, "human_handoff_pingente");
+      await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+      return buildResponsePayload({
+        phone,
+        message: reply,
+        node: "human_handoff_pingente",
+        selectedProduct: data.selected_product || null,
+        collectedData: data,
+        agent: "human",
+      });
+    }
+
+    const reply = "Perfeito. Me diga qual modelo voce quer: toque em *Quero este* no card ou envie o nome/formato do pingente que eu sigo para finalizar.";
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "kate",
+      "catalogo_pingente",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "catalogo_pingente");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "catalogo_pingente",
+      collectedData: data,
+      agent: "kate",
+    });
+  }
+
   const normalizedMessage = normalizeText(message);
   const wantsCatalogResend = detectCatalogResendIntent(message);
   const wantsMoreOptions = detectMoreOptionsIntent(message);

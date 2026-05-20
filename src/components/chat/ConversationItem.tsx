@@ -61,7 +61,7 @@ const STATUS_CONFIG: Record<
   sem_interesse: { dot: 'bg-red-400', label: 'Sem interesse', bg: 'bg-red-500/10', text: 'text-red-400' },
   vendido: { dot: 'bg-emerald-400', label: 'Vendido', bg: 'bg-emerald-500/15', text: 'text-emerald-300' },
   humano: { dot: 'bg-amber-400', label: 'Humano', bg: 'bg-amber-500/15', text: 'text-amber-300' },
-  venda_iniciada: { dot: 'bg-teal-400', label: 'Venda iniciada', bg: 'bg-teal-500/15', text: 'text-teal-300' },
+  venda_iniciada: { dot: 'bg-amber-400', label: 'Venda iniciada', bg: 'bg-amber-500/15', text: 'text-amber-300' },
   perdido: { dot: 'bg-red-400', label: 'Perdido', bg: 'bg-red-500/10', text: 'text-red-400' },
 };
 
@@ -83,7 +83,7 @@ function getConversationStageMeta(conv: Conversation, alineData?: AlineConversat
   }
 
   if (leadStatus === 'venda_iniciada') {
-    return { label: 'Venda iniciada', className: 'bg-teal-500/15 text-teal-300 border-teal-500/20' };
+    return { label: 'Ação humana', className: 'bg-amber-500/15 text-amber-300 border-amber-500/20' };
   }
 
   if (leadStatus === 'vendido') {
@@ -130,7 +130,7 @@ function getConversationStageMeta(conv: Conversation, alineData?: AlineConversat
     text.includes('produto selecionado') ||
     text.includes('seguimos com')
   ) {
-    return { label: 'Venda iniciada', className: 'bg-teal-500/15 text-teal-300 border-teal-500/20' };
+    return { label: 'Ação humana', className: 'bg-amber-500/15 text-amber-300 border-amber-500/20' };
   }
 
   if (text.includes('gostou de algum modelo') || text.includes('catalogo') || text.includes('catálogo')) {
