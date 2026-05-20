@@ -114,6 +114,56 @@ const chunkArray = <T,>(items: T[], size: number): T[][] => {
   return chunks;
 };
 
+const playHumanAttentionBeep = () => {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+
+    const audioContext = new AudioContextClass();
+    const masterGain = audioContext.createGain();
+    masterGain.gain.value = 0.72;
+    masterGain.connect(audioContext.destination);
+
+    [0, 0.24, 0.48].forEach((offset, index) => {
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      oscillator.type = 'square';
+      oscillator.frequency.value = index % 2 === 0 ? 980 : 1240;
+      gain.gain.setValueAtTime(0.001, audioContext.currentTime + offset);
+      gain.gain.exponentialRampToValueAtTime(0.75, audioContext.currentTime + offset + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + offset + 0.18);
+      oscillator.connect(gain);
+      gain.connect(masterGain);
+      oscillator.start(audioContext.currentTime + offset);
+      oscillator.stop(audioContext.currentTime + offset + 0.2);
+    });
+
+    window.setTimeout(() => {
+      void audioContext.close().catch(() => {});
+    }, 1100);
+  } catch {
+    // Browsers can block audio before the first user interaction.
+  }
+};
+
+const notifyBrowserHumanAttention = (name: string) => {
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+
+  if (Notification.permission === 'granted') {
+    new Notification('Precisa de atendimento humano', {
+      body: `${name} esta aguardando um vendedor no CRM.`,
+      tag: `human-attention-${name}`,
+    });
+    return;
+  }
+
+  if (Notification.permission === 'default') {
+    void Notification.requestPermission();
+  }
+};
+
 const formatContactPresence = (conversation: Conversation | null) => {
   if (!conversation) return '';
 
@@ -293,6 +343,8 @@ const Chat = () => {
   const relatedAlineConversationIdsRef = useRef<Set<string>>(new Set());
   const fetchMessagesRequestRef = useRef(0);
   const messagesCacheRef = useRef<Map<string, Message[]>>(new Map());
+  const actionHumanAlertReadyRef = useRef(false);
+  const actionHumanConversationIdsRef = useRef<Set<string>>(new Set());
 
   const { toast } = useToast();
   const { onlineSellers, startChatting, stopChatting } = useSellerPresence();
@@ -356,6 +408,41 @@ const Chat = () => {
     const leadStatus = conv.lead_status || 'novo';
     return leadStatus === 'humano' || leadStatus === 'venda_iniciada' || getIsHumanTakeover(conv.contact_number) || getDerivedActionStage(conv);
   }, [getIsHumanTakeover, getDerivedActionStage]);
+
+  useEffect(() => {
+    const actionHumanConversations = conversations.filter(isActionHumanConversation);
+    const nextIds = new Set(actionHumanConversations.map((conversation) => conversation.id));
+
+    if (!actionHumanAlertReadyRef.current) {
+      actionHumanConversationIdsRef.current = nextIds;
+      actionHumanAlertReadyRef.current = true;
+      return;
+    }
+
+    const newAttentionConversations = actionHumanConversations.filter(
+      (conversation) => !actionHumanConversationIdsRef.current.has(conversation.id),
+    );
+
+    actionHumanConversationIdsRef.current = nextIds;
+
+    if (newAttentionConversations.length === 0) return;
+
+    const firstConversation = newAttentionConversations[0];
+    const displayName =
+      getCustomerProfileForPhone(firstConversation.contact_number)?.name ||
+      firstConversation.contact_name ||
+      firstConversation.contact_number;
+
+    playHumanAttentionBeep();
+    notifyBrowserHumanAttention(displayName);
+    toast({
+      title: 'Precisa de atendimento humano',
+      description:
+        newAttentionConversations.length === 1
+          ? `${displayName} esta aguardando um vendedor online.`
+          : `${newAttentionConversations.length} conversas entraram na fila humana.`,
+    });
+  }, [conversations, isActionHumanConversation, getCustomerProfileForPhone, toast]);
 
   const matchesStatusFilter = useCallback((conv: Conversation, status: string) => {
     const leadStatus = conv.lead_status || 'novo';
@@ -1919,6 +2006,9 @@ const Chat = () => {
   const currentSellerFirstName = currentSellerName.split(' ')[0];
   const currentSellerInitial = currentSellerName.charAt(0).toUpperCase() || 'V';
   const isSaleFinalized = selectedConversation?.lead_status === 'vendido';
+  const selectedNeedsHumanAttention = selectedConversation
+    ? isActionHumanConversation(selectedConversation)
+    : false;
   const contactPresenceLabel = formatContactPresence(selectedConversation);
 
   const currentAgentSlug = isCurrentHumanTakeover
@@ -2268,7 +2358,7 @@ const Chat = () => {
             <div
               className={cn(
                 'px-4 border-b border-white/5 flex flex-col justify-center bg-slate-950/90 backdrop-blur-xl shrink-0 gap-0',
-                isSaleFinalized ? 'h-auto py-2' : 'h-14',
+                isSaleFinalized || selectedNeedsHumanAttention ? 'h-auto py-2' : 'h-14',
               )}
             >
               {isSaleFinalized && (
@@ -2284,6 +2374,18 @@ const Chat = () => {
                   >
                     Desfazer
                   </button>
+                </div>
+              )}
+
+              {selectedNeedsHumanAttention && !isSaleFinalized && (
+                <div className="flex items-center gap-2 mb-2 px-3 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-400/30 shadow-[0_0_28px_rgba(16,185,129,0.25)] animate-pulse">
+                  <UserCheck className="w-3.5 h-3.5 text-emerald-300 shrink-0" />
+                  <span className="text-[11px] text-emerald-200 font-black uppercase tracking-[0.04em] flex-1">
+                    Precisa de atendimento humano agora
+                  </span>
+                  <span className="hidden sm:inline-flex text-[10px] text-emerald-300 font-semibold">
+                    Vendedor online deve assumir esta conversa
+                  </span>
                 </div>
               )}
 

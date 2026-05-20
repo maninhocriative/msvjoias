@@ -935,3 +935,15 @@ Validacao em 2026-05-20 - Venda iniciada/Acao humana
 - Build de producao validado com sucesso no worktree local crm_acium_work.
 - Edge Function aline-reply deployada no Supabase com a regra de handoff humano para cliente que confirma modelo/compra.
 Proximos passos: testar no CRM uma conversa com "Quero este" e confirmar que a lista mostra Acao humana/Vendedor sem precisar abrir a conversa.
+
+2026-05-20 - Alerta forte para atendimento humano no chat
+- Conversas em humano, venda_iniciada ou human_takeover agora exibem a badge verde piscando "Precisa atendimento humano" na lista.
+- Ao abrir uma conversa nessa fase, o topo do chat mostra uma faixa verde piscando avisando que o vendedor online deve assumir.
+- Quando uma conversa entra na fila humana em tempo real, o CRM dispara toast para o vendedor e um beep alto no navegador.
+- Tambem foi adicionada notificacao nativa do navegador quando a permissao estiver liberada.
+Proximos passos: validar build, publicar e testar com uma conversa real entrando em Acao humana.
+
+Validacao em 2026-05-20 - Alerta forte para atendimento humano
+- Build de producao validado com sucesso no worktree local crm_acium_work.
+- Mudanca pronta para publicacao via push do frontend.
+Proximos passos: testar no navegador com permissao de notificacao liberada e primeiro clique na tela para permitir audio.

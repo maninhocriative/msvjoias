@@ -212,6 +212,11 @@ const ConversationItem = memo(
     const leadStatus = (conv.lead_status as LeadStatus) || 'novo';
     const stageMeta = getConversationStageMeta(conv, alineData);
     const statusCfg = STATUS_CONFIG[leadStatus] ?? STATUS_CONFIG.novo;
+    const needsHumanAttention =
+      leadStatus === 'humano' ||
+      leadStatus === 'venda_iniciada' ||
+      isHumanTakeover ||
+      String(stageMeta?.label || '').toLowerCase().includes('humana');
     const displayName = customerProfile?.name || conv.contact_name || conv.contact_number;
     const lastMsgTime = (conv as any).last_message_at || conv.created_at;
     const previewText = conv.last_message || 'Sem mensagens';
@@ -236,6 +241,7 @@ const ConversationItem = memo(
             ? 'border-emerald-500/35 bg-[linear-gradient(160deg,rgba(16,185,129,0.16),rgba(15,23,42,0.92))] ring-1 ring-emerald-500/20'
             : 'border-white/[0.06] bg-slate-900/55 hover:bg-slate-900/75 hover:border-white/12',
           isSaleFinalized && !isSelected && 'bg-emerald-500/[0.05]',
+          needsHumanAttention && 'border-emerald-400/40 ring-1 ring-emerald-400/20',
         )}
       >
         <div className="relative shrink-0 mt-0.5">
@@ -323,6 +329,12 @@ const ConversationItem = memo(
               )}>
                 <AgentIcon className="w-2.5 h-2.5 shrink-0" />
                 {agentMeta.label}
+              </span>
+            )}
+            {needsHumanAttention && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-[0.02em] bg-emerald-500/20 text-emerald-200 border border-emerald-400/40 shadow-[0_0_20px_rgba(16,185,129,0.45)] animate-pulse">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 shrink-0" />
+                Precisa atendimento humano
               </span>
             )}
             {stageMeta && (
