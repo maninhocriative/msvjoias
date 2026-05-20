@@ -892,3 +892,9 @@ Proximos passos: validar no CRM se Franciane aparece no contador Acao humana e t
 - O handoff salva current_node=human_chaveiro, active_agent=human, status=human_takeover e lead_status=humano para aparecer na tag Acao humana.
 - Edge Function aline-reply deployada no Supabase apos a correcao.
 Proximos passos: validar com mensagem "chaveiro" em conversa de alianca e confirmar que nao transfere para Keila.
+
+2026-05-20 - Chat carrega tags junto com conversas
+- Ajustei o carregamento inicial do Chat para buscar conversas, status dos agentes e perfis de clientes antes de publicar a lista na tela.
+- As tags/badges agora entram no mesmo ciclo de renderizacao da lista, evitando aparecerem atrasadas apos abrir o chat.
+- Tambem mapeei perfis por variacoes de telefone para reduzir falhas quando Z-API/Supabase alternam formatos com e sem DDI.
+Proximos passos: validar build e testar abertura do chat em producao para confirmar que a lista nao aparece sem tags.

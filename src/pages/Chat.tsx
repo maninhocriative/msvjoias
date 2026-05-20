@@ -1117,11 +1117,8 @@ const Chat = () => {
         if (error) throw error;
 
         const conversationList = data || [];
-        setConversations(conversationList);
-        setSelectedConversation((prev) => {
-          if (!prev) return prev;
-          return conversationList.find((conversation) => conversation.id === prev.id) || prev;
-        });
+        const statusMap: Record<string, AlineConversation> = {};
+        const profilesMap: Record<string, CustomerProfile> = {};
 
         if (conversationList.length > 0) {
           const phones = Array.from(
@@ -1141,36 +1138,32 @@ const Chat = () => {
               .in('whatsapp', phones),
           ]);
 
-          if (alineData) {
-            const statusMap: Record<string, AlineConversation> = {};
-
-            alineData.forEach((ac) => {
-              statusMap[ac.phone] = ac;
-              buildPhoneVariants(ac.phone).forEach((variant) => {
-                statusMap[variant] = ac;
-              });
+          alineData?.forEach((ac) => {
+            statusMap[ac.phone] = ac;
+            buildPhoneVariants(ac.phone).forEach((variant) => {
+              statusMap[variant] = ac;
             });
+          });
 
-            setAlineStatusMap(statusMap);
-          }
-
-          if (customersData) {
-            const profilesMap: Record<string, CustomerProfile> = {};
-
-            customersData.forEach((customer) => {
-              profilesMap[customer.whatsapp] = {
-                whatsapp: customer.whatsapp,
-                name: customer.name,
-                profile_pic_url: customer.profile_pic_url,
-              };
+          customersData?.forEach((customer) => {
+            profilesMap[customer.whatsapp] = {
+              whatsapp: customer.whatsapp,
+              name: customer.name,
+              profile_pic_url: customer.profile_pic_url,
+            };
+            buildPhoneVariants(customer.whatsapp).forEach((variant) => {
+              profilesMap[variant] = profilesMap[customer.whatsapp];
             });
-
-            setCustomerProfiles(profilesMap);
-          }
-        } else {
-          setAlineStatusMap({});
-          setCustomerProfiles({});
+          });
         }
+
+        setAlineStatusMap(statusMap);
+        setCustomerProfiles(profilesMap);
+        setConversations(conversationList);
+        setSelectedConversation((prev) => {
+          if (!prev) return prev;
+          return conversationList.find((conversation) => conversation.id === prev.id) || prev;
+        });
 
         if (showToast) {
           toast({
