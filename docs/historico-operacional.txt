@@ -904,3 +904,16 @@ Proximos passos: validar build e testar abertura do chat em producao para confir
 - Todos os pontos da lista/cabecalho agora buscam status e perfil por variacoes do telefone, reduzindo divergencia com/sem DDI ou nono digito.
 - Adicionei classificacao visual por ultima mensagem para conversas antigas entrarem em Acao humana, Venda iniciada ou Catalogo enviado mesmo antes de abrir a conversa.
 Proximos passos: validar build e depois analisar a paginacao de mensagens estilo WhatsApp com foco em risco baixo.
+
+2026-05-20 - Chat: fase 1 de performance estilo WhatsApp
+- Otimizei a listagem do Chat para buscar apenas as colunas usadas na tela, removendo select('*') da consulta principal de conversas.
+- A abertura de conversa agora carrega inicialmente as ultimas 80 mensagens do CRM e os ultimos 120 logs da Aline, mantendo a exibicao em ordem cronologica.
+- O realtime de novas mensagens nao foi alterado; continua adicionando mensagens no estado atual como antes.
+- Criei migration com indices compostos para acelerar mensagens por conversation_id/created_at e buscas por telefone nas tabelas conversations e aline_conversations.
+Proximos passos: aplicar a migration no Supabase, validar build e medir a abertura do chat em producao antes de implementar scroll infinito.
+
+Validacao em 2026-05-20 - Chat performance fase 1
+- Build de producao validado com sucesso apos a otimizacao do carregamento de mensagens.
+- Indices de performance aplicados diretamente no Supabase via db query --linked, porque o historico remoto/local de migrations esta desalinhado e db push nao e seguro neste repositorio sem reparo previo.
+- A migration foi mantida no repositorio para documentar os indices aplicados e permitir reexecucao idempotente com create index if not exists.
+Proximos passos: commitar/pushar a fase 1 e validar em producao a abertura do chat antes de implementar scroll infinito.

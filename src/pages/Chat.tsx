@@ -80,6 +80,11 @@ const statusFilters = [
   { key: 'vendido', label: 'Vendidos', color: 'bg-emerald-400' },
 ];
 
+
+const CONVERSATION_LIST_SELECT =
+  'id, contact_name, contact_number, platform, last_message, last_message_at, unread_count, lead_status, contact_presence, contact_is_online, contact_last_seen_at, contact_presence_updated_at, created_at, updated_at';
+const INITIAL_MESSAGE_LIMIT = 80;
+const INITIAL_ALINE_LOG_LIMIT = 120;
 const buildPhoneVariants = (phone: string) => {
   const digits = String(phone || '').replace(/\D/g, '');
   const variants = new Set<string>();
@@ -851,12 +856,12 @@ const Chat = () => {
           'id, content, created_at, is_from_me, media_url, message_type, status, conversation_id, zapi_message_id, edited_at, deleted_at, replaced_message_id',
         )
         .in('conversation_id', relatedConversationIds)
-        .order('created_at', { ascending: true })
-        .limit(300);
+        .order('created_at', { ascending: false })
+        .limit(INITIAL_MESSAGE_LIMIT);
 
       if (error) throw error;
 
-      let mergedMessages = (data || []).filter(
+      let mergedMessages = [...(data || [])].reverse().filter(
         (message) => message.content?.trim() || message.media_url || message.deleted_at,
       );
 
@@ -872,8 +877,8 @@ const Chat = () => {
           .from('aline_messages')
           .select('id, message, created_at, role')
           .eq('conversation_id', alineConversationId)
-          .order('created_at', { ascending: true })
-          .limit(400);
+          .order('created_at', { ascending: false })
+          .limit(INITIAL_ALINE_LOG_LIMIT);
 
         if (!alineHistoryError && alineHistory?.length) {
           const mirroredTextMessages = mergedMessages.filter(
@@ -883,7 +888,7 @@ const Chat = () => {
               message.content?.trim(),
           );
 
-          const fallbackAlineMessages = alineHistory
+          const fallbackAlineMessages = [...alineHistory].reverse()
             .filter((entry) => entry.message?.trim())
             .filter((entry) => {
               const entryTime = new Date(entry.created_at || '').getTime();
@@ -1155,7 +1160,7 @@ const Chat = () => {
 
         const { data, error } = await supabase
           .from('conversations')
-          .select('*')
+          .select(CONVERSATION_LIST_SELECT)
           .order('last_message_at', { ascending: false, nullsFirst: false });
 
         if (error) throw error;
@@ -1813,7 +1818,7 @@ const Chat = () => {
 
     return conversations.filter((conv) => {
       const displayName =
-        customerProfiles[conv.contact_number]?.name || conv.contact_name || '';
+        getCustomerProfileForPhone(conv.contact_number)?.name || conv.contact_name || '';
 
       return (
         !debouncedSearchTerm ||
@@ -1821,7 +1826,7 @@ const Chat = () => {
         conv.contact_number?.includes(debouncedSearchTerm)
       );
     });
-  }, [conversations, debouncedSearchTerm, customerProfiles]);
+  }, [conversations, debouncedSearchTerm, getCustomerProfileForPhone]);
 
   const filteredConversations = useMemo(() => {
     return searchedConversations
