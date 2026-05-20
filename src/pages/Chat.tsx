@@ -82,7 +82,7 @@ const statusFilters = [
 
 
 const CONVERSATION_LIST_SELECT =
-  'id, contact_name, contact_number, platform, last_message, last_message_at, unread_count, lead_status, contact_presence, contact_is_online, contact_last_seen_at, contact_presence_updated_at, created_at, updated_at';
+  'id, contact_name, contact_number, platform, last_message, last_message_at, unread_count, lead_status, contact_presence, contact_is_online, contact_last_seen_at, contact_presence_updated_at, created_at';
 const INITIAL_MESSAGE_LIMIT = 80;
 const INITIAL_ALINE_LOG_LIMIT = 120;
 const buildPhoneVariants = (phone: string) => {

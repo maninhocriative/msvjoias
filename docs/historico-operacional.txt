@@ -917,3 +917,8 @@ Validacao em 2026-05-20 - Chat performance fase 1
 - Indices de performance aplicados diretamente no Supabase via db query --linked, porque o historico remoto/local de migrations esta desalinhado e db push nao e seguro neste repositorio sem reparo previo.
 - A migration foi mantida no repositorio para documentar os indices aplicados e permitir reexecucao idempotente com create index if not exists.
 Proximos passos: commitar/pushar a fase 1 e validar em producao a abertura do chat antes de implementar scroll infinito.
+
+2026-05-20 - Hotfix chat zerado apos otimizacao
+- Produção nao possui a coluna updated_at em public.conversations; o select otimizado passou a pedir essa coluna e a consulta da lista falhou inteira.
+- Removi updated_at de CONVERSATION_LIST_SELECT, mantendo apenas colunas confirmadas no schema remoto.
+Proximos passos: validar build, commitar e subir hotfix para restaurar a listagem do chat.
