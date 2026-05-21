@@ -58,6 +58,10 @@ const phoneVariants = (phone: string) => {
 const normalizeCurrency = (value: number | null | undefined) =>
   Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
+const soldOrderStatuses = new Set(['done', 'paid', 'completed', 'finalized', 'vendido']);
+
+const isSoldOrder = (order: OrderRow) => soldOrderStatuses.has(String(order.status || '').toLowerCase());
+
 const createCode = (name: string) => {
   const base = name
     .normalize('NFD')
@@ -121,7 +125,12 @@ const Influencers = () => {
 
   const getOrdersForLead = (lead: InfluencerLead) => {
     const variants = phoneVariants(lead.contact_phone);
+    const leadTime = new Date(lead.first_seen_at).getTime();
+
     return orders.filter((order) => {
+      if (!isSoldOrder(order)) return false;
+      const orderTime = new Date(order.created_at).getTime();
+      if (Number.isFinite(leadTime) && Number.isFinite(orderTime) && orderTime < leadTime) return false;
       if (lead.conversation_id && order.external_reference === lead.conversation_id) return true;
       return variants.has(onlyDigits(order.customer_phone));
     });
@@ -140,12 +149,13 @@ const Influencers = () => {
         const influencerLeads = leads.filter((lead) => lead.influencer_id === influencer.id);
         const leadOrders = influencerLeads.flatMap(getOrdersForLead);
         const uniqueOrders = Array.from(new Map(leadOrders.map((order) => [order.id, order])).values());
-        const soldOrders = uniqueOrders.filter((order) => order.status !== 'cancelled' && order.status !== 'canceled');
+        const buyers = influencerLeads.filter((lead) => getOrdersForLead(lead).length > 0).length;
         return {
           influencer,
           leads: influencerLeads,
-          orders: soldOrders,
-          revenue: soldOrders.reduce((sum, order) => sum + Number(order.total_price || 0), 0),
+          buyers,
+          orders: uniqueOrders,
+          revenue: uniqueOrders.reduce((sum, order) => sum + Number(order.total_price || 0), 0),
         };
       });
   }, [influencers, leads, orders, search]);
@@ -157,7 +167,7 @@ const Influencers = () => {
     return {
       influencers: influencers.length,
       leads: leadIds.size,
-      orders: uniqueOrders.size,
+      orders: rows.reduce((sum, row) => sum + row.buyers, 0),
       revenue: Array.from(uniqueOrders.values()).reduce((sum, order) => sum + Number(order.total_price || 0), 0),
     };
   }, [influencers.length, leads, rows]);
@@ -292,7 +302,7 @@ const Influencers = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map(({ influencer, leads: influencerLeads, orders: influencerOrders, revenue }) => {
+                {rows.map(({ influencer, leads: influencerLeads, buyers, revenue }) => {
                   const link = getLink(influencer);
                   return (
                     <TableRow key={influencer.id}>
@@ -313,7 +323,7 @@ const Influencers = () => {
                         </div>
                       </TableCell>
                       <TableCell className="text-center font-bold">{influencerLeads.length}</TableCell>
-                      <TableCell className="text-center font-bold text-emerald-400">{influencerOrders.length}</TableCell>
+                      <TableCell className="text-center font-bold text-emerald-400">{buyers}</TableCell>
                       <TableCell className="font-semibold">{normalizeCurrency(revenue)}</TableCell>
                       <TableCell>
                         <div className="space-y-1 max-w-[320px]">

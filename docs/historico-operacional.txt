@@ -969,4 +969,5 @@ Proximos passos: criar um parceiro em /influencers, abrir/copiar o link gerado e
 - Criado alerta global no layout: se nao ha vendedor atribuido, mostra alerta piscante com som; se ja ha vendedor, mostra quem esta atendendo sem tratar como pendente.
 - Pagina Usuarios exibe pagina atual do usuario e ganhou disparo manual de alerta aos vendedores.
 - Links de influencers agora sao gerados para o WhatsApp da automacao 5592984636921.
+- Corrigida a contagem de compras de influencers: clique no link conta apenas como lead; compra so conta quando houver pedido vendido depois do clique.
 - Proximos passos: aplicar migracao, deploy das functions alteradas, build final, commit e push.
