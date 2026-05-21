@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Copy, ExternalLink, Link2, Loader2, Plus, RefreshCw, Search, Share2, Trophy, Users } from 'lucide-react';
+import { Copy, ExternalLink, Link2, Loader2, Plus, RefreshCw, Search, Share2, Trash2, Trophy, Users } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -76,6 +76,7 @@ const Influencers = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [whatsappNumber] = useState(DEFAULT_WHATSAPP);
   const [influencers, setInfluencers] = useState<Influencer[]>([]);
   const [leads, setLeads] = useState<InfluencerLead[]>([]);
@@ -210,6 +211,40 @@ const Influencers = () => {
     toast({ title: 'Link copiado' });
   };
 
+  const deleteInfluencer = async (influencer: Influencer, influencerLeads: InfluencerLead[]) => {
+    if (influencerLeads.length > 0) {
+      toast({
+        title: 'Link com leads',
+        description: 'Esse link ja recebeu leads. Para preservar o historico, ele nao pode ser excluido.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const confirmed = window.confirm(`Excluir o link de ${influencer.name}? Essa acao nao pode ser desfeita.`);
+    if (!confirmed) return;
+
+    setDeletingId(influencer.id);
+    try {
+      const { error } = await supabase
+        .from('influencers')
+        .delete()
+        .eq('id', influencer.id);
+
+      if (error) throw error;
+      toast({ title: 'Link excluido', description: 'O parceiro sem uso foi removido.' });
+      await fetchData();
+    } catch (error: any) {
+      toast({
+        title: 'Erro ao excluir',
+        description: error?.message || 'Nao foi possivel excluir esse link agora.',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground p-6 space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -299,6 +334,7 @@ const Influencers = () => {
                   <TableHead className="text-center">Compraram</TableHead>
                   <TableHead>Faturamento</TableHead>
                   <TableHead>Ultimos leads</TableHead>
+                  <TableHead className="w-16 text-right">Acoes</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -326,21 +362,39 @@ const Influencers = () => {
                       <TableCell className="text-center font-bold text-emerald-400">{buyers}</TableCell>
                       <TableCell className="font-semibold">{normalizeCurrency(revenue)}</TableCell>
                       <TableCell>
-                        <div className="space-y-1 max-w-[320px]">
+                        <div className="space-y-2 max-w-[360px]">
                           {influencerLeads.slice(0, 3).map((lead) => {
                             const bought = getOrdersForLead(lead).length > 0;
                             return (
-                              <div key={lead.id} className="text-xs flex items-center gap-2">
-                                <span className={cn('w-2 h-2 rounded-full shrink-0', bought ? 'bg-emerald-400' : 'bg-slate-500')} />
-                                <span className="truncate">{lead.contact_name || lead.contact_phone}</span>
-                                <span className={cn('shrink-0', bought ? 'text-emerald-400' : 'text-muted-foreground')}>
-                                  {bought ? 'comprou' : 'nao comprou'}
-                                </span>
+                              <div key={lead.id} className="rounded-md border border-border/60 bg-background/40 px-2.5 py-2 text-xs">
+                                <div className="flex items-center gap-2">
+                                  <span className={cn('w-2 h-2 rounded-full shrink-0', bought ? 'bg-emerald-400' : 'bg-slate-500')} />
+                                  <span className="font-semibold truncate">{lead.contact_name || 'Nome nao informado'}</span>
+                                  <span className={cn('ml-auto shrink-0', bought ? 'text-emerald-400' : 'text-muted-foreground')}>
+                                    {bought ? 'comprou' : 'nao comprou'}
+                                  </span>
+                                </div>
+                                <div className="mt-1 grid gap-0.5 text-muted-foreground">
+                                  <span>Telefone: {lead.contact_phone}</span>
+                                  <span>Instagram origem: {influencer.handle || 'nao informado'}</span>
+                                </div>
                               </div>
                             );
                           })}
                           {influencerLeads.length === 0 && <span className="text-xs text-muted-foreground">Sem leads ainda</span>}
                         </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          disabled={deletingId === influencer.id || influencerLeads.length > 0}
+                          title={influencerLeads.length > 0 ? 'Link com lead nao pode ser excluido' : 'Excluir link sem uso'}
+                          className="text-muted-foreground hover:text-destructive disabled:cursor-not-allowed disabled:opacity-35"
+                          onClick={() => deleteInfluencer(influencer, influencerLeads)}
+                        >
+                          {deletingId === influencer.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                        </Button>
                       </TableCell>
                     </TableRow>
                   );
