@@ -169,15 +169,10 @@ const MessageItem = memo(({
                 className="block w-full max-w-[260px] sm:max-w-[340px] lg:max-w-[420px] rounded-xl cursor-pointer bg-slate-700/50 transition-opacity hover:opacity-90"
                 style={{
                   aspectRatio: '4 / 3',
-                  objectFit: 'cover',
+                  objectFit: 'contain',
                   maxHeight: '70vh',
                 }}
                 onClick={() => window.open(message.media_url!, '_blank')}
-                onLoad={(e) => {
-                  const target = e.target as HTMLImageElement;
-                  target.style.aspectRatio = 'auto';
-                  target.style.objectFit = 'contain';
-                }}
               />
             )}
 

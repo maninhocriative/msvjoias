@@ -984,3 +984,12 @@ Proximos passos: criar um parceiro em /influencers, abrir/copiar o link gerado e
 - Build de producao validado com sucesso na copia local crm_acium_work.
 - Edge Functions aline-reply e aline-takeover deployadas no Supabase.
 Proximos passos: testar uma conversa real caindo em humano com vendedor online e conferir popup, som e botao Abrir chat.
+
+## 2026-05-21 - Otimizacao do chat e estabilidade das mensagens
+- Reduzi o carregamento inicial da lista do chat para as conversas mais recentes, evitando puxar todo o historico pesado do CRM ao abrir.
+- O chat deixou de refazer busca completa de mensagens a cada novo log do agente; agora adiciona mensagens de agente de forma incremental e deduplica quando a mensagem real da Z-API chega.
+- O cache de mensagens agora evita atualizar o estado quando o conteudo recebido e igual ao que ja esta na tela.
+- O scroll automatico deixou de usar animacao suave em sequencias de mensagens, reduzindo os "pulinhos" visuais.
+- Imagens no balão agora mantem proporcao/espaco estavel e nao mudam o layout depois que carregam.
+- Build de producao validado com sucesso na copia local crm_acium_work.
+Proximos passos: publicar frontend e testar uma conversa com catalogo/imagens para confirmar que a tela nao fica pulando.

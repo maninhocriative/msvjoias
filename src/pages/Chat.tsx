@@ -1,4 +1,4 @@
-import { memo, useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { memo, useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase, Conversation, Message, LeadStatus } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import {
@@ -85,6 +85,50 @@ const CONVERSATION_LIST_SELECT =
   'id, contact_name, contact_number, platform, last_message, last_message_at, unread_count, lead_status, contact_presence, contact_is_online, contact_last_seen_at, contact_presence_updated_at, created_at';
 const INITIAL_MESSAGE_LIMIT = 80;
 const INITIAL_ALINE_LOG_LIMIT = 120;
+const CONVERSATION_LIST_LIMIT = 500;
+
+const getMessageTime = (message: Partial<Message>) =>
+  new Date(message.created_at || '').getTime() || 0;
+
+const isNearDuplicateMessage = (a: Partial<Message>, b: Partial<Message>) => {
+  const aContent = a.content?.trim();
+  const bContent = b.content?.trim();
+  if (!aContent || !bContent || aContent !== bContent) return false;
+  if (a.is_from_me !== b.is_from_me) return false;
+  return Math.abs(getMessageTime(a) - getMessageTime(b)) <= 30000;
+};
+
+const sortMessagesByTime = (items: Message[]) =>
+  [...items].sort((a, b) => getMessageTime(a) - getMessageTime(b));
+
+const areMessagesEqual = (a: Message[], b: Message[]) => {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+
+  return a.every((message, index) => {
+    const next = b[index];
+    return (
+      message.id === next.id &&
+      message.content === next.content &&
+      message.created_at === next.created_at &&
+      message.status === next.status &&
+      message.media_url === next.media_url &&
+      message.message_type === next.message_type &&
+      message.deleted_at === next.deleted_at &&
+      message.edited_at === next.edited_at
+    );
+  });
+};
+
+const mergeMessagesStable = (current: Message[], incoming: Message[]) => {
+  const byId = new Map<string, Message>();
+  [...current, ...incoming].forEach((message) => {
+    if (!message?.id) return;
+    byId.set(message.id, { ...(byId.get(message.id) || {}), ...message });
+  });
+
+  return sortMessagesByTime(Array.from(byId.values()));
+};
 const buildPhoneVariants = (phone: string) => {
   const digits = String(phone || '').replace(/\D/g, '');
   const variants = new Set<string>();
@@ -343,6 +387,7 @@ const Chat = () => {
   const relatedAlineConversationIdsRef = useRef<Set<string>>(new Set());
   const fetchMessagesRequestRef = useRef(0);
   const messagesCacheRef = useRef<Map<string, Message[]>>(new Map());
+  const currentMessagesCacheKeyRef = useRef<string>('');
   const actionHumanAlertReadyRef = useRef(false);
   const actionHumanConversationIdsRef = useRef<Set<string>>(new Set());
 
@@ -897,12 +942,13 @@ const Chat = () => {
     const requestId = fetchMessagesRequestRef.current + 1;
     fetchMessagesRequestRef.current = requestId;
     const cacheKey = `${conversationId}:${phone || ''}`;
+    currentMessagesCacheKeyRef.current = cacheKey;
     const cachedMessages = messagesCacheRef.current.get(cacheKey);
 
     if (cachedMessages) {
-      setMessages(cachedMessages);
+      setMessages((prev) => (areMessagesEqual(prev, cachedMessages) ? prev : cachedMessages));
     } else {
-      setMessages([]);
+      setMessages((prev) => (prev.length === 0 ? prev : []));
     }
 
     try {
@@ -1021,42 +1067,11 @@ const Chat = () => {
       }
 
       messagesCacheRef.current.set(cacheKey, mergedMessages);
-      setMessages(mergedMessages);
-
-      const latestVisibleMessage = [...mergedMessages]
-        .reverse()
-        .find((entry) => buildMessagePreview(entry));
-
-      if (latestVisibleMessage) {
-        const preview = buildMessagePreview(latestVisibleMessage);
-        const previewTime = latestVisibleMessage.created_at || new Date().toISOString();
-
-        setConversations((prev) =>
-          prev.map((conversation) =>
-            conversation.id === conversationId
-              ? {
-                  ...conversation,
-                  last_message: preview,
-                  last_message_at: previewTime,
-                }
-              : conversation,
-          ),
-        );
-
-        setSelectedConversation((prev) =>
-          prev && prev.id === conversationId
-            ? {
-                ...prev,
-                last_message: preview,
-                last_message_at: previewTime,
-              }
-            : prev,
-        );
-      }
+      setMessages((prev) => (areMessagesEqual(prev, mergedMessages) ? prev : mergedMessages));
     } catch {
       // silent
     }
-  }, [buildMessagePreview]);
+  }, []);
 
   const markAsRead = async (id: string) => {
     await supabase.from('conversations').update({ unread_count: 0 }).eq('id', id);
@@ -1123,7 +1138,15 @@ const Chat = () => {
                 return prev;
               }
 
-              return [...prev, newMessage];
+              const withoutAlineDuplicate = prev.filter(
+                (message) =>
+                  !String(message.id).startsWith('aline-log:') ||
+                  !isNearDuplicateMessage(message, newMessage),
+              );
+              const next = mergeMessagesStable(withoutAlineDuplicate, [newMessage]);
+              const cacheKey = currentMessagesCacheKeyRef.current;
+              if (cacheKey) messagesCacheRef.current.set(cacheKey, next);
+              return areMessagesEqual(prev, next) ? prev : next;
             });
           },
         )
@@ -1140,11 +1163,14 @@ const Chat = () => {
               return;
             }
 
-            setMessages((prev) =>
-              prev.map((m) =>
+            setMessages((prev) => {
+              const next = prev.map((m) =>
                 m.id === updatedMessage.id ? { ...m, ...updatedMessage } : m,
-              ),
-            );
+              );
+              const cacheKey = currentMessagesCacheKeyRef.current;
+              if (cacheKey) messagesCacheRef.current.set(cacheKey, next);
+              return areMessagesEqual(prev, next) ? prev : next;
+            });
           },
         )
         .subscribe();
@@ -1182,12 +1208,18 @@ const Chat = () => {
         .on(
           'postgres_changes',
           {
-            event: '*',
+            event: 'INSERT',
             schema: 'public',
             table: 'aline_messages',
           },
           (payload) => {
-            const changedMessage = payload.new as { conversation_id?: string } | null;
+            const changedMessage = payload.new as {
+              id?: string;
+              conversation_id?: string;
+              message?: string;
+              created_at?: string;
+              role?: string;
+            } | null;
             if (
               changedMessage?.conversation_id &&
               !relatedAlineConversationIdsRef.current.has(changedMessage.conversation_id)
@@ -1195,10 +1227,36 @@ const Chat = () => {
               return;
             }
 
-            fetchMessages(
-              selectedConversation.id,
-              selectedConversation.contact_number,
-            );
+            const content = changedMessage?.message?.trim();
+            if (!content || !changedMessage?.id) return;
+
+            const fallbackMessage: Message = {
+              id: `aline-log:${changedMessage.id}`,
+              conversation_id: selectedConversation.id,
+              content,
+              message_type: 'text',
+              media_url: null,
+              is_from_me: changedMessage.role !== 'user',
+              status: changedMessage.role === 'user' ? 'received' : 'sent',
+              created_at: changedMessage.created_at || new Date().toISOString(),
+            };
+
+            setMessages((prev) => {
+              if (
+                prev.some(
+                  (message) =>
+                    message.id === fallbackMessage.id ||
+                    isNearDuplicateMessage(message, fallbackMessage),
+                )
+              ) {
+                return prev;
+              }
+
+              const next = mergeMessagesStable(prev, [fallbackMessage]);
+              const cacheKey = currentMessagesCacheKeyRef.current;
+              if (cacheKey) messagesCacheRef.current.set(cacheKey, next);
+              return next;
+            });
           },
         )
         .subscribe();
@@ -1221,14 +1279,15 @@ const Chat = () => {
     stopChatting,
   ]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const isNewConversationLoad = messages.length > 0 && lastMessageCount.current === 0;
     const hasNewMessages = messages.length > lastMessageCount.current;
 
-    if (isNewConversationLoad) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
-    } else if (hasNewMessages && shouldAutoScroll.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if ((isNewConversationLoad || (hasNewMessages && shouldAutoScroll.current)) && messagesContainerRef.current) {
+      const container = messagesContainerRef.current;
+      requestAnimationFrame(() => {
+        container.scrollTop = container.scrollHeight;
+      });
     }
 
     lastMessageCount.current = messages.length;
@@ -1243,12 +1302,13 @@ const Chat = () => {
   const fetchConversations = useCallback(
     async (showToast = false) => {
       try {
-        setRefreshing(true);
+        if (showToast) setRefreshing(true);
 
         const { data, error } = await supabase
           .from('conversations')
           .select(CONVERSATION_LIST_SELECT)
-          .order('last_message_at', { ascending: false, nullsFirst: false });
+          .order('last_message_at', { ascending: false, nullsFirst: false })
+          .limit(CONVERSATION_LIST_LIMIT);
 
         if (error) throw error;
 
