@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLocation } from 'react-router-dom';
 
 interface SellerPresence {
   id: string;
@@ -11,10 +12,43 @@ interface SellerPresence {
   is_chatting?: boolean;
   current_chat_phone?: string | null;
   chat_started_at?: string | null;
+  current_page?: string | null;
+  current_path?: string | null;
+  page_updated_at?: string | null;
 }
+
+const pageLabels: Record<string, string> = {
+  '/': 'Dashboard',
+  '/chat': 'Chat',
+  '/produtos': 'Produtos',
+  '/clientes': 'Clientes',
+  '/ofertas': 'Ofertas',
+  '/pedidos': 'Pedidos',
+  '/vendas': 'Vendas',
+  '/relatorios': 'Relatorios',
+  '/monitor': 'Monitor',
+  '/importar-leads': 'Importar Leads',
+  '/ia': 'IA',
+  '/config-ia': 'Config. IA',
+  '/follow-ups': 'Follow-ups',
+  '/users': 'Usuarios',
+  '/influencers': 'Influencers',
+  '/documentacao': 'Documentacao',
+  '/doc-publica': 'Doc. Publica',
+  '/webhook-tester': 'Webhook Tester',
+  '/logs': 'Logs',
+};
+
+const getCurrentPageLabel = (pathname: string) => {
+  if (pageLabels[pathname]) return pageLabels[pathname];
+  if (pathname.startsWith('/chat')) return 'Chat';
+  if (pathname.startsWith('/users')) return 'Usuarios';
+  return pathname.replace(/^\//, '') || 'Dashboard';
+};
 
 export const useSellerPresence = () => {
   const { user, profile } = useAuth();
+  const location = useLocation();
   const [onlineSellers, setOnlineSellers] = useState<SellerPresence[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -48,6 +82,9 @@ export const useSellerPresence = () => {
           full_name: profile?.full_name || 'Vendedor',
           is_online: true,
           last_seen_at: new Date().toISOString(),
+          current_page: getCurrentPageLabel(location.pathname),
+          current_path: location.pathname,
+          page_updated_at: new Date().toISOString(),
         }, {
           onConflict: 'user_id'
         });
@@ -56,7 +93,7 @@ export const useSellerPresence = () => {
     } catch (error) {
       console.error('Error setting online status:', error);
     }
-  }, [user, profile]);
+  }, [user, profile, location.pathname]);
 
   // Marcar como offline
   const setOffline = useCallback(async () => {
@@ -145,6 +182,11 @@ export const useSellerPresence = () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, [user, setOnline, setOffline]);
+
+  useEffect(() => {
+    if (!user) return;
+    setOnline();
+  }, [user, location.pathname, setOnline]);
 
   // Buscar vendedores online e atualizar em tempo real
   useEffect(() => {

@@ -42,7 +42,7 @@ type OrderRow = {
   created_at: string;
 };
 
-const DEFAULT_WHATSAPP = '5592984145531';
+const DEFAULT_WHATSAPP = '5592984636921';
 
 const onlyDigits = (value: string) => value.replace(/\D/g, '');
 
@@ -72,7 +72,7 @@ const Influencers = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [whatsappNumber, setWhatsappNumber] = useState(DEFAULT_WHATSAPP);
+  const [whatsappNumber] = useState(DEFAULT_WHATSAPP);
   const [influencers, setInfluencers] = useState<Influencer[]>([]);
   const [leads, setLeads] = useState<InfluencerLead[]>([]);
   const [orders, setOrders] = useState<OrderRow[]>([]);
@@ -82,8 +82,7 @@ const Influencers = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [settingsResult, influencersResult, leadsResult, ordersResult] = await Promise.all([
-        supabase.from('store_settings').select('key, value').eq('key', 'notification_whatsapp').maybeSingle(),
+      const [influencersResult, leadsResult, ordersResult] = await Promise.all([
         supabase.from('influencers').select('*').order('created_at', { ascending: false }),
         supabase.from('influencer_leads').select('*').order('last_seen_at', { ascending: false }),
         supabase
@@ -93,7 +92,6 @@ const Influencers = () => {
           .limit(2000),
       ]);
 
-      if (settingsResult.data?.value) setWhatsappNumber(onlyDigits(settingsResult.data.value) || DEFAULT_WHATSAPP);
       if (influencersResult.error) throw influencersResult.error;
       if (leadsResult.error) throw leadsResult.error;
       if (ordersResult.error) throw ordersResult.error;

@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import { Moon, Sun } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import AppSidebar from './AppSidebar';
+import GlobalHumanAttentionAlert from './GlobalHumanAttentionAlert';
 
 const MainLayout = () => {
   const { resolvedTheme, setTheme } = useTheme();
@@ -87,6 +88,7 @@ const MainLayout = () => {
         </div>
 
         <Outlet />
+        <GlobalHumanAttentionAlert />
       </main>
     </div>
   );

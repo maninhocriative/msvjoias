@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -27,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Pencil, Trash2, Users, Shield, UserCog, ShoppingBag, Loader2, Circle, MessageCircle, Clock, Send } from 'lucide-react';
+import { Pencil, Trash2, Users, Shield, UserCog, ShoppingBag, Loader2, Circle, MessageCircle, Clock, Send, BellRing, MapPin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useUserRole, AppRole } from '@/hooks/useUserRole';
 import { useNavigate } from 'react-router-dom';
@@ -44,6 +45,9 @@ interface UserPresence {
   is_chatting: boolean | null;
   current_chat_phone: string | null;
   chat_started_at: string | null;
+  current_page: string | null;
+  current_path: string | null;
+  page_updated_at: string | null;
 }
 
 interface UserActivityStats {
@@ -148,6 +152,8 @@ const UsersPage = () => {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<UserWithRole | null>(null);
+  const [alertText, setAlertText] = useState('');
+  const [sendingAlert, setSendingAlert] = useState(false);
   const { toast } = useToast();
   const { isAdmin, loading: roleLoading } = useUserRole();
   const navigate = useNavigate();
@@ -288,7 +294,7 @@ const UsersPage = () => {
 
       const { data: presenceRows, error: presenceError } = await supabase
         .from('seller_presence')
-        .select('id, user_id, full_name, is_online, last_seen_at, is_chatting, current_chat_phone, chat_started_at')
+        .select('id, user_id, full_name, is_online, last_seen_at, is_chatting, current_chat_phone, chat_started_at, current_page, current_path, page_updated_at')
         .order('last_seen_at', { ascending: false });
 
       if (presenceError) throw presenceError;
@@ -436,6 +442,43 @@ const UsersPage = () => {
     }
   };
 
+  const handleSendManualAlert = async () => {
+    const message = alertText.trim();
+    if (!message) {
+      toast({ title: 'Digite o alerta', description: 'Escreva a mensagem que vai aparecer para os vendedores.' });
+      return;
+    }
+
+    setSendingAlert(true);
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+
+      const { error } = await supabase.from('crm_alerts').insert({
+        title: 'Alerta do gestor',
+        message,
+        alert_type: 'manual',
+        target_role: 'vendedor',
+        active: true,
+        expires_at: expiresAt,
+        created_by: authData.user?.id || null,
+      });
+
+      if (error) throw error;
+      setAlertText('');
+      toast({ title: 'Alerta enviado', description: 'O pop-up foi disparado para as telas do CRM.' });
+    } catch (error) {
+      console.error('Error sending CRM alert:', error);
+      toast({
+        title: 'Erro',
+        description: 'Nao foi possivel enviar o alerta agora.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSendingAlert(false);
+    }
+  };
+
   const getInitials = (name: string | null) => {
     if (!name) return '??';
     return name
@@ -508,6 +551,31 @@ const UsersPage = () => {
         </Card>
       </div>
 
+      <Card className="mb-6 border-amber-500/30 bg-amber-500/5">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <BellRing className="w-5 h-5 text-amber-500" />
+            Alerta para vendedores
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3 lg:flex-row lg:items-end">
+          <div className="flex-1 space-y-2">
+            <Label htmlFor="crm-alert-message">Mensagem do pop-up</Label>
+            <Textarea
+              id="crm-alert-message"
+              value={alertText}
+              onChange={(event) => setAlertText(event.target.value)}
+              placeholder="Ex.: Cliente aguardando atendimento no chat, assumir agora."
+              className="min-h-[74px] resize-none"
+            />
+          </div>
+          <Button onClick={handleSendManualAlert} disabled={sendingAlert || !alertText.trim()} className="lg:w-44">
+            {sendingAlert ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <BellRing className="mr-2 h-4 w-4" />}
+            Disparar alerta
+          </Button>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex flex-wrap items-center gap-2">
@@ -575,6 +643,12 @@ const UsersPage = () => {
                             <span className="inline-flex items-center gap-1 text-cyan-500">
                               <MessageCircle className="w-3 h-3" />
                               Atendendo conversa {chatPhone}
+                            </span>
+                          )}
+                          {user.presence?.current_page && (
+                            <span className="inline-flex items-center gap-1 text-sky-500">
+                              <MapPin className="w-3 h-3" />
+                              Pagina: {user.presence.current_page}
                             </span>
                           )}
                           <span className="inline-flex items-center gap-1">

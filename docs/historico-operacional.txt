@@ -961,3 +961,12 @@ Validacao em 2026-05-20 - Links rastreaveis de influenciadores
 - Build de producao validado com sucesso no worktree local crm_acium_work.
 - Edge Function zapi-unified deployada para capturar codigos #ACIUMP-CODIGO.
 Proximos passos: criar um parceiro em /influencers, abrir/copiar o link gerado e enviar uma mensagem real pelo WhatsApp para validar atribuicao.
+## 2026-05-20 - Atribuicao automatica, alertas globais e links de influencers
+- Criada migracao para pagina atual do vendedor em seller_presence e tabela crm_alerts para popups globais manuais/automaticos.
+- useSellerPresence passa a atualizar current_page/current_path/page_updated_at em heartbeat e troca de rota.
+- zapi-unified aciona aline-takeover automaticamente quando o agente retorna humano, puxando vendedor online sem mensagem extra ao cliente.
+- Kate encaminha para humano quando o cliente confirma interesse apos catalogo sem escolher modelo claro, evitando conversa morta.
+- Criado alerta global no layout: se nao ha vendedor atribuido, mostra alerta piscante com som; se ja ha vendedor, mostra quem esta atendendo sem tratar como pendente.
+- Pagina Usuarios exibe pagina atual do usuario e ganhou disparo manual de alerta aos vendedores.
+- Links de influencers agora sao gerados para o WhatsApp da automacao 5592984636921.
+- Proximos passos: aplicar migracao, deploy das functions alteradas, build final, commit e push.

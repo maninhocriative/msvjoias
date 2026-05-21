@@ -1056,6 +1056,34 @@ serve(async (req) => {
       );
     }
 
+    const humanMarker = [
+      alineResponse.agent,
+      alineResponse.node,
+      alineResponse.node_tecnico,
+      alineResponse.current_node,
+      alineResponse.status,
+    ].filter(Boolean).join(" ");
+
+    if (/\bhuman\b|human_takeover|human_handoff|acao_humana|ação_humana/i.test(humanMarker)) {
+      try {
+        await fetch(`${supabaseUrl}/functions/v1/aline-takeover`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseKey}`,
+          },
+          body: JSON.stringify({
+            phone,
+            action: "auto_forward",
+            reason: alineResponse.node_tecnico || alineResponse.node || "Agente solicitou atendimento humano",
+            send_intro: false,
+          }),
+        });
+      } catch (takeoverError) {
+        console.error("[ZAPI-UNIFIED] Falha ao atribuir vendedor online:", takeoverError);
+      }
+    }
+
     const textMessage = alineResponse.mensagem_whatsapp || alineResponse.response || "";
     const products = Array.isArray(alineResponse.produtos) ? alineResponse.produtos : [];
     const mediaItems = Array.isArray(alineResponse.media_items) ? alineResponse.media_items : [];

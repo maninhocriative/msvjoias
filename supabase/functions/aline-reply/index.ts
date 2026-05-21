@@ -2517,25 +2517,33 @@ async function handleKateFlow(args: {
       });
     }
 
-    const reply = "Perfeito. Me diga qual modelo voce quer: toque em *Quero este* no card ou envie o nome/formato do pingente que eu sigo para finalizar.";
+    data.kate_store_handoff_done = true;
+    data.needs_human_reason = "cliente confirmou interesse apos catalogo sem modelo claro";
 
-    await persistConversation(
-      supabase,
-      conversation.id,
-      "kate",
-      "catalogo_pingente",
-      conversation.current_node || null,
-      data,
-    );
-    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "catalogo_pingente");
+    const reply = "Perfeito. Para nao travar sua compra, vou chamar um vendedor para continuar daqui. Ele vai ver os modelos enviados e te ajuda a escolher certinho.";
+
+    await supabase
+      .from("aline_conversations")
+      .update({
+        status: "human_takeover",
+        active_agent: "human",
+        assignment_reason: "Kate: cliente demonstrou interesse apos catalogo sem modelo claro",
+        collected_data: { ...data, agente_atual: "human" },
+        last_message_at: new Date().toISOString(),
+        agent_handoff_at: new Date().toISOString(),
+      })
+      .eq("id", conversation.id);
+
+    await updateCrmLeadStatus(supabase, phone, "humano");
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "human_handoff_pingente");
     await saveAgentMemory(supabase, phone, "kate", contactName, data);
 
     return buildResponsePayload({
       phone,
       message: reply,
-      node: "catalogo_pingente",
+      node: "human_handoff_pingente",
       collectedData: data,
-      agent: "kate",
+      agent: "human",
     });
   }
 
