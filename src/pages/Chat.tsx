@@ -1422,6 +1422,26 @@ const Chat = () => {
     };
   }, [fetchConversations]);
 
+  useEffect(() => {
+    if (conversations.length === 0) return;
+
+    const targetConversationId = localStorage.getItem('crm_open_conversation_id');
+    const targetPhone = localStorage.getItem('crm_open_phone');
+    if (!targetConversationId && !targetPhone) return;
+
+    const target = conversations.find((conversation) => {
+      if (targetConversationId && conversation.id === targetConversationId) return true;
+      if (!targetPhone) return false;
+      return buildPhoneVariants(conversation.contact_number).includes(targetPhone);
+    });
+
+    if (!target) return;
+
+    setSelectedConversation(target);
+    localStorage.removeItem('crm_open_conversation_id');
+    localStorage.removeItem('crm_open_phone');
+  }, [conversations]);
+
   const addOptimisticMessage = useCallback(
     (content: string, messageType = 'text', mediaUrl: string | null = null): string => {
       const tempId = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2)}`;

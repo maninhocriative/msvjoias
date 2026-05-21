@@ -84,13 +84,47 @@ async function getCrmConversation(supabase: any, phone: string): Promise<any> {
   
   const { data } = await supabase
     .from('conversations')
-    .select('id')
+    .select('id, contact_name, contact_number')
     .eq('contact_number', normalizedPhone)
     .order('created_at', { ascending: false })
     .limit(1)
     .single();
 
   return data;
+}
+
+async function createHumanAttentionAlert(
+  supabase: any,
+  phone: string,
+  crmConversation: any,
+  assignedSellerName: string | null,
+  reason: string | null,
+) {
+  try {
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    const leadName = crmConversation?.contact_name || phone;
+    const title = assignedSellerName
+      ? `Conversa atribuida para ${assignedSellerName}`
+      : 'Precisa de atendimento humano agora';
+    const message = assignedSellerName
+      ? `${leadName} foi encaminhado para ${assignedSellerName}. Abra o chat e continue antes que a venda esfrie.`
+      : `${leadName} esta aguardando um vendedor online no chat. Assuma a conversa agora.`;
+
+    await supabase.from('crm_alerts').insert({
+      title,
+      message,
+      alert_type: 'human_attention',
+      target_role: 'vendedor',
+      conversation_id: crmConversation?.id || null,
+      phone,
+      active: true,
+      expires_at: expiresAt,
+    });
+
+    console.log(`[ALINE-TAKEOVER] Alerta CRM criado para ${phone}: ${reason || 'sem motivo'}`);
+  } catch (error) {
+    console.error('[ALINE-TAKEOVER] Erro ao criar alerta CRM:', error);
+  }
 }
 
 // Enviar mensagem via zapi-send
@@ -278,10 +312,22 @@ serve(async (req) => {
 
     console.log(`[ALINE-TAKEOVER] Conversa ${alineConv.id} atualizada para status: ${newStatus}, vendedor: ${assignedSellerName || 'nenhum'}`);
 
+    const crmConversationForAlert = await getCrmConversation(supabase, normalizedPhone);
+
+    if (action === 'takeover' || action === 'auto_forward') {
+      await createHumanAttentionAlert(
+        supabase,
+        normalizedPhone,
+        crmConversationForAlert,
+        assignedSellerName,
+        assignmentReason,
+      );
+    }
+
     // Enviar mensagem de apresentação do vendedor via WhatsApp
     let introMessageSent = false;
     if ((action === 'takeover' || action === 'auto_forward') && assignedSellerName && send_intro) {
-      const crmConversation = await getCrmConversation(supabase, normalizedPhone);
+      const crmConversation = crmConversationForAlert;
       
       if (crmConversation) {
         // Buscar interesses do cliente

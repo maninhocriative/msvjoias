@@ -37,6 +37,13 @@ interface ConversationIntelligence {
   clarificationQuestion?: string | null;
 }
 
+interface ImageUnderstanding {
+  kind: "customer_photo" | "product_reference" | "payment_document" | "inappropriate" | "unclear";
+  product_category: "pingente" | "oculos" | "aliancas" | "aneis" | "chaveiro" | null;
+  confidence: number;
+  reason: string | null;
+}
+
 interface ResponseMediaItem {
   type: "image" | "video";
   url: string;
@@ -553,6 +560,8 @@ async function classifyConversationWithOpenAI(args: {
   activeAgent: ConversationAgent;
   currentNode: string;
   ruleResult: ConversationIntelligence;
+  recentCrmContext?: string | null;
+  imageUnderstanding?: ImageUnderstanding | null;
 }): Promise<ConversationIntelligence | null> {
   const openAIApiKey = Deno.env.get("OPENAI_API_KEY");
   if (!openAIApiKey || !args.text.trim()) return null;
@@ -592,6 +601,8 @@ async function classifyConversationWithOpenAI(args: {
               mensagem: args.text,
               estado_atual: state,
               regra_previa: args.ruleResult,
+              contexto_recente_crm: args.recentCrmContext || null,
+              entendimento_imagem: args.imageUnderstanding || null,
               formato_resposta: {
                 intent: "uma intencao permitida",
                 targetAgent: "aline|keila|kate|malu|human|unknown",
@@ -656,6 +667,8 @@ async function buildConversationIntelligence(args: {
   mediaType?: string | null;
   buttonResponseId?: string | null;
   catalogSelectionHint?: string | null;
+  recentCrmContext?: string | null;
+  imageUnderstanding?: ImageUnderstanding | null;
 }): Promise<ConversationIntelligence> {
   const ruleResult = buildRuleBasedIntelligence(args);
 
@@ -673,6 +686,8 @@ async function buildConversationIntelligence(args: {
     activeAgent: args.activeAgent,
     currentNode: args.currentNode,
     ruleResult,
+    recentCrmContext: args.recentCrmContext,
+    imageUnderstanding: args.imageUnderstanding,
   });
 
   if (!aiResult) return ruleResult;
@@ -855,6 +870,147 @@ function detectInboundImageUrl(text: string): string | null {
     return trimmed;
   }
   return null;
+}
+
+function summarizeRecentCrmMessages(messages: Array<{ direction: string; content: string; message_type: string | null }>): string {
+  return messages
+    .filter((item) => item.content || item.message_type)
+    .slice(-10)
+    .map((item) => {
+      const speaker = item.direction === "out" ? "vendedor/agente" : "cliente";
+      const content = item.content || `[${item.message_type || "midia"}]`;
+      return `${speaker}: ${content}`.slice(0, 220);
+    })
+    .join("\n");
+}
+
+async function loadRecentCrmMessageContext(supabase: any, phone: string): Promise<string | null> {
+  const phoneVariants = buildPhoneVariants(phone);
+  const { data: crmConversation } = await supabase
+    .from("conversations")
+    .select("id")
+    .in("contact_number", phoneVariants)
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!crmConversation?.id) return null;
+
+  const { data: rows } = await supabase
+    .from("messages")
+    .select("content, is_from_me, message_type, created_at")
+    .eq("conversation_id", crmConversation.id)
+    .order("created_at", { ascending: false })
+    .limit(14);
+
+  if (!rows?.length) return null;
+
+  const ordered = [...rows].reverse().map((row: any) => ({
+    direction: row.is_from_me ? "out" : "in",
+    content: String(row.content || "").trim(),
+    message_type: row.message_type || null,
+  }));
+
+  return summarizeRecentCrmMessages(ordered);
+}
+
+async function analyzeInboundImageWithOpenAI(args: {
+  imageUrl: string;
+  text: string;
+  data: AnyRecord;
+  activeAgent: ConversationAgent;
+}): Promise<ImageUnderstanding | null> {
+  const openAIApiKey = Deno.env.get("OPENAI_API_KEY");
+  if (!openAIApiKey || !args.imageUrl) return null;
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${openAIApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: Deno.env.get("OPENAI_VISION_MODEL") || "gpt-4o-mini",
+        temperature: 0,
+        max_tokens: 220,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content:
+              "Classifique a imagem recebida no WhatsApp da ACIUM. Responda somente JSON valido. kind: customer_photo quando for selfie/foto de pessoa para simulacao ou fotogravacao; product_reference quando for foto de produto/modelo; payment_document quando for comprovante/documento; inappropriate quando houver assedio/nudez; unclear quando nao der para saber. product_category: pingente, oculos, aliancas, aneis, chaveiro ou null. Seja conservador: nao chame produto de foto de cliente.",
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  legenda_ou_texto: args.text || null,
+                  agente_atual: args.activeAgent,
+                  categoria_atual: args.data.categoria || null,
+                  produto_escolhido: args.data.selected_name || null,
+                  formato: {
+                    kind: "customer_photo|product_reference|payment_document|inappropriate|unclear",
+                    product_category: "pingente|oculos|aliancas|aneis|chaveiro|null",
+                    confidence: "0 a 1",
+                    reason: "curto",
+                  },
+                }),
+              },
+              { type: "image_url", image_url: { url: args.imageUrl } },
+            ],
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) return null;
+    const payload = await response.json();
+    const parsed = parseOpenAIJson(payload?.choices?.[0]?.message?.content || "");
+    if (!parsed) return null;
+
+    const allowedKinds = ["customer_photo", "product_reference", "payment_document", "inappropriate", "unclear"];
+    const kind = allowedKinds.includes(String(parsed.kind)) ? String(parsed.kind) : "unclear";
+    const allowedCategories = ["pingente", "oculos", "aliancas", "aneis", "chaveiro"];
+    const productCategory = allowedCategories.includes(String(parsed.product_category))
+      ? String(parsed.product_category)
+      : null;
+
+    return {
+      kind: kind as ImageUnderstanding["kind"],
+      product_category: productCategory as ImageUnderstanding["product_category"],
+      confidence: Math.max(0, Math.min(1, Number(parsed.confidence) || 0)),
+      reason: parsed.reason ? String(parsed.reason).slice(0, 160) : null,
+    };
+  } catch (error) {
+    console.error("[ALINE-REPLY] Falha ao analisar imagem recebida:", error);
+    return null;
+  }
+}
+
+function shouldUseInboundImageAsCustomerPhoto(args: {
+  mediaType: string | null;
+  imageUnderstanding?: ImageUnderstanding | null;
+  data: AnyRecord;
+  activeAgent: ConversationAgent;
+  currentNode: string;
+}) {
+  if (args.mediaType !== "image") return false;
+  const kind = args.imageUnderstanding?.kind || null;
+  if (kind === "customer_photo") return true;
+  if (kind === "product_reference" || kind === "payment_document" || kind === "inappropriate") return false;
+
+  const selectedProduct = !!(args.data.selected_sku || args.data.selected_product?.id);
+  const previewContext =
+    args.activeAgent === "kate" ||
+    args.activeAgent === "malu" ||
+    String(args.currentNode || "").includes("foto") ||
+    String(args.currentNode || "").includes("preview");
+
+  return selectedProduct && previewContext;
 }
 
 function isSimpleColorChoice(text: string): boolean {
@@ -1305,6 +1461,9 @@ async function saveAgentMemory(
     tem_foto_cliente: data.tem_foto_cliente || null,
     sales_stage: data.sales_stage || null,
     seller_context_summary: data.seller_context_summary || null,
+    recent_crm_context: data.recent_crm_context || null,
+    human_chat_summary: data.human_chat_summary || null,
+    last_image_understanding: data.last_image_understanding || null,
     last_customer_message: data.last_customer_message || null,
     last_customer_message_at: data.last_customer_message_at || null,
     last_customer_question: data.last_customer_question || null,
@@ -1357,6 +1516,9 @@ function hydrateDataWithMemory(data: AnyRecord, memory: AnyRecord | null) {
   if (!data.tem_foto_cliente && preferences.tem_foto_cliente) data.tem_foto_cliente = preferences.tem_foto_cliente;
   if (!data.sales_stage && preferences.sales_stage) data.sales_stage = preferences.sales_stage;
   if (!data.seller_context_summary && preferences.seller_context_summary) data.seller_context_summary = preferences.seller_context_summary;
+  if (!data.recent_crm_context && preferences.recent_crm_context) data.recent_crm_context = preferences.recent_crm_context;
+  if (!data.human_chat_summary && preferences.human_chat_summary) data.human_chat_summary = preferences.human_chat_summary;
+  if (!data.last_image_understanding && preferences.last_image_understanding) data.last_image_understanding = preferences.last_image_understanding;
   if (!data.last_customer_message && preferences.last_customer_message) data.last_customer_message = preferences.last_customer_message;
   if (!data.last_customer_message_at && preferences.last_customer_message_at) data.last_customer_message_at = preferences.last_customer_message_at;
   if (!data.last_customer_question && preferences.last_customer_question) data.last_customer_question = preferences.last_customer_question;
@@ -4672,13 +4834,178 @@ serve(async (req) => {
       contact_name: contactName || conversation.collected_data?.contact_name || "Cliente",
     };
 
-    const explicitCategory = detectCategory(inboundText, {});
+    const activeAgent = (conversation.active_agent || baseData.agente_atual || "aline") as ConversationAgent;
+    const recentCrmContext = await loadRecentCrmMessageContext(supabase, phone);
+    if (recentCrmContext) {
+      baseData.recent_crm_context = recentCrmContext;
+      baseData.human_chat_summary = recentCrmContext;
+    }
+
+    const imageUnderstanding = mediaType === "image" && mediaUrl
+      ? await analyzeInboundImageWithOpenAI({
+          imageUrl: mediaUrl,
+          text: inboundText,
+          data: baseData,
+          activeAgent,
+        })
+      : null;
+
+    if (imageUnderstanding) {
+      baseData.last_image_understanding = imageUnderstanding;
+      if (imageUnderstanding.kind === "product_reference" && imageUnderstanding.product_category) {
+        baseData.inbound_product_reference_url = mediaUrl;
+      }
+    }
+
+    const useImageAsCustomerPhoto = shouldUseInboundImageAsCustomerPhoto({
+      mediaType,
+      imageUnderstanding,
+      data: baseData,
+      activeAgent,
+      currentNode: conversation.current_node || "",
+    });
+    const mediaTypeForAgent = mediaType === "image" && !useImageAsCustomerPhoto ? null : mediaType;
+    const mediaUrlForAgent = mediaType === "image" && !useImageAsCustomerPhoto ? null : mediaUrl;
+
+    let explicitCategory = detectCategory(inboundText, {});
+    if (!explicitCategory && imageUnderstanding?.kind === "product_reference" && imageUnderstanding.product_category) {
+      explicitCategory = imageUnderstanding.product_category;
+    }
     baseData.categoria = explicitCategory || detectCategory(inboundText, baseData) || baseData.categoria || null;
     baseData.finalidade = detectAllianceType(inboundText, baseData) || baseData.finalidade || null;
     baseData.triagem_categoria = detectClassification(inboundText, baseData) || baseData.triagem_categoria || null;
 
-    const activeAgent = (conversation.active_agent || baseData.agente_atual || "aline") as ConversationAgent;
-    if (detectKeychainIntent(inboundText)) {
+    if (imageUnderstanding?.kind === "inappropriate") {
+      baseData.harassment_detected = true;
+      baseData.last_intent = "assedio_imagem";
+      baseData.customer_stage = "seguranca_assedio";
+
+      const reply = "Esta conversa foi registrada com seu numero e as mensagens recebidas. Mensagens de assedio nao serao atendidas. Nossa equipe responsavel foi acionada e, se continuar, o caso sera encaminhado as autoridades competentes, incluindo a policia.";
+
+      await persistConversation(
+        supabase,
+        conversation.id,
+        activeAgent,
+        "seguranca_assedio",
+        conversation.current_node || null,
+        baseData,
+      );
+      await saveAssistantMessage(supabase, conversation.id, activeAgent, reply, "seguranca_assedio");
+
+      return new Response(
+        JSON.stringify(
+          buildResponsePayload({
+            phone,
+            message: reply,
+            node: "seguranca_assedio",
+            collectedData: baseData,
+            agent: activeAgent,
+          }),
+        ),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (imageUnderstanding?.kind === "payment_document") {
+      baseData.agente_atual = "human";
+      baseData.handoff_reason = "imagem_comprovante_documento";
+      const reply = "Recebi o arquivo. Vou chamar um vendedor para conferir e continuar com seguranca por aqui.";
+
+      await supabase
+        .from("aline_conversations")
+        .update({
+          status: "human_takeover",
+          active_agent: "human",
+          assignment_reason: "Cliente enviou comprovante/documento por imagem",
+          collected_data: baseData,
+          current_node: "human_documento",
+          last_message_at: new Date().toISOString(),
+          agent_handoff_at: new Date().toISOString(),
+        })
+        .eq("id", conversation.id);
+      await saveAssistantMessage(supabase, conversation.id, "human", reply, "human_documento");
+      await saveAgentMemory(supabase, phone, "aline", contactName, baseData);
+      await updateCrmLeadStatus(supabase, phone, "humano");
+
+      return new Response(
+        JSON.stringify(
+          buildResponsePayload({
+            phone,
+            message: reply,
+            node: "human_documento",
+            collectedData: baseData,
+            agent: "human",
+          }),
+        ),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (imageUnderstanding?.kind === "product_reference" && !explicitCategory) {
+      baseData.agente_atual = "human";
+      baseData.handoff_reason = "referencia_produto_nao_identificada";
+      const reply = "Recebi a foto como referencia de produto. Para nao te passar informacao errada, vou chamar um vendedor para identificar a peca e seguir com voce.";
+
+      await supabase
+        .from("aline_conversations")
+        .update({
+          status: "human_takeover",
+          active_agent: "human",
+          assignment_reason: "Cliente enviou referencia de produto nao identificada pelo agente",
+          collected_data: baseData,
+          current_node: "human_produto_referencia",
+          last_message_at: new Date().toISOString(),
+          agent_handoff_at: new Date().toISOString(),
+        })
+        .eq("id", conversation.id);
+      await saveAssistantMessage(supabase, conversation.id, "human", reply, "human_produto_referencia");
+      await saveAgentMemory(supabase, phone, "aline", contactName, baseData);
+      await updateCrmLeadStatus(supabase, phone, "humano");
+
+      return new Response(
+        JSON.stringify(
+          buildResponsePayload({
+            phone,
+            message: reply,
+            node: "human_produto_referencia",
+            collectedData: baseData,
+            agent: "human",
+          }),
+        ),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (imageUnderstanding?.kind === "unclear" && mediaType === "image" && !inboundText && !baseData.selected_sku) {
+      const reply = "Recebi a imagem. Ela e uma foto para simulacao, uma referencia de produto ou uma duvida? Me diga rapidinho que eu sigo certo.";
+      baseData.last_intent = "imagem_indefinida";
+      baseData.customer_stage = "aguardando_contexto_imagem";
+
+      await persistConversation(
+        supabase,
+        conversation.id,
+        activeAgent,
+        "imagem_indefinida",
+        conversation.current_node || null,
+        baseData,
+      );
+      await saveAssistantMessage(supabase, conversation.id, activeAgent, reply, "imagem_indefinida");
+
+      return new Response(
+        JSON.stringify(
+          buildResponsePayload({
+            phone,
+            message: reply,
+            node: "imagem_indefinida",
+            collectedData: baseData,
+            agent: activeAgent,
+          }),
+        ),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (detectKeychainIntent(inboundText) || explicitCategory === "chaveiro") {
       baseData.categoria = "chaveiro";
       baseData.agente_atual = "human";
       baseData.handoff_reason = "produto_chaveiro_sem_fluxo";
@@ -4753,7 +5080,9 @@ serve(async (req) => {
       data: baseData,
       activeAgent,
       currentNode: conversation.current_node || "",
-      mediaType,
+      mediaType: mediaTypeForAgent,
+      recentCrmContext,
+      imageUnderstanding,
       buttonResponseId,
       catalogSelectionHint,
     });
@@ -4843,11 +5172,11 @@ serve(async (req) => {
         phone,
         message,
         contactName,
-        buttonResponseId,
-        catalogSelectionHint,
-        mediaType,
-        mediaUrl,
-      });
+          buttonResponseId,
+          catalogSelectionHint,
+          mediaType: mediaTypeForAgent,
+          mediaUrl: mediaUrlForAgent,
+        });
 
       return new Response(JSON.stringify(maluResponse), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -4874,10 +5203,10 @@ serve(async (req) => {
         phone,
         message,
         contactName,
-        buttonResponseId,
-        catalogSelectionHint,
-        mediaType,
-        mediaUrl,
+          buttonResponseId,
+          catalogSelectionHint,
+          mediaType: mediaTypeForAgent,
+          mediaUrl: mediaUrlForAgent,
       });
 
       return new Response(JSON.stringify(kateResponse), {

@@ -972,3 +972,15 @@ Proximos passos: criar um parceiro em /influencers, abrir/copiar o link gerado e
 - Corrigida a contagem de compras de influencers: clique no link conta apenas como lead; compra so conta quando houver pedido vendido depois do clique.
 - 2026-05-21: Pagina de influencers ganhou lixeira para excluir links sem leads e detalhes do lead com nome, telefone e Instagram/origem do parceiro.
 - Proximos passos: aplicar migracao, deploy das functions alteradas, build final, commit e push.
+
+## 2026-05-21 - Inteligencia e memoria dos agentes
+- A funcao aline-reply passou a carregar as ultimas mensagens reais do CRM para que os agentes considerem tambem o que o vendedor humano falou no chat.
+- Foi adicionada analise visual de imagem recebida via OpenAI para diferenciar foto do cliente, referencia de produto, comprovante/documento, conteudo inadequado ou imagem incerta antes de gerar simulacao.
+- Imagens que forem referencia de produto deixam de ser tratadas automaticamente como foto para previa, reduzindo respostas erradas e simulacoes fora de contexto.
+- Mensagens/imagens inadequadas entram no fluxo de seguranca com aviso firme e registro no historico.
+- O repasse para humano em aline-takeover agora cria alerta global em crm_alerts automaticamente, para aparecer como pop-up com som nas telas do CRM.
+- O botao Abrir chat do alerta grava telefone/conversa alvo e o Chat abre direto a conversa correta.
+- Na lista do chat, a tag verde "Precisa atendimento humano" fica apenas enquanto nao houver vendedor atribuido; depois que um vendedor assume, a lista mostra o vendedor responsavel.
+- Build de producao validado com sucesso na copia local crm_acium_work.
+- Edge Functions aline-reply e aline-takeover deployadas no Supabase.
+Proximos passos: testar uma conversa real caindo em humano com vendedor online e conferir popup, som e botao Abrir chat.

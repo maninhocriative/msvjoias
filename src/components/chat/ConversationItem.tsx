@@ -203,6 +203,7 @@ const ConversationItem = memo(
     const hasUnread = (conv.unread_count ?? 0) > 0;
     const isInstagram = conv.platform === 'instagram';
     const isHumanTakeover = alineData?.status === 'human_takeover';
+    const hasAssignedSeller = Boolean(alineData?.assigned_seller_id);
     const isSaleFinalized = conv.lead_status === 'vendido';
     const agentMeta = getAgentMeta(alineData, isSaleFinalized);
     const AgentIcon = agentMeta.Icon;
@@ -213,10 +214,11 @@ const ConversationItem = memo(
     const stageMeta = getConversationStageMeta(conv, alineData);
     const statusCfg = STATUS_CONFIG[leadStatus] ?? STATUS_CONFIG.novo;
     const needsHumanAttention =
-      leadStatus === 'humano' ||
-      leadStatus === 'venda_iniciada' ||
-      isHumanTakeover ||
-      String(stageMeta?.label || '').toLowerCase().includes('humana');
+      !hasAssignedSeller &&
+      (leadStatus === 'humano' ||
+        leadStatus === 'venda_iniciada' ||
+        isHumanTakeover ||
+        String(stageMeta?.label || '').toLowerCase().includes('humana'));
     const displayName = customerProfile?.name || conv.contact_name || conv.contact_number;
     const lastMsgTime = (conv as any).last_message_at || conv.created_at;
     const previewText = conv.last_message || 'Sem mensagens';
@@ -313,7 +315,7 @@ const ConversationItem = memo(
               {statusCfg.label}
             </span>
 
-            {isHumanTakeover ? (
+            {isHumanTakeover && hasAssignedSeller ? (
               <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium bg-amber-500/15 text-amber-300 border border-amber-500/20 max-w-full">
                 <span className="w-3.5 h-3.5 rounded-full bg-amber-500 text-amber-950 text-[8px] font-bold flex items-center justify-center shrink-0">
                   {sellerInitial}

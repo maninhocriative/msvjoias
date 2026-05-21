@@ -172,6 +172,8 @@ export default function GlobalHumanAttentionAlert() {
   if (!alertKey || dismissedKey === alertKey) return null;
 
   const hasUnassigned = unassignedWaiting.length > 0;
+  const targetPhone = topManualAlert?.phone || urgent?.contact_number || null;
+  const targetConversationId = topManualAlert?.conversation_id || urgent?.id || null;
   const title = topManualAlert?.title || (
     hasUnassigned
       ? `${unassignedWaiting.length} cliente${unassignedWaiting.length > 1 ? 's' : ''} precisa${unassignedWaiting.length > 1 ? 'm' : ''} de atendimento`
@@ -182,6 +184,12 @@ export default function GlobalHumanAttentionAlert() {
       ? `${urgent?.contact_name || 'Lead'} aguarda um vendedor ${formatWaitingTime(urgent?.last_message_at)}. Vendedor online deve assumir agora.`
       : `${urgent?.contact_name || 'Lead'} ja esta com ${urgent?.assigned_seller_name || 'um vendedor'} na conversa.`
   );
+
+  const handleOpenChat = () => {
+    if (targetPhone) localStorage.setItem('crm_open_phone', normalizePhone(targetPhone));
+    if (targetConversationId) localStorage.setItem('crm_open_conversation_id', targetConversationId);
+    navigate('/chat');
+  };
 
   return (
     <div className="fixed right-4 top-4 z-[80] w-[min(420px,calc(100vw-2rem))]">
@@ -208,7 +216,7 @@ export default function GlobalHumanAttentionAlert() {
               <Button
                 size="sm"
                 className="bg-emerald-400 text-emerald-950 hover:bg-emerald-300"
-                onClick={() => navigate('/chat')}
+                onClick={handleOpenChat}
               >
                 <MessageCircle className="mr-1.5 h-4 w-4" />
                 Abrir chat
