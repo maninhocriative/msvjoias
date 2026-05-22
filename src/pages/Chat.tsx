@@ -72,6 +72,15 @@ type OutgoingAttachmentPayload = {
   media_url: string;
 };
 
+type PendingChatAttachment = {
+  id: string;
+  file: File;
+  messageType: string;
+  previewUrl: string | null;
+  label: string;
+  sizeLabel: string;
+};
+
 const statusFilters = [
   { key: 'all', label: 'Todos', color: 'bg-slate-500' },
   { key: 'novo', label: 'Novos', color: 'bg-slate-400' },
@@ -249,8 +258,10 @@ const formatContactPresence = (conversation: Conversation | null) => {
 interface ChatComposerProps {
   disabled: boolean;
   fileInputRef: React.RefObject<HTMLInputElement>;
+  pendingAttachments: PendingChatAttachment[];
   onFileUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onPasteFiles: (files: File[]) => void;
+  onRemovePendingAttachment: (id: string) => void;
   onCaptureScreenshot: () => void;
   onStartRecording: () => void;
   onSendMessage: (message: string) => Promise<void> | void;
@@ -259,15 +270,17 @@ interface ChatComposerProps {
 const ChatComposer = memo(function ChatComposer({
   disabled,
   fileInputRef,
+  pendingAttachments,
   onFileUpload,
   onPasteFiles,
+  onRemovePendingAttachment,
   onCaptureScreenshot,
   onStartRecording,
   onSendMessage,
 }: ChatComposerProps) {
   const [draft, setDraft] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const canSend = draft.trim().length > 0 && !disabled;
+  const canSend = (draft.trim().length > 0 || pendingAttachments.length > 0) && !disabled;
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -287,7 +300,49 @@ const ChatComposer = memo(function ChatComposer({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex items-end gap-2 rounded-none">
+    <div className="space-y-2">
+      {pendingAttachments.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto rounded-2xl border border-white/8 bg-slate-950/70 px-3 py-2">
+          {pendingAttachments.map((attachment) => (
+            <div
+              key={attachment.id}
+              className="relative flex w-28 shrink-0 flex-col gap-1 overflow-hidden rounded-xl border border-white/10 bg-slate-900/90 p-2"
+            >
+              <button
+                type="button"
+                aria-label="Remover anexo"
+                onClick={() => onRemovePendingAttachment(attachment.id)}
+                className="absolute right-1 top-1 z-10 grid h-5 w-5 place-items-center rounded-full bg-slate-950/80 text-slate-200 transition-colors hover:bg-rose-500 hover:text-white"
+              >
+                <X className="h-3 w-3" />
+              </button>
+
+              <div className="grid h-16 place-items-center overflow-hidden rounded-lg bg-slate-950/70">
+                {attachment.messageType === 'image' && attachment.previewUrl ? (
+                  <img
+                    src={attachment.previewUrl}
+                    alt={attachment.label}
+                    className="h-full w-full object-cover"
+                  />
+                ) : attachment.messageType === 'video' && attachment.previewUrl ? (
+                  <video src={attachment.previewUrl} className="h-full w-full object-cover" muted />
+                ) : attachment.messageType === 'audio' ? (
+                  <Mic className="h-5 w-5 text-emerald-300" />
+                ) : (
+                  <Paperclip className="h-5 w-5 text-slate-300" />
+                )}
+              </div>
+
+              <span className="truncate text-[10px] font-medium text-slate-200" title={attachment.label}>
+                {attachment.label}
+              </span>
+              <span className="text-[9px] text-slate-500">{attachment.sizeLabel}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="flex items-end gap-2 rounded-none">
       <input
         ref={fileInputRef}
         type="file"
@@ -310,7 +365,7 @@ const ChatComposer = memo(function ChatComposer({
 
         <button
           type="button"
-          aria-label="Enviar captura de tela"
+          aria-label="Preparar captura de tela"
           onClick={onCaptureScreenshot}
           disabled={disabled}
           className="hidden sm:grid h-10 w-10 place-items-center rounded-full text-slate-400 transition-colors hover:bg-white/5 hover:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40"
@@ -345,7 +400,7 @@ const ChatComposer = memo(function ChatComposer({
               void handleSubmit();
             }
           }}
-          placeholder="Digite uma mensagem"
+          placeholder={pendingAttachments.length > 0 ? 'Adicione uma legenda ou envie o anexo' : 'Digite uma mensagem'}
           disabled={disabled}
           rows={1}
           className="block max-h-[120px] min-h-[24px] w-full resize-none bg-transparent text-[15px] leading-6 text-slate-100 outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-60"
@@ -370,7 +425,8 @@ const ChatComposer = memo(function ChatComposer({
           <Mic className="w-5 h-5" />
         </button>
       ) : null}
-    </form>
+      </form>
+    </div>
   );
 });
 
@@ -401,6 +457,7 @@ const Chat = () => {
   const [editingMessageDraft, setEditingMessageDraft] = useState('');
   const [editingMessageBusyId, setEditingMessageBusyId] = useState<string | null>(null);
   const [deletingMessageBusyId, setDeletingMessageBusyId] = useState<string | null>(null);
+  const [pendingAttachments, setPendingAttachments] = useState<PendingChatAttachment[]>([]);
   const audioStreamRef = useRef<MediaStream | null>(null);
   const recordingCancelledRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -415,6 +472,7 @@ const Chat = () => {
   const currentMessagesCacheKeyRef = useRef<string>('');
   const actionHumanAlertReadyRef = useRef(false);
   const actionHumanConversationIdsRef = useRef<Set<string>>(new Set());
+  const pendingAttachmentsRef = useRef<PendingChatAttachment[]>([]);
 
   const { toast } = useToast();
   const { onlineSellers, startChatting, stopChatting } = useSellerPresence();
@@ -1657,6 +1715,83 @@ const Chat = () => {
     return '';
   }, []);
 
+  const isSupportedAttachmentFile = useCallback((file: File) => {
+    if (file.type.startsWith('image/')) return true;
+    if (file.type.startsWith('audio/')) return true;
+    if (file.type.startsWith('video/')) return true;
+    return /\.(pdf|doc|docx)$/i.test(file.name);
+  }, []);
+
+  const getAttachmentSizeLabel = useCallback((size: number) => {
+    if (size < 1024) return `${size} B`;
+    if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  }, []);
+
+  const revokePendingAttachmentPreview = useCallback((attachment: PendingChatAttachment) => {
+    if (attachment.previewUrl) {
+      URL.revokeObjectURL(attachment.previewUrl);
+    }
+  }, []);
+
+  const addPendingAttachments = useCallback(
+    (files: File[]) => {
+      if (!files.length) return;
+
+      const attachments = files.map((file) => {
+        const messageType = getAttachmentMessageType(file);
+        const previewUrl =
+          messageType === 'image' || messageType === 'audio' || messageType === 'video'
+            ? URL.createObjectURL(file)
+            : null;
+
+        return {
+          id: `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          file,
+          messageType,
+          previewUrl,
+          label: getAttachmentDisplayLabel(file, messageType),
+          sizeLabel: getAttachmentSizeLabel(file.size),
+        };
+      });
+
+      setPendingAttachments((prev) => [...prev, ...attachments]);
+    },
+    [getAttachmentDisplayLabel, getAttachmentMessageType, getAttachmentSizeLabel],
+  );
+
+  const removePendingAttachment = useCallback(
+    (id: string) => {
+      setPendingAttachments((prev) => {
+        const target = prev.find((attachment) => attachment.id === id);
+        if (target) revokePendingAttachmentPreview(target);
+        return prev.filter((attachment) => attachment.id !== id);
+      });
+    },
+    [revokePendingAttachmentPreview],
+  );
+
+  const clearPendingAttachments = useCallback(() => {
+    setPendingAttachments((prev) => {
+      prev.forEach(revokePendingAttachmentPreview);
+      return [];
+    });
+  }, [revokePendingAttachmentPreview]);
+
+  useEffect(() => {
+    pendingAttachmentsRef.current = pendingAttachments;
+  }, [pendingAttachments]);
+
+  useEffect(() => {
+    return () => {
+      pendingAttachmentsRef.current.forEach(revokePendingAttachmentPreview);
+    };
+  }, [revokePendingAttachmentPreview]);
+
+  useEffect(() => {
+    clearPendingAttachments();
+  }, [clearPendingAttachments, selectedConversation?.id]);
+
   const uploadAttachmentFile = useCallback(
     async (file: File, messageType: string): Promise<OutgoingAttachmentPayload> => {
       const extension =
@@ -1824,17 +1959,23 @@ const Chat = () => {
       return;
     }
 
-    await sendAttachments(files);
+    const supportedFiles = files.filter(isSupportedAttachmentFile);
+
+    if (!supportedFiles.length) {
+      toast({
+        title: 'Arquivo nao suportado',
+        description: 'Anexe imagens, audios, videos, PDF ou documentos.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    addPendingAttachments(supportedFiles);
   };
 
   const handlePasteFiles = useCallback(
     (files: File[]) => {
-      const supportedFiles = files.filter((file) => {
-        if (file.type.startsWith('image/')) return true;
-        if (file.type.startsWith('audio/')) return true;
-        if (file.type.startsWith('video/')) return true;
-        return /\.(pdf|doc|docx)$/i.test(file.name);
-      });
+      const supportedFiles = files.filter(isSupportedAttachmentFile);
 
       if (!supportedFiles.length) {
         toast({
@@ -1845,9 +1986,25 @@ const Chat = () => {
         return;
       }
 
-      void sendAttachments(supportedFiles);
+      addPendingAttachments(supportedFiles);
     },
-    [sendAttachments, toast],
+    [addPendingAttachments, isSupportedAttachmentFile, toast],
+  );
+
+  const handleComposerSend = useCallback(
+    async (messageText: string) => {
+      const filesToSend = pendingAttachments.map((attachment) => attachment.file);
+
+      if (messageText.trim()) {
+        await sendMessageDirect(messageText);
+      }
+
+      if (filesToSend.length) {
+        clearPendingAttachments();
+        await sendAttachments(filesToSend);
+      }
+    },
+    [clearPendingAttachments, pendingAttachments, sendAttachments, sendMessageDirect],
   );
 
   useEffect(() => {
@@ -1986,7 +2143,7 @@ const Chat = () => {
         type: 'image/png',
       });
 
-      await sendAttachments([screenshotFile]);
+      addPendingAttachments([screenshotFile]);
     } catch (error: any) {
       if (error.name !== 'NotAllowedError') {
         toast({
@@ -2958,11 +3115,13 @@ const Chat = () => {
                 <ChatComposer
                   disabled={isRecording}
                   fileInputRef={fileInputRef}
+                  pendingAttachments={pendingAttachments}
                   onFileUpload={handleFileUpload}
                   onPasteFiles={handlePasteFiles}
+                  onRemovePendingAttachment={removePendingAttachment}
                   onCaptureScreenshot={captureAndSendScreenshot}
                   onStartRecording={startRecording}
-                  onSendMessage={sendMessageDirect}
+                  onSendMessage={handleComposerSend}
                 />
               </div>
             </div>

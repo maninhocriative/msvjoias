@@ -1031,3 +1031,10 @@ Proximos passos: testar com uma mensagem real enviada pelo CRM e confirmar exclu
 - Verificacao de deploy: o repositorio nao possui workflow GitHub Actions, Vercel, Netlify ou script automatico de publicacao; o README indica que a producao do Lovable precisa ser publicada manualmente em Share -> Publish.
 - Corrigido o tracking local do Git: remote.origin.fetch foi restaurado e a branch main agora rastreia origin/main.
 Proximos passos: publicar no Lovable e testar com dois usuarios abertos no chat; se o Publish nao refletir, conferir se o Lovable esta conectado ao repositorio/branch main corretos.
+
+## 2026-05-22 - Anexos colados antes do envio
+- Corrigido o comportamento do Ctrl+V no chat: imagens, audios, videos e documentos colados entram em uma fila de anexos pendentes em vez de serem enviados automaticamente.
+- O campo de envio agora mostra miniatura/arquivo anexado com botao de remover antes do envio.
+- O botao de anexar arquivo e a captura de tela tambem passam a preparar o anexo antes de enviar, reduzindo envio acidental em conversa errada.
+- Build de producao validado com sucesso na copia local crm_acium_work.
+Proximos passos: commitar, publicar no Lovable e testar colando um print com Ctrl+V no campo do chat.
