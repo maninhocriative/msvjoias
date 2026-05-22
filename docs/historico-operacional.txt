@@ -1009,3 +1009,13 @@ Proximos passos: testar com um audio real novo; audios antigos so podem ser recu
 - Build de producao validado com sucesso na copia local crm_acium_work.
 - Edge Function aline-reply deployada no Supabase.
 Proximos passos: testar uma conversa assumida por humano recebendo nova mensagem do cliente e confirmar que o agente nao envia nova resposta.
+
+## 2026-05-21 - Apagar mensagem do WhatsApp pelo CRM
+- Adicionado botao "Apagar" nas mensagens enviadas pelo CRM que possuem zapi_message_id e ainda nao foram removidas.
+- A action chama automation-send para apagar a mensagem na Z-API/WhatsApp usando o mesmo deleteViaZAPI ja usado pelo fluxo de edicao.
+- Depois da confirmacao da Z-API, a mensagem recebe deleted_at/status deleted no CRM e aparece como "Mensagem apagada" no historico.
+- A previa da conversa e recalculada com a ultima mensagem nao apagada.
+- A lista do chat agora tambem escuta novas mensagens em tempo real e move a conversa para o topo, no comportamento do WhatsApp.
+- Build de producao validado com sucesso na copia local crm_acium_work.
+- Edge Function automation-send deployada no Supabase.
+Proximos passos: testar com uma mensagem real enviada pelo CRM e confirmar exclusao no WhatsApp e subida da conversa ao topo.

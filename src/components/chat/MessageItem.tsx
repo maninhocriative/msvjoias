@@ -9,6 +9,7 @@ import {
   Loader2,
   AlertCircle,
   Pencil,
+  Trash2,
   X,
 } from 'lucide-react';
 import type { Message } from '@/lib/supabase';
@@ -17,10 +18,13 @@ interface MessageItemProps {
   message: Message;
   showTail: boolean;
   canEdit?: boolean;
+  canDelete?: boolean;
   editValue?: string;
   isEditing?: boolean;
   isSavingEdit?: boolean;
+  isDeleting?: boolean;
   onStartEdit?: (message: Message) => void;
+  onDelete?: (message: Message) => void;
   onEditValueChange?: (value: string) => void;
   onCancelEdit?: () => void;
   onSaveEdit?: (message: Message) => void;
@@ -65,10 +69,13 @@ const MessageItem = memo(({
   message,
   showTail,
   canEdit = false,
+  canDelete = false,
   editValue = '',
   isEditing = false,
   isSavingEdit = false,
+  isDeleting = false,
   onStartEdit,
+  onDelete,
   onEditValueChange,
   onCancelEdit,
   onSaveEdit,
@@ -123,15 +130,31 @@ const MessageItem = memo(({
         )}
         style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
       >
-        {canEdit && !isEditing && (
-          <button
-            type="button"
-            onClick={() => onStartEdit?.(message)}
-            className="absolute right-1.5 top-1.5 z-10 inline-flex items-center gap-1 rounded-full border border-white/10 bg-slate-950/90 px-2 py-1 text-[10px] text-slate-200 opacity-0 shadow-sm transition-opacity hover:border-emerald-400/40 hover:text-white group-hover/message:opacity-100 focus:opacity-100"
-          >
-            <Pencil className="w-3 h-3" />
-            Editar
-          </button>
+        {(canEdit || canDelete) && !isEditing && (
+          <div className="absolute right-1.5 top-1.5 z-10 inline-flex items-center gap-1 rounded-full border border-white/10 bg-slate-950/90 p-1 text-[10px] text-slate-200 opacity-0 shadow-sm transition-opacity group-hover/message:opacity-100 focus-within:opacity-100">
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => onStartEdit?.(message)}
+                className="inline-flex items-center gap-1 rounded-full px-2 py-1 transition-colors hover:bg-white/8 hover:text-white"
+              >
+                <Pencil className="w-3 h-3" />
+                Editar
+              </button>
+            )}
+
+            {canDelete && (
+              <button
+                type="button"
+                onClick={() => onDelete?.(message)}
+                disabled={isDeleting}
+                className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-red-200 transition-colors hover:bg-red-500/15 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isDeleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                Apagar
+              </button>
+            )}
+          </div>
         )}
 
         {isEditing ? (
@@ -238,7 +261,7 @@ const MessageItem = memo(({
 
             {isDeleted && (
               <p className="text-[14px] italic text-white/70">
-                Mensagem editada e substituida.
+                Mensagem apagada.
               </p>
             )}
 

@@ -311,6 +311,32 @@ async function updateStoredMessage(
   await supabase.from("messages").update(values).eq("id", messageId);
 }
 
+async function refreshConversationPreview(
+  supabase: ReturnType<typeof createClient>,
+  conversationId: string,
+) {
+  const { data: latestMessage } = await supabase
+    .from("messages")
+    .select("content, message_type")
+    .eq("conversation_id", conversationId)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const lastMessage = latestMessage
+    ? buildConversationPreview(
+        String((latestMessage as Record<string, unknown>).content || ""),
+        String((latestMessage as Record<string, unknown>).message_type || "text"),
+      )
+    : "Mensagem removida";
+
+  await supabase
+    .from("conversations")
+    .update({ last_message: lastMessage })
+    .eq("id", conversationId);
+}
+
 async function sendOutgoingItem(args: {
   supabase: ReturnType<typeof createClient>;
   lease?: ZapiGovernorLease | null;
@@ -530,6 +556,8 @@ serve(async (req) => {
       prefer_zapi = false,
       replace_message_id = null,
       replace_zapi_message_id = null,
+      delete_message_id = null,
+      delete_zapi_message_id = null,
     } = payload;
 
     if (!phone) {
@@ -551,6 +579,53 @@ serve(async (req) => {
       platform,
       fallbackPreview,
     );
+
+    if (delete_message_id) {
+      if (!hasZapi || !zapiInstanceId || !zapiToken) {
+        return new Response(
+          JSON.stringify({ error: "Z-API is required to delete outgoing messages." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      if (!delete_zapi_message_id) {
+        return new Response(
+          JSON.stringify({ error: "This message cannot be deleted because it has no Z-API message id." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      const deleteResult = await deleteViaZAPI(
+        normalizedPhone,
+        String(delete_zapi_message_id),
+        zapiInstanceId,
+        zapiToken,
+        zapiClientToken || undefined,
+      );
+
+      if (!deleteResult.success) {
+        return new Response(
+          JSON.stringify({ error: deleteResult.error || "Unable to delete the message in Z-API." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      await updateStoredMessage(supabase, String(delete_message_id), {
+        deleted_at: new Date().toISOString(),
+        status: "deleted",
+      });
+      await refreshConversationPreview(supabase, conversationId);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          mode: "delete",
+          message_id: String(delete_message_id),
+          conversation_id: conversationId,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     if (replace_message_id) {
       if (!hasZapi || !zapiInstanceId || !zapiToken) {

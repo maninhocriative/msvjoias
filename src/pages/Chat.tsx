@@ -101,6 +101,12 @@ const isNearDuplicateMessage = (a: Partial<Message>, b: Partial<Message>) => {
 const sortMessagesByTime = (items: Message[]) =>
   [...items].sort((a, b) => getMessageTime(a) - getMessageTime(b));
 
+const getConversationTime = (conversation: Partial<Conversation>) =>
+  new Date(conversation.last_message_at || conversation.created_at || '').getTime() || 0;
+
+const sortConversationsByRecent = (items: Conversation[]) =>
+  [...items].sort((a, b) => getConversationTime(b) - getConversationTime(a));
+
 const areMessagesEqual = (a: Message[], b: Message[]) => {
   if (a === b) return true;
   if (a.length !== b.length) return false;
@@ -393,6 +399,7 @@ const Chat = () => {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingMessageDraft, setEditingMessageDraft] = useState('');
   const [editingMessageBusyId, setEditingMessageBusyId] = useState<string | null>(null);
+  const [deletingMessageBusyId, setDeletingMessageBusyId] = useState<string | null>(null);
   const audioStreamRef = useRef<MediaStream | null>(null);
   const recordingCancelledRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -1329,7 +1336,7 @@ const Chat = () => {
 
         if (error) throw error;
 
-        const conversationList = data || [];
+        const conversationList = sortConversationsByRecent(data || []);
         const statusMap: Record<string, AlineConversation> = {};
         const profilesMap: Record<string, CustomerProfile> = {};
 
@@ -1446,14 +1453,50 @@ const Chat = () => {
                 )
               : [updated, ...prev];
 
-            return next.sort(
-              (a, b) =>
-                new Date(b.last_message_at || b.created_at).getTime() -
-                new Date(a.last_message_at || a.created_at).getTime(),
-            );
+            return sortConversationsByRecent(next);
           });
           setSelectedConversation((prev) =>
             prev?.id === updated.id ? { ...prev, ...updated } : prev,
+          );
+        },
+      )
+      .subscribe();
+
+    const messageListChannel = supabase
+      .channel('messages-list-realtime')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        (payload) => {
+          const newMessage = payload.new as Message;
+          if (!newMessage?.conversation_id) return;
+
+          const nextLastMessage = buildMessagePreview(newMessage);
+          const nextLastMessageAt = newMessage.created_at || new Date().toISOString();
+
+          setConversations((prev) => {
+            let touched = false;
+            const next = prev.map((conversation) => {
+              if (conversation.id !== newMessage.conversation_id) return conversation;
+              touched = true;
+              return {
+                ...conversation,
+                last_message: nextLastMessage || conversation.last_message,
+                last_message_at: nextLastMessageAt,
+              };
+            });
+
+            return touched ? sortConversationsByRecent(next) : prev;
+          });
+
+          setSelectedConversation((prev) =>
+            prev?.id === newMessage.conversation_id
+              ? {
+                  ...prev,
+                  last_message: nextLastMessage || prev.last_message,
+                  last_message_at: nextLastMessageAt,
+                }
+              : prev,
           );
         },
       )
@@ -1495,9 +1538,10 @@ const Chat = () => {
 
     return () => {
       supabase.removeChannel(convChannel);
+      supabase.removeChannel(messageListChannel);
       supabase.removeChannel(alineChannel);
     };
-  }, [fetchConversations]);
+  }, [buildMessagePreview, fetchConversations]);
 
   useEffect(() => {
     if (conversations.length === 0) return;
@@ -1955,6 +1999,13 @@ const Chat = () => {
     return ['sent', 'delivered', 'read'].includes(message.status || '');
   }, []);
 
+  const canDeleteMessage = useCallback((message: Message) => {
+    if (!message.is_from_me) return false;
+    if (message.deleted_at) return false;
+    if (!message.zapi_message_id) return false;
+    return ['sent', 'delivered', 'read'].includes(message.status || '');
+  }, []);
+
   const handleStartEditingMessage = useCallback((message: Message) => {
     setEditingMessageId(message.id);
     setEditingMessageDraft(message.content || '');
@@ -2015,6 +2066,68 @@ const Chat = () => {
       removeOptimisticMessages,
       toast,
     ],
+  );
+
+  const handleDeleteMessage = useCallback(
+    async (message: Message) => {
+      if (!message.zapi_message_id || !selectedConversation) return;
+
+      const confirmed = window.confirm(
+        'Apagar esta mensagem no WhatsApp e no CRM? Essa acao nao pode ser desfeita.',
+      );
+      if (!confirmed) return;
+
+      setDeletingMessageBusyId(message.id);
+
+      try {
+        await invokeAutomationSend({
+          delete_message_id: message.id,
+          delete_zapi_message_id: message.zapi_message_id,
+        });
+
+        const deletedAt = new Date().toISOString();
+        setMessages((prev) =>
+          prev.map((item) =>
+            item.id === message.id
+              ? { ...item, deleted_at: deletedAt, status: 'deleted' }
+              : item,
+          ),
+        );
+        const nextLastMessage =
+          [...messages]
+            .filter((item) => item.id !== message.id && !item.deleted_at)
+            .sort((a, b) =>
+              new Date(b.created_at || '').getTime() - new Date(a.created_at || '').getTime(),
+            )[0] || null;
+        const nextPreview = buildMessagePreview(nextLastMessage) || 'Mensagem removida';
+        setConversations((prev) =>
+          prev.map((conversation) =>
+            conversation.id === selectedConversation.id
+              ? { ...conversation, last_message: nextPreview }
+              : conversation,
+          ),
+        );
+        setSelectedConversation((prev) =>
+          prev && prev.id === selectedConversation.id
+            ? { ...prev, last_message: nextPreview }
+            : prev,
+        );
+
+        toast({ title: 'Mensagem apagada' });
+      } catch (error) {
+        toast({
+          title: 'Erro',
+          description:
+            error instanceof Error
+              ? error.message
+              : 'Nao foi possivel apagar a mensagem.',
+          variant: 'destructive',
+        });
+      } finally {
+        setDeletingMessageBusyId(null);
+      }
+    },
+    [buildMessagePreview, invokeAutomationSend, messages, selectedConversation, toast],
   );
 
   const formatRecordingTime = (seconds: number) =>
@@ -2773,12 +2886,15 @@ const Chat = () => {
                             grouped[index - 1]?.is_from_me !== message.is_from_me
                           }
                           canEdit={canEditMessage(message)}
+                          canDelete={canDeleteMessage(message)}
                           editValue={
                             editingMessageId === message.id ? editingMessageDraft : ''
                           }
                           isEditing={editingMessageId === message.id}
                           isSavingEdit={editingMessageBusyId === message.id}
+                          isDeleting={deletingMessageBusyId === message.id}
                           onStartEdit={handleStartEditingMessage}
+                          onDelete={handleDeleteMessage}
                           onEditValueChange={setEditingMessageDraft}
                           onCancelEdit={handleCancelEditingMessage}
                           onSaveEdit={handleSaveEditedMessage}
