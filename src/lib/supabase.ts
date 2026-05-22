@@ -1,7 +1,7 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://ahbjwpkpxqqrpvpzmqwa.supabase.co';
-const supabaseAnonKey =
+export const supabaseUrl = 'https://ahbjwpkpxqqrpvpzmqwa.supabase.co';
+export const supabaseAnonKey =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFoYmp3cGtweHFxcnB2cHptcXdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU1NTY5NzUsImV4cCI6MjA4MTEzMjk3NX0.jdH0gleC9mcB1ezewdobxCp-yKmM37dixfkMyzzhhaQ';
 
 const isConfigured = Boolean(supabaseUrl && supabaseAnonKey);
@@ -54,6 +54,9 @@ export type Conversation = {
   contact_is_online?: boolean | null;
   contact_last_seen_at?: string | null;
   contact_presence_updated_at?: string | null;
+  attending_by?: string | null;
+  attending_name?: string | null;
+  attending_since?: string | null;
   created_at?: string;
   updated_at?: string;
 };

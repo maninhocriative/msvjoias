@@ -1019,3 +1019,12 @@ Proximos passos: testar uma conversa assumida por humano recebendo nova mensagem
 - Build de producao validado com sucesso na copia local crm_acium_work.
 - Edge Function automation-send deployada no Supabase.
 Proximos passos: testar com uma mensagem real enviada pelo CRM e confirmar exclusao no WhatsApp e subida da conversa ao topo.
+
+## 2026-05-22 - Indicador de atendimento em tempo real no chat
+- Criada migracao para gravar em conversations quem esta com a conversa aberta: attending_by, attending_name e attending_since.
+- Criado hook useChatAttending para marcar a conversa ao abrir, renovar o marcador por heartbeat e limpar ao trocar/fechar a conversa.
+- A lista do chat passou a exibir uma tag verde pulsando com "Nome atendendo" quando outro usuario esta com aquela conversa aberta ha menos de 15 minutos.
+- O select da lista de conversas e os tipos locais do Supabase foram atualizados para transportar os novos campos via realtime.
+- Migration aplicada no Supabase remoto e colunas confirmadas em public.conversations.
+- Build de producao validado com sucesso na copia local crm_acium_work.
+Proximos passos: publicar frontend, commitar e testar com dois usuarios abertos no chat.

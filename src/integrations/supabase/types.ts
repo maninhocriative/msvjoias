@@ -491,6 +491,9 @@ export type Database = {
       }
       conversations: {
         Row: {
+          attending_by: string | null
+          attending_name: string | null
+          attending_since: string | null
           contact_name: string | null
           contact_number: string
           created_at: string
@@ -502,6 +505,9 @@ export type Database = {
           unread_count: number | null
         }
         Insert: {
+          attending_by?: string | null
+          attending_name?: string | null
+          attending_since?: string | null
           contact_name?: string | null
           contact_number: string
           created_at?: string
@@ -513,6 +519,9 @@ export type Database = {
           unread_count?: number | null
         }
         Update: {
+          attending_by?: string | null
+          attending_name?: string | null
+          attending_since?: string | null
           contact_name?: string | null
           contact_number?: string
           created_at?: string

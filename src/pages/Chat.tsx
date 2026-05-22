@@ -45,6 +45,7 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { useAssignmentNotification } from '@/hooks/useAssignmentNotification';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useAuth } from '@/contexts/AuthContext';
+import { useChatAttending } from '@/hooks/useChatAttending';
 
 interface AlineConversation {
   id: string;
@@ -82,7 +83,7 @@ const statusFilters = [
 
 
 const CONVERSATION_LIST_SELECT =
-  'id, contact_name, contact_number, platform, last_message, last_message_at, unread_count, lead_status, contact_presence, contact_is_online, contact_last_seen_at, contact_presence_updated_at, created_at';
+  'id, contact_name, contact_number, platform, last_message, last_message_at, unread_count, lead_status, contact_presence, contact_is_online, contact_last_seen_at, contact_presence_updated_at, attending_by, attending_name, attending_since, created_at';
 const INITIAL_MESSAGE_LIMIT = 80;
 const INITIAL_ALINE_LOG_LIMIT = 120;
 const CONVERSATION_LIST_LIMIT = 500;
@@ -431,6 +432,13 @@ const Chat = () => {
 
     return profileName || userMetadataName || emailName || 'Vendedor';
   }, [profile?.full_name, user?.user_metadata, user?.email]);
+
+  useChatAttending({
+    conversationId: selectedConversation?.id,
+    userId: user?.id,
+    userName: currentLoggedSellerName,
+    enabled: Boolean(selectedConversation),
+  });
 
   const getAlineDataForPhone = useCallback(
     (phone: string) => {
@@ -2572,6 +2580,7 @@ const Chat = () => {
                   isSelected={selectedConversation?.id === conv.id}
                   customerProfile={getCustomerProfileForPhone(conv.contact_number)}
                   alineData={getAlineDataForPhone(conv.contact_number)}
+                  currentUserId={user?.id}
                   onClick={() => setSelectedConversation(conv)}
                 />
               ))}

@@ -26,6 +26,7 @@ interface ConversationItemProps {
   isSelected: boolean;
   customerProfile?: CustomerProfile;
   alineData?: AlineConversation;
+  currentUserId?: string | null;
   onClick: () => void;
 }
 
@@ -71,6 +72,8 @@ const twoLineClamp: CSSProperties = {
   WebkitLineClamp: 2,
   overflow: 'hidden',
 };
+
+const ATTENDING_EXPIRATION_MS = 15 * 60 * 1000;
 
 function getConversationStageMeta(conv: Conversation, alineData?: AlineConversation) {
   const leadStatus = conv.lead_status || 'novo';
@@ -199,7 +202,7 @@ function getAgentMeta(alineData?: AlineConversation, isSaleFinalized?: boolean) 
 }
 
 const ConversationItem = memo(
-  ({ conv, isSelected, customerProfile, alineData, onClick }: ConversationItemProps) => {
+  ({ conv, isSelected, customerProfile, alineData, currentUserId, onClick }: ConversationItemProps) => {
     const hasUnread = (conv.unread_count ?? 0) > 0;
     const isInstagram = conv.platform === 'instagram';
     const isHumanTakeover = alineData?.status === 'human_takeover';
@@ -233,6 +236,12 @@ const ConversationItem = memo(
           : isContactOnline
             ? 'online'
             : '';
+    const attendingSinceMs = conv.attending_since ? new Date(conv.attending_since).getTime() : 0;
+    const hasActiveAttendant =
+      Boolean(conv.attending_name) &&
+      Boolean(attendingSinceMs) &&
+      Date.now() - attendingSinceMs < ATTENDING_EXPIRATION_MS &&
+      conv.attending_by !== currentUserId;
 
     return (
       <button
@@ -356,6 +365,18 @@ const ConversationItem = memo(
               <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/15">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
                 {contactPresenceLabel}
+              </span>
+            )}
+
+            {hasActiveAttendant && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 max-w-full">
+                <span className="relative flex h-2 w-2 shrink-0">
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-70 animate-ping" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-300" />
+                </span>
+                <span className="truncate max-w-[150px]" title={`${conv.attending_name} atendendo`}>
+                  {conv.attending_name} atendendo
+                </span>
               </span>
             )}
           </div>
