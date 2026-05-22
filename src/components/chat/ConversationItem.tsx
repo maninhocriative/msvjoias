@@ -247,7 +247,7 @@ const ConversationItem = memo(
       <button
         onClick={onClick}
         className={cn(
-          'w-full min-w-0 px-3.5 py-3 flex items-start gap-3 text-left transition-all relative group rounded-2xl border shadow-[0_18px_42px_-36px_rgba(15,23,42,0.9)]',
+          'w-full min-w-0 px-3 py-2.5 sm:px-3.5 sm:py-3 flex items-start gap-2.5 sm:gap-3 text-left transition-all relative group rounded-2xl border shadow-[0_18px_42px_-36px_rgba(15,23,42,0.9)]',
           isSelected
             ? 'border-emerald-500/35 bg-[linear-gradient(160deg,rgba(16,185,129,0.16),rgba(15,23,42,0.92))] ring-1 ring-emerald-500/20'
             : 'border-white/[0.06] bg-slate-900/55 hover:bg-slate-900/75 hover:border-white/12',
@@ -260,13 +260,13 @@ const ConversationItem = memo(
             <img
               src={customerProfile.profile_pic_url}
               alt={displayName}
-              className="w-11 h-11 rounded-2xl object-cover ring-1 ring-white/10"
+              className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl object-cover ring-1 ring-white/10"
               loading="lazy"
             />
           ) : (
             <div
               className={cn(
-                'w-11 h-11 rounded-2xl flex items-center justify-center text-sm font-bold text-white ring-1 ring-white/10 shadow-[0_16px_30px_-18px_rgba(15,23,42,0.8)]',
+                'w-10 h-10 sm:w-11 sm:h-11 rounded-2xl flex items-center justify-center text-sm font-bold text-white ring-1 ring-white/10 shadow-[0_16px_30px_-18px_rgba(15,23,42,0.8)]',
                 isInstagram
                   ? 'bg-gradient-to-br from-fuchsia-500 to-orange-400'
                   : agentMeta.avatarClass,
@@ -287,7 +287,7 @@ const ConversationItem = memo(
         </div>
 
         <div className="flex-1 min-w-0 w-full">
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 mb-1.5">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 mb-1">
             <p
               title={displayName}
               className={cn(
@@ -312,7 +312,7 @@ const ConversationItem = memo(
             </div>
           </div>
 
-          <div className="flex items-center gap-x-1.5 gap-y-1 mb-1.5 flex-wrap">
+          <div className="flex items-center gap-x-1.5 gap-y-1 mb-1 flex-wrap">
             <span
               className={cn(
                 'inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium border border-white/8',
@@ -385,7 +385,7 @@ const ConversationItem = memo(
             title={previewText}
             style={twoLineClamp}
             className={cn(
-              'text-[11px] leading-[1.45] break-words min-h-[2.1rem] pr-1',
+              'text-[11px] leading-[1.45] break-words min-h-0 sm:min-h-[2.1rem] pr-1',
               hasUnread ? 'text-slate-300' : 'text-slate-500',
             )}
           >

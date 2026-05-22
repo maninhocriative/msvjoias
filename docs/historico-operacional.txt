@@ -1038,3 +1038,11 @@ Proximos passos: publicar no Lovable e testar com dois usuarios abertos no chat;
 - O botao de anexar arquivo e a captura de tela tambem passam a preparar o anexo antes de enviar, reduzindo envio acidental em conversa errada.
 - Build de producao validado com sucesso na copia local crm_acium_work.
 Proximos passos: commitar, publicar no Lovable e testar colando um print com Ctrl+V no campo do chat.
+
+## 2026-05-22 - Ajustes mobile e comportamento tipo WhatsApp
+- A lista de conversas no mobile ficou mais compacta: filtros recolhidos por padrao, cabecalho com menor altura e cards de conversa com menos espaco vertical.
+- Ao abrir uma conversa, o historico agora força rolagem para a ultima mensagem, evitando cair no topo do atendimento.
+- Updates da propria conversa e updates de mensagens passam a reordenar a conversa pelo mais recente, mantendo o comportamento de WhatsApp na lista.
+- Mensagens vindas do log do agente tambem atualizam a previa e reposicionam a conversa na lista quando necessario.
+- Build de producao validado com sucesso na copia local crm_acium_work.
+Proximos passos: commitar e testar no mobile real com conversa nova, mensagem editada e mensagem recebida.

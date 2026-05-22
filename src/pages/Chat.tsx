@@ -448,6 +448,7 @@ const Chat = () => {
   const [isContactTyping, setIsContactTyping] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterAttendant, setFilterAttendant] = useState<string>('all');
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [alineStatusMap, setAlineStatusMap] = useState<Record<string, AlineConversation>>({});
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [finalizeDialogOpen, setFinalizeDialogOpen] = useState(false);
@@ -473,6 +474,16 @@ const Chat = () => {
   const actionHumanAlertReadyRef = useRef(false);
   const actionHumanConversationIdsRef = useRef<Set<string>>(new Set());
   const pendingAttachmentsRef = useRef<PendingChatAttachment[]>([]);
+
+  const scrollMessagesToBottom = useCallback(() => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const container = messagesContainerRef.current;
+        if (!container) return;
+        container.scrollTop = container.scrollHeight;
+      });
+    });
+  }, []);
 
   const { toast } = useToast();
   const { onlineSellers, startChatting, stopChatting } = useSellerPresence();
@@ -1028,6 +1039,44 @@ const Chat = () => {
     }
   }, []);
 
+  const bumpConversationFromMessage = useCallback(
+    (message: Partial<Message> | null | undefined, options?: { forceTop?: boolean }) => {
+      if (!message?.conversation_id) return;
+
+      const nextLastMessage = buildMessagePreview(message);
+      const nextLastMessageAt =
+        options?.forceTop
+          ? new Date().toISOString()
+          : message.edited_at || message.created_at || new Date().toISOString();
+
+      setConversations((prev) => {
+        let touched = false;
+        const next = prev.map((conversation) => {
+          if (conversation.id !== message.conversation_id) return conversation;
+          touched = true;
+          return {
+            ...conversation,
+            last_message: nextLastMessage || conversation.last_message,
+            last_message_at: nextLastMessageAt,
+          };
+        });
+
+        return touched ? sortConversationsByRecent(next) : prev;
+      });
+
+      setSelectedConversation((prev) =>
+        prev?.id === message.conversation_id
+          ? {
+              ...prev,
+              last_message: nextLastMessage || prev.last_message,
+              last_message_at: nextLastMessageAt,
+            }
+          : prev,
+      );
+    },
+    [buildMessagePreview],
+  );
+
   const fetchMessages = useCallback(async (conversationId: string, phone?: string) => {
     const requestId = fetchMessagesRequestRef.current + 1;
     fetchMessagesRequestRef.current = requestId;
@@ -1204,6 +1253,7 @@ const Chat = () => {
       setIsContactTyping(false);
       fetchAlineStatus(selectedConversation.contact_number);
       startChatting(selectedConversation.contact_number);
+      scrollMessagesToBottom();
       const channel = supabase
         .channel(`messages-related-${selectedConversation.id}`)
         .on(
@@ -1283,10 +1333,12 @@ const Chat = () => {
                 : prev,
             );
             setConversations((prev) =>
-              prev.map((conversation) =>
-                conversation.id === updatedConversation.id
-                  ? { ...conversation, ...updatedConversation }
-                  : conversation,
+              sortConversationsByRecent(
+                prev.map((conversation) =>
+                  conversation.id === updatedConversation.id
+                    ? { ...conversation, ...updatedConversation }
+                    : conversation,
+                ),
               ),
             );
           },
@@ -1347,6 +1399,7 @@ const Chat = () => {
               if (cacheKey) messagesCacheRef.current.set(cacheKey, next);
               return next;
             });
+            bumpConversationFromMessage(fallbackMessage);
           },
         )
         .subscribe();
@@ -1367,21 +1420,34 @@ const Chat = () => {
     fetchAlineStatus,
     startChatting,
     stopChatting,
+    scrollMessagesToBottom,
+    bumpConversationFromMessage,
   ]);
 
   useLayoutEffect(() => {
     const isNewConversationLoad = messages.length > 0 && lastMessageCount.current === 0;
     const hasNewMessages = messages.length > lastMessageCount.current;
 
-    if ((isNewConversationLoad || (hasNewMessages && shouldAutoScroll.current)) && messagesContainerRef.current) {
-      const container = messagesContainerRef.current;
-      requestAnimationFrame(() => {
-        container.scrollTop = container.scrollHeight;
-      });
+    if (isNewConversationLoad || (hasNewMessages && shouldAutoScroll.current)) {
+      scrollMessagesToBottom();
     }
 
     lastMessageCount.current = messages.length;
-  }, [messages]);
+  }, [messages, scrollMessagesToBottom]);
+
+  useEffect(() => {
+    if (!selectedConversation?.id) return;
+
+    shouldAutoScroll.current = true;
+    const timers = [
+      window.setTimeout(scrollMessagesToBottom, 80),
+      window.setTimeout(scrollMessagesToBottom, 300),
+    ];
+
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, [scrollMessagesToBottom, selectedConversation?.id]);
 
   const handleMessagesScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
     const target = event.currentTarget;
@@ -1537,33 +1603,17 @@ const Chat = () => {
           const newMessage = payload.new as Message;
           if (!newMessage?.conversation_id) return;
 
-          const nextLastMessage = buildMessagePreview(newMessage);
-          const nextLastMessageAt = newMessage.created_at || new Date().toISOString();
+          bumpConversationFromMessage(newMessage);
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'messages' },
+        (payload) => {
+          const updatedMessage = payload.new as Message;
+          if (!updatedMessage?.conversation_id) return;
 
-          setConversations((prev) => {
-            let touched = false;
-            const next = prev.map((conversation) => {
-              if (conversation.id !== newMessage.conversation_id) return conversation;
-              touched = true;
-              return {
-                ...conversation,
-                last_message: nextLastMessage || conversation.last_message,
-                last_message_at: nextLastMessageAt,
-              };
-            });
-
-            return touched ? sortConversationsByRecent(next) : prev;
-          });
-
-          setSelectedConversation((prev) =>
-            prev?.id === newMessage.conversation_id
-              ? {
-                  ...prev,
-                  last_message: nextLastMessage || prev.last_message,
-                  last_message_at: nextLastMessageAt,
-                }
-              : prev,
-          );
+          bumpConversationFromMessage(updatedMessage, { forceTop: true });
         },
       )
       .subscribe();
@@ -1607,7 +1657,7 @@ const Chat = () => {
       supabase.removeChannel(messageListChannel);
       supabase.removeChannel(alineChannel);
     };
-  }, [buildMessagePreview, fetchConversations]);
+  }, [bumpConversationFromMessage, fetchConversations]);
 
   useEffect(() => {
     if (conversations.length === 0) return;
@@ -2473,8 +2523,8 @@ const Chat = () => {
           selectedConversation ? 'hidden md:flex' : 'flex',
         )}
       >
-        <div className="px-4 py-3 border-b border-white/5 shrink-0">
-          <div className="flex items-center justify-between mb-3">
+        <div className="px-3 py-2.5 sm:px-4 sm:py-3 border-b border-white/5 shrink-0">
+          <div className="flex items-center justify-between mb-2.5 sm:mb-3">
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="relative shrink-0">
                 <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center">
@@ -2508,7 +2558,7 @@ const Chat = () => {
           </div>
 
           {onlineSellers.length > 0 && (
-            <div className="flex items-center gap-2 mb-3 px-2.5 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+            <div className="flex items-center gap-2 mb-2.5 sm:mb-3 px-2.5 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
               <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse shrink-0" />
               <span className="text-[11px] text-emerald-400 font-medium shrink-0">
                 {onlineSellers.length} online
@@ -2559,8 +2609,8 @@ const Chat = () => {
           </div>
         </div>
 
-        <div className="px-3 py-3 border-b border-white/5 shrink-0 bg-slate-950/80">
-          <div className="rounded-xl border border-white/5 bg-slate-900/45 p-3 space-y-3">
+        <div className="px-2 py-2 md:px-3 md:py-3 border-b border-white/5 shrink-0 bg-slate-950/80">
+          <div className="rounded-xl border border-white/5 bg-slate-900/45 p-2.5 md:p-3 space-y-2 md:space-y-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -2573,19 +2623,29 @@ const Chat = () => {
                 </p>
               </div>
 
-              {hasActiveFilters && (
+              <div className="flex shrink-0 items-center gap-1.5">
+                {hasActiveFilters && (
+                  <button
+                    onClick={() => {
+                      setFilterStatus('all');
+                      setFilterAttendant('all');
+                    }}
+                    className="px-2 py-1 rounded-lg border border-white/5 bg-slate-800/70 text-[10px] font-medium text-slate-400 hover:text-white hover:border-white/10 transition-colors"
+                  >
+                    Limpar
+                  </button>
+                )}
+
                 <button
-                  onClick={() => {
-                    setFilterStatus('all');
-                    setFilterAttendant('all');
-                  }}
-                  className="shrink-0 px-2 py-1 rounded-lg border border-white/5 bg-slate-800/70 text-[10px] font-medium text-slate-400 hover:text-white hover:border-white/10 transition-colors"
+                  onClick={() => setMobileFiltersOpen((prev) => !prev)}
+                  className="md:hidden px-2 py-1 rounded-lg border border-white/5 bg-slate-800/70 text-[10px] font-semibold text-slate-300 hover:text-white hover:border-white/10 transition-colors"
                 >
-                  Limpar
+                  {mobileFiltersOpen ? 'Ocultar' : 'Filtros'}
                 </button>
-              )}
+              </div>
             </div>
 
+            <div className={cn('space-y-3', mobileFiltersOpen ? 'block' : 'hidden md:block')}>
             <div className="space-y-2">
               <p className="px-1 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-600">
                 Status
@@ -2710,6 +2770,7 @@ const Chat = () => {
                 })}
               </div>
             </div>
+            </div>
           </div>
         </div>
 
@@ -2729,7 +2790,7 @@ const Chat = () => {
               </p>
             </div>
           ) : (
-            <div className="space-y-2 px-2 pb-3">
+            <div className="space-y-1.5 px-2 pb-20 md:space-y-2 md:pb-3">
               {filteredConversations.map((conv) => (
                 <ConversationItem
                   key={conv.id}
