@@ -993,3 +993,19 @@ Proximos passos: testar uma conversa real caindo em humano com vendedor online e
 - Imagens no balão agora mantem proporcao/espaco estavel e nao mudam o layout depois que carregam.
 - Build de producao validado com sucesso na copia local crm_acium_work.
 Proximos passos: publicar frontend e testar uma conversa com catalogo/imagens para confirmar que a tela nao fica pulando.
+
+## 2026-05-21 - Audio recebido no chat
+- Corrigido o webhook zapi-unified para reconhecer mais formatos/campos de midia da Z-API, incluindo audio em campos aninhados.
+- Audios, imagens, videos e documentos recebidos pela Z-API agora sao baixados no momento do webhook e espelhados no bucket chat-media do Supabase quando possivel, evitando depender de links temporarios da Z-API/Backblaze.
+- O chat passou a carregar audio com preload de metadados e link "Abrir audio" como fallback quando o navegador nao conseguir tocar direto no player.
+- Build de producao validado com sucesso na copia local crm_acium_work.
+- Edge Function zapi-unified deployada no Supabase.
+Proximos passos: testar com um audio real novo; audios antigos so podem ser recuperados automaticamente se o link temporario original ainda estiver valido.
+
+## 2026-05-21 - Bloqueio da Kate em atendimento humano e Ctrl+V no chat
+- A funcao aline-reply agora bloqueia resposta automatica quando a conversa esta em human_takeover, active_agent human ou ja possui vendedor atribuido.
+- A conversa so volta para o agente automatico quando for devolvida explicitamente pelo CRM, evitando a Kate falar no meio do atendimento humano e confundir o cliente.
+- O campo de mensagem do chat passou a aceitar arquivos colados com Ctrl+V, incluindo print/imagem, audio, video, PDF e documentos suportados.
+- Build de producao validado com sucesso na copia local crm_acium_work.
+- Edge Function aline-reply deployada no Supabase.
+Proximos passos: testar uma conversa assumida por humano recebendo nova mensagem do cliente e confirmar que o agente nao envia nova resposta.

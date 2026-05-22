@@ -243,6 +243,7 @@ interface ChatComposerProps {
   disabled: boolean;
   fileInputRef: React.RefObject<HTMLInputElement>;
   onFileUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onPasteFiles: (files: File[]) => void;
   onCaptureScreenshot: () => void;
   onStartRecording: () => void;
   onSendMessage: (message: string) => Promise<void> | void;
@@ -252,6 +253,7 @@ const ChatComposer = memo(function ChatComposer({
   disabled,
   fileInputRef,
   onFileUpload,
+  onPasteFiles,
   onCaptureScreenshot,
   onStartRecording,
   onSendMessage,
@@ -315,6 +317,21 @@ const ChatComposer = memo(function ChatComposer({
           ref={textareaRef}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
+          onPaste={(event) => {
+            if (disabled) return;
+            const clipboardFiles = Array.from(event.clipboardData?.files || []);
+            const pastedFiles = clipboardFiles.length
+              ? clipboardFiles
+              : Array.from(event.clipboardData?.items || [])
+                  .filter((item) => item.kind === 'file')
+                  .map((item) => item.getAsFile())
+                  .filter((file): file is File => !!file);
+
+            if (!pastedFiles.length) return;
+
+            event.preventDefault();
+            onPasteFiles(pastedFiles);
+          }}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault();
@@ -1758,6 +1775,29 @@ const Chat = () => {
     await sendAttachments(files);
   };
 
+  const handlePasteFiles = useCallback(
+    (files: File[]) => {
+      const supportedFiles = files.filter((file) => {
+        if (file.type.startsWith('image/')) return true;
+        if (file.type.startsWith('audio/')) return true;
+        if (file.type.startsWith('video/')) return true;
+        return /\.(pdf|doc|docx)$/i.test(file.name);
+      });
+
+      if (!supportedFiles.length) {
+        toast({
+          title: 'Arquivo nao suportado',
+          description: 'Cole imagens, audios, videos, PDF ou documentos.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      void sendAttachments(supportedFiles);
+    },
+    [sendAttachments, toast],
+  );
+
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | null = null;
 
@@ -2794,6 +2834,7 @@ const Chat = () => {
                   disabled={isRecording}
                   fileInputRef={fileInputRef}
                   onFileUpload={handleFileUpload}
+                  onPasteFiles={handlePasteFiles}
                   onCaptureScreenshot={captureAndSendScreenshot}
                   onStartRecording={startRecording}
                   onSendMessage={sendMessageDirect}

@@ -50,6 +50,17 @@ const formatTime = (date: string) => {
   });
 };
 
+const inferAudioMimeType = (url?: string | null) => {
+  const lower = String(url || '').toLowerCase();
+  if (lower.includes('.mp3')) return 'audio/mpeg';
+  if (lower.includes('.m4a') || lower.includes('.mp4')) return 'audio/mp4';
+  if (lower.includes('.webm')) return 'audio/webm';
+  if (lower.includes('.wav')) return 'audio/wav';
+  if (lower.includes('.amr')) return 'audio/amr';
+  if (lower.includes('.aac')) return 'audio/aac';
+  return 'audio/ogg';
+};
+
 const MessageItem = memo(({
   message,
   showTail,
@@ -184,11 +195,21 @@ const MessageItem = memo(({
             )}
 
             {message.message_type === 'audio' && message.media_url && (
-              <div className="flex items-center gap-2 bg-black/20 rounded-2xl p-2.5 mb-2 w-full max-w-[320px] min-w-0 border border-white/8">
-                <Volume2 className="w-5 h-5 shrink-0 text-emerald-300" />
-                <audio controls className="w-full min-w-0 h-8" preload="none">
-                  <source src={message.media_url} />
-                </audio>
+              <div className="flex flex-col gap-1.5 bg-black/20 rounded-2xl p-2.5 mb-2 w-full max-w-[320px] min-w-0 border border-white/8">
+                <div className="flex items-center gap-2">
+                  <Volume2 className="w-5 h-5 shrink-0 text-emerald-300" />
+                  <audio controls className="w-full min-w-0 h-8" preload="metadata" src={message.media_url}>
+                    <source src={message.media_url} type={inferAudioMimeType(message.media_url)} />
+                  </audio>
+                </div>
+                <a
+                  href={message.media_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ml-7 text-[11px] text-emerald-200/75 underline-offset-2 hover:text-emerald-100 hover:underline"
+                >
+                  Abrir audio
+                </a>
               </div>
             )}
 

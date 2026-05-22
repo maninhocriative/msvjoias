@@ -2046,41 +2046,26 @@ async function resolveConversation(supabase: any, phone: string, contactName: st
     return created;
   }
 
-  if (existingConversation.status === "human_takeover") {
-    const lastMessageAt = existingConversation.last_message_at ? new Date(existingConversation.last_message_at) : null;
-    const hoursWithoutReply = lastMessageAt
-      ? (Date.now() - lastMessageAt.getTime()) / (1000 * 60 * 60)
-      : 999;
-
-    if (hoursWithoutReply < 4) {
-      return {
-        skipped: true,
-        reason: "human_takeover",
-      };
-    }
-
-    const { data: reopened } = await supabase
+  if (
+    existingConversation.status === "human_takeover" ||
+    existingConversation.active_agent === "human" ||
+    existingConversation.assigned_seller_id ||
+    existingConversation.assigned_seller_name
+  ) {
+    await supabase
       .from("aline_conversations")
       .update({
-        status: "active",
-        current_node: "abertura",
-        active_agent: "aline",
-        last_node: null,
-        collected_data: {
-          ...(existingConversation.collected_data || {}),
-          agente_atual: "aline",
-          contact_name: contactName || existingConversation.collected_data?.contact_name || "Cliente",
-        },
         last_message_at: new Date().toISOString(),
         followup_count: 0,
-        assigned_seller_id: null,
-        assigned_seller_name: null,
       })
-      .eq("id", existingConversation.id)
-      .select()
-      .single();
+      .eq("id", existingConversation.id);
 
-    return reopened;
+    return {
+      skipped: true,
+      reason: existingConversation.assigned_seller_id || existingConversation.assigned_seller_name
+        ? "seller_assigned"
+        : "human_takeover",
+    };
   }
 
   if (existingConversation.status === "finished") {

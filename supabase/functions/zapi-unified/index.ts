@@ -78,7 +78,11 @@ function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function detectMediaUrlFromText(value: string): { type: "image" | "audio" | "video" | "document"; url: string } | null {
+type InboundMediaType = "image" | "audio" | "video" | "document";
+
+const MAX_INBOUND_MEDIA_BYTES = 25 * 1024 * 1024;
+
+function detectMediaUrlFromText(value: string): { type: InboundMediaType; url: string } | null {
   const url = value.trim();
   if (!/^https?:\/\//i.test(url)) return null;
 
@@ -89,7 +93,7 @@ function detectMediaUrlFromText(value: string): { type: "image" | "audio" | "vid
   if (/\.(mp4|mov|webm|m4v)(?:$|[?#])/.test(lower)) {
     return { type: "video", url };
   }
-  if (/\.(mp3|ogg|opus|wav|m4a|webm)(?:$|[?#])/.test(lower)) {
+  if (/\.(mp3|ogg|oga|opus|wav|m4a|aac|amr|webm)(?:$|[?#])/.test(lower) || /temp-file-download\/.*(?:=\.mp3|=\.ogg|=\.oga|=\.opus|=\.wav|=\.m4a|=\.aac|=\.amr|=\.webm)/.test(lower)) {
     return { type: "audio", url };
   }
   if (/\.(pdf|doc|docx|xls|xlsx|txt|zip)(?:$|[?#])/.test(lower)) {
@@ -97,6 +101,61 @@ function detectMediaUrlFromText(value: string): { type: "image" | "audio" | "vid
   }
 
   return null;
+}
+
+function isLikelyMediaUrl(value: string, preferredType?: InboundMediaType): boolean {
+  if (!/^https?:\/\//i.test(value)) return false;
+
+  const detected = detectMediaUrlFromText(value);
+  if (detected) return !preferredType || detected.type === preferredType;
+
+  const lower = value.toLowerCase();
+  if (preferredType === "audio") return /(audio|voice|ptt|recording|microphone|opus|ogg|m4a|mp3|amr|aac|wav)/.test(lower);
+  if (preferredType === "image") return /(image|photo|picture|jpeg|jpg|png|webp|temp-file-download)/.test(lower);
+  if (preferredType === "video") return /(video|mp4|mov|webm|m4v)/.test(lower);
+  if (preferredType === "document") return /(document|file|pdf|doc|docx|xls|xlsx)/.test(lower);
+
+  return /(temp-file-download|media|file|download|backblazeb2)/.test(lower);
+}
+
+function inferMediaExtension(mediaUrl: string, contentType: string, messageType: string): string {
+  const lowerUrl = mediaUrl.toLowerCase();
+  const lowerType = contentType.toLowerCase();
+  const fromUrl = lowerUrl.match(/\.([a-z0-9]{2,5})(?:$|[?#])/i)?.[1];
+  if (fromUrl) return fromUrl === "jpeg" ? "jpg" : fromUrl;
+
+  if (lowerType.includes("ogg")) return "ogg";
+  if (lowerType.includes("mpeg") || lowerType.includes("mp3")) return "mp3";
+  if (lowerType.includes("mp4") || lowerType.includes("m4a")) return messageType === "audio" ? "m4a" : "mp4";
+  if (lowerType.includes("webm")) return "webm";
+  if (lowerType.includes("wav")) return "wav";
+  if (lowerType.includes("amr")) return "amr";
+  if (lowerType.includes("aac")) return "aac";
+  if (lowerType.includes("png")) return "png";
+  if (lowerType.includes("webp")) return "webp";
+  if (lowerType.includes("gif")) return "gif";
+  if (lowerType.includes("jpeg") || lowerType.includes("jpg")) return "jpg";
+  if (lowerType.includes("pdf")) return "pdf";
+
+  if (messageType === "audio") return "ogg";
+  if (messageType === "image") return "jpg";
+  if (messageType === "video") return "mp4";
+  return "bin";
+}
+
+function defaultMediaContentType(messageType: string, extension: string): string {
+  if (messageType === "audio") {
+    if (extension === "mp3") return "audio/mpeg";
+    if (extension === "m4a") return "audio/mp4";
+    if (extension === "webm") return "audio/webm";
+    if (extension === "wav") return "audio/wav";
+    if (extension === "amr") return "audio/amr";
+    if (extension === "aac") return "audio/aac";
+    return "audio/ogg";
+  }
+  if (messageType === "image") return extension === "png" ? "image/png" : extension === "webp" ? "image/webp" : "image/jpeg";
+  if (messageType === "video") return extension === "webm" ? "video/webm" : "video/mp4";
+  return "application/octet-stream";
 }
 
 function coerceSelectedPrice(value: unknown): number | null {
@@ -156,6 +215,9 @@ function normalizeInboundPayload(rawPayload: ZAPIMessage): ZAPIMessage {
     normalizeString(rawPayload.message_type) ||
     normalizeString(rawPayload.messageType) ||
     "text";
+  const preferredMediaType = ["image", "audio", "video", "document"].includes(messageType)
+    ? (messageType as InboundMediaType)
+    : undefined;
   const mediaUrl =
     normalizeString(rawPayload.media_url) ||
     normalizeString(rawPayload.mediaUrl) ||
@@ -174,7 +236,10 @@ function normalizeInboundPayload(rawPayload: ZAPIMessage): ZAPIMessage {
     normalizeString(rawPayload.video?.mediaUrl) ||
     normalizeString(rawPayload.document?.documentUrl) ||
     normalizeString(rawPayload.document?.url) ||
-    normalizeString(rawPayload.document?.mediaUrl);
+    normalizeString(rawPayload.document?.mediaUrl) ||
+    findNestedString(rawPayload, (candidate) => isLikelyMediaUrl(candidate, preferredMediaType), 6) ||
+    findNestedString(rawPayload, (candidate) => isLikelyMediaUrl(candidate), 6) ||
+    "";
   const fileName =
     normalizeString(rawPayload.file_name) ||
     normalizeString(rawPayload.fileName);
@@ -335,6 +400,79 @@ function findNestedString(
   }
 
   return null;
+}
+
+async function mirrorInboundMediaToStorage(
+  supabase: any,
+  mediaUrl: string | null,
+  args: {
+    phone: string;
+    messageType: string;
+    messageId: string | null;
+  },
+): Promise<string | null> {
+  if (!mediaUrl || !["audio", "image", "video", "document"].includes(args.messageType)) return null;
+  if (mediaUrl.includes("/storage/v1/object/public/chat-media/")) return mediaUrl;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15_000);
+
+  try {
+    const response = await fetch(mediaUrl, {
+      signal: controller.signal,
+      headers: {
+        Accept: args.messageType === "audio" ? "audio/*,*/*" : "*/*",
+        "User-Agent": "Mozilla/5.0",
+      },
+      redirect: "follow",
+    });
+
+    if (!response.ok) {
+      console.warn("[ZAPI-UNIFIED] Nao foi possivel baixar midia recebida:", response.status, mediaUrl.substring(0, 120));
+      return null;
+    }
+
+    const contentLength = Number(response.headers.get("content-length") || 0);
+    if (contentLength > MAX_INBOUND_MEDIA_BYTES) {
+      console.warn("[ZAPI-UNIFIED] Midia recebida ignorada por tamanho:", contentLength);
+      return null;
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    if (!arrayBuffer.byteLength || arrayBuffer.byteLength > MAX_INBOUND_MEDIA_BYTES) {
+      console.warn("[ZAPI-UNIFIED] Midia recebida vazia ou grande demais:", arrayBuffer.byteLength);
+      return null;
+    }
+
+    const rawContentType = response.headers.get("content-type") || "";
+    const extension = inferMediaExtension(mediaUrl, rawContentType, args.messageType);
+    const contentType = rawContentType && !rawContentType.includes("text/html")
+      ? rawContentType.split(";")[0]
+      : defaultMediaContentType(args.messageType, extension);
+    const safePhone = args.phone.replace(/\D/g, "") || "unknown";
+    const safeId = (args.messageId || crypto.randomUUID()).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80);
+    const path = `inbound/${args.messageType}/${safePhone}/${Date.now()}-${safeId}.${extension}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("chat-media")
+      .upload(path, arrayBuffer, {
+        contentType,
+        upsert: true,
+      });
+
+    if (uploadError) {
+      console.warn("[ZAPI-UNIFIED] Nao foi possivel salvar midia no Storage:", uploadError.message);
+      return null;
+    }
+
+    const { data } = supabase.storage.from("chat-media").getPublicUrl(path);
+    return data?.publicUrl || null;
+  } catch (error) {
+    console.warn("[ZAPI-UNIFIED] Falha ao espelhar midia recebida:", error instanceof Error ? error.message : error);
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 function collectNestedStrings(
@@ -799,7 +937,7 @@ serve(async (req) => {
     } else if (payload.audio) {
       messageType = "audio";
       mediaUrl = payload.audio.audioUrl || payload.audio.url || payload.audio.mediaUrl || null;
-      messageContent = "[Áudio recebido]";
+      messageContent = "[Audio recebido]";
     } else if (payload.video) {
       messageType = "video";
       mediaUrl = payload.video.videoUrl || payload.video.url || payload.video.mediaUrl || null;
@@ -964,6 +1102,14 @@ serve(async (req) => {
     });
 
     const zapiMessageId = payload.messageId || payload.zaapId || null;
+    const storedMediaUrl = await mirrorInboundMediaToStorage(supabase, mediaUrl, {
+      phone,
+      messageType,
+      messageId: zapiMessageId,
+    });
+    if (storedMediaUrl) {
+      mediaUrl = storedMediaUrl;
+    }
 
     await supabase.from("messages").insert({
       conversation_id: conversationId,
