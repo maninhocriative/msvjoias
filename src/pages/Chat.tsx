@@ -96,16 +96,41 @@ const CONVERSATION_LIST_SELECT =
 const INITIAL_MESSAGE_LIMIT = 80;
 const INITIAL_ALINE_LOG_LIMIT = 120;
 const CONVERSATION_LIST_LIMIT = 500;
+const MESSAGE_DUPLICATE_WINDOW_MS = 2 * 60 * 1000;
+const OPTIMISTIC_REPLACEMENT_WINDOW_MS = 45 * 1000;
 
 const getMessageTime = (message: Partial<Message>) =>
   new Date(message.created_at || '').getTime() || 0;
 
+const isOptimisticMessage = (message: Partial<Message>) =>
+  String(message.id || '').startsWith('optimistic-');
+
+const normalizeMessageText = (value?: string | null) =>
+  String(value || '').trim().replace(/\s+/g, ' ');
+
+const normalizeMediaUrl = (value?: string | null) => {
+  const url = String(value || '').trim();
+  if (!url || url.startsWith('blob:')) return '';
+  return url.split('?')[0];
+};
+
+const isSameTimeWindow = (
+  a: Partial<Message>,
+  b: Partial<Message>,
+  windowMs = MESSAGE_DUPLICATE_WINDOW_MS,
+) => {
+  const aTime = getMessageTime(a);
+  const bTime = getMessageTime(b);
+  if (!aTime || !bTime) return true;
+  return Math.abs(aTime - bTime) <= windowMs;
+};
+
 const isNearDuplicateMessage = (a: Partial<Message>, b: Partial<Message>) => {
-  const aContent = a.content?.trim();
-  const bContent = b.content?.trim();
+  const aContent = normalizeMessageText(a.content);
+  const bContent = normalizeMessageText(b.content);
   if (!aContent || !bContent || aContent !== bContent) return false;
   if (a.is_from_me !== b.is_from_me) return false;
-  return Math.abs(getMessageTime(a) - getMessageTime(b)) <= 30000;
+  return isSameTimeWindow(a, b, 30000);
 };
 
 const sortMessagesByTime = (items: Message[]) =>
@@ -117,6 +142,83 @@ const getConversationTime = (conversation: Partial<Conversation>) =>
 const sortConversationsByRecent = (items: Conversation[]) =>
   [...items].sort((a, b) => getConversationTime(b) - getConversationTime(a));
 
+const areDuplicateMessageRecords = (a: Partial<Message>, b: Partial<Message>) => {
+  if (!a?.id || !b?.id) return false;
+  if (a.id === b.id) return true;
+  if (a.is_from_me !== b.is_from_me) return false;
+
+  const aZapiId = String(a.zapi_message_id || '').trim();
+  const bZapiId = String(b.zapi_message_id || '').trim();
+  if (aZapiId && bZapiId && aZapiId === bZapiId) return true;
+
+  const aType = a.message_type || 'text';
+  const bType = b.message_type || 'text';
+  if (aType !== bType) return false;
+
+  const aMediaUrl = normalizeMediaUrl(a.media_url);
+  const bMediaUrl = normalizeMediaUrl(b.media_url);
+  if (aMediaUrl && bMediaUrl && aMediaUrl === bMediaUrl) return true;
+
+  if (
+    (isOptimisticMessage(a) || isOptimisticMessage(b)) &&
+    ['image', 'audio', 'video', 'document'].includes(aType) &&
+    isSameTimeWindow(a, b, OPTIMISTIC_REPLACEMENT_WINDOW_MS)
+  ) {
+    return true;
+  }
+
+  return isNearDuplicateMessage(a, b);
+};
+
+const mergeDuplicateMessageRecords = (current: Message, incoming: Message) => {
+  const currentIsOptimistic = isOptimisticMessage(current);
+  const incomingIsOptimistic = isOptimisticMessage(incoming);
+
+  if (currentIsOptimistic && !incomingIsOptimistic) {
+    return { ...current, ...incoming };
+  }
+
+  if (!currentIsOptimistic && incomingIsOptimistic) {
+    return {
+      ...current,
+      status: current.status || incoming.status,
+      media_url: current.media_url || incoming.media_url,
+      content: current.content || incoming.content,
+    };
+  }
+
+  return {
+    ...current,
+    ...incoming,
+    id: current.id,
+    created_at: current.created_at || incoming.created_at,
+    zapi_message_id: incoming.zapi_message_id || current.zapi_message_id,
+    media_url: incoming.media_url || current.media_url,
+    content: incoming.content || current.content,
+  };
+};
+
+const dedupeMessagesStable = (items: Message[]) => {
+  const deduped: Message[] = [];
+
+  sortMessagesByTime(items).forEach((message) => {
+    if (!message?.id) return;
+
+    const duplicateIndex = deduped.findIndex((existing) =>
+      areDuplicateMessageRecords(existing, message),
+    );
+
+    if (duplicateIndex >= 0) {
+      deduped[duplicateIndex] = mergeDuplicateMessageRecords(deduped[duplicateIndex], message);
+      return;
+    }
+
+    deduped.push(message);
+  });
+
+  return sortMessagesByTime(deduped);
+};
+
 const areMessagesEqual = (a: Message[], b: Message[]) => {
   if (a === b) return true;
   if (a.length !== b.length) return false;
@@ -127,9 +229,11 @@ const areMessagesEqual = (a: Message[], b: Message[]) => {
       message.id === next.id &&
       message.content === next.content &&
       message.created_at === next.created_at &&
+      message.conversation_id === next.conversation_id &&
       message.status === next.status &&
       message.media_url === next.media_url &&
       message.message_type === next.message_type &&
+      message.zapi_message_id === next.zapi_message_id &&
       message.deleted_at === next.deleted_at &&
       message.edited_at === next.edited_at
     );
@@ -143,7 +247,7 @@ const mergeMessagesStable = (current: Message[], incoming: Message[]) => {
     byId.set(message.id, { ...(byId.get(message.id) || {}), ...message });
   });
 
-  return sortMessagesByTime(Array.from(byId.values()));
+  return dedupeMessagesStable(Array.from(byId.values()));
 };
 const buildPhoneVariants = (phone: string) => {
   const digits = String(phone || '').replace(/\D/g, '');
@@ -459,6 +563,7 @@ const Chat = () => {
   const [editingMessageBusyId, setEditingMessageBusyId] = useState<string | null>(null);
   const [deletingMessageBusyId, setDeletingMessageBusyId] = useState<string | null>(null);
   const [pendingAttachments, setPendingAttachments] = useState<PendingChatAttachment[]>([]);
+  const [composerSending, setComposerSending] = useState(false);
   const audioStreamRef = useRef<MediaStream | null>(null);
   const recordingCancelledRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -474,6 +579,7 @@ const Chat = () => {
   const actionHumanAlertReadyRef = useRef(false);
   const actionHumanConversationIdsRef = useRef<Set<string>>(new Set());
   const pendingAttachmentsRef = useRef<PendingChatAttachment[]>([]);
+  const composerSendingRef = useRef(false);
 
   const scrollMessagesToBottom = useCallback(() => {
     requestAnimationFrame(() => {
@@ -1201,6 +1307,8 @@ const Chat = () => {
         }
       }
 
+      mergedMessages = dedupeMessagesStable(mergedMessages);
+
       if (requestId !== fetchMessagesRequestRef.current) {
         return;
       }
@@ -1304,8 +1412,10 @@ const Chat = () => {
             }
 
             setMessages((prev) => {
-              const next = prev.map((m) =>
-                m.id === updatedMessage.id ? { ...m, ...updatedMessage } : m,
+              const next = dedupeMessagesStable(
+                prev.map((m) =>
+                  m.id === updatedMessage.id ? { ...m, ...updatedMessage } : m,
+                ),
               );
               const cacheKey = currentMessagesCacheKeyRef.current;
               if (cacheKey) messagesCacheRef.current.set(cacheKey, next);
@@ -2043,15 +2153,27 @@ const Chat = () => {
 
   const handleComposerSend = useCallback(
     async (messageText: string) => {
+      if (composerSendingRef.current) return;
+
       const filesToSend = pendingAttachments.map((attachment) => attachment.file);
+      const hasText = messageText.trim().length > 0;
+      if (!hasText && !filesToSend.length) return;
 
-      if (messageText.trim()) {
-        await sendMessageDirect(messageText);
-      }
+      composerSendingRef.current = true;
+      setComposerSending(true);
 
-      if (filesToSend.length) {
-        clearPendingAttachments();
-        await sendAttachments(filesToSend);
+      try {
+        if (hasText) {
+          await sendMessageDirect(messageText);
+        }
+
+        if (filesToSend.length) {
+          clearPendingAttachments();
+          await sendAttachments(filesToSend);
+        }
+      } finally {
+        composerSendingRef.current = false;
+        setComposerSending(false);
       }
     },
     [clearPendingAttachments, pendingAttachments, sendAttachments, sendMessageDirect],
@@ -3174,7 +3296,7 @@ const Chat = () => {
                 )}
 
                 <ChatComposer
-                  disabled={isRecording}
+                  disabled={isRecording || composerSending}
                   fileInputRef={fileInputRef}
                   pendingAttachments={pendingAttachments}
                   onFileUpload={handleFileUpload}

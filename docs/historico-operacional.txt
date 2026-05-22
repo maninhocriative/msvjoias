@@ -1046,3 +1046,10 @@ Proximos passos: commitar, publicar no Lovable e testar colando um print com Ctr
 - Mensagens vindas do log do agente tambem atualizam a previa e reposicionam a conversa na lista quando necessario.
 - Build de producao validado com sucesso na copia local crm_acium_work.
 Proximos passos: commitar e testar no mobile real com conversa nova, mensagem editada e mensagem recebida.
+
+## 2026-05-22 - Duplicacao de imagens no chat
+- Adicionada deduplicacao forte das mensagens renderizadas no chat por id, zapi_message_id, media_url normalizada, conteudo proximo e substituicao de mensagens otimistas.
+- O carregamento inicial, cache e realtime agora passam pelo mesmo normalizador, evitando que uma midia duplicada no banco apareca varias vezes na tela.
+- O envio do composer ganhou trava contra clique duplo/reenvio enquanto texto ou anexos ainda estao sendo processados.
+- Build de producao validado com sucesso na copia local crm_acium_work.
+Proximos passos: commitar e testar envio de uma imagem no WhatsApp/CRM com clique unico e clique duplo.
