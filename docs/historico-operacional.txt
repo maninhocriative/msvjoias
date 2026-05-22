@@ -1029,4 +1029,5 @@ Proximos passos: testar com uma mensagem real enviada pelo CRM e confirmar exclu
 - Build de producao validado com sucesso na copia local crm_acium_work.
 - Commit enviado para main no GitHub.
 - Verificacao de deploy: o repositorio nao possui workflow GitHub Actions, Vercel, Netlify ou script automatico de publicacao; o README indica que a producao do Lovable precisa ser publicada manualmente em Share -> Publish.
+- Corrigido o tracking local do Git: remote.origin.fetch foi restaurado e a branch main agora rastreia origin/main.
 Proximos passos: publicar no Lovable e testar com dois usuarios abertos no chat; se o Publish nao refletir, conferir se o Lovable esta conectado ao repositorio/branch main corretos.
