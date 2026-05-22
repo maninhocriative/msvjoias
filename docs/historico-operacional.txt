@@ -1027,4 +1027,6 @@ Proximos passos: testar com uma mensagem real enviada pelo CRM e confirmar exclu
 - O select da lista de conversas e os tipos locais do Supabase foram atualizados para transportar os novos campos via realtime.
 - Migration aplicada no Supabase remoto e colunas confirmadas em public.conversations.
 - Build de producao validado com sucesso na copia local crm_acium_work.
-Proximos passos: publicar frontend, commitar e testar com dois usuarios abertos no chat.
+- Commit enviado para main no GitHub.
+- Verificacao de deploy: o repositorio nao possui workflow GitHub Actions, Vercel, Netlify ou script automatico de publicacao; o README indica que a producao do Lovable precisa ser publicada manualmente em Share -> Publish.
+Proximos passos: publicar no Lovable e testar com dois usuarios abertos no chat; se o Publish nao refletir, conferir se o Lovable esta conectado ao repositorio/branch main corretos.
