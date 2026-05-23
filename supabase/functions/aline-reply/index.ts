@@ -5081,6 +5081,41 @@ serve(async (req) => {
     const kateMemory = await loadAgentMemory(supabase, phone, "kate");
     const keilaMemory = await loadAgentMemory(supabase, phone, "keila");
     const maluMemory = await loadAgentMemory(supabase, phone, "malu");
+    if (
+      explicitCategory === "oculos" ||
+      (baseData.categoria === "oculos" && detectMaluCatalogRequest(inboundText, buttonResponseId, catalogSelectionHint))
+    ) {
+      const maluResponse = await handleMaluFlow({
+        supabase,
+        conversation: {
+          ...conversation,
+          active_agent: "malu",
+          current_node: isMaluFlowNode(conversation.current_node || "")
+            ? conversation.current_node
+            : "malu_pedido_catalogo_expresso",
+          collected_data: hydrateDataWithMemory(
+            {
+              ...baseData,
+              agente_atual: "malu",
+              categoria: "oculos",
+            },
+            maluMemory,
+          ),
+        },
+        phone,
+        message,
+        contactName,
+        buttonResponseId,
+        catalogSelectionHint,
+        mediaType: mediaTypeForAgent,
+        mediaUrl: mediaUrlForAgent,
+      });
+
+      return new Response(JSON.stringify(maluResponse), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const maluMemoryPreferences = maluMemory?.preferences || {};
     const isMaluContext =
       activeAgent === "malu" ||
