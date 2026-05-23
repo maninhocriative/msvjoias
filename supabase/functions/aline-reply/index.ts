@@ -174,6 +174,10 @@ function detectCategory(text: string, data: AnyRecord): string | null {
   const normalized = normalizeText(text);
   const searchable = `${normalized} ${raw}`;
 
+  if (/culos|armacao|lente/.test(searchable)) {
+    return "oculos";
+  }
+
   if (/oculos|oculo|óculos|óculo|ã³culos|ã³culo|armacao|arma[cç]ao|lente|modelo de oculos|quero testar oculos|provar oculos|oculos de sol/.test(searchable)) {
     return "oculos";
   }
@@ -1152,6 +1156,7 @@ function detectMoreOptionsIntent(text: string): boolean {
 function detectMaluCatalogRequest(text: string, buttonResponseId?: string | null, catalogSelectionHint?: string | null): boolean {
   const normalized = normalizeText([buttonResponseId, catalogSelectionHint, text].filter(Boolean).join(" "));
   if (!normalized) return false;
+  if (/culos|armacao|modelo de oculos|modelos de oculos/.test(normalized)) return true;
 
   return (
     /^(sim|s|ok|pode|claro|manda|mande|quero|quero sim|ver|modelos|ver modelos|oculos|oculo|óculos|óculo|me manda|me mande|mostrar|mostra)$/.test(
@@ -1161,6 +1166,12 @@ function detectMaluCatalogRequest(text: string, buttonResponseId?: string | null
       normalized,
     )
   );
+}
+
+function recentContextHasMaluEyewearPrompt(context?: string | null): boolean {
+  const normalized = normalizeText(context || "");
+  if (/modelos.*culos|culos disponiveis/.test(normalized)) return true;
+  return /modelos de oculos|oculos disponiveis|previa com selfie|quer ver os modelos|catalogo_oculos|malu/.test(normalized);
 }
 
 function extractRingSizes(text: string, currentNode: string): { size1: string | null; size2: string | null } {
@@ -4229,18 +4240,20 @@ Agora me envie uma selfie de frente, com boa iluminação e sem óculos no rosto
     });
   }
 
-  const reply = "Posso te mostrar os modelos de óculos disponíveis ou gerar uma prévia com selfie. Quer ver os modelos?";
-
-  await persistConversation(supabase, conversation.id, "malu", "selecao_oculos", conversation.current_node || null, data);
-  await saveAssistantMessage(supabase, conversation.id, "malu", reply, "selecao_oculos");
-  await saveAgentMemory(supabase, phone, "malu", contactName, data);
-
-  return buildResponsePayload({
-    phone,
-    message: reply,
-    node: "selecao_oculos",
-    collectedData: data,
-    agent: "malu",
+  data.catalogo_malu_enviado = false;
+  return handleMaluFlow({
+    ...args,
+    conversation: {
+      ...conversation,
+      active_agent: "malu",
+      current_node: "malu_forcar_catalogo",
+      collected_data: data,
+    },
+    message: "ver modelos",
+    buttonResponseId: null,
+    catalogSelectionHint: null,
+    mediaType: null,
+    mediaUrl: null,
   });
 }
 
@@ -5068,6 +5081,55 @@ serve(async (req) => {
     const kateMemory = await loadAgentMemory(supabase, phone, "kate");
     const keilaMemory = await loadAgentMemory(supabase, phone, "keila");
     const maluMemory = await loadAgentMemory(supabase, phone, "malu");
+    const maluMemoryPreferences = maluMemory?.preferences || {};
+    const isMaluContext =
+      activeAgent === "malu" ||
+      baseData.agente_atual === "malu" ||
+      baseData.categoria === "oculos" ||
+      isMaluFlowNode(conversation.current_node || "") ||
+      recentContextHasMaluEyewearPrompt(recentCrmContext) ||
+      maluMemoryPreferences.categoria === "oculos";
+    const hasMaluSelectedProduct =
+      !!(baseData.selected_sku || baseData.selected_product?.id || maluMemory?.last_product_sku || maluMemory?.last_product_name);
+    const shouldForceMaluFlow =
+      isMaluContext &&
+      (
+        detectMaluCatalogRequest(inboundText, buttonResponseId, catalogSelectionHint) ||
+        (mediaTypeForAgent === "image" && mediaUrlForAgent && hasMaluSelectedProduct)
+      );
+
+    if (shouldForceMaluFlow) {
+      const maluResponse = await handleMaluFlow({
+        supabase,
+        conversation: {
+          ...conversation,
+          active_agent: "malu",
+          current_node: isMaluFlowNode(conversation.current_node || "")
+            ? conversation.current_node
+            : "malu_contexto_historico",
+          collected_data: hydrateDataWithMemory(
+            {
+              ...baseData,
+              agente_atual: "malu",
+              categoria: "oculos",
+            },
+            maluMemory,
+          ),
+        },
+        phone,
+        message,
+        contactName,
+        buttonResponseId,
+        catalogSelectionHint,
+        mediaType: mediaTypeForAgent,
+        mediaUrl: mediaUrlForAgent,
+      });
+
+      return new Response(JSON.stringify(maluResponse), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const intelligence = await buildConversationIntelligence({
       text: inboundText,
       data: baseData,
