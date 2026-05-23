@@ -3950,6 +3950,7 @@ async function handleMaluFlow(args: {
   const normalizedSelectionToken = normalizeText(selectionToken);
   const isChoiceText = /escolher este|quero este|escolher|quero esse|quero esse modelo|preview|previa|prévia|testar|provar/.test(normalizedSelectionToken);
   const isDetailsText = /ver mais|detalhes|mais detalhes/.test(normalizedSelectionToken);
+  const forceCatalogRequest = detectMaluCatalogRequest(message, buttonResponseId, catalogSelectionHint);
   let selectedFromCatalog = findCatalogSelection(
     buttonResponseId || catalogSelectionHint || message,
     getCatalogSelectionPool(data),
@@ -3960,13 +3961,11 @@ async function handleMaluFlow(args: {
   const wantsDetails = /^details[_-]/i.test(String(buttonResponseId || "")) || isDetailsText;
   const wantsMoreOptions = detectMoreOptionsIntent(message) || /^more_options$/i.test(String(buttonResponseId || ""));
   const wantsCatalogResend = detectCatalogResendIntent(message);
-  const confirmsCatalogRequest = detectMaluCatalogRequest(message, buttonResponseId, catalogSelectionHint);
+  const confirmsCatalogRequest = forceCatalogRequest;
   const explicitEyewearCatalogRequest =
-    !buttonResponseId &&
-    !catalogSelectionHint &&
-    (detectCategory(message, {}) === "oculos" || wantsCatalogResend || wantsMoreOptions || confirmsCatalogRequest);
+    detectCategory(message, {}) === "oculos" || wantsCatalogResend || wantsMoreOptions || confirmsCatalogRequest;
 
-  if (explicitEyewearCatalogRequest && !selectedFromCatalog) {
+  if (forceCatalogRequest || (explicitEyewearCatalogRequest && !selectedFromCatalog)) {
     delete data.selected_product;
     delete data.selected_sku;
     delete data.selected_name;
@@ -3976,6 +3975,7 @@ async function handleMaluFlow(args: {
     delete data.malu_preview_status;
     delete data.malu_preview_approved;
     data.catalogo_malu_enviado = false;
+    selectedFromCatalog = null;
   }
 
   if (selectedFromCatalog) {
@@ -4026,7 +4026,7 @@ async function handleMaluFlow(args: {
     return buildMaluCards(catalog);
   };
 
-  if (!data.catalogo_malu_enviado || (!hasSelectedProduct && (wantsMoreOptions || wantsCatalogResend || confirmsCatalogRequest))) {
+  if (forceCatalogRequest || !data.catalogo_malu_enviado || (!hasSelectedProduct && (wantsMoreOptions || wantsCatalogResend || confirmsCatalogRequest))) {
     const shownSkus = Array.isArray(data.last_catalog)
       ? data.last_catalog.map((item: any) => String(item?.sku || item?.id || "")).filter(Boolean)
       : [];

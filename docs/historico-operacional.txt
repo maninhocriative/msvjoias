@@ -1058,4 +1058,5 @@ Proximos passos: commitar e testar envio de uma imagem no WhatsApp/CRM com cliqu
 - Corrigido o detector da Malu para tratar respostas curtas como "oculos", "sim" e "quero" como pedido direto de catalogo, em vez de repetir a pergunta "Quer ver os modelos?".
 - O envio de produtos de oculos pela Z-API passou a usar imagem/video simples com legenda e botoes separados "Ver mais" e "Quero este", evitando depender de card interativo com midia embutida.
 - O label padrao do card da Malu foi padronizado para "Quero este", mantendo apenas os dois botoes esperados no fluxo de oculos.
+- Reforcado apos teste real: respostas curtas no fluxo da Malu agora limpam produto/foto/preview antigos e forcam o envio do catalogo mesmo se a conversa estava com estado antigo salvo.
 Proximos passos: validar em conversa real no WhatsApp se os modelos aparecem no aparelho e se os botoes retornam o SKU correto para a Malu.
