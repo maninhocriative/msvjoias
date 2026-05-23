@@ -1053,3 +1053,9 @@ Proximos passos: commitar e testar no mobile real com conversa nova, mensagem ed
 - O envio do composer ganhou trava contra clique duplo/reenvio enquanto texto ou anexos ainda estao sendo processados.
 - Build de producao validado com sucesso na copia local crm_acium_work.
 Proximos passos: commitar e testar envio de uma imagem no WhatsApp/CRM com clique unico e clique duplo.
+
+## 2026-05-23 - Catalogo de oculos no WhatsApp
+- Corrigido o detector da Malu para tratar respostas curtas como "oculos", "sim" e "quero" como pedido direto de catalogo, em vez de repetir a pergunta "Quer ver os modelos?".
+- O envio de produtos de oculos pela Z-API passou a usar imagem/video simples com legenda e botoes separados "Ver mais" e "Quero este", evitando depender de card interativo com midia embutida.
+- O label padrao do card da Malu foi padronizado para "Quero este", mantendo apenas os dois botoes esperados no fluxo de oculos.
+Proximos passos: validar em conversa real no WhatsApp se os modelos aparecem no aparelho e se os botoes retornam o SKU correto para a Malu.

@@ -1149,6 +1149,20 @@ function detectMoreOptionsIntent(text: string): boolean {
   );
 }
 
+function detectMaluCatalogRequest(text: string, buttonResponseId?: string | null, catalogSelectionHint?: string | null): boolean {
+  const normalized = normalizeText([buttonResponseId, catalogSelectionHint, text].filter(Boolean).join(" "));
+  if (!normalized) return false;
+
+  return (
+    /^(sim|s|ok|pode|claro|manda|mande|quero|quero sim|ver|modelos|ver modelos|oculos|oculo|óculos|óculo|me manda|me mande|mostrar|mostra)$/.test(
+      normalized,
+    ) ||
+    /ver modelos|mostrar modelos|mostra modelos|mande os modelos|manda os modelos|me mande os modelos|me manda os modelos|quero ver os modelos|quero ver oculos|quero ver óculos|quero oculos|quero óculos|modelos de oculos|modelos de óculos/.test(
+      normalized,
+    )
+  );
+}
+
 function extractRingSizes(text: string, currentNode: string): { size1: string | null; size2: string | null } {
   const normalized = normalizeText(text);
   const sizeContext =
@@ -1850,7 +1864,7 @@ function buildMaluCards(products: CatalogProduct[]): CatalogProduct[] {
       ...product,
       caption: captionLines.join("\n"),
       button_id: `select_${product.sku || product.id}`,
-      button_label: "Escolher este",
+      button_label: "Quero este",
       buttons: [
         {
           id: `details_${product.sku || product.id}`,
@@ -3946,13 +3960,7 @@ async function handleMaluFlow(args: {
   const wantsDetails = /^details[_-]/i.test(String(buttonResponseId || "")) || isDetailsText;
   const wantsMoreOptions = detectMoreOptionsIntent(message) || /^more_options$/i.test(String(buttonResponseId || ""));
   const wantsCatalogResend = detectCatalogResendIntent(message);
-  const confirmsCatalogRequest =
-    /^(sim|s|pode|quero|ok|claro|manda|mande|ver|modelos|ver modelos|me manda|me mande)( os modelos)?$/.test(
-      normalizedSelectionToken,
-    ) ||
-    /ver modelos|mostrar modelos|mande os modelos|manda os modelos|me mande os modelos|me manda os modelos/.test(
-      normalizedSelectionToken,
-    );
+  const confirmsCatalogRequest = detectMaluCatalogRequest(message, buttonResponseId, catalogSelectionHint);
   const explicitEyewearCatalogRequest =
     !buttonResponseId &&
     !catalogSelectionHint &&

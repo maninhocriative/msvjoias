@@ -1306,7 +1306,54 @@ serve(async (req) => {
           | { success: boolean; messageId: string | null; error: unknown }
           | null = null;
 
-        if (useProductButtons) {
+        if (useProductButtons && product.force_separate_buttons) {
+          if (mediaUrlToSend) {
+            result = (
+              await sendWithGovernorLease(sequenceLeaseResult.lease, () =>
+                sendMedia(
+                  phone,
+                  mediaType,
+                  mediaUrlToSend,
+                  product.caption || product.name || "Produto",
+                  ZAPI_INSTANCE_ID,
+                  ZAPI_TOKEN,
+                  ZAPI_CLIENT_TOKEN,
+                ),
+              )
+            ).result;
+          } else {
+            result = (
+              await sendWithGovernorLease(sequenceLeaseResult.lease, () =>
+                sendText(
+                  phone,
+                  product.caption || product.name || "Produto",
+                  ZAPI_INSTANCE_ID,
+                  ZAPI_TOKEN,
+                  ZAPI_CLIENT_TOKEN,
+                ),
+              )
+            ).result;
+          }
+
+          if (result?.success) {
+            await sleep(700);
+            const separateButtons = (
+              await sendWithGovernorLease(sequenceLeaseResult.lease, () =>
+                sendProductChoiceButtons(
+                  phone,
+                  product,
+                  ZAPI_INSTANCE_ID,
+                  ZAPI_TOKEN,
+                  ZAPI_CLIENT_TOKEN,
+                ),
+              )
+            ).result;
+
+            if (!separateButtons?.success) {
+              console.warn("[ZAPI-UNIFIED] Falha ao enviar botoes separados do produto:", separateButtons?.error);
+            }
+          }
+        } else if (useProductButtons) {
           result = (
             await sendWithGovernorLease(sequenceLeaseResult.lease, () =>
               sendInteractiveProductCard(
