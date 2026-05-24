@@ -82,12 +82,107 @@ type InboundMediaType = "image" | "audio" | "video" | "document";
 
 const MAX_INBOUND_MEDIA_BYTES = 25 * 1024 * 1024;
 
+function normalizeUrlForComparison(url: string): string {
+  return url.trim().split("?")[0].replace(/\/+$/, "");
+}
+
+function isWhatsAppProfileImageUrl(value: string | null | undefined): boolean {
+  const lower = String(value || "").toLowerCase();
+  return (
+    lower.includes("pps.whatsapp.net") ||
+    lower.includes("profilepic") ||
+    lower.includes("profile_pic") ||
+    lower.includes("profile-picture") ||
+    lower.includes("profilephoto") ||
+    lower.includes("avatar")
+  );
+}
+
+function isMessageContentOnlyMediaUrl(content: string, mediaUrl: string | null): boolean {
+  const trimmed = content.trim();
+  if (!trimmed || !/^https?:\/\//i.test(trimmed)) return false;
+
+  if (mediaUrl && normalizeUrlForComparison(trimmed) === normalizeUrlForComparison(mediaUrl)) {
+    return true;
+  }
+
+  const detected = detectMediaUrlFromText(trimmed);
+  if (!detected) return false;
+
+  if (mediaUrl && normalizeUrlForComparison(detected.url) === normalizeUrlForComparison(mediaUrl)) {
+    return true;
+  }
+
+  return trimmed === detected.url || /^https?:\/\/\S+$/i.test(trimmed);
+}
+
+function sanitizeInboundMessageContent(
+  content: string,
+  mediaUrl: string | null,
+  messageType: string,
+): string {
+  const trimmed = content.trim();
+  if (!trimmed) return "";
+
+  if (isWhatsAppProfileImageUrl(trimmed)) return "";
+
+  if (["image", "video", "audio", "document"].includes(messageType) && mediaUrl) {
+    if (isMessageContentOnlyMediaUrl(trimmed, mediaUrl)) return "";
+  }
+
+  if (mediaUrl && normalizeUrlForComparison(trimmed) === normalizeUrlForComparison(mediaUrl)) {
+    return "";
+  }
+
+  return trimmed;
+}
+
+function hasExplicitInboundMedia(rawPayload: ZAPIMessage): boolean {
+  const declaredType = normalizeString(rawPayload.message_type) || normalizeString(rawPayload.messageType);
+  return !!(
+    rawPayload.image ||
+    rawPayload.audio ||
+    rawPayload.video ||
+    rawPayload.document ||
+    ["image", "audio", "video", "document"].includes(declaredType)
+  );
+}
+
+function shouldUseNestedMediaUrl(
+  rawPayload: ZAPIMessage,
+  messageType: string,
+  messageContent: string,
+  nestedMediaUrl: string,
+): boolean {
+  if (!nestedMediaUrl) return false;
+  if (isWhatsAppProfileImageUrl(nestedMediaUrl)) return false;
+  if (hasExplicitInboundMedia(rawPayload)) return true;
+  if (normalizeString(rawPayload.imageUrl) || normalizeString(rawPayload.media_url) || normalizeString(rawPayload.mediaUrl)) {
+    return true;
+  }
+  if (messageContent && isMessageContentOnlyMediaUrl(messageContent, nestedMediaUrl)) return true;
+
+  const detectedInContent = messageContent ? detectMediaUrlFromText(messageContent) : null;
+  const hasRealTextContent =
+    !!messageContent &&
+    !detectedInContent &&
+    messageContent.replace(/#?ACIUMP[-_\s]?[A-Z0-9]{4,24}/gi, "").trim().length > 0;
+
+  if (hasRealTextContent && messageType === "text") return false;
+
+  return messageType !== "text";
+}
+
 function detectMediaUrlFromText(value: string): { type: InboundMediaType; url: string } | null {
   const url = value.trim();
   if (!/^https?:\/\//i.test(url)) return null;
+  if (isWhatsAppProfileImageUrl(url)) return null;
 
   const lower = url.toLowerCase();
-  if (/\.(jpg|jpeg|png|webp|gif)(?:$|[?#])/.test(lower) || /temp-file-download\/.*(?:=\.jpg|=\.jpeg|=\.png|=\.webp)/.test(lower)) {
+  if (
+    /\.(jpg|jpeg|png|webp|gif)(?:$|[?#])/.test(lower) ||
+    /temp-file-download\/.*(?:=\.jpg|=\.jpeg|=\.png|=\.webp)/.test(lower)
+  ) {
     return { type: "image", url };
   }
   if (/\.(mp4|mov|webm|m4v)(?:$|[?#])/.test(lower)) {
@@ -105,6 +200,7 @@ function detectMediaUrlFromText(value: string): { type: InboundMediaType; url: s
 
 function isLikelyMediaUrl(value: string, preferredType?: InboundMediaType): boolean {
   if (!/^https?:\/\//i.test(value)) return false;
+  if (isWhatsAppProfileImageUrl(value)) return false;
 
   const detected = detectMediaUrlFromText(value);
   if (detected) return !preferredType || detected.type === preferredType;
@@ -218,7 +314,7 @@ function normalizeInboundPayload(rawPayload: ZAPIMessage): ZAPIMessage {
   const preferredMediaType = ["image", "audio", "video", "document"].includes(messageType)
     ? (messageType as InboundMediaType)
     : undefined;
-  const mediaUrl =
+  const explicitMediaUrl =
     normalizeString(rawPayload.media_url) ||
     normalizeString(rawPayload.mediaUrl) ||
     normalizeString(rawPayload.imageUrl) ||
@@ -237,9 +333,14 @@ function normalizeInboundPayload(rawPayload: ZAPIMessage): ZAPIMessage {
     normalizeString(rawPayload.document?.documentUrl) ||
     normalizeString(rawPayload.document?.url) ||
     normalizeString(rawPayload.document?.mediaUrl) ||
+    "";
+  const nestedMediaUrl =
     findNestedString(rawPayload, (candidate) => isLikelyMediaUrl(candidate, preferredMediaType), 6) ||
     findNestedString(rawPayload, (candidate) => isLikelyMediaUrl(candidate), 6) ||
     "";
+  const mediaUrl =
+    (isWhatsAppProfileImageUrl(explicitMediaUrl) ? "" : explicitMediaUrl) ||
+    (shouldUseNestedMediaUrl(rawPayload, messageType, messageContent, nestedMediaUrl) ? nestedMediaUrl : "");
   const fileName =
     normalizeString(rawPayload.file_name) ||
     normalizeString(rawPayload.fileName);
@@ -302,6 +403,109 @@ function generateHash(phone: string, message: string): string {
   const minuteKey = `${now.getFullYear()}${now.getMonth()}${now.getDate()}${now.getHours()}${now.getMinutes()}`;
   const msgKey = message.toLowerCase().replace(/\s+/g, "").substring(0, 100);
   return `${phone}_${msgKey}_${minuteKey}`;
+}
+
+async function shouldSkipNearDuplicateMessage(
+  supabase: any,
+  conversationId: string,
+  args: {
+    content: string;
+    messageType: string;
+    mediaUrl: string | null;
+  },
+): Promise<{ skip: boolean; reason?: string; mergedMessageId?: string }> {
+  const windowStart = new Date(Date.now() - 60_000).toISOString();
+  const normalizedContent = args.content.trim();
+
+  if (
+    ["image", "video"].includes(args.messageType) &&
+    args.mediaUrl &&
+    normalizedContent
+  ) {
+    const { data: existingTextMessage } = await supabase
+      .from("messages")
+      .select("id")
+      .eq("conversation_id", conversationId)
+      .eq("is_from_me", false)
+      .eq("message_type", "text")
+      .eq("content", normalizedContent)
+      .gte("created_at", windowStart)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existingTextMessage?.id) {
+      await supabase
+        .from("messages")
+        .update({
+          message_type: args.messageType,
+          media_url: args.mediaUrl,
+          content: normalizedContent,
+        })
+        .eq("id", existingTextMessage.id);
+
+      return {
+        skip: true,
+        reason: "merged_text_into_media",
+        mergedMessageId: existingTextMessage.id,
+      };
+    }
+  }
+
+  if (normalizedContent) {
+    const { data: sameContentMessages } = await supabase
+      .from("messages")
+      .select("id, message_type, media_url")
+      .eq("conversation_id", conversationId)
+      .eq("is_from_me", false)
+      .eq("content", normalizedContent)
+      .gte("created_at", windowStart)
+      .order("created_at", { ascending: false })
+      .limit(3);
+
+    for (const existing of sameContentMessages || []) {
+      if (existing.message_type === args.messageType) {
+        return { skip: true, reason: "near_duplicate_content" };
+      }
+
+      if (
+        args.messageType === "text" &&
+        ["image", "video"].includes(String(existing.message_type || ""))
+      ) {
+        return { skip: true, reason: "text_duplicate_of_media_caption" };
+      }
+    }
+  }
+
+  if (
+    args.messageType === "text" &&
+    normalizedContent &&
+    isMessageContentOnlyMediaUrl(normalizedContent, null)
+  ) {
+    const detected = detectMediaUrlFromText(normalizedContent);
+    if (detected) {
+      const { data: recentMediaMessages } = await supabase
+        .from("messages")
+        .select("id, media_url")
+        .eq("conversation_id", conversationId)
+        .eq("is_from_me", false)
+        .eq("message_type", detected.type)
+        .gte("created_at", windowStart)
+        .not("media_url", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(3);
+
+      for (const existing of recentMediaMessages || []) {
+        const existingMedia = normalizeUrlForComparison(String(existing.media_url || ""));
+        const incomingMedia = normalizeUrlForComparison(detected.url);
+        if (existingMedia && incomingMedia && existingMedia === incomingMedia) {
+          return { skip: true, reason: "url_duplicate_of_recent_media" };
+        }
+      }
+    }
+  }
+
+  return { skip: false };
 }
 
 function detectInfluencerCode(message: string): string | null {
@@ -982,6 +1186,8 @@ serve(async (req) => {
       }
     }
 
+    messageContent = sanitizeInboundMessageContent(messageContent, mediaUrl, messageType);
+
     if (!phone) {
       return new Response(
         JSON.stringify({ success: true, skipped: true, reason: "no_phone" }),
@@ -1016,14 +1222,17 @@ serve(async (req) => {
       );
     }
 
-    if (!messageContent && messageType === "text") {
+    if (!messageContent && !mediaUrl && !buttonResponseId) {
       return new Response(
         JSON.stringify({ success: true, skipped: true, reason: "empty_content" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    const dedupeKey = payload.messageId || payload.zaapId || generateHash(phone, messageContent || "no-content");
+    const dedupeKey =
+      payload.messageId ||
+      payload.zaapId ||
+      generateHash(phone, `${messageType}:${messageContent || mediaUrl || "no-content"}`);
     const { error: dedupeInsertError } = await supabase
       .from("processed_messages")
       .insert({ message_id: dedupeKey, phone });
@@ -1051,6 +1260,7 @@ serve(async (req) => {
     }
 
     let conversationId: string;
+    let existingConversationUnread = 0;
     const { data: existingConversation } = await supabase
       .from("conversations")
       .select("id, unread_count, contact_number, last_message_at, created_at")
@@ -1062,17 +1272,7 @@ serve(async (req) => {
 
     if (existingConversation?.id) {
       conversationId = existingConversation.id;
-
-      await supabase
-        .from("conversations")
-        .update({
-          contact_number: phone,
-          contact_name: contactName,
-          last_message: messageContent || `[${messageType}]`,
-          unread_count: Number(existingConversation.unread_count || 0) + 1,
-          last_message_at: new Date().toISOString(),
-        })
-        .eq("id", conversationId);
+      existingConversationUnread = Number(existingConversation.unread_count || 0);
     } else {
       const { data: createdConversation, error: createConversationError } = await supabase
         .from("conversations")
@@ -1082,7 +1282,7 @@ serve(async (req) => {
           platform: "whatsapp",
           last_message: messageContent || `[${messageType}]`,
           last_message_at: new Date().toISOString(),
-          unread_count: 1,
+          unread_count: 0,
         })
         .select()
         .single();
@@ -1094,13 +1294,6 @@ serve(async (req) => {
       conversationId = createdConversation.id;
     }
 
-    await recordInfluencerLead(supabase, influencerCode, {
-      conversationId,
-      phone,
-      contactName,
-      firstMessage: messageContent,
-    });
-
     const zapiMessageId = payload.messageId || payload.zaapId || null;
     const storedMediaUrl = await mirrorInboundMediaToStorage(supabase, mediaUrl, {
       phone,
@@ -1110,6 +1303,70 @@ serve(async (req) => {
     if (storedMediaUrl) {
       mediaUrl = storedMediaUrl;
     }
+
+    const nearDuplicate = await shouldSkipNearDuplicateMessage(supabase, conversationId, {
+      content: messageContent,
+      messageType,
+      mediaUrl,
+    });
+
+    if (nearDuplicate.skip) {
+      const mergedIntoExisting = nearDuplicate.reason === "merged_text_into_media";
+
+      if (mergedIntoExisting) {
+        await supabase
+          .from("conversations")
+          .update({
+            contact_number: phone,
+            contact_name: contactName,
+            last_message: messageContent || `[${messageType}]`,
+            unread_count: existingConversation?.id ? existingConversationUnread + 1 : 1,
+            last_message_at: new Date().toISOString(),
+          })
+          .eq("id", conversationId);
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          skipped: true,
+          reason: nearDuplicate.reason,
+          message_saved: mergedIntoExisting,
+          merged_message_id: nearDuplicate.mergedMessageId || null,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (existingConversation?.id) {
+      await supabase
+        .from("conversations")
+        .update({
+          contact_number: phone,
+          contact_name: contactName,
+          last_message: messageContent || `[${messageType}]`,
+          unread_count: existingConversationUnread + 1,
+          last_message_at: new Date().toISOString(),
+        })
+        .eq("id", conversationId);
+    } else {
+      await supabase
+        .from("conversations")
+        .update({
+          contact_name: contactName,
+          last_message: messageContent || `[${messageType}]`,
+          unread_count: 1,
+          last_message_at: new Date().toISOString(),
+        })
+        .eq("id", conversationId);
+    }
+
+    await recordInfluencerLead(supabase, influencerCode, {
+      conversationId,
+      phone,
+      contactName,
+      firstMessage: messageContent,
+    });
 
     await supabase.from("messages").insert({
       conversation_id: conversationId,
@@ -1122,6 +1379,11 @@ serve(async (req) => {
     });
 
     let messageForAline = messageContent;
+    if (!messageForAline && messageType === "image" && mediaUrl) {
+      messageForAline = "[imagem recebida]";
+    } else if (!messageForAline && messageType === "video" && mediaUrl) {
+      messageForAline = "[video recebido]";
+    }
 
     if (messageType === "audio" && mediaUrl) {
       try {

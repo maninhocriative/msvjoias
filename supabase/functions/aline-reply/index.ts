@@ -7,6 +7,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const MAX_PREVIEW_GENERATIONS_PER_CUSTOMER = 2;
+
 type MemoryAgent = "aline" | "keila" | "kate" | "malu";
 type ConversationAgent = "aline" | "keila" | "kate" | "malu" | "human";
 type AnyRecord = Record<string, any>;
@@ -1498,6 +1500,9 @@ async function saveAgentMemory(
     pending_customer_question: data.pending_customer_question || null,
     customer_question_history: data.customer_question_history || [],
     buying_signal_detected: data.buying_signal_detected || null,
+    preview_generation_count: data.preview_generation_count || 0,
+    preview_generation_limit: MAX_PREVIEW_GENERATIONS_PER_CUSTOMER,
+    preview_generation_last_at: data.preview_generation_last_at || null,
   };
 
   await supabase.from("customer_agent_memory").upsert(
@@ -1553,10 +1558,33 @@ function hydrateDataWithMemory(data: AnyRecord, memory: AnyRecord | null) {
   if (!data.pending_customer_question && preferences.pending_customer_question) data.pending_customer_question = preferences.pending_customer_question;
   if (!data.customer_question_history && preferences.customer_question_history) data.customer_question_history = preferences.customer_question_history;
   if (!data.buying_signal_detected && preferences.buying_signal_detected) data.buying_signal_detected = preferences.buying_signal_detected;
+  if (!data.preview_generation_count && preferences.preview_generation_count) data.preview_generation_count = preferences.preview_generation_count;
+  if (!data.preview_generation_limit && preferences.preview_generation_limit) data.preview_generation_limit = preferences.preview_generation_limit;
+  if (!data.preview_generation_last_at && preferences.preview_generation_last_at) data.preview_generation_last_at = preferences.preview_generation_last_at;
   if (!data.selected_sku && memory.last_product_sku) data.selected_sku = memory.last_product_sku;
   if (!data.selected_name && memory.last_product_name) data.selected_name = memory.last_product_name;
 
   return data;
+}
+
+function getPreviewGenerationCount(data: AnyRecord): number {
+  const parsed = Number(data.preview_generation_count || 0);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+}
+
+function hasPreviewGenerationBudget(data: AnyRecord): boolean {
+  return getPreviewGenerationCount(data) < MAX_PREVIEW_GENERATIONS_PER_CUSTOMER;
+}
+
+function registerPreviewGeneration(data: AnyRecord, agent: "kate" | "malu") {
+  const nextCount = getPreviewGenerationCount(data) + 1;
+  const now = new Date().toISOString();
+  data.preview_generation_count = nextCount;
+  data.preview_generation_limit = MAX_PREVIEW_GENERATIONS_PER_CUSTOMER;
+  data.preview_generation_last_at = now;
+  data[`${agent}_preview_generation_count`] = Number(data[`${agent}_preview_generation_count`] || 0) + 1;
+  data[`${agent}_preview_generation_last_at`] = now;
+  return nextCount;
 }
 
 function formatProductCaption(product: Partial<CatalogProduct>) {
@@ -2266,6 +2294,53 @@ async function updateCrmLeadStatus(supabase: any, phone: string, leadStatus: str
     console.error("[ALINE-REPLY] updateCrmLeadStatus failed:", error);
   }
 }
+
+async function handoffPreviewLimitToHuman(args: {
+  supabase: any;
+  conversation: any;
+  phone: string;
+  contactName: string;
+  data: AnyRecord;
+  agent: "kate" | "malu";
+  productLabel: string;
+}) {
+  const { supabase, conversation, phone, contactName, data, agent, productLabel } = args;
+  const agentName = agent === "kate" ? "Kate" : "Malu";
+  const safeProductLabel = productLabel || (agent === "kate" ? "pingente escolhido" : "óculos escolhido");
+  const assignmentReason = `${agentName} atingiu limite de ${MAX_PREVIEW_GENERATIONS_PER_CUSTOMER} previas para ${safeProductLabel}`;
+  const reply = `Já preparei ${MAX_PREVIEW_GENERATIONS_PER_CUSTOMER} simulações para você. Para seguir com segurança, vou chamar um vendedor para continuar daqui sem gerar novas imagens automáticas.`;
+
+  data.preview_generation_limit_reached = true;
+  data.preview_generation_limit = MAX_PREVIEW_GENERATIONS_PER_CUSTOMER;
+  data.agente_atual = "human";
+  data.handoff_reason = "preview_generation_limit";
+
+  await supabase
+    .from("aline_conversations")
+    .update({
+      status: "human_takeover",
+      active_agent: "human",
+      assignment_reason: assignmentReason,
+      collected_data: data,
+      last_message_at: new Date().toISOString(),
+      agent_handoff_at: new Date().toISOString(),
+    })
+    .eq("id", conversation.id);
+
+  await saveAssistantMessage(supabase, conversation.id, agent, reply, "human_takeover_preview_limit");
+  await saveAgentMemory(supabase, phone, agent, contactName, data);
+  await updateCrmLeadStatus(supabase, phone, "humano");
+
+  return buildResponsePayload({
+    phone,
+    message: reply,
+    node: "human_takeover_preview_limit",
+    selectedProduct: data.selected_product || null,
+    collectedData: data,
+    agent: "human",
+  });
+}
+
 async function handoffKeilaToHuman(args: {
   supabase: any;
   supabaseUrl: string;
@@ -2457,8 +2532,8 @@ Resultado final: a selfie original do cliente usando exatamente o óculos escolh
 
   const imageModel = Deno.env.get("OPENAI_EYEWEAR_IMAGE_MODEL") ||
     Deno.env.get("OPENAI_IMAGE_MODEL") ||
-    "gpt-image-1.5";
-  const modelCandidates = Array.from(new Set([imageModel, "gpt-image-1.5", "gpt-image-1"].filter(Boolean)));
+    "gpt-image-2";
+  const modelCandidates = Array.from(new Set([imageModel, "gpt-image-2", "gpt-image-1.5", "gpt-image-1"].filter(Boolean)));
   let imagePayload: AnyRecord | null = null;
   let lastErrorText = "";
 
@@ -2476,7 +2551,7 @@ Resultado final: a selfie original do cliente usando exatamente o óculos escolh
         { image_url: productImageUrl },
       ],
       prompt,
-      size: "1024x1024",
+      size: "1024x1536",
       quality: "high",
       output_format: "png",
     }),
@@ -3455,6 +3530,18 @@ A fotogravação de 1 lado já está inclusa.`;
       data.kate_customer_photo_url = effectiveMediaUrl;
       data.kate_photo_requested = true;
 
+      if (!hasPreviewGenerationBudget(data)) {
+        return await handoffPreviewLimitToHuman({
+          supabase,
+          conversation,
+          phone,
+          contactName,
+          data,
+          agent: "kate",
+          productLabel: cleanCustomerProductName(data.selected_name),
+        });
+      }
+
       try {
         const previewImageUrl = await generateKatePreview({
           supabase,
@@ -3466,6 +3553,7 @@ A fotogravação de 1 lado já está inclusa.`;
         data.kate_preview_image_url = previewImageUrl;
         data.kate_preview_status = "sent";
         data.kate_preview_approved = false;
+        registerPreviewGeneration(data, "kate");
 
         const reply = `Recebi sua foto! Preparei uma simulacao de fotogravacao do *${cleanCustomerProductName(data.selected_name)}* para voce conferir. Importante: essa imagem e apenas uma simulacao. Apos o fechamento, o vendedor envia a arte original para sua aprovacao antes da gravacao.`;
 
@@ -3722,6 +3810,18 @@ Se preferir seguir sem simulacao, posso avancar com entrega e pagamento agora. D
       data.kate_customer_photo_url = effectiveMediaUrl;
       data.kate_preview_approved = false;
 
+      if (!hasPreviewGenerationBudget(data)) {
+        return await handoffPreviewLimitToHuman({
+          supabase,
+          conversation,
+          phone,
+          contactName,
+          data,
+          agent: "kate",
+          productLabel: cleanCustomerProductName(data.selected_name),
+        });
+      }
+
       try {
         const previewImageUrl = await generateKatePreview({
           supabase,
@@ -3732,6 +3832,7 @@ Se preferir seguir sem simulacao, posso avancar com entrega e pagamento agora. D
 
         data.kate_preview_image_url = previewImageUrl;
         data.kate_preview_status = "resent";
+        registerPreviewGeneration(data, "kate");
 
         const reply = "Perfeito! Preparei uma nova simulacao com essa foto para voce conferir. Lembrando: essa imagem e apenas uma simulacao; depois do fechamento, o vendedor envia a arte original para sua aprovacao antes da gravacao.";
 
@@ -4013,7 +4114,10 @@ async function handleMaluFlow(args: {
   const normalizedSelectionToken = normalizeText(selectionToken);
   const isChoiceText = /escolher este|quero este|escolher|quero esse|quero esse modelo|preview|previa|prévia|testar|provar/.test(normalizedSelectionToken);
   const isDetailsText = /ver mais|detalhes|mais detalhes/.test(normalizedSelectionToken);
-  const forceCatalogRequest = detectMaluCatalogRequest(message, buttonResponseId, catalogSelectionHint);
+  const forceCatalogRequest =
+    !isChoiceText &&
+    !isDetailsText &&
+    detectMaluCatalogRequest(message, buttonResponseId, catalogSelectionHint);
   let selectedFromCatalog = findCatalogSelection(
     buttonResponseId || catalogSelectionHint || message,
     getCatalogSelectionPool(data),
@@ -4101,6 +4205,18 @@ async function handleMaluFlow(args: {
         throw new Error("Produto de oculos sem imagem resolvida para previa.");
       }
 
+      if (!hasPreviewGenerationBudget(data)) {
+        return await handoffPreviewLimitToHuman({
+          supabase,
+          conversation,
+          phone,
+          contactName,
+          data,
+          agent: "malu",
+          productLabel: data.selected_name || resolvedProduct.name || "óculos escolhido",
+        });
+      }
+
       const previewImageUrl = await generateMaluPreview({
         supabase,
         phone,
@@ -4111,6 +4227,7 @@ async function handleMaluFlow(args: {
       data.malu_preview_image_url = previewImageUrl;
       data.malu_preview_status = "sent";
       data.malu_preview_approved = false;
+      registerPreviewGeneration(data, "malu");
 
       const resolvedName = data.selected_name || resolvedProduct.name || "escolhido";
       const reply = `Prontinho. Gerei uma prévia do modelo *${resolvedName}* em você.
@@ -4166,7 +4283,11 @@ Quer ficar com esse, testar outro modelo ou falar com atendente?`;
     }
   };
 
-  if (forceCatalogRequest || !data.catalogo_malu_enviado || (!hasSelectedProduct && (wantsMoreOptions || wantsCatalogResend || confirmsCatalogRequest))) {
+  if (hasSelectedProduct && hasPhoto && !hasPreview) {
+    return buildMaluPreviewFromPhoto(String(data.malu_customer_photo_url));
+  }
+
+  if (!hasSelectedProduct && (forceCatalogRequest || !data.catalogo_malu_enviado || wantsMoreOptions || wantsCatalogResend || confirmsCatalogRequest)) {
     const shownSkus = Array.isArray(data.last_catalog)
       ? data.last_catalog.map((item: any) => String(item?.sku || item?.id || "")).filter(Boolean)
       : [];

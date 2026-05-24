@@ -1067,3 +1067,10 @@ Proximos passos: commitar e testar envio de uma imagem no WhatsApp/CRM com cliqu
 - Corrigido fluxo da Malu para gerar previa de oculos mesmo quando a selfie chegou antes da escolha do modelo ou quando a memoria tinha apenas SKU/nome; a function agora recupera o produto completo do catalogo antes de chamar a OpenAI e os cards de oculos ficam apenas com o botao "Quero este".
 - Teste real da previa da Malu chegou ate a chamada OpenAI, mas a API retornou billing_hard_limit_reached. Codigo fica pronto para gerar assim que o limite/cobranca da OpenAI for liberado.
 Proximos passos: validar em conversa real no WhatsApp se os modelos aparecem no aparelho e se os botoes retornam o SKU correto para a Malu.
+
+## 2026-05-24 - Avatar do WhatsApp e estado da Malu
+- O webhook zapi-unified passou a ignorar URLs de foto de perfil do WhatsApp (`pps.whatsapp.net`, avatar/profile), evitando salvar avatar como imagem gigante ou link dentro da conversa.
+- O chat tambem oculta links/imagens de perfil ja gravados no historico e limita o tamanho visual das imagens renderizadas.
+- O fluxo da Malu agora prioriza gerar a previa quando ja existe modelo escolhido + selfie, sem reenviar apresentacao/catalogo no meio da escolha.
+- A solicitacao de catalogo da Malu deixa de ser forçada quando a mensagem/botao e claramente uma escolha de produto ou pedido de detalhes.
+Proximos passos: publicar zapi-unified e aline-reply no Supabase, commitar/pushar o frontend e validar com um lead real de oculos.

@@ -65,6 +65,34 @@ const inferAudioMimeType = (url?: string | null) => {
   return 'audio/ogg';
 };
 
+const normalizeUrlForComparison = (url?: string | null) =>
+  String(url || '').trim().split('?')[0].replace(/\/+$/, '');
+
+const isWhatsAppProfileImageUrl = (value?: string | null) => {
+  const lower = String(value || '').toLowerCase();
+  return (
+    lower.includes('pps.whatsapp.net') ||
+    lower.includes('profilepic') ||
+    lower.includes('profile_pic') ||
+    lower.includes('profile-picture') ||
+    lower.includes('profilephoto') ||
+    lower.includes('avatar')
+  );
+};
+
+const isRedundantMediaLinkText = (content?: string | null, mediaUrl?: string | null) => {
+  const trimmed = String(content || '').trim();
+  if (!trimmed || !/^https?:\/\//i.test(trimmed)) return false;
+
+  if (mediaUrl && normalizeUrlForComparison(trimmed) === normalizeUrlForComparison(mediaUrl)) {
+    return true;
+  }
+
+  if (isWhatsAppProfileImageUrl(trimmed)) return true;
+
+  return /^https?:\/\/\S+$/i.test(trimmed) && /whatsapp\.net|backblazeb2|temp-file-download|\.(jpg|jpeg|png|webp|gif|mp4|mov|webm)(?:$|[?#])/i.test(trimmed);
+};
+
 const MessageItem = memo(({
   message,
   showTail,
@@ -96,18 +124,25 @@ const MessageItem = memo(({
       </div>
     );
   }
+  const isProfileMediaUrl = isWhatsAppProfileImageUrl(message.media_url);
   const hasMedia =
     (message.message_type === 'image' ||
       message.message_type === 'audio' ||
       message.message_type === 'video' ||
       message.message_type === 'document') &&
-    !!message.media_url;
+    !!message.media_url &&
+    !isProfileMediaUrl;
 
   const showTextContent =
     !isDeleted &&
     message.message_type !== 'audio' &&
     !!message.content &&
-    message.content.trim().length > 0;
+    message.content.trim().length > 0 &&
+    !isRedundantMediaLinkText(message.content, message.media_url);
+
+  if (!isDeleted && !hasMedia && !showTextContent && isProfileMediaUrl) {
+    return null;
+  }
 
   return (
     <div
@@ -194,17 +229,17 @@ const MessageItem = memo(({
           </div>
         ) : (
           <>
-            {message.message_type === 'image' && message.media_url && (
+            {message.message_type === 'image' && hasMedia && (
               <img
                 src={message.media_url}
                 alt="Imagem"
                 loading="lazy"
                 decoding="async"
-                className="block w-full max-w-[260px] sm:max-w-[340px] lg:max-w-[420px] rounded-xl cursor-pointer bg-slate-700/50 transition-opacity hover:opacity-90"
+                className="block w-auto max-w-[240px] sm:max-w-[320px] lg:max-w-[360px] rounded-xl cursor-pointer bg-slate-700/50 transition-opacity hover:opacity-90"
                 style={{
-                  aspectRatio: '4 / 3',
+                  aspectRatio: 'auto',
                   objectFit: 'contain',
-                  maxHeight: '70vh',
+                  maxHeight: '360px',
                 }}
                 onClick={() => window.open(message.media_url!, '_blank')}
               />
@@ -217,7 +252,7 @@ const MessageItem = memo(({
               </div>
             )}
 
-            {message.message_type === 'audio' && message.media_url && (
+            {message.message_type === 'audio' && hasMedia && (
               <div className="flex flex-col gap-1.5 bg-black/20 rounded-2xl p-2.5 mb-2 w-full max-w-[320px] min-w-0 border border-white/8">
                 <div className="flex items-center gap-2">
                   <Volume2 className="w-5 h-5 shrink-0 text-emerald-300" />
@@ -236,7 +271,7 @@ const MessageItem = memo(({
               </div>
             )}
 
-            {message.message_type === 'video' && message.media_url && (
+            {message.message_type === 'video' && hasMedia && (
               <video
                 controls
                 className="block w-full max-w-[280px] sm:max-w-[360px] lg:max-w-[460px] rounded-2xl mb-2 bg-black/20 border border-white/8"
@@ -247,7 +282,7 @@ const MessageItem = memo(({
               </video>
             )}
 
-            {message.message_type === 'document' && message.media_url && (
+            {message.message_type === 'document' && hasMedia && (
               <a
                 href={message.media_url}
                 target="_blank"
