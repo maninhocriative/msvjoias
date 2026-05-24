@@ -1014,6 +1014,8 @@ function shouldUseInboundImageAsCustomerPhoto(args: {
     String(args.currentNode || "").includes("foto") ||
     String(args.currentNode || "").includes("preview");
 
+  if (args.activeAgent === "malu" && previewContext) return true;
+
   return selectedProduct && previewContext;
 }
 
@@ -1878,10 +1880,6 @@ function buildMaluCards(products: CatalogProduct[]): CatalogProduct[] {
       button_label: "Quero este",
       buttons: [
         {
-          id: `details_${product.sku || product.id}`,
-          label: "Ver mais",
-        },
-        {
           id: `select_${product.sku || product.id}`,
           label: "Quero este",
         },
@@ -1938,6 +1936,45 @@ function findSingleCatalogSelection(data: AnyRecord): AnyRecord | null {
   const catalog = getCatalogSelectionPool(data);
   if (catalog.length !== 1) return null;
   return catalog[0] || null;
+}
+
+async function resolveMaluSelectedProductForPreview(
+  supabase: any,
+  data: AnyRecord,
+): Promise<AnyRecord | null> {
+  const currentProduct = data.selected_product || null;
+  if (currentProduct?.image_url || currentProduct?.media_url) return currentProduct;
+
+  const lookupToken = String(data.selected_sku || data.selected_name || "").trim();
+  if (!lookupToken) return currentProduct;
+
+  let selected = findCatalogSelection(lookupToken, getCatalogSelectionPool(data));
+
+  if (!selected) {
+    const catalog = await searchCatalog(
+      supabase,
+      {
+        category: "oculos",
+        only_available: true,
+        limit: 80,
+      },
+      {
+        ...data,
+        categoria: "oculos",
+      },
+    );
+    selected = findCatalogSelection(lookupToken, catalog);
+  }
+
+  if (!selected) return currentProduct;
+
+  data.selected_product = selected;
+  data.selected_sku = selected.sku || selected.id || data.selected_sku || null;
+  data.selected_name = selected.name || data.selected_name || null;
+  data.selected_price = selected.price ?? data.selected_price ?? null;
+  data.catalog_history = mergeCatalogHistory(data.catalog_history, [selected]);
+
+  return selected;
 }
 
 function detectPostCatalogPositiveIntent(text: string): boolean {
@@ -2418,14 +2455,22 @@ Se algum detalhe lateral da haste não puder aparecer pela pose da selfie, mante
 
 Resultado final: a selfie original do cliente usando exatamente o óculos escolhido, com aparência comercial realista para WhatsApp.`;
 
-  const imageResponse = await fetch("https://api.openai.com/v1/images/edits", {
+  const imageModel = Deno.env.get("OPENAI_EYEWEAR_IMAGE_MODEL") ||
+    Deno.env.get("OPENAI_IMAGE_MODEL") ||
+    "gpt-image-1.5";
+  const modelCandidates = Array.from(new Set([imageModel, "gpt-image-1.5", "gpt-image-1"].filter(Boolean)));
+  let imagePayload: AnyRecord | null = null;
+  let lastErrorText = "";
+
+  for (const model of modelCandidates) {
+    const imageResponse = await fetch("https://api.openai.com/v1/images/edits", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${openAIApiKey}`,
     },
     body: JSON.stringify({
-      model: "gpt-image-1",
+      model,
       images: [
         { image_url: customerPhotoUrl },
         { image_url: productImageUrl },
@@ -2435,14 +2480,21 @@ Resultado final: a selfie original do cliente usando exatamente o óculos escolh
       quality: "high",
       output_format: "png",
     }),
-  });
+    });
 
-  if (!imageResponse.ok) {
-    const errorText = await imageResponse.text();
-    throw new Error(`OpenAI eyewear image edit error: ${imageResponse.status} - ${errorText}`);
+    if (imageResponse.ok) {
+      imagePayload = await imageResponse.json();
+      break;
+    }
+
+    lastErrorText = `${imageResponse.status} - ${await imageResponse.text()}`;
+    if (!/model|does not exist|invalid|not found|not supported/i.test(lastErrorText)) break;
   }
 
-  const imagePayload = await imageResponse.json();
+  if (!imagePayload) {
+    throw new Error(`OpenAI eyewear image edit error: ${lastErrorText}`);
+  }
+
   const previewBase64 = imagePayload?.data?.[0]?.b64_json || null;
   const previewUrl = imagePayload?.data?.[0]?.url || null;
 
@@ -4019,6 +4071,11 @@ async function handleMaluFlow(args: {
     }
   }
 
+  if (mediaType === "image" && mediaUrl && !data.malu_customer_photo_url) {
+    data.malu_customer_photo_url = mediaUrl;
+    data.tem_foto_cliente = true;
+  }
+
   const hasSelectedProduct = !!(data.selected_sku || data.selected_product?.id);
   const hasPhoto = !!data.malu_customer_photo_url;
   const hasPreview = !!data.malu_preview_image_url;
@@ -4035,6 +4092,78 @@ async function handleMaluFlow(args: {
       data,
     );
     return buildMaluCards(catalog);
+  };
+
+  const buildMaluPreviewFromPhoto = async (customerPhotoUrl: string) => {
+    try {
+      const resolvedProduct = await resolveMaluSelectedProductForPreview(supabase, data);
+      if (!resolvedProduct?.image_url && !resolvedProduct?.media_url) {
+        throw new Error("Produto de oculos sem imagem resolvida para previa.");
+      }
+
+      const previewImageUrl = await generateMaluPreview({
+        supabase,
+        phone,
+        selectedProduct: resolvedProduct,
+        customerPhotoUrl,
+      });
+
+      data.malu_preview_image_url = previewImageUrl;
+      data.malu_preview_status = "sent";
+      data.malu_preview_approved = false;
+
+      const resolvedName = data.selected_name || resolvedProduct.name || "escolhido";
+      const reply = `Prontinho. Gerei uma prévia do modelo *${resolvedName}* em você.
+
+Quer ficar com esse, testar outro modelo ou falar com atendente?`;
+
+      await persistConversation(supabase, conversation.id, "malu", "malu_preview", conversation.current_node || null, data);
+      await saveAssistantMessage(supabase, conversation.id, "malu", reply, "malu_preview");
+      await saveAgentMemory(supabase, phone, "malu", contactName, data);
+      await updateCrmLeadStatus(supabase, phone, "venda_iniciada");
+
+      return buildResponsePayload({
+        phone,
+        message: reply,
+        node: "malu_preview",
+        mediaItems: previewImageUrl
+          ? [
+              {
+                type: "image",
+                url: previewImageUrl,
+                caption: `Prévia do ${resolvedName}`,
+              },
+            ]
+          : [],
+        selectedProduct: data.selected_product || resolvedProduct || null,
+        collectedData: data,
+        agent: "malu",
+        actionButtons: [
+          { id: "malu_quero_esse", label: "Quero esse" },
+          { id: "malu_testar_outro", label: "Testar outro" },
+          { id: "retomar_atendimento", label: "Falar com atendente" },
+        ],
+      });
+    } catch (error) {
+      data.malu_preview_error = error instanceof Error
+        ? error.message.slice(0, 700)
+        : String(error).slice(0, 700);
+      console.error("[ALINE-REPLY] Erro ao gerar prévia da Malu:", error);
+      const reply = "Tive uma instabilidade para gerar sua prévia agora. Vou tentar novamente em instantes ou chamar um atendente para te ajudar.";
+
+      await persistConversation(supabase, conversation.id, "malu", "malu_preview_falhou", conversation.current_node || null, data);
+      await saveAssistantMessage(supabase, conversation.id, "malu", reply, "malu_preview_falhou");
+      await saveAgentMemory(supabase, phone, "malu", contactName, data);
+
+      return buildResponsePayload({
+        phone,
+        message: reply,
+        node: "malu_preview_falhou",
+        selectedProduct: data.selected_product || null,
+        collectedData: data,
+        agent: "malu",
+      });
+    }
   };
 
   if (forceCatalogRequest || !data.catalogo_malu_enviado || (!hasSelectedProduct && (wantsMoreOptions || wantsCatalogResend || confirmsCatalogRequest))) {
@@ -4095,9 +4224,15 @@ Separei alguns modelos disponíveis. Você pode escolher um modelo ou me mandar 
     });
   }
 
+  if (hasSelectedProduct && hasPhoto && !hasPreview) {
+    return buildMaluPreviewFromPhoto(String(data.malu_customer_photo_url));
+  }
+
   if (hasSelectedProduct && !hasPhoto) {
     if (mediaType === "image" && mediaUrl) {
       data.malu_customer_photo_url = mediaUrl;
+      data.tem_foto_cliente = true;
+      return buildMaluPreviewFromPhoto(mediaUrl);
 
       try {
         const previewImageUrl = await generateMaluPreview({

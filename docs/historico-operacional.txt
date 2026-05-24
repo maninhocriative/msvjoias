@@ -1064,4 +1064,6 @@ Proximos passos: commitar e testar envio de uma imagem no WhatsApp/CRM com cliqu
 - Se o cliente enviar foto em contexto de oculos com modelo escolhido em memoria, a Malu entra direto na geracao de previa em vez de voltar para a pergunta de catalogo.
 - Reforcada a deteccao de oculos para tolerar acentos/encoding quebrado da palavra "oculos", usando tambem o trecho "culos" e termos como armacao/lente.
 - Garantido que leads antigos sem atendimento humano ativo tambem recebam catalogo de oculos quando pedirem; o pedido expresso agora entra na Malu antes da IA e antes do estado antigo bloquear o fluxo.
+- Corrigido fluxo da Malu para gerar previa de oculos mesmo quando a selfie chegou antes da escolha do modelo ou quando a memoria tinha apenas SKU/nome; a function agora recupera o produto completo do catalogo antes de chamar a OpenAI e os cards de oculos ficam apenas com o botao "Quero este".
+- Teste real da previa da Malu chegou ate a chamada OpenAI, mas a API retornou billing_hard_limit_reached. Codigo fica pronto para gerar assim que o limite/cobranca da OpenAI for liberado.
 Proximos passos: validar em conversa real no WhatsApp se os modelos aparecem no aparelho e se os botoes retornam o SKU correto para a Malu.
