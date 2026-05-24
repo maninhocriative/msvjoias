@@ -1083,3 +1083,17 @@ Proximos passos: publicar zapi-unified e aline-reply no Supabase, commitar/pusha
 - A Malu tambem herda preferencias de cor no estado para manter contexto quando o cliente volta para o fluxo de oculos.
 - O envio sequencial de cards pela Z-API foi acelerado com intervalos configuraveis: intro 500ms e itens 450ms por padrao.
 Proximos passos: validar em conversa real: alianças de namoro com "azul e preto ou dourado", pingentes com "prata ou dourado" e pedido de catalogo de oculos apos retomada.
+
+## 2026-05-24 - Regua curta de follow-up dos agentes
+- A funcao aline-followup passou a ter 3 tentativas curtas feitas pelo proprio agente antes do follow-up normal: 5 min, 20 min e 60 min.
+- Depois dessas 3 retomadas, entram as 3 tentativas normais ja existentes com janela segura mais longa.
+- Cada agente ganhou mensagens de retomada por contexto: Aline geral, Keila aliancas, Kate pingentes e Malu oculos.
+- Conversas de pingente sem catalogo enviado ainda recebem catalogo completo no primeiro resgate da Kate; se o catalogo ja tinha sido enviado, a Kate apenas retoma a escolha sem repetir tudo.
+- Conversas em atendimento humano, venda iniciada, comprador/vendido/perdido ou sem interesse nao recebem follow-up automatico.
+- A validacao deixou de depender apenas de unread_count; agora confere a ultima mensagem real do CRM e nao dispara se a ultima mensagem foi do cliente.
+- O lote de catalogos completos da Kate subiu de 1 para 3 conversas por rodada, mantendo pausa e governor da Z-API para nao estourar limite.
+- Adicionada migration para trocar o cron aline-followup-job para execucao a cada 5 minutos.
+- aline-followup deployada no Supabase e rodada manual executada em producao: 6 conversas elegiveis processadas, 6 mensagens enviadas, sem throttle.
+- Debug apos a rodada retornou eligibleCount=0.
+- O db push do cron de 5 minutos ficou pendente porque o historico remoto de migrations tem versoes que nao existem localmente; a function ja esta publicada e o cron remoto atual continua chamando o job.
+Proximos passos: reparar/alinhar historico de migrations do Supabase ou aplicar manualmente o SQL do cron de 5 minutos.

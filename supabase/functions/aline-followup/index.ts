@@ -10,14 +10,19 @@ const corsHeaders = {
 interface FollowupConfig {
   intervalMinutes: number;
   message: string;
+  kind?: "agent_rescue" | "normal" | "pendant_catalog_rescue";
+  normalIndex?: number;
 }
 
 type AgentSlug = "aline" | "keila" | "kate" | "malu";
 
 const SAFE_MIN_FIRST_INTERVAL_MINUTES = 60;
-const KATE_PENDANT_FIRST_INTERVAL_MINUTES = 5;
-const SAFE_MAX_ATTEMPTS = 3;
+const AGENT_RESCUE_INTERVAL_MINUTES = [5, 20, 60];
+const AGENT_RESCUE_ATTEMPTS = AGENT_RESCUE_INTERVAL_MINUTES.length;
+const NORMAL_FOLLOWUP_ATTEMPTS = 3;
+const SAFE_MAX_ATTEMPTS = AGENT_RESCUE_ATTEMPTS + NORMAL_FOLLOWUP_ATTEMPTS;
 const MAX_SENDS_PER_RUN = 20;
+const CATALOG_CARD_FOLLOWUP_BATCH_LIMIT = 3;
 const SEND_PAUSE_MS = 1200;
 const BUSINESS_HOUR_START = 9;
 const BUSINESS_HOUR_END = 19;
@@ -152,6 +157,100 @@ function isPendantConversation(conversation: any): boolean {
   );
 }
 
+function getAgentSlug(conversation: any): AgentSlug {
+  const agent = normalizeText(String(conversation?.active_agent || ""));
+  if (agent === "keila" || agent === "kate" || agent === "malu") return agent;
+  return "aline";
+}
+
+function hasCatalogSent(conversation: any): boolean {
+  const data = conversation?.collected_data || {};
+  return Boolean(
+    data.catalogo_enviado ||
+      data.catalogo_kate_enviado ||
+      data.catalogo_keila_enviado ||
+      data.catalogo_malu_enviado ||
+      (Array.isArray(data.last_catalog) && data.last_catalog.length > 0) ||
+      (Array.isArray(data.catalog_history) && data.catalog_history.length > 0),
+  );
+}
+
+function buildAgentRescueMessage(conversation: any, rescueIndex: number): string {
+  const agent = getAgentSlug(conversation);
+
+  if (agent === "keila") {
+    return [
+      "Oi! Vi que voce estava vendo aliancas. Quer continuar com os modelos que te mandei ou prefere que eu filtre por cor, tamanho ou valor?",
+      "Posso te ajudar a fechar mais rapido: me diga a cor ou o modelo que gostou que eu confiro disponibilidade e sigo com entrega/pagamento.",
+      "Ainda tenho opcoes de aliancas em aco para voce escolher hoje. Se quiser, te mando as melhores opcoes disponiveis e ja deixo encaminhado.",
+    ][Math.min(rescueIndex, 2)];
+  }
+
+  if (agent === "kate") {
+    return [
+      "Oi! Vi que voce estava vendo pingentes fotogravados em aco. Quer seguir com algum modelo, ver outros acabamentos ou tirar alguma duvida antes de fechar?",
+      "A simulacao e opcional. Se voce ja gostou de um pingente, posso seguir sem foto. Depois do fechamento, o vendedor envia a arte original para sua aprovacao antes da gravacao.",
+      "Temos pingentes de aco com acabamento dourado ou prata e fotogravacao inclusa. Quer que eu separe uma opcao para voce fechar hoje?",
+    ][Math.min(rescueIndex, 2)];
+  }
+
+  if (agent === "malu") {
+    return [
+      "Oi! Vi que voce estava vendo oculos. Quer que eu te mande os modelos de novo ou ja escolheu algum para testar?",
+      "Para agilizar, toque em \"Quero este\" no modelo que gostar. Se voce ja mandou selfie, eu tento seguir com a previa do modelo escolhido.",
+      "Tenho modelos de oculos disponiveis para testar hoje. Quer ver as melhores opcoes agora?",
+    ][Math.min(rescueIndex, 2)];
+  }
+
+  return [
+    "Oi! Vi que voce ficou sem responder. Quer continuar de onde paramos ou prefere que eu te mostre as opcoes mais certeiras?",
+    "Posso facilitar: me diga se voce quer aliancas, pingentes ou oculos que eu sigo direto no catalogo certo.",
+    "Ultima chamada rapida por aqui: temos opcoes ativas hoje. Se quiser, eu separo as melhores para voce agora.",
+  ][Math.min(rescueIndex, 2)];
+}
+
+function buildNextFollowupConfig(args: {
+  conversation: any;
+  followupCount: number;
+  forceKatePendants: boolean;
+  safeFollowupConfig: FollowupConfig[];
+}): FollowupConfig | null {
+  const { conversation, followupCount, forceKatePendants, safeFollowupConfig } = args;
+
+  if (followupCount < AGENT_RESCUE_ATTEMPTS) {
+    const shouldSendPendantCatalog =
+      followupCount === 0 &&
+      isPendantConversation(conversation) &&
+      (forceKatePendants || !hasCatalogSent(conversation));
+
+    return {
+      intervalMinutes: forceKatePendants ? 0 : AGENT_RESCUE_INTERVAL_MINUTES[followupCount],
+      message: shouldSendPendantCatalog
+        ? KATE_MOTHERS_DAY_FALLBACK_MESSAGES[0]
+        : buildAgentRescueMessage(conversation, followupCount),
+      kind: shouldSendPendantCatalog ? "pendant_catalog_rescue" : "agent_rescue",
+    };
+  }
+
+  const normalIndex = followupCount - AGENT_RESCUE_ATTEMPTS;
+  const normalConfig = safeFollowupConfig[normalIndex];
+  if (!normalConfig) return null;
+
+  return {
+    ...normalConfig,
+    kind: "normal",
+    normalIndex,
+  };
+}
+
+function isBlockedLeadStatus(status: unknown): boolean {
+  const normalized = normalizeText(String(status || ""));
+  return (
+    ["vendido", "comprador", "perdido", "sem_interesse"].includes(normalized) ||
+    /humano|acao_humana|acao humana|venda_iniciada|venda iniciada/.test(normalized)
+  );
+}
+
 async function getActivePendantOffer(supabase: any) {
   const now = new Date().toISOString();
   const { data, error } = await supabase
@@ -206,9 +305,13 @@ function resolveFollowupMessage(args: {
   followupIndex: number;
   pendantOffer: any | null;
 }) {
+  if (args.config.kind === "agent_rescue" || args.config.kind === "pendant_catalog_rescue") {
+    return args.config.message;
+  }
+
   if (isPendantConversation(args.conversation)) {
     return buildKateMothersDayFollowupMessage(
-      args.followupIndex,
+      args.config.normalIndex ?? args.followupIndex,
       args.pendantOffer,
       args.conversation,
     );
@@ -470,6 +573,23 @@ async function getLastConversationMessage(supabase: any, conversationId: string)
   return data;
 }
 
+async function getLastCrmMessage(supabase: any, crmConversationId: string) {
+  const { data, error } = await supabase
+    .from("messages")
+    .select("is_from_me, created_at")
+    .eq("conversation_id", crmConversationId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[ALINE-FOLLOWUP] Erro ao buscar ultima mensagem do CRM:", error);
+    return null;
+  }
+
+  return data;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -556,8 +676,12 @@ serve(async (req) => {
       );
     }
 
+    const configuredNormalAttempts = Math.min(
+      Math.max(Number(aiConfig?.followup_max_attempts || NORMAL_FOLLOWUP_ATTEMPTS), 1),
+      NORMAL_FOLLOWUP_ATTEMPTS,
+    );
     const safeMaxAttempts = Math.min(
-      Math.max(Number(aiConfig?.followup_max_attempts || SAFE_MAX_ATTEMPTS), 1),
+      AGENT_RESCUE_ATTEMPTS + configuredNormalAttempts,
       SAFE_MAX_ATTEMPTS,
     );
     const safeFollowupConfig = buildSafeFollowupConfig(
@@ -611,14 +735,12 @@ serve(async (req) => {
       }
 
       const followupCount = Number(conversation.followup_count || 0);
-      const isKatePendant = isPendantConversation(conversation);
-      const nextConfig = followupCount === 0 && isKatePendant
-        ? {
-            ...safeFollowupConfig[followupCount],
-            intervalMinutes: forceKatePendants ? 0 : KATE_PENDANT_FIRST_INTERVAL_MINUTES,
-            message: KATE_MOTHERS_DAY_FALLBACK_MESSAGES[0],
-          }
-        : safeFollowupConfig[followupCount];
+      const nextConfig = buildNextFollowupConfig({
+        conversation,
+        followupCount,
+        forceKatePendants,
+        safeFollowupConfig,
+      });
       if (!nextConfig) {
         addDebugSkip("no_config");
         continue;
@@ -652,7 +774,7 @@ serve(async (req) => {
 
       const { data: crmConversation, error: crmError } = await supabase
         .from("conversations")
-        .select("id, lead_status, unread_count")
+        .select("id, lead_status")
         .eq("contact_number", conversation.phone)
         .maybeSingle();
 
@@ -660,19 +782,26 @@ serve(async (req) => {
         console.error("[ALINE-FOLLOWUP] Erro ao buscar conversa do CRM:", crmError);
       }
 
-      if (
-        crmConversation?.lead_status &&
-        ["vendido", "comprador", "perdido", "sem_interesse"].includes(
-          crmConversation.lead_status,
-        )
-      ) {
+      if (crmConversation?.lead_status && isBlockedLeadStatus(crmConversation.lead_status)) {
         addDebugSkip(`status_${crmConversation.lead_status}`);
         continue;
       }
 
-      if (Number(crmConversation?.unread_count || 0) > 0) {
-        addDebugSkip("unread_count");
-        continue;
+      if (crmConversation?.id) {
+        const lastCrmMessage = await getLastCrmMessage(supabase, crmConversation.id);
+        const lastCrmMessageTime = lastCrmMessage?.created_at
+          ? new Date(lastCrmMessage.created_at).getTime()
+          : 0;
+
+        if (
+          lastCrmMessage &&
+          lastCrmMessage.is_from_me === false &&
+          Number.isFinite(lastCrmMessageTime) &&
+          lastCrmMessageTime >= lastMessageTime
+        ) {
+          addDebugSkip("last_crm_message_from_customer");
+          continue;
+        }
       }
 
       eligibleConversations.push({
@@ -708,13 +837,13 @@ serve(async (req) => {
       );
     }
 
-    const hasCatalogCardFollowup = eligibleConversations.some(({ conversation }) => {
-      return Number(conversation.followup_count || 0) === 0 && isPendantConversation(conversation);
+    const hasCatalogCardFollowup = eligibleConversations.some(({ config }) => {
+      return config.kind === "pendant_catalog_rescue";
     });
     const manualBatchLimit = forceKatePendants
       ? Math.min(Math.max(Number(body.limit || 10), 1), 10)
       : hasCatalogCardFollowup
-        ? 1
+        ? CATALOG_CARD_FOLLOWUP_BATCH_LIMIT
         : MAX_SENDS_PER_RUN;
     const queue = eligibleConversations.slice(0, manualBatchLimit);
     const results: Array<{
@@ -738,7 +867,7 @@ serve(async (req) => {
       });
 
       try {
-        if (followupNumber === 1 && isPendantConversation(conversation)) {
+        if (config.kind === "pendant_catalog_rescue") {
           const catalogResult = await sendKatePendantCatalogFollowup({
             supabase,
             zapiInstanceId,
