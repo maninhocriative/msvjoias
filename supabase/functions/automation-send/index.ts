@@ -13,8 +13,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const SEQUENCE_INTRO_GAP_MS = 1200;
-const SEQUENCE_ITEM_GAP_MS = 900;
+const SEQUENCE_INTRO_GAP_MS = Number(Deno.env.get("ZAPI_SEQUENCE_INTRO_GAP_MS") || "500");
+const SEQUENCE_ITEM_GAP_MS = Number(Deno.env.get("ZAPI_SEQUENCE_ITEM_GAP_MS") || "450");
 
 interface Product {
   sku: string;

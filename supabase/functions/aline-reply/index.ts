@@ -171,6 +171,74 @@ function detectColor(text: string): string | null {
   return null;
 }
 
+function normalizeCatalogColor(value: unknown): string | null {
+  const normalized = normalizeText(String(value || ""));
+  if (!normalized) return null;
+  if (/^(dourada|dourado|amarela|amarelo)$/.test(normalized)) return "dourada";
+  if (/^(prata|prateada|prateado|silver|cinza)$/.test(normalized)) return "prata";
+  if (/^(preta|preto|black|negra|negro|escura|escuro)$/.test(normalized)) return "preta";
+  if (/^(azul|blue)$/.test(normalized)) return "azul";
+  if (/^(rose|rosa|rose gold)$/.test(normalized)) return "rose";
+  return null;
+}
+
+function detectColors(text: string): string[] {
+  const normalized = normalizeText(text);
+  const matches: Array<{ color: string; index: number }> = [];
+  const addMatch = (color: string, pattern: RegExp) => {
+    const match = normalized.match(pattern);
+    if (match?.index !== undefined) matches.push({ color, index: match.index });
+  };
+
+  addMatch("dourada", /\b(dourada|dourado|amarela|amarelo)\b/);
+  addMatch("prata", /\b(prata|prateada|prateado|silver|cinza)\b/);
+  addMatch("preta", /\b(preta|preto|black|negra|negro|escura|escuro)\b/);
+  addMatch("azul", /\b(azul|blue)\b/);
+  addMatch("rose", /\b(rose|rosa|rose gold)\b/);
+
+  const ordered = matches.sort((a, b) => a.index - b.index).map((item) => item.color);
+  return Array.from(new Set(ordered));
+}
+
+function getRequestedColors(data: AnyRecord, allowedColors?: string[]): string[] {
+  const rawColors = Array.isArray(data.cores_solicitadas) ? data.cores_solicitadas : [];
+  const normalizedColors = [...rawColors, data.cor]
+    .map(normalizeCatalogColor)
+    .filter(Boolean) as string[];
+
+  const uniqueColors = Array.from(new Set(normalizedColors));
+  if (!allowedColors || allowedColors.length === 0) return uniqueColors;
+  return uniqueColors.filter((color) => allowedColors.includes(color));
+}
+
+function formatColorList(colors: string[]): string {
+  const labels = colors.filter(Boolean);
+  if (labels.length === 0) return "";
+  if (labels.length === 1) return labels[0];
+  if (labels.length === 2) return `${labels[0]} e ${labels[1]}`;
+  return `${labels.slice(0, -1).join(", ")} e ${labels[labels.length - 1]}`;
+}
+
+function colorAliases(color: string): string[] {
+  if (color === "prata") return ["prata", "prateada", "prateado", "silver", "cinza"];
+  if (color === "dourada") return ["dourada", "dourado", "amarela", "amarelo"];
+  if (color === "preta") return ["preta", "preto", "black", "negra", "negro", "escura", "escuro"];
+  if (color === "azul") return ["azul", "blue"];
+  if (color === "rose") return ["rose", "rosa"];
+  return [color].filter(Boolean);
+}
+
+function applyDetectedColorsToData(data: AnyRecord, text: string, allowedColors?: string[]): boolean {
+  const detected = detectColors(text).filter((color) => !allowedColors || allowedColors.includes(color));
+  if (detected.length === 0) return false;
+
+  const previousKey = getRequestedColors(data, allowedColors).join("|");
+  data.cores_solicitadas = detected;
+  data.cor = detected[0];
+
+  return previousKey !== detected.join("|");
+}
+
 function detectCategory(text: string, data: AnyRecord): string | null {
   const raw = String(text || "").toLowerCase();
   const normalized = normalizeText(text);
@@ -416,8 +484,14 @@ function buildRuleBasedIntelligence(args: {
   }
   const budget = detectBudgetValue(text);
   if (budget) extracted.orcamento_valor = budget;
-  const color = detectColor(text);
-  if (color) extracted.cor = color;
+  const colors = detectColors(text);
+  if (colors.length > 0) {
+    extracted.cores_solicitadas = colors;
+    extracted.cor = colors[0];
+  } else {
+    const color = detectColor(text);
+    if (color) extracted.cor = color;
+  }
 
   if (mediaType === "image") {
     return {
@@ -729,6 +803,12 @@ function applyIntelligenceToData(data: AnyRecord, intelligence: ConversationInte
   }
 
   if (extracted.categoria) data.categoria = extracted.categoria;
+  if (Array.isArray(extracted.cores_solicitadas) && extracted.cores_solicitadas.length > 0) {
+    data.cores_solicitadas = extracted.cores_solicitadas;
+    data.cor = extracted.cor || extracted.cores_solicitadas[0] || data.cor;
+  } else if (extracted.cor) {
+    data.cor = extracted.cor;
+  }
   if (intelligence.targetAgent !== "unknown") data.agente_atual = intelligence.targetAgent;
 }
 
@@ -1299,6 +1379,7 @@ function resetKeilaFlowState(data: AnyRecord) {
   delete data.tamanho_2;
   delete data.numeracao_status;
   delete data.cor;
+  delete data.cores_solicitadas;
   delete data.catalog_history;
   delete data.delivery_method;
   delete data.payment_method;
@@ -1313,6 +1394,7 @@ function resetKateFlowState(data: AnyRecord) {
   delete data.tamanho_2;
   delete data.numeracao_status;
   delete data.cor;
+  delete data.cores_solicitadas;
   delete data.catalog_history;
   delete data.delivery_method;
   delete data.payment_method;
@@ -1333,6 +1415,7 @@ function resetMaluFlowState(data: AnyRecord) {
   delete data.tamanho_2;
   delete data.numeracao_status;
   delete data.cor;
+  delete data.cores_solicitadas;
   delete data.catalog_history;
   delete data.delivery_method;
   delete data.payment_method;
@@ -1349,7 +1432,9 @@ function buildSummary(data: AnyRecord): string {
 
   if (data.categoria) parts.push(`categoria=${data.categoria}`);
   if (data.finalidade) parts.push(`finalidade=${data.finalidade}`);
-  if (data.cor) parts.push(`cor=${data.cor}`);
+  const summaryColors = getRequestedColors(data);
+  if (summaryColors.length > 0) parts.push(`cores=${formatColorList(summaryColors)}`);
+  else if (data.cor) parts.push(`cor=${data.cor}`);
   if (data.prazo_fechamento) parts.push(`prazo=${data.prazo_fechamento}`);
   if (data.orcamento_valor) parts.push(`orcamento=${data.orcamento_valor}`);
   if (data.quantidade_tipo) parts.push(`tipo=${data.quantidade_tipo}`);
@@ -1405,7 +1490,9 @@ function buildSellerContextSummary(data: AnyRecord): string {
   if (data.categoria) parts.push(`interesse em ${data.categoria}`);
   if (data.selected_name) parts.push(`escolheu ${data.selected_name}`);
   if (data.selected_sku) parts.push(`sku ${data.selected_sku}`);
-  if (data.cor) parts.push(`cor ${data.cor}`);
+  const sellerColors = getRequestedColors(data);
+  if (sellerColors.length > 0) parts.push(`cores ${formatColorList(sellerColors)}`);
+  else if (data.cor) parts.push(`cor ${data.cor}`);
   if (data.delivery_method) parts.push(`entrega ${data.delivery_method}`);
   if (data.payment_method) parts.push(`pagamento ${data.payment_method}`);
   if (data.last_question_kind) parts.push(`ultima duvida: ${data.last_question_kind}`);
@@ -1472,6 +1559,7 @@ async function saveAgentMemory(
     categoria: data.categoria || null,
     finalidade: data.finalidade || null,
     cor: data.cor || null,
+    cores_solicitadas: getRequestedColors(data),
     prazo_fechamento: data.prazo_fechamento || null,
     orcamento_valor: data.orcamento_valor || null,
     orcamento_texto: data.orcamento_texto || null,
@@ -1529,6 +1617,9 @@ function hydrateDataWithMemory(data: AnyRecord, memory: AnyRecord | null) {
 
   if (!data.categoria && preferences.categoria) data.categoria = preferences.categoria;
   if (!data.finalidade && preferences.finalidade) data.finalidade = preferences.finalidade;
+  if (!Array.isArray(data.cores_solicitadas) && Array.isArray(preferences.cores_solicitadas)) {
+    data.cores_solicitadas = preferences.cores_solicitadas;
+  }
   if (!data.cor && preferences.cor) data.cor = preferences.cor;
   if (!data.prazo_fechamento && preferences.prazo_fechamento) data.prazo_fechamento = preferences.prazo_fechamento;
   if (!data.orcamento_valor && preferences.orcamento_valor) data.orcamento_valor = preferences.orcamento_valor;
@@ -1688,6 +1779,17 @@ async function searchCatalog(
   }
 
   const requestedColor = String(params.color || data.cor || "").toLowerCase().trim();
+  const requestedColors = Array.from(
+    new Set(
+      [
+        ...(Array.isArray(params.colors) ? params.colors : []),
+        ...(Array.isArray(data.cores_solicitadas) ? data.cores_solicitadas : []),
+        requestedColor,
+      ]
+        .map(normalizeCatalogColor)
+        .filter(Boolean) as string[],
+    ),
+  );
   const requestedCategory = String(params.category || data.categoria || "").toLowerCase().trim();
   const requestedPurpose = String(data.finalidade || "").toLowerCase().trim();
   const maxPrice = params.max_price ? Number(params.max_price) : null;
@@ -1762,19 +1864,9 @@ async function searchCatalog(
       if (!isEyewear) return false;
     }
 
-    if (requestedColor) {
-      const normalizedRequestedColor =
-        requestedColor === "prata"
-          ? ["prata", "aco", "aço", "silver"]
-        : requestedColor === "dourada"
-            ? ["dourada", "dourado", "amarela", "amarelo"]
-            : requestedColor === "preta"
-              ? ["preta", "preto", "black", "negra", "escura", "escuro"]
-              : requestedColor === "azul"
-                ? ["azul", "blue"]
-                : [requestedColor];
-
-      const matchesColor = normalizedRequestedColor.some((color) => colorSearchText.includes(color));
+    if (requestedColors.length > 0) {
+      const normalizedRequestedColor = requestedColors.flatMap(colorAliases);
+      const matchesColor = normalizedRequestedColor.some((color) => colorSearchText.includes(normalizeText(color)));
       if (!matchesColor) return false;
     }
 
@@ -1799,12 +1891,14 @@ async function searchCatalog(
   filtered = filtered.sort((a: any, b: any) => {
     const aColor = normalizeText(a.color || "");
     const bColor = normalizeText(b.color || "");
-    const requested = normalizeText(requestedColor);
-    const aExact = requested ? aColor.includes(requested) : false;
-    const bExact = requested ? bColor.includes(requested) : false;
+    const requested = requestedColors.map(normalizeText);
+    const aRank = requested.findIndex((color) => aColor.includes(color));
+    const bRank = requested.findIndex((color) => bColor.includes(color));
+    const aExact = aRank >= 0;
+    const bExact = bRank >= 0;
 
     if (aExact !== bExact) return aExact ? -1 : 1;
-
+    if (aExact && bExact && aRank !== bRank) return aRank - bRank;
     return Number(a.price || 0) - Number(b.price || 0);
   });
 
@@ -2706,6 +2800,7 @@ async function handleKateFlow(args: {
     agente_atual: "kate",
     categoria: "pingente",
   };
+  const preservedPendantColors = getRequestedColors(data, ["prata", "dourada"]);
 
   // Pingentes não usam numeração/tamanho de alianças; limpamos qualquer resíduo
   // herdado para que, após a cor, a Kate siga direto para o catálogo.
@@ -2717,6 +2812,10 @@ async function handleKateFlow(args: {
 
   if (!isKateFlowNode(currentNode)) {
     resetKateFlowState(data);
+    if (preservedPendantColors.length > 0) {
+      data.cores_solicitadas = preservedPendantColors;
+      data.cor = preservedPendantColors[0];
+    }
   }
 
   const previousSelectedSku = String(data.selected_sku || "");
@@ -2754,20 +2853,18 @@ async function handleKateFlow(args: {
     data.payment_method = paymentMethod;
   }
 
-  const detectedColor = detectColor(message);
-  if (detectedColor === "prata" || detectedColor === "dourada") {
-    if (data.cor !== detectedColor) {
-      data.cor = detectedColor;
-      resetCatalogChoice(data);
-      delete data.kate_selected_template_id;
-      delete data.kate_customer_photo_url;
-      delete data.kate_preview_image_url;
-      delete data.kate_preview_status;
-      delete data.kate_preview_approved;
-    }
+  const pendantColorChanged = applyDetectedColorsToData(data, message, ["prata", "dourada"]);
+  if (pendantColorChanged) {
+    resetCatalogChoice(data);
+    delete data.kate_selected_template_id;
+    delete data.kate_customer_photo_url;
+    delete data.kate_preview_image_url;
+    delete data.kate_preview_status;
+    delete data.kate_preview_approved;
   }
 
-  const hasColor = data.cor === "prata" || data.cor === "dourada";
+  const requestedPendantColors = getRequestedColors(data, ["prata", "dourada"]);
+  const hasColor = requestedPendantColors.length > 0;
   const hasSelectedProduct = !!(data.selected_sku || data.selected_product?.id);
   const hasPhoto = !!data.kate_customer_photo_url;
   const hasPreview = !!data.kate_preview_image_url;
@@ -2869,6 +2966,7 @@ async function handleKateFlow(args: {
   const effectiveMediaUrl = mediaUrl || inboundImageUrl;
 
   const fetchKateCatalogCards = async (excludeSkus: string[] = []) => {
+    const colorFilters = getRequestedColors(data, ["prata", "dourada"]);
     const searchParams: AnyRecord = {
       category: "pingente",
       only_available: true,
@@ -2879,6 +2977,11 @@ async function handleKateFlow(args: {
       searchParams.color = data.cor;
     }
 
+    if (colorFilters.length > 0) {
+      searchParams.colors = colorFilters;
+      if (colorFilters.length === 1) searchParams.color = colorFilters[0];
+    }
+
     if (excludeSkus.length > 0) {
       searchParams.exclude_skus = excludeSkus;
     }
@@ -2887,8 +2990,8 @@ async function handleKateFlow(args: {
     const filtered = catalog.filter((product) => {
       const template = matchKateTemplateForProduct(product);
       if (!template) return false;
-      if (!data.cor) return true;
-      return template.color === data.cor;
+      if (colorFilters.length === 0) return true;
+      return colorFilters.includes(template.color);
     });
 
     return buildKateCards(filtered);
@@ -2896,10 +2999,15 @@ async function handleKateFlow(args: {
 
   const sendKateCatalogForBothFinishes = async (reply: string) => {
     const previousColor = data.cor;
+    const previousColors = Array.isArray(data.cores_solicitadas) ? [...data.cores_solicitadas] : null;
     delete data.cor;
+    delete data.cores_solicitadas;
     const cards = await fetchKateCatalogCards([]);
     if (previousColor === "prata" || previousColor === "dourada") {
       data.cor = previousColor;
+    }
+    if (previousColors) {
+      data.cores_solicitadas = previousColors;
     }
 
     if (cards.length > 0) {
@@ -4105,10 +4213,16 @@ async function handleMaluFlow(args: {
     agente_atual: "malu",
     categoria: "oculos",
   };
+  const preservedMaluColors = getRequestedColors(data);
 
   if (!isMaluFlowNode(currentNode)) {
     resetMaluFlowState(data);
+    if (preservedMaluColors.length > 0) {
+      data.cores_solicitadas = preservedMaluColors;
+      data.cor = preservedMaluColors[0];
+    }
   }
+  applyDetectedColorsToData(data, message);
 
   const selectionToken = [buttonResponseId, catalogSelectionHint, message].filter(Boolean).join(" ");
   const normalizedSelectionToken = normalizeText(selectionToken);
@@ -4537,15 +4651,22 @@ async function handleKeilaFlow(args: {
   } = args;
 
   const currentNode = String(conversation.current_node || "");
+  const existingData: AnyRecord = conversation.collected_data || {};
+  const detectedAllianceType = detectAllianceType(message, existingData);
   const data: AnyRecord = {
-    ...(conversation.collected_data || {}),
+    ...existingData,
     agente_atual: "keila",
     categoria: "aliancas",
-    finalidade: "casamento",
+    finalidade: detectedAllianceType || existingData.finalidade || "casamento",
   };
+  const preservedAllianceColors = getRequestedColors(data, ["dourada", "prata", "preta", "azul"]);
 
   if (!isKeilaFlowNode(currentNode)) {
     resetKeilaFlowState(data);
+    if (preservedAllianceColors.length > 0) {
+      data.cores_solicitadas = preservedAllianceColors;
+      data.cor = preservedAllianceColors[0];
+    }
   }
 
   const selectedFromCatalog = findCatalogSelection(
@@ -4606,17 +4727,22 @@ async function handleKeilaFlow(args: {
     data.numeracao_status = "informada";
   }
 
-  const color = detectColor(message);
-  if (color && color !== "rose") {
-    data.cor = color;
+  const colorChanged = applyDetectedColorsToData(data, message, ["dourada", "prata", "preta", "azul"]);
+  if (colorChanged) {
     resetCatalogChoice(data);
   }
 
-  const hasTimeline = !!data.prazo_fechamento;
-  const hasBudget = !!data.orcamento_valor || !!data.orcamento_texto;
-  const hasQuantityType = !!data.quantidade_tipo;
-  const hasSizeInfo = !!data.tamanho_1 || data.numeracao_status === "nao_sabe";
-  const hasColor = !!data.cor;
+  const requestedColors = getRequestedColors(data, ["dourada", "prata", "preta", "azul"]);
+  const requestedColorLabel = formatColorList(requestedColors);
+  const colorPhrase = requestedColors.length > 1
+    ? `nas cores ${requestedColorLabel}`
+    : `na cor ${requestedColorLabel || data.cor || "solicitada"}`;
+  const isDatingAlliance = data.finalidade === "namoro";
+  const hasTimeline = isDatingAlliance || !!data.prazo_fechamento;
+  const hasBudget = isDatingAlliance || !!data.orcamento_valor || !!data.orcamento_texto;
+  const hasQuantityType = isDatingAlliance || !!data.quantidade_tipo;
+  const hasSizeInfo = isDatingAlliance || !!data.tamanho_1 || data.numeracao_status === "nao_sabe";
+  const hasColor = requestedColors.length > 0;
   const hasSelectedProduct = hasCurrentCatalogSelection(data);
 
   if (!hasSelectedProduct) {
@@ -4637,9 +4763,13 @@ async function handleKeilaFlow(args: {
   const fetchKeilaCatalogCards = async (excludeSkus: string[] = []) => {
     const searchParams: AnyRecord = {
       category: "aliancas",
-      color: data.cor,
       only_available: true,
     };
+
+    if (requestedColors.length > 0) {
+      searchParams.colors = requestedColors;
+      if (requestedColors.length === 1) searchParams.color = requestedColors[0];
+    }
 
     if (excludeSkus.length > 0) {
       searchParams.exclude_skus = excludeSkus;
@@ -4801,7 +4931,7 @@ Oi! Sou a Keila. Para quando você quer fechar essas alianças? ⏰`;
     const { cards, usedBudgetFallback, usedWeddingFallback } = await fetchKeilaCatalogCards();
 
     if (cards.length === 0) {
-      const reply = `Não encontrei modelos prontos na cor ${data.cor} dentro dessa faixa agora. Se quiser, eu posso te mostrar outra faixa de valor ou outra cor.`;
+      const reply = `Não encontrei modelos prontos ${colorPhrase} dentro dessa faixa agora. Se quiser, eu posso te mostrar outra faixa de valor ou outra cor.`;
 
       await persistConversation(
         supabase,
@@ -4843,10 +4973,10 @@ Oi! Sou a Keila. Para quando você quer fechar essas alianças? ⏰`;
 
     const reply = `${intro}${
       usedBudgetFallback
-        ? `Não encontrei modelos na cor ${data.cor} exatamente dentro dessa faixa de valor, mas separei outras opções disponíveis da mesma categoria para te mostrar. 💍`
+        ? `Não encontrei modelos ${colorPhrase} exatamente dentro dessa faixa de valor, mas separei outras opções disponíveis da mesma categoria para te mostrar. 💍`
         : usedWeddingFallback
-          ? `Não encontrei modelos na cor ${data.cor} com o cadastro ideal da linha de casamento, mas separei outras opções compatíveis para te mostrar. 💍`
-          : `Separei opções na cor ${data.cor}. 💍`
+          ? `Não encontrei modelos ${colorPhrase} com o cadastro ideal da linha de casamento, mas separei outras opções compatíveis para te mostrar. 💍`
+          : `Separei opções ${colorPhrase}. 💍`
     }
 O valor do card é da unidade. O par sai pelo dobro.`;
 
@@ -4927,10 +5057,10 @@ O valor do card é da unidade. O par sai pelo dobro.`;
       const reply = wantsMoreOptions
         ? `${
             usedBudgetFallback
-              ? `Tenho outras opções na cor ${data.cor}, incluindo modelos fora dessa faixa exata para você comparar. 💍`
+              ? `Tenho outras opções ${colorPhrase}, incluindo modelos fora dessa faixa exata para você comparar. 💍`
               : usedWeddingFallback
-                ? `Tenho outras opções compatíveis na cor ${data.cor} para te mostrar. 💍`
-                : `Tenho outras opções na cor ${data.cor} para te mostrar. 💍`
+                ? `Tenho outras opções compatíveis ${colorPhrase} para te mostrar. 💍`
+                : `Tenho outras opções ${colorPhrase} para te mostrar. 💍`
           }`
         : "Claro! Vou te reenviar os modelos para você olhar com calma. 💍";
 
@@ -5135,6 +5265,7 @@ serve(async (req) => {
     }
     baseData.categoria = explicitCategory || detectCategory(inboundText, baseData) || baseData.categoria || null;
     baseData.finalidade = detectAllianceType(inboundText, baseData) || baseData.finalidade || null;
+    applyDetectedColorsToData(baseData, inboundText);
     baseData.triagem_categoria = detectClassification(inboundText, baseData) || baseData.triagem_categoria || null;
 
     if (imageUnderstanding?.kind === "inappropriate") {
@@ -5572,7 +5703,7 @@ serve(async (req) => {
             ...baseData,
             agente_atual: "keila",
             categoria: "aliancas",
-            finalidade: "casamento",
+            finalidade: baseData.finalidade || detectAllianceType(inboundText, baseData) || "casamento",
           },
         },
         phone,

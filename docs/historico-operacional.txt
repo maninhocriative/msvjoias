@@ -1074,3 +1074,12 @@ Proximos passos: validar em conversa real no WhatsApp se os modelos aparecem no 
 - O fluxo da Malu agora prioriza gerar a previa quando ja existe modelo escolhido + selfie, sem reenviar apresentacao/catalogo no meio da escolha.
 - A solicitacao de catalogo da Malu deixa de ser forçada quando a mensagem/botao e claramente uma escolha de produto ou pedido de detalhes.
 Proximos passos: publicar zapi-unified e aline-reply no Supabase, commitar/pushar o frontend e validar com um lead real de oculos.
+
+## 2026-05-24 - Agentes com catalogo por multiplas cores
+- O roteamento e a memoria dos agentes passaram a guardar `cores_solicitadas`, permitindo entender pedidos como "azul e preto ou dourado" sem reduzir tudo para uma unica cor.
+- A busca de catalogo agora aceita multiplas cores e retorna produtos que batem com qualquer cor solicitada, preservando a ordem do pedido do cliente.
+- A Keila deixou de forcar alianças como casamento quando o cliente informou namoro; para namoro, pula perguntas de casamento e mostra direto as opcoes disponiveis nas cores pedidas.
+- A Kate preserva acabamento prata/dourado quando vem da memoria ou de mensagens com mais de uma cor, sem quebrar o envio dos dois acabamentos quando o cliente ainda nao escolheu.
+- A Malu tambem herda preferencias de cor no estado para manter contexto quando o cliente volta para o fluxo de oculos.
+- O envio sequencial de cards pela Z-API foi acelerado com intervalos configuraveis: intro 500ms e itens 450ms por padrao.
+Proximos passos: validar em conversa real: alianças de namoro com "azul e preto ou dourado", pingentes com "prata ou dourado" e pedido de catalogo de oculos apos retomada.
