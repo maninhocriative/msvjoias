@@ -58,7 +58,16 @@ jobs:
         run: npx supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
 
       - name: Apply database migrations
+        id: db_migrations
+        continue-on-error: true
         run: npx supabase db push --linked --password "$SUPABASE_DB_PASSWORD" --yes
 
       - name: Deploy Edge Functions
+        if: ${{ always() && steps.db_migrations.outcome != 'skipped' }}
         run: npx supabase functions deploy --project-ref "$SUPABASE_PROJECT_REF" --use-api --jobs 4
+
+      - name: Report migration failure
+        if: ${{ steps.db_migrations.outcome == 'failure' }}
+        run: |
+          echo "::error::As Edge Functions foram publicadas, mas o db push falhou. Alinhe o historico remoto de migrations do Supabase para automatizar migrations."
+          exit 1
