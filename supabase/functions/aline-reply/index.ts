@@ -348,6 +348,29 @@ function buildAlineFallbackGreeting(contactName: string): string {
   return `Oi${greetingName}! Sou a Aline da ACIUM Manaus. Posso te ajudar com alianças, pingentes ou algum modelo do catálogo?`;
 }
 
+function getCustomerFirstName(contactName: string): string {
+  return String(contactName || "")
+    .trim()
+    .split(/\s+/)[0]
+    ?.replace(/\d+/g, "")
+    .trim();
+}
+
+function buildAlineTransferIntro(contactName: string, targetAgent: "kate" | "keila" | "malu"): string {
+  const firstName = getCustomerFirstName(contactName);
+  const greetingName = firstName && firstName.length > 1 ? `, ${firstName}` : "";
+
+  if (targetAgent === "kate") {
+    return `Oi${greetingName}! Sou a Aline da ACIUM Manaus. Vi que voce quer saber sobre pingentes/fotogravacao, entao vou te direcionar para a Kate, nossa especialista nessa linha.`;
+  }
+
+  if (targetAgent === "keila") {
+    return `Oi${greetingName}! Sou a Aline da ACIUM Manaus. Vi que voce quer ver aliancas, entao vou te direcionar para a Keila, nossa especialista nessa linha.`;
+  }
+
+  return `Oi${greetingName}! Sou a Aline da ACIUM Manaus. Vi que voce quer ver oculos, entao vou te direcionar para a Malu, nossa especialista nessa linha.`;
+}
+
 function normalizeConversationAgent(value: unknown): ConversationAgent | "unknown" {
   const agent = String(value || "").toLowerCase();
   if (agent === "aline" || agent === "keila" || agent === "kate" || agent === "malu" || agent === "human") {
@@ -2908,6 +2931,17 @@ async function handleKateFlow(args: {
     categoria: "pingente",
   };
   const preservedPendantColors = getRequestedColors(data, ["prata", "dourada"]);
+  const shouldSendInitialKateIntro =
+    !isKateFlowNode(currentNode) &&
+    !data.kate_intro_sent &&
+    !data.catalogo_kate_enviado &&
+    !data.selected_sku &&
+    !data.selected_product?.id;
+  const withKateIntro = (reply: string) => {
+    if (!shouldSendInitialKateIntro || data.kate_intro_sent) return reply;
+    data.kate_intro_sent = true;
+    return `${buildAlineTransferIntro(contactName, "kate")}\n\n${reply}`;
+  };
 
   // Pingentes não usam numeração/tamanho de alianças; limpamos qualquer resíduo
   // herdado para que, após a cor, a Kate siga direto para o catálogo.
@@ -3140,12 +3174,13 @@ async function handleKateFlow(args: {
       conversation.current_node || null,
       data,
     );
-    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "catalogo_pingente");
+    const finalReply = withKateIntro(reply);
+    await saveAssistantMessage(supabase, conversation.id, "kate", finalReply, "catalogo_pingente");
     await saveAgentMemory(supabase, phone, "kate", contactName, data);
 
     return buildResponsePayload({
       phone,
-      message: reply,
+      message: finalReply,
       node: "catalogo_pingente",
       products: cards,
       collectedData: data,
@@ -3182,12 +3217,13 @@ async function handleKateFlow(args: {
       conversation.current_node || null,
       data,
     );
-    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "catalogo_pingente");
+    const finalReply = withKateIntro(reply);
+    await saveAssistantMessage(supabase, conversation.id, "kate", finalReply, "catalogo_pingente");
     await saveAgentMemory(supabase, phone, "kate", contactName, data);
 
     return buildResponsePayload({
       phone,
-      message: reply,
+      message: finalReply,
       node: "catalogo_pingente",
       products: cards,
       collectedData: data,
@@ -3534,6 +3570,7 @@ Posso seguir com retirada na loja ou delivery? Depois do fechamento, o vendedor 
       : `Oi, eu sou a Kate. A fotogravacao fica linda para presente: usamos uma foto sua e preparo uma simulacao no pingente antes de seguir com o pedido.
 
 Os pingentes sao de aco, com acabamento dourado ou prata. Qual acabamento voce prefere ver?`;
+    const finalReply = withKateIntro(polishedReply);
 
     await persistConversation(
       supabase,
@@ -3543,12 +3580,12 @@ Os pingentes sao de aco, com acabamento dourado ou prata. Qual acabamento voce p
       conversation.current_node || null,
       data,
     );
-    await saveAssistantMessage(supabase, conversation.id, "kate", polishedReply, "kate_cor");
+    await saveAssistantMessage(supabase, conversation.id, "kate", finalReply, "kate_cor");
     await saveAgentMemory(supabase, phone, "kate", contactName, data);
 
     return buildResponsePayload({
       phone,
-      message: polishedReply,
+      message: finalReply,
       node: "kate_cor",
       collectedData: data,
       agent: "kate",
@@ -4340,6 +4377,17 @@ async function handleMaluFlow(args: {
     categoria: "oculos",
   };
   const preservedMaluColors = getRequestedColors(data);
+  const shouldSendInitialMaluIntro =
+    !isMaluFlowNode(currentNode) &&
+    !data.malu_intro_sent &&
+    !data.catalogo_malu_enviado &&
+    !data.selected_sku &&
+    !data.selected_product?.id;
+  const withMaluIntro = (reply: string) => {
+    if (!shouldSendInitialMaluIntro || data.malu_intro_sent) return reply;
+    data.malu_intro_sent = true;
+    return `${buildAlineTransferIntro(contactName, "malu")}\n\n${reply}`;
+  };
 
   if (!isMaluFlowNode(currentNode)) {
     resetMaluFlowState(data);
@@ -4537,13 +4585,14 @@ Quer ficar com esse, testar outro modelo ou falar com atendente?`;
     if (cards.length === 0) {
       const reply = "Oi, eu sou a Malu. No momento não encontrei modelos de óculos disponíveis no catálogo, mas posso chamar um atendente para te ajudar.";
 
+      const finalReply = withMaluIntro(reply);
       await persistConversation(supabase, conversation.id, "malu", "malu_sem_catalogo", conversation.current_node || null, data);
-      await saveAssistantMessage(supabase, conversation.id, "malu", reply, "malu_sem_catalogo");
+      await saveAssistantMessage(supabase, conversation.id, "malu", finalReply, "malu_sem_catalogo");
       await saveAgentMemory(supabase, phone, "malu", contactName, data);
 
       return buildResponsePayload({
         phone,
-        message: reply,
+        message: finalReply,
         node: "malu_sem_catalogo",
         collectedData: data,
         agent: "malu",
@@ -4570,8 +4619,9 @@ Vou te ajudar a escolher o óculos ideal.
 
 Separei alguns modelos disponíveis. Você pode escolher um modelo ou me mandar uma selfie de frente para eu gerar uma prévia.`;
 
+    const finalReply = withMaluIntro(reply);
     await persistConversation(supabase, conversation.id, "malu", "catalogo_oculos", conversation.current_node || null, data);
-    await saveAssistantMessage(supabase, conversation.id, "malu", reply, "catalogo_oculos");
+    await saveAssistantMessage(supabase, conversation.id, "malu", finalReply, "catalogo_oculos");
     await saveAgentMemory(supabase, phone, "malu", contactName, data);
 
     return buildResponsePayload({
@@ -4787,6 +4837,17 @@ async function handleKeilaFlow(args: {
     finalidade: detectedAllianceType || existingData.finalidade || "casamento",
   };
   const preservedAllianceColors = getRequestedColors(data, ["dourada", "prata", "preta", "azul"]);
+  const shouldSendInitialKeilaIntro =
+    !isKeilaFlowNode(currentNode) &&
+    !data.keila_intro_sent &&
+    !data.catalogo_keila_enviado &&
+    !data.selected_sku &&
+    !data.selected_product?.id;
+  const withKeilaIntro = (reply: string) => {
+    if (!shouldSendInitialKeilaIntro || data.keila_intro_sent) return reply;
+    data.keila_intro_sent = true;
+    return `${buildAlineTransferIntro(contactName, "keila")}\n\n${reply}`;
+  };
 
   if (!isKeilaFlowNode(currentNode)) {
     resetKeilaFlowState(data);
@@ -4943,9 +5004,8 @@ async function handleKeilaFlow(args: {
   };
 
   if (!hasTimeline) {
-    const reply = `Perfeito! Vou te transferir para a Keila, nossa especialista em alianças de casamento. 💍
-
-Oi! Sou a Keila. Para quando você quer fechar essas alianças? ⏰`;
+    const reply = "Oi! Sou a Keila. Para quando você quer fechar essas alianças?";
+    const finalReply = withKeilaIntro(reply);
 
     await persistConversation(
       supabase,
@@ -4955,12 +5015,12 @@ Oi! Sou a Keila. Para quando você quer fechar essas alianças? ⏰`;
       conversation.current_node || null,
       data,
     );
-    await saveAssistantMessage(supabase, conversation.id, "keila", reply, "keila_prazo");
+    await saveAssistantMessage(supabase, conversation.id, "keila", finalReply, "keila_prazo");
     await saveAgentMemory(supabase, phone, "keila", contactName, data);
 
     return buildResponsePayload({
       phone,
-      message: reply,
+      message: finalReply,
       node: "keila_prazo",
       collectedData: data,
       agent: "keila",
@@ -4969,6 +5029,7 @@ Oi! Sou a Keila. Para quando você quer fechar essas alianças? ⏰`;
 
   if (!hasBudget) {
     const reply = "Perfeito! E quanto você quer investir nas alianças? 💰";
+    const finalReply = withKeilaIntro(reply);
 
     await persistConversation(
       supabase,
@@ -4978,12 +5039,12 @@ Oi! Sou a Keila. Para quando você quer fechar essas alianças? ⏰`;
       conversation.current_node || null,
       data,
     );
-    await saveAssistantMessage(supabase, conversation.id, "keila", reply, "keila_orcamento");
+    await saveAssistantMessage(supabase, conversation.id, "keila", finalReply, "keila_orcamento");
     await saveAgentMemory(supabase, phone, "keila", contactName, data);
 
     return buildResponsePayload({
       phone,
-      message: reply,
+      message: finalReply,
       node: "keila_orcamento",
       collectedData: data,
       agent: "keila",
@@ -4992,6 +5053,7 @@ Oi! Sou a Keila. Para quando você quer fechar essas alianças? ⏰`;
 
   if (!hasQuantityType) {
     const reply = "Você quer o par ou só a unidade? 💍";
+    const finalReply = withKeilaIntro(reply);
 
     await persistConversation(
       supabase,
@@ -5001,12 +5063,12 @@ Oi! Sou a Keila. Para quando você quer fechar essas alianças? ⏰`;
       conversation.current_node || null,
       data,
     );
-    await saveAssistantMessage(supabase, conversation.id, "keila", reply, "keila_par_ou_unidade");
+    await saveAssistantMessage(supabase, conversation.id, "keila", finalReply, "keila_par_ou_unidade");
     await saveAgentMemory(supabase, phone, "keila", contactName, data);
 
     return buildResponsePayload({
       phone,
-      message: reply,
+      message: finalReply,
       node: "keila_par_ou_unidade",
       collectedData: data,
       agent: "keila",
@@ -5016,6 +5078,7 @@ Oi! Sou a Keila. Para quando você quer fechar essas alianças? ⏰`;
   if (!hasSizeInfo) {
     const reply =
       "E qual a numeração? Se você ainda não souber agora, tudo bem, eu sigo com você mesmo assim 😊";
+    const finalReply = withKeilaIntro(reply);
 
     await persistConversation(
       supabase,
@@ -5025,12 +5088,12 @@ Oi! Sou a Keila. Para quando você quer fechar essas alianças? ⏰`;
       conversation.current_node || null,
       data,
     );
-    await saveAssistantMessage(supabase, conversation.id, "keila", reply, "keila_numeracao");
+    await saveAssistantMessage(supabase, conversation.id, "keila", finalReply, "keila_numeracao");
     await saveAgentMemory(supabase, phone, "keila", contactName, data);
 
     return buildResponsePayload({
       phone,
-      message: reply,
+      message: finalReply,
       node: "keila_numeracao",
       collectedData: data,
       agent: "keila",
@@ -5039,6 +5102,7 @@ Oi! Sou a Keila. Para quando você quer fechar essas alianças? ⏰`;
 
   if (!hasColor) {
     const reply = "Antes de eu te mostrar, qual cor você prefere: dourada, prata, preta ou azul? 🎨";
+    const finalReply = withKeilaIntro(reply);
 
     await persistConversation(
       supabase,
@@ -5048,12 +5112,12 @@ Oi! Sou a Keila. Para quando você quer fechar essas alianças? ⏰`;
       conversation.current_node || null,
       data,
     );
-    await saveAssistantMessage(supabase, conversation.id, "keila", reply, "keila_cor");
+    await saveAssistantMessage(supabase, conversation.id, "keila", finalReply, "keila_cor");
     await saveAgentMemory(supabase, phone, "keila", contactName, data);
 
     return buildResponsePayload({
       phone,
-      message: reply,
+      message: finalReply,
       node: "keila_cor",
       collectedData: data,
       agent: "keila",
@@ -5065,6 +5129,7 @@ Oi! Sou a Keila. Para quando você quer fechar essas alianças? ⏰`;
 
     if (cards.length === 0) {
       const reply = `Não encontrei modelos prontos ${colorPhrase} dentro dessa faixa agora. Se quiser, eu posso te mostrar outra faixa de valor ou outra cor.`;
+      const finalReply = withKeilaIntro(reply);
 
       await persistConversation(
         supabase,
@@ -5074,12 +5139,12 @@ Oi! Sou a Keila. Para quando você quer fechar essas alianças? ⏰`;
         conversation.current_node || null,
         data,
       );
-      await saveAssistantMessage(supabase, conversation.id, "keila", reply, "keila_sem_catalogo");
+      await saveAssistantMessage(supabase, conversation.id, "keila", finalReply, "keila_sem_catalogo");
       await saveAgentMemory(supabase, phone, "keila", contactName, data);
 
       return buildResponsePayload({
         phone,
-        message: reply,
+        message: finalReply,
         node: "keila_sem_catalogo",
         collectedData: data,
         agent: "keila",
@@ -5112,6 +5177,7 @@ Oi! Sou a Keila. Para quando você quer fechar essas alianças? ⏰`;
           : `Separei opções ${colorPhrase}. 💍`
     }
 O valor do card é da unidade. O par sai pelo dobro.`;
+    const finalReply = withKeilaIntro(reply);
 
     await persistConversation(
       supabase,
@@ -5121,12 +5187,12 @@ O valor do card é da unidade. O par sai pelo dobro.`;
       conversation.current_node || null,
       data,
     );
-    await saveAssistantMessage(supabase, conversation.id, "keila", reply, "catalogo");
+    await saveAssistantMessage(supabase, conversation.id, "keila", finalReply, "catalogo");
     await saveAgentMemory(supabase, phone, "keila", contactName, data);
 
     return buildResponsePayload({
       phone,
-      message: reply,
+      message: finalReply,
       node: "catalogo",
       products: cards,
       collectedData: data,
@@ -5775,14 +5841,18 @@ serve(async (req) => {
           })));
 
     if (keepMaluContext) {
+      const maluCurrentNode =
+        isMaluFlowNode(conversation.current_node || "")
+          ? conversation.current_node
+          : selectedContextAgent === "malu" || explicitCategory === "oculos"
+            ? conversation.current_node || ""
+            : "malu_contexto_continuado";
       const maluResponse = await handleMaluFlow({
         supabase,
         conversation: {
           ...conversation,
           active_agent: "malu",
-          current_node: isMaluFlowNode(conversation.current_node || "")
-            ? conversation.current_node
-            : "malu_contexto_continuado",
+          current_node: maluCurrentNode,
           collected_data: hydrateDataWithMemory(
             {
               ...baseData,
@@ -5807,6 +5877,12 @@ serve(async (req) => {
     }
 
     if (keepKateContext) {
+      const kateCurrentNode =
+        isKateFlowNode(conversation.current_node || "")
+          ? conversation.current_node
+          : selectedContextAgent === "kate" || explicitCategory === "pingente"
+            ? conversation.current_node || ""
+            : "kate_contexto_continuado";
       const kateResponse = await handleKateFlow({
         supabase,
         supabaseUrl,
@@ -5814,9 +5890,7 @@ serve(async (req) => {
         conversation: {
           ...conversation,
           active_agent: "kate",
-          current_node: isKateFlowNode(conversation.current_node || "")
-            ? conversation.current_node
-            : "kate_contexto_continuado",
+          current_node: kateCurrentNode,
           collected_data: hydrateDataWithMemory(
             {
               ...baseData,
@@ -5841,6 +5915,12 @@ serve(async (req) => {
     }
 
     if (keepKeilaContext) {
+      const keilaCurrentNode =
+        isKeilaFlowNode(conversation.current_node || "")
+          ? conversation.current_node
+          : selectedContextAgent === "keila" || explicitCategory === "aliancas" || explicitCategory === "aneis"
+            ? conversation.current_node || ""
+            : "keila_contexto_continuado";
       const keilaResponse = await handleKeilaFlow({
         supabase,
         supabaseUrl,
@@ -5848,9 +5928,7 @@ serve(async (req) => {
         conversation: {
           ...conversation,
           active_agent: "keila",
-          current_node: isKeilaFlowNode(conversation.current_node || "")
-            ? conversation.current_node
-            : "keila_contexto_continuado",
+          current_node: keilaCurrentNode,
           collected_data: {
             ...baseData,
             agente_atual: "keila",

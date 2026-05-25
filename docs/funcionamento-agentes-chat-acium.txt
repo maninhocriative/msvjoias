@@ -1,0 +1,241 @@
+FUNCIONAMENTO DOS AGENTES E DO CHAT CRM ACIUM
+Atualizado em: 2026-05-25
+
+1. Visao geral
+
+O atendimento automatico entra pelo WhatsApp conectado na Z-API. A Z-API chama a Edge Function zapi-unified, que salva a mensagem no CRM, junta mensagens picadas do cliente por uma pequena janela de tempo e chama a Edge Function aline-reply para decidir a resposta.
+
+A aline-reply e o cerebro principal dos agentes. Ela analisa texto, botoes, midias, historico recente do CRM, memoria do agente, produto escolhido e estado da conversa. A resposta volta para zapi-unified, que envia no WhatsApp pela Z-API e tambem registra a mensagem no CRM.
+
+2. Fluxo tecnico resumido
+
+Cliente no WhatsApp
+-> Z-API webhook
+-> supabase/functions/zapi-unified
+-> tabela de mensagens/conversas do CRM
+-> acumulador de mensagens picadas
+-> supabase/functions/aline-reply
+-> escolha de agente/acao/catalogo
+-> zapi-unified envia texto, imagem, audio, cards e botoes pela Z-API
+-> CRM atualiza historico, tags, status e lista de conversas.
+
+3. Aline - triagem principal
+
+Aline e a entrada padrao do atendimento. Ela deve:
+
+- Receber novos leads.
+- Apresentar a ACIUM.
+- Identificar se o cliente quer aliancas, pingentes/fotogravacao, oculos, chaveiro, duvida geral ou atendimento humano.
+- Direcionar para o especialista correto.
+
+Regra importante:
+
+- Primeiro contato ou troca explicita de produto: Aline aparece antes e informa que vai direcionar.
+- Conversa ja em andamento: o sistema preserva Kate, Keila ou Malu para nao reiniciar com saudacao generica.
+
+Exemplos esperados:
+
+- Cliente novo: "Quero saber sobre fotogravacao".
+  Aline se apresenta e direciona para Kate. Kate continua com pingentes.
+
+- Cliente em pingentes pergunta "E somente pingente?".
+  Kate responde sobre corrente/cordao, sem chamar Aline.
+
+- Cliente em aliancas diz "tem oculos?".
+  Aline pode indicar troca de linha e direcionar para Malu.
+
+4. Kate - pingentes e fotogravacao
+
+Kate atende pingentes fotogravaveis. Funcoes principais:
+
+- Explicar que os pingentes sao de aco, nao ouro.
+- Explicar que dourado e prata sao acabamentos do aco.
+- Enviar modelos do catalogo por acabamento.
+- Enviar modelos dourados e prata quando o cliente pede catalogo completo ou todos os modelos.
+- Entender perguntas sobre prazo, valor, material, peso, corrente/cordao, retirada, delivery e pagamento.
+- Gerar simulacao de fotogravacao quando houver produto escolhido e foto do cliente.
+- Informar sempre que a imagem e uma simulacao e que a arte original sera enviada pelo vendedor para aprovacao antes da gravacao.
+- Nao travar a venda exigindo foto: se o cliente escolher "Quero este" e quiser seguir sem simulacao, deve avancar para entrega/pagamento e acao humana.
+
+Regras comerciais importantes:
+
+- Corrente ou cordao nao acompanha o pingente; e vendido separadamente.
+- O prazo depende da fila, geralmente de 8 a 24 horas apos pagamento e fechamento.
+- Fotogravacao de 1 lado inclusa quando estiver no cadastro do produto.
+- Quando a venda esta iniciada, marcar acao humana para vendedor assumir.
+
+5. Keila - aliancas
+
+Keila atende aliancas. Funcoes principais:
+
+- Identificar se e casamento, namoro ou outro uso.
+- Consultar catalogo real antes de dizer que nao tem produto.
+- Aceitar multiplas cores na mesma mensagem, por exemplo "azul e preto ou dourado".
+- Mostrar produtos disponiveis dentro das cores pedidas.
+- Se o cliente pedir "todas as pecas" ou "catalogo completo", enviar catalogo mais amplo.
+- Coletar prazo, orcamento, par/unidade, numeracao, cor, entrega e pagamento quando necessario.
+- Encaminhar para humano quando a compra estiver iniciada ou quando houver duvida fora do fluxo.
+
+Cuidados:
+
+- Nao tratar "namorado/namorada" como alianca automaticamente quando o contexto for fotogravacao/pingente.
+- Nao afirmar falta de produto sem consultar catalogo.
+- Se o cliente pede chaveiro, encaminhar para vendedor, pois chaveiro ainda nao tem fluxo automatico.
+
+6. Malu - oculos
+
+Malu atende oculos. Funcoes principais:
+
+- Enviar catalogo de oculos quando o cliente pede "oculos", "modelos", "sim", "quero" ou clica em botoes.
+- Usar botao principal "Quero este".
+- Registrar o modelo escolhido.
+- Pedir selfie quando o cliente quiser previa.
+- Gerar previa com oculos quando houver modelo escolhido e selfie.
+- Nao se reapresentar depois que o cliente ja escolheu modelo ou mandou foto.
+
+Problemas ja tratados:
+
+- Respostas curtas no fluxo de oculos nao devem repetir a pergunta; devem enviar catalogo.
+- Se a selfie chegou antes do modelo, o sistema tenta preservar a foto para gerar depois da escolha.
+- O envio de oculos no WhatsApp usa Z-API com midia simples e botoes, evitando card interativo instavel.
+
+7. Memoria e estado
+
+O sistema guarda estado em collected_data e memoria por agente. Campos importantes:
+
+- agente_atual
+- categoria
+- finalidade
+- cor
+- cores_solicitadas
+- selected_product
+- selected_sku
+- selected_name
+- selected_price
+- last_catalog
+- catalog_history
+- customer_stage
+- handoff_reason
+- catalogo_kate_enviado
+- catalogo_keila_enviado
+- catalogo_malu_enviado
+- intro_sent por agente
+
+Tambem existe leitura do historico recente do CRM. Ela serve para recuperar contexto quando o estado interno ficou incompleto. Exemplo: se o historico recente mostra catalogo de pingente, perguntas seguintes devem continuar com Kate.
+
+8. Acumulador de mensagens picadas
+
+O zapi-unified tem um pequeno delay configuravel para juntar mensagens curtas do cliente antes de chamar o agente. Isso evita respostas erradas quando o cliente manda:
+
+"Pingente"
+"Dourado em aco"
+"E modelos de alianca"
+
+O sistema salva todas as mensagens, espera um pouco, verifica se chegou mensagem mais nova e apenas a chamada mais recente responde com o texto acumulado.
+
+Configuracoes:
+
+- AGENT_ACCUMULATOR_DELAY_MS: delay base antes de responder.
+- AGENT_ACCUMULATOR_WINDOW_MS: janela de mensagens recentes consideradas.
+
+9. Catalogo
+
+Os agentes devem consultar produtos ativos no catalogo antes de responder. O envio de catalogo pode ser por categoria:
+
+- pingentes: Kate
+- aliancas/aneis: Keila
+- oculos: Malu
+- catalogo geral: Aline envia itens ativos e roteia conforme o produto escolhido.
+
+Quando o cliente pedir varios filtros juntos, o sistema deve tentar buscar qualquer produto que bata com as cores solicitadas, sem reduzir tudo para uma cor so.
+
+10. Tags, acao humana e venda iniciada
+
+Quando o agente nao consegue atender com seguranca, ele deve:
+
+- Marcar agente_atual como human.
+- Atualizar status/tags de acao humana.
+- Deixar claro para o vendedor no CRM o motivo do handoff.
+
+Casos de acao humana:
+
+- Venda iniciada.
+- Cliente escolheu modelo e quer finalizar.
+- Pagamento/comprovante/documento.
+- Chaveiro.
+- Audio recebido quando nao ha transcricao segura.
+- Foto de produto nao identificada.
+- Duvida fora do fluxo.
+- Limite de simulacoes de imagem atingido.
+- Mensagem ofensiva/assedio.
+
+11. Follow-up
+
+Existe uma regua curta antes do follow-up normal:
+
+- Primeira tentativa apos poucos minutos.
+- Segunda tentativa depois de mais tempo.
+- Terceira tentativa com oferta/retomada.
+- Depois disso entra o follow-up normal.
+
+Nao deve disparar follow-up em conversas com humano, venda iniciada, comprador, vendido, perdido ou sem interesse.
+
+12. Chat CRM
+
+O chat renderiza mensagens recebidas e enviadas, tags, status, vendedor/atendente e ferramentas de venda. Melhorias ja feitas ou em andamento:
+
+- Deduplicacao de mensagens e midias.
+- Evitar mostrar avatar/foto de perfil como imagem gigante.
+- Evitar links soltos de midia quando a imagem ja foi renderizada.
+- Carregar mensagens em estilo WhatsApp com menos peso.
+- Ordenar conversa para o topo quando chega mensagem nova.
+- Indicar atendimento humano e vendedor assumindo.
+- Audio precisa ser salvo com URL estavel para tocar no navegador; links temporarios da Z-API podem expirar.
+
+13. Problemas conhecidos / pontos de cuidado
+
+- O historico remoto de migrations do Supabase esta desalinhado com a pasta local. O GitHub Actions publica Edge Functions, mas o job fica vermelho quando tenta db push.
+- Algumas conversas antigas podem ter collected_data incompleto; por isso a leitura do historico recente e importante.
+- Se um produto nao estiver bem categorizado no cadastro, o agente pode rotear errado.
+- Se a Z-API retornar link temporario de midia e ele nao for espelhado em storage, audio/imagem antiga pode falhar.
+- Se o catalogo estiver vazio ou com imagens ruins, o agente deve chamar humano em vez de inventar.
+- A OpenAI pode falhar por limite/billing; nesse caso o agente deve responder com instabilidade amigavel e acao humana.
+
+14. Como validar apos deploy
+
+Testes minimos:
+
+1. Novo lead: "Quero saber sobre fotogravacao".
+   Esperado: Aline se apresenta, direciona para Kate e Kate continua com pingentes.
+
+2. Depois de catalogo de pingentes: "E somente pingente?"
+   Esperado: Kate explica que corrente/cordao e vendido separado.
+
+3. Depois de catalogo de pingentes: "Gostaria de presentear meu marido".
+   Esperado: Kate continua e nao volta para Aline.
+
+4. Novo lead: "Oculos".
+   Esperado: Aline direciona para Malu e Malu envia catalogo, sem repetir pergunta.
+
+5. Novo lead: "Aliancas de namoro prata e dourada".
+   Esperado: Aline direciona para Keila, Keila consulta catalogo de namoro e envia opcoes disponiveis.
+
+6. Cliente manda "chaveiro".
+   Esperado: acao humana, sem mandar para aliancas.
+
+7. Cliente manda varias mensagens picadas.
+   Esperado: apenas uma resposta, considerando todas as mensagens recentes.
+
+15. Deploy e producao
+
+O deploy e feito por GitHub Actions quando ha push na main. A action valida build, linka o projeto Supabase e publica Edge Functions. Mesmo com a etapa de migrations falhando por drift, as Edge Functions podem ser publicadas se o log mostrar "Deployed Functions".
+
+Projeto Supabase de producao: ahbjwpkpxqqrpvpzmqwa.
+
+Antes de afirmar que esta em producao, conferir no GitHub Actions:
+
+- build passou;
+- Deploy Edge Functions rodou;
+- aline-reply aparece na lista de functions publicadas;
+- zapi-unified aparece quando alterada;
+- falha final, se existir, e apenas de migrations desalinhadas.

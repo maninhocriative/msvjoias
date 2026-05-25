@@ -1125,4 +1125,15 @@ Proximos passos: testar catalogo completo, pingente com duvida de corrente e men
 - Ajustado `aline-reply` para usar o historico recente do CRM como fonte de contexto quando o estado interno da conversa estiver incompleto.
 - Se o historico recente mostrar pingente/fotogravacao, o atendimento volta para Kate antes de cair na saudacao generica da Aline.
 - Se o historico recente mostrar oculos ou aliancas, o mesmo principio mantém Malu ou Keila no atendimento.
-Proximos passos: publicar a hotfix e testar no caso Melanina: depois de catalogo de pingente, perguntas como presente/aniversario/modelos devem continuar com Kate.
+- Commit `684503a` enviado para `main`. O GitHub Actions validou build e publicou `aline-reply` em producao no projeto `ahbjwpkpxqqrpvpzmqwa`.
+- O workflow seguiu vermelho apenas pelo bloqueio antigo de migrations desalinhadas; a Edge Function foi publicada.
+Proximos passos: testar no caso Melanina: depois de catalogo de pingente, perguntas como presente/aniversario/modelos devem continuar com Kate.
+
+## 2026-05-25 - Triagem inicial da Aline restaurada
+- Corrigido o roteamento que pulava a apresentacao da Aline quando o primeiro texto do cliente ja citava pingente, fotogravacao, oculos ou aliancas.
+- Agora, em primeiro contato ou troca explicita de produto, a Aline se apresenta e informa que vai direcionar para Kate, Keila ou Malu antes do especialista responder.
+- Conversas ja em andamento continuam preservando o agente atual usando historico recente do CRM e memoria do atendimento, sem voltar para a saudacao generica da Aline.
+- A Keila passou a usar a mesma regra de introducao segura da Aline, evitando uma transferencia seca quando o cliente entra direto em aliancas.
+- Corrigido um retorno do catalogo geral sem produtos que podia referenciar `finalReply` sem existir.
+- Criado documento `docs/funcionamento-agentes-chat-acium.txt` com o mapa completo do funcionamento dos agentes, fluxo tecnico, problemas conhecidos e proximos cuidados.
+Proximos passos: validar em WhatsApp real os tres cenarios: novo lead de fotogravacao, novo lead de oculos e cliente antigo perguntando apos catalogo; depois publicar a Edge Function `aline-reply`.
