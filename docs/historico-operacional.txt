@@ -1096,4 +1096,12 @@ Proximos passos: validar em conversa real: alianças de namoro com "azul e preto
 - aline-followup deployada no Supabase e rodada manual executada em producao: 6 conversas elegiveis processadas, 6 mensagens enviadas, sem throttle.
 - Debug apos a rodada retornou eligibleCount=0.
 - O db push do cron de 5 minutos ficou pendente porque o historico remoto de migrations tem versoes que nao existem localmente; a function ja esta publicada e o cron remoto atual continua chamando o job.
-Proximos passos: reparar/alinhar historico de migrations do Supabase ou aplicar manualmente o SQL do cron de 5 minutos.
+- SQL do cron de 5 minutos aplicado manualmente no Supabase SQL Editor; novo agendamento retornou id 18.
+Proximos passos: reparar/alinhar historico de migrations do Supabase para voltar a aplicar migrations pelo CLI sem bloqueio.
+
+## 2026-05-25 - Automacao de deploy Supabase pelo GitHub Actions
+- Criado workflow `.github/workflows/supabase-deploy.yml` para rodar em push na main quando houver mudanca em supabase, workflow ou package.
+- O workflow instala dependencias, valida `npm run build`, linka o projeto Supabase usando secrets, aplica migrations com `supabase db push` e publica Edge Functions com `supabase functions deploy --use-api`.
+- Secrets necessarios no GitHub: SUPABASE_ACCESS_TOKEN e SUPABASE_DB_PASSWORD. O project_ref da ACIUM fica fixo no workflow.
+- A automacao nao guarda senha/token no repositorio.
+Proximos passos: cadastrar os secrets no GitHub e alinhar o historico remoto de migrations para o passo `db push` passar sem bloqueio.
