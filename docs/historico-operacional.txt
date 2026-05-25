@@ -1104,4 +1104,6 @@ Proximos passos: reparar/alinhar historico de migrations do Supabase para voltar
 - O workflow instala dependencias, valida `npm run build`, linka o projeto Supabase usando secrets, aplica migrations com `supabase db push` e publica Edge Functions com `supabase functions deploy --use-api`.
 - Secrets necessarios no GitHub: SUPABASE_ACCESS_TOKEN e SUPABASE_DB_PASSWORD. O project_ref da ACIUM fica fixo no workflow.
 - A automacao nao guarda senha/token no repositorio.
+- Primeira execucao do workflow passou por install/build e falhou no link do Supabase porque SUPABASE_ACCESS_TOKEN e SUPABASE_DB_PASSWORD ainda nao estao configurados no GitHub.
+- Adicionada validacao explicita de secrets para falhar com mensagem clara antes do build/deploy enquanto eles nao estiverem cadastrados.
 Proximos passos: cadastrar os secrets no GitHub e alinhar o historico remoto de migrations para o passo `db push` passar sem bloqueio.
