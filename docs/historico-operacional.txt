@@ -1139,3 +1139,8 @@ Proximos passos: testar no caso Melanina: depois de catalogo de pingente, pergun
 - Commit `65f7ea0` enviado para `main`. O GitHub Actions validou build e publicou `aline-reply` em producao no projeto `ahbjwpkpxqqrpvpzmqwa`.
 - O workflow seguiu vermelho apenas pelo bloqueio antigo de migrations desalinhadas; as Edge Functions foram publicadas com sucesso.
 Proximos passos: validar em WhatsApp real os tres cenarios: novo lead de fotogravacao, novo lead de oculos e cliente antigo perguntando apos catalogo.
+
+## 2026-05-25 - Documento de alteracoes dos agentes
+- Criado `docs/alteracoes-agentes-ate-agora.txt` com resumo operacional das alteracoes feitas nos agentes Aline, Kate, Keila e Malu.
+- O documento tambem registra mudancas em roteamento, catalogo, memoria, acumulador de mensagens, follow-up, tags, acao humana, assedio, midias e deploy.
+Proximos passos: manter este arquivo atualizado quando houver novas mudancas relevantes nos agentes.

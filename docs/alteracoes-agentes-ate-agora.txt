@@ -1,0 +1,173 @@
+ALTERACOES FEITAS NOS AGENTES ATE AGORA - CRM ACIUM
+Atualizado em: 2026-05-25
+
+1. Roteamento entre agentes
+
+- Aline voltou a ser a triagem inicial para novos leads.
+- Quando o cliente chega pela primeira vez falando de pingente, fotogravacao, oculos ou aliancas, a Aline se apresenta e direciona para o agente correto.
+- Conversas ja em andamento nao voltam para a saudacao da Aline; o sistema preserva Kate, Keila ou Malu conforme o contexto.
+- O historico recente do CRM passou a ser usado como apoio para recuperar o agente correto quando o estado interno estiver incompleto.
+- Termos de fotogravacao passaram a ser tratados como pingente, evitando mandar cliente de pingente para aliancas por causa de palavras como namorado/namorada.
+- Chaveiro foi separado do fluxo automatico: quando o cliente pede chaveiro, vai para atendimento humano.
+
+2. Aline
+
+- Aline continua sendo a entrada geral do atendimento.
+- Aline identifica intencao inicial e encaminha para:
+  - Kate: pingentes e fotogravacao.
+  - Keila: aliancas e aneis.
+  - Malu: oculos.
+  - Humano: chaveiro, duvida fora do fluxo, comprovante, audio sem seguranca, assedio ou caso sem confianca.
+- Foi corrigido o problema em que Aline deixava de se apresentar quando a primeira mensagem ja tinha uma intencao clara.
+- Aline tambem pode enviar catalogo geral quando o cliente pede todas as pecas ou catalogo completo.
+
+3. Kate - pingentes/fotogravacao
+
+- Kate foi ajustada para manter o contexto de pingente depois do envio do catalogo.
+- Kate agora responde duvidas como:
+  - prazo de entrega;
+  - valor;
+  - material;
+  - peso;
+  - corrente/cordao;
+  - retirada na loja;
+  - delivery;
+  - forma de pagamento.
+- Corrigido: pingentes nao sao ouro; o texto agora informa que sao de aco com acabamento dourado ou prata.
+- Corrigido: corrente ou cordao nao acompanha o pingente; e vendido separadamente.
+- Corrigido: prazo informado como geralmente 8 a 24 horas apos pagamento e fechamento, dependendo da fila.
+- Corrigido: "previa" foi tratada como simulacao; o cliente deve ser informado que a imagem e apenas uma simulacao e que a arte original sera enviada pelo vendedor antes da gravacao.
+- Kate nao deve insistir em foto quando o cliente ja escolheu o modelo e quer comprar. A simulacao com foto e opcional para ajudar na escolha.
+- Quando o cliente escolhe modelo ou aprova simulacao, a conversa deve marcar venda iniciada e acao humana para vendedor assumir.
+- Kate passou a enviar catalogo de pingentes por acabamento e tambem catalogo completo quando solicitado.
+- O fluxo passou a aceitar "Quero este" mesmo sem foto, avancando para entrega/pagamento.
+
+4. Keila - aliancas
+
+- Keila foi ajustada para consultar catalogo antes de dizer que nao tem produto.
+- O sistema passou a reconhecer multiplas cores na mesma mensagem, como "azul e preto ou dourado".
+- Para aliancas de namoro, Keila nao deve forcar fluxo de casamento.
+- Quando o cliente pede namoro, o sistema deve buscar os produtos de namoro disponiveis no catalogo.
+- Keila ganhou a mesma introducao segura da Aline quando o cliente entra direto em aliancas.
+- O valor do card continua sendo tratado como valor da unidade, com aviso de que o par sai pelo dobro.
+- Quando o cliente escolhe produto e entra em fechamento, a conversa deve marcar venda iniciada e acao humana.
+
+5. Malu - oculos
+
+- Criada/integrada a agente Malu para oculos.
+- Malu atende pedidos de oculos, armacao, lentes, provar oculos e previa com selfie.
+- Corrigido problema em que Malu repetia "Quer ver os modelos?" sem enviar catalogo.
+- Respostas curtas como "sim", "quero", "oculos" e "ver modelos" devem enviar catalogo.
+- Cards de oculos foram reduzidos para o botao principal "Quero este".
+- O envio de oculos passou a usar Z-API, nao Meta API.
+- Malu deve registrar o modelo escolhido.
+- Se ja existe modelo escolhido e o cliente manda selfie, Malu deve gerar a previa em vez de se apresentar novamente.
+- A geracao de previa de oculos foi preparada para usar gerador de imagem da OpenAI/GPT Image, com limite de 2 simulacoes por cliente.
+- Se a geracao falhar, deve responder de forma amigavel e chamar humano quando necessario.
+
+6. Catalogo e produtos
+
+- Agentes passaram a usar catalogo cadastrado no sistema.
+- Foi criado suporte para pedido de catalogo geral.
+- O clique em produto do catalogo geral roteia para o agente certo conforme a categoria do produto.
+- Busca por cor foi ampliada para aceitar multiplas cores.
+- O envio de cards foi acelerado com intervalos menores configuraveis.
+- Para oculos, o envio foi adaptado para Z-API com midia simples e botao, por ser mais estavel no WhatsApp.
+
+7. Memoria e contexto
+
+- O sistema passou a salvar e consultar memoria por agente.
+- Campos importantes usados pelos agentes:
+  - agente_atual;
+  - categoria;
+  - finalidade;
+  - cor;
+  - cores_solicitadas;
+  - selected_product;
+  - selected_sku;
+  - selected_name;
+  - selected_price;
+  - last_catalog;
+  - catalog_history;
+  - customer_stage;
+  - handoff_reason.
+- Historico recente do CRM tambem e usado para entender o que estava acontecendo quando o estado interno falhar.
+- Isso evita que o cliente pergunte algo depois do catalogo e o agente volte para uma saudacao generica.
+
+8. Acumulador de mensagens picadas
+
+- Foi implementado no zapi-unified um acumulador com pequeno delay.
+- Ele junta mensagens enviadas em sequencia antes de chamar o agente.
+- Exemplo:
+  - "Pingente"
+  - "Dourado em aco"
+  - "E modelos de alianca"
+- O agente deve analisar o conjunto antes de responder, evitando responder mensagem por mensagem e perder contexto.
+
+9. Follow-up
+
+- Foi criada regua curta de follow-up antes do follow-up normal.
+- O agente pode fazer ate 3 tentativas curtas de retomada.
+- Para pingentes, o primeiro resgate pode reenviar catalogo se ainda nao foi enviado.
+- Depois das tentativas curtas, entra o follow-up normal.
+- Nao dispara follow-up em conversa com humano, venda iniciada, vendido, comprador, perdido ou sem interesse.
+
+10. Acao humana e tags
+
+- Conversas que o agente nao consegue resolver com seguranca devem ser marcadas como acao humana.
+- Venda iniciada tambem deve gerar acao humana.
+- Casos de acao humana:
+  - cliente escolheu produto e quer finalizar;
+  - cliente aprovou simulacao;
+  - comprovante ou documento;
+  - audio sem transcricao segura;
+  - chaveiro;
+  - foto de produto nao identificada;
+  - duvida fora do fluxo;
+  - limite de simulacoes atingido;
+  - assedio.
+- A tag "Precisa atendimento humano" foi adicionada para destacar conversas que precisam de vendedor.
+- Quando vendedor assumir, a ideia e trocar o aviso de "precisa atendimento humano" pelo nome do vendedor.
+
+11. Assedio e seguranca
+
+- Agente passou a identificar mensagens de assedio.
+- Resposta padrao informa que a conversa foi registrada, que mensagens de assedio nao serao atendidas e que a equipe responsavel foi acionada.
+- O fluxo deve parar atendimento automatico comercial nesses casos.
+
+12. Audio, imagens e midias
+
+- zapi-unified foi ajustado para salvar audio e tentar manter link estavel.
+- Links temporarios de audio/imagem da Z-API podem expirar; por isso foi iniciado o espelhamento para Storage.
+- O chat passou a ocultar fotos de perfil/avatar do WhatsApp para evitar imagens gigantes no historico.
+- O chat tambem foi ajustado para evitar mostrar imagem e link duplicado quando a midia ja foi renderizada.
+
+13. Deploys e producao
+
+- As alteracoes principais dos agentes foram commitadas e enviadas para a main.
+- Edge Functions publicadas em producao no projeto Supabase:
+  - aline-reply;
+  - zapi-unified;
+  - aline-followup;
+  - demais funcoes no deploy automatico.
+- O GitHub Actions faz build e publica functions.
+- O workflow ainda fica vermelho por causa do historico remoto de migrations desalinhado, mas as Edge Functions foram publicadas quando o log mostra "Deployed Functions".
+
+14. Problemas ainda conhecidos
+
+- Historico de migrations do Supabase esta desalinhado e precisa ser reparado para o deploy ficar verde.
+- Algumas conversas antigas podem ter estado quebrado; o historico recente ajuda, mas ainda pode haver caso herdado.
+- Se produto estiver mal categorizado no catalogo, o agente pode rotear errado.
+- A qualidade da previa depende do gerador de imagem e dos limites/billing da OpenAI.
+- Audio antigo pode nao tocar se o link temporario ja expirou antes do espelhamento.
+- O chat ainda tem alteracoes pendentes em arquivo local nao commitado em src/pages/Chat.tsx.
+
+15. Arquivos principais alterados
+
+- supabase/functions/aline-reply/index.ts
+- supabase/functions/zapi-unified/index.ts
+- supabase/functions/aline-followup/index.ts
+- src/pages/Chat.tsx
+- docs/historico-operacional.txt
+- docs/funcionamento-agentes-chat-acium.txt
+- docs/alteracoes-agentes-ate-agora.txt
