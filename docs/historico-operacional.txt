@@ -1120,3 +1120,9 @@ Proximos passos: alinhar o historico remoto de migrations para o passo `db push`
 - Commit `b652049` enviado para `main`. O GitHub Actions validou build e publicou as Edge Functions, incluindo `aline-reply` e `zapi-unified`, no projeto Supabase `ahbjwpkpxqqrpvpzmqwa`.
 - O workflow continua marcado como falha apenas pelo bloqueio antigo de historico remoto de migrations desalinhado; as Edge Functions foram publicadas com sucesso.
 Proximos passos: testar catalogo completo, pingente com duvida de corrente e mensagens picadas em conversa real; depois alinhar historico de migrations para o workflow ficar verde.
+
+## 2026-05-25 - Correção urgente de contexto vindo do CRM
+- Ajustado `aline-reply` para usar o historico recente do CRM como fonte de contexto quando o estado interno da conversa estiver incompleto.
+- Se o historico recente mostrar pingente/fotogravacao, o atendimento volta para Kate antes de cair na saudacao generica da Aline.
+- Se o historico recente mostrar oculos ou aliancas, o mesmo principio mantém Malu ou Keila no atendimento.
+Proximos passos: publicar a hotfix e testar no caso Melanina: depois de catalogo de pingente, perguntas como presente/aniversario/modelos devem continuar com Kate.

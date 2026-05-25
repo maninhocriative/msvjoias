@@ -1267,6 +1267,24 @@ function recentContextHasMaluEyewearPrompt(context?: string | null): boolean {
   return /modelos de oculos|oculos disponiveis|previa com selfie|quer ver os modelos|catalogo_oculos|malu/.test(normalized);
 }
 
+function recentContextHasKatePendantPrompt(context?: string | null): boolean {
+  const normalized = normalizeText(context || "");
+  if (!normalized) return false;
+
+  return /pingente|pingentes|medalha|medalhao|fotograv|fotogravacao|foto no pingente|quero este no pingente|catalogo_pingente|kate/.test(
+    normalized,
+  );
+}
+
+function recentContextHasKeilaAlliancePrompt(context?: string | null): boolean {
+  const normalized = normalizeText(context || "");
+  if (!normalized) return false;
+
+  return /alianca|aliancas|anel|aneis|namoro|casamento|tungsten|quero esta|catalogo_alianca|keila/.test(
+    normalized,
+  );
+}
+
 function extractRingSizes(text: string, currentNode: string): { size1: string | null; size2: string | null } {
   const normalized = normalizeText(text);
   const sizeContext =
@@ -5463,7 +5481,22 @@ serve(async (req) => {
     if (!explicitCategory && imageUnderstanding?.kind === "product_reference" && imageUnderstanding.product_category) {
       explicitCategory = imageUnderstanding.product_category;
     }
-    baseData.categoria = explicitCategory || detectCategory(inboundText, baseData) || baseData.categoria || null;
+    const recentContextCategory = !explicitCategory
+      ? detectCategory(recentCrmContext || "", {})
+      : null;
+    baseData.categoria = explicitCategory || recentContextCategory || detectCategory(inboundText, baseData) || baseData.categoria || null;
+    if (!explicitCategory && recentContextCategory === "pingente") {
+      baseData.agente_atual = "kate";
+      baseData.catalogo_kate_enviado = baseData.catalogo_kate_enviado ?? recentContextHasKatePendantPrompt(recentCrmContext);
+    }
+    if (!explicitCategory && recentContextCategory === "oculos") {
+      baseData.agente_atual = "malu";
+      baseData.catalogo_malu_enviado = baseData.catalogo_malu_enviado ?? recentContextHasMaluEyewearPrompt(recentCrmContext);
+    }
+    if (!explicitCategory && (recentContextCategory === "aliancas" || recentContextCategory === "aneis")) {
+      baseData.agente_atual = "keila";
+      baseData.catalogo_keila_enviado = baseData.catalogo_keila_enviado ?? recentContextHasKeilaAlliancePrompt(recentCrmContext);
+    }
     baseData.finalidade = detectAllianceType(inboundText, baseData) || baseData.finalidade || null;
     applyDetectedColorsToData(baseData, inboundText);
     baseData.triagem_categoria = detectClassification(inboundText, baseData) || baseData.triagem_categoria || null;
