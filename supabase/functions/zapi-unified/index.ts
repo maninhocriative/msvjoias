@@ -12,6 +12,15 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const AGENT_ACCUMULATOR_DELAY_MS = Math.max(
+  0,
+  Number(Deno.env.get("AGENT_ACCUMULATOR_DELAY_MS") || 2800),
+);
+const AGENT_ACCUMULATOR_WINDOW_MS = Math.max(
+  AGENT_ACCUMULATOR_DELAY_MS + 2000,
+  Number(Deno.env.get("AGENT_ACCUMULATOR_WINDOW_MS") || 9000),
+);
+
 interface ZAPIMessage {
   phone?: string;
   contact_number?: string;
@@ -396,6 +405,105 @@ function normalizeInboundPayload(rawPayload: ZAPIMessage): ZAPIMessage {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function buildAccumulatorContent(message: any): string {
+  const content = normalizeString(message?.content);
+  if (content) return content;
+
+  const messageType = normalizeString(message?.message_type);
+  if (messageType === "image") return "[imagem recebida]";
+  if (messageType === "audio") return "[audio recebido]";
+  if (messageType === "video") return "[video recebido]";
+  if (messageType === "document") return "[documento recebido]";
+
+  return "";
+}
+
+async function prepareAccumulatedAgentInput(
+  supabase: any,
+  args: {
+    conversationId: string;
+    storedMessageId: string | null;
+    messageForAline: string;
+    messageType: string;
+    mediaUrl: string;
+  },
+): Promise<
+  | { skip: true; reason: string }
+  | { skip: false; messageForAline: string; messageType: string; mediaUrl: string }
+> {
+  if (!args.storedMessageId || AGENT_ACCUMULATOR_DELAY_MS <= 0) {
+    return {
+      skip: false,
+      messageForAline: args.messageForAline,
+      messageType: args.messageType,
+      mediaUrl: args.mediaUrl,
+    };
+  }
+
+  await sleep(AGENT_ACCUMULATOR_DELAY_MS);
+
+  const sinceIso = new Date(Date.now() - AGENT_ACCUMULATOR_WINDOW_MS).toISOString();
+  const [{ data: inboundMessages }, { data: lastOutbound }] = await Promise.all([
+    supabase
+      .from("messages")
+      .select("id, content, message_type, media_url, created_at")
+      .eq("conversation_id", args.conversationId)
+      .eq("is_from_me", false)
+      .gte("created_at", sinceIso)
+      .order("created_at", { ascending: true })
+      .limit(15),
+    supabase
+      .from("messages")
+      .select("created_at")
+      .eq("conversation_id", args.conversationId)
+      .eq("is_from_me", true)
+      .gte("created_at", sinceIso)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  const inbound = Array.isArray(inboundMessages) ? inboundMessages : [];
+  const newestInbound = inbound[inbound.length - 1];
+
+  if (newestInbound?.id && String(newestInbound.id) !== String(args.storedMessageId)) {
+    return { skip: true, reason: "newer_message_pending" };
+  }
+
+  const lastOutboundTime = lastOutbound?.created_at ? new Date(lastOutbound.created_at).getTime() : 0;
+  const relevantMessages = inbound.filter((item) => {
+    const createdAt = item?.created_at ? new Date(item.created_at).getTime() : 0;
+    return !lastOutboundTime || createdAt > lastOutboundTime;
+  });
+
+  if (relevantMessages.length <= 1) {
+    return {
+      skip: false,
+      messageForAline: args.messageForAline,
+      messageType: args.messageType,
+      mediaUrl: args.mediaUrl,
+    };
+  }
+
+  const lines: string[] = [];
+  for (const item of relevantMessages) {
+    const line = buildAccumulatorContent(item);
+    if (!line) continue;
+    if (lines[lines.length - 1] === line) continue;
+    lines.push(line);
+  }
+
+  const latestMedia = [...relevantMessages].reverse().find((item) => normalizeString(item?.media_url));
+  const combinedText = lines.join("\n").trim();
+
+  return {
+    skip: false,
+    messageForAline: combinedText || args.messageForAline,
+    messageType: latestMedia?.message_type || args.messageType,
+    mediaUrl: latestMedia?.media_url || args.mediaUrl,
+  };
 }
 
 function generateHash(phone: string, message: string): string {
@@ -1368,15 +1476,23 @@ serve(async (req) => {
       firstMessage: messageContent,
     });
 
-    await supabase.from("messages").insert({
-      conversation_id: conversationId,
-      content: messageContent,
-      message_type: messageType,
-      media_url: mediaUrl,
-      is_from_me: false,
-      status: "received",
-      zapi_message_id: zapiMessageId,
-    });
+    const { data: storedInboundMessage, error: storeInboundMessageError } = await supabase
+      .from("messages")
+      .insert({
+        conversation_id: conversationId,
+        content: messageContent,
+        message_type: messageType,
+        media_url: mediaUrl,
+        is_from_me: false,
+        status: "received",
+        zapi_message_id: zapiMessageId,
+      })
+      .select("id, created_at")
+      .single();
+
+    if (storeInboundMessageError) {
+      throw storeInboundMessageError;
+    }
 
     let messageForAline = messageContent;
     if (!messageForAline && messageType === "image" && mediaUrl) {
@@ -1420,6 +1536,30 @@ serve(async (req) => {
         console.error("[ZAPI-UNIFIED] Erro ao transcrever áudio:", error);
       }
     }
+
+    const accumulatedInput = await prepareAccumulatedAgentInput(supabase, {
+      conversationId,
+      storedMessageId: storedInboundMessage?.id || null,
+      messageForAline,
+      messageType,
+      mediaUrl: mediaUrl || "",
+    });
+
+    if (accumulatedInput.skip) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          skipped: true,
+          reason: accumulatedInput.reason,
+          message_saved: true,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    messageForAline = accumulatedInput.messageForAline;
+    messageType = accumulatedInput.messageType;
+    mediaUrl = accumulatedInput.mediaUrl || null;
 
     let alineResponse: any;
 

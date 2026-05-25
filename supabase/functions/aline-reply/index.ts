@@ -252,7 +252,7 @@ function detectCategory(text: string, data: AnyRecord): string | null {
     return "oculos";
   }
 
-  if (/pingente|pingentes|medalh|colar|cord|corrente/.test(searchable)) {
+  if (/pingente|pingentes|medalh|fotograv|foto no pingente|gravar foto|colar|cord|corrente/.test(searchable)) {
     return "pingente";
   }
 
@@ -403,6 +403,15 @@ function detectDeliveryDeadlineQuestion(text: string): boolean {
 function detectCatalogIntent(text: string): boolean {
   const normalized = normalizeText(text);
   return /catalogo|cat[aá]logo|modelos|opcoes|op[cç][oõ]es|mostra|mostrar|ver mais|quero mais|tem mais|disponivel|disponiveis/.test(
+    normalized,
+  );
+}
+
+function detectFullCatalogRequest(text: string): boolean {
+  const normalized = normalizeText(text);
+  if (!normalized) return false;
+
+  return /catalogo.*(todas|todos|todo|completo|geral|pecas|pe[cç]as|modelos)|(?:todas|todos|todo).*(pecas|pe[cç]as|modelos|catalogo)|(?:manda|mande|mostrar|mostra|ver).*(tudo|todos|todas|catalogo completo)|catalogo de todas as pecas|catalogo completo/.test(
     normalized,
   );
 }
@@ -883,7 +892,7 @@ function detectPreviewRedoIntent(text: string): boolean {
 
 function detectPendantModelQuestion(text: string): boolean {
   const normalized = normalizeText(text);
-  return /vem so o pingente|vem so pingente|corrente inclusa|vem corrente|acompanha corrente|vem com corrente|vem com cord|teria cord|tem cord|cord.*inclus|cord|corrente|so a medalh|apenas a medalh|medalh|so o pingente|apenas o pingente/.test(
+  return /vem so o pingente|vem so pingente|somente pingente|somente o pingente|corrente inclusa|vem corrente|acompanha corrente|vem com corrente|vem com cord|teria cord|tem cord|cord.*inclus|cord|corrente|so a medalh|apenas a medalh|medalh|so o pingente|apenas o pingente/.test(
     normalized,
   );
 }
@@ -2011,6 +2020,86 @@ function buildMaluCards(products: CatalogProduct[]): CatalogProduct[] {
   });
 }
 
+function inferAgentFromProduct(product: AnyRecord | null | undefined): ConversationAgent | null {
+  if (!product) return null;
+
+  const detectedCategory = detectCategory(
+    `${product.category || ""} ${product.name || ""} ${product.description || ""}`,
+    {},
+  );
+
+  if (detectedCategory === "pingente") return "kate";
+  if (detectedCategory === "oculos") return "malu";
+  if (detectedCategory === "aliancas" || detectedCategory === "aneis") return "keila";
+
+  return null;
+}
+
+function buildGeneralCatalogCards(products: CatalogProduct[]): CatalogProduct[] {
+  return products.map((product) => {
+    const agent = inferAgentFromProduct(product);
+    if (agent === "kate") return buildKateCards([product])[0];
+    if (agent === "malu") return buildMaluCards([product])[0];
+    if (agent === "keila") return buildKeilaCards([product])[0];
+
+    return {
+      ...product,
+      caption: product.caption || formatProductCaption(product),
+      button_id: `select_${product.sku || product.id}`,
+      button_label: "Quero este",
+    };
+  });
+}
+
+function catalogHasAgentProduct(data: AnyRecord, agent: ConversationAgent): boolean {
+  return getCatalogSelectionPool(data).some((item) => inferAgentFromProduct(item) === agent);
+}
+
+function shouldKeepAgentContext(args: {
+  activeAgent: ConversationAgent;
+  data: AnyRecord;
+  currentNode: string;
+  agent: ConversationAgent;
+}) {
+  const { activeAgent, data, currentNode, agent } = args;
+
+  if (agent === "kate") {
+    return (
+      activeAgent === "kate" ||
+      data.agente_atual === "kate" ||
+      data.categoria === "pingente" ||
+      data.catalogo_kate_enviado ||
+      isKateFlowNode(currentNode) ||
+      catalogHasAgentProduct(data, "kate")
+    );
+  }
+
+  if (agent === "keila") {
+    return (
+      activeAgent === "keila" ||
+      data.agente_atual === "keila" ||
+      data.categoria === "aliancas" ||
+      data.categoria === "aneis" ||
+      data.catalogo_keila_enviado ||
+      isKeilaFlowNode(currentNode) ||
+      catalogHasAgentProduct(data, "keila")
+    );
+  }
+
+  if (agent === "malu") {
+    return (
+      activeAgent === "malu" ||
+      data.agente_atual === "malu" ||
+      data.categoria === "oculos" ||
+      data.catalogo_malu_enviado ||
+      isMaluFlowNode(currentNode) ||
+      catalogHasAgentProduct(data, "malu")
+    );
+  }
+
+  return false;
+}
+
 function findCatalogSelection(token: string | null, catalog: any[]): any | null {
   if (!token || !Array.isArray(catalog) || catalog.length === 0) return null;
 
@@ -2944,7 +3033,8 @@ async function handleKateFlow(args: {
   }
 
   const normalizedMessage = normalizeText(message);
-  const wantsCatalogResend = detectCatalogResendIntent(message);
+  const wantsFullCatalog = detectFullCatalogRequest(message);
+  const wantsCatalogResend = detectCatalogResendIntent(message) || wantsFullCatalog;
   const wantsMoreOptions = detectMoreOptionsIntent(message);
   const wantsPreviewRedo = detectPreviewRedoIntent(message);
   const wantsPreviewApproval = detectPreviewApprovalIntent(message);
@@ -3149,6 +3239,24 @@ async function handleKateFlow(args: {
       collectedData: data,
       agent: "human",
     });
+  }
+
+  if (!hasSelectedProduct && wantsFullCatalog) {
+    return await sendKateCatalogForBothFinishes(
+      "Claro. Vou te mandar o catalogo de pingentes fotogravaveis disponiveis em prata e dourado. Todos sao de aco, e a fotogravacao de 1 lado ja esta inclusa.",
+    );
+  }
+
+  if (!hasSelectedProduct && hasColor && asksPendantMaterialQuestion && !data.catalogo_kate_enviado) {
+    return await sendKateCatalogForCurrentColor(
+      `Nossos pingentes fotogravaveis sao de aco, nao sao de ouro. ${data.cor === "dourada" ? "O dourado e acabamento do aco." : "O prata e acabamento do aco."} Vou te mostrar os modelos no acabamento ${data.cor}.`,
+    );
+  }
+
+  if (!hasSelectedProduct && hasColor && detectCatalogIntent(message) && !data.catalogo_kate_enviado) {
+    return await sendKateCatalogForCurrentColor(
+      `Claro. Vou te mostrar os pingentes fotogravaveis no acabamento ${data.cor}.`,
+    );
   }
 
   if (!hasSelectedProduct && hasColor && isSimpleColorChoice(message)) {
@@ -4232,6 +4340,7 @@ async function handleMaluFlow(args: {
     !isChoiceText &&
     !isDetailsText &&
     detectMaluCatalogRequest(message, buttonResponseId, catalogSelectionHint);
+  const wantsFullCatalog = detectFullCatalogRequest(message);
   let selectedFromCatalog = findCatalogSelection(
     buttonResponseId || catalogSelectionHint || message,
     getCatalogSelectionPool(data),
@@ -4241,7 +4350,7 @@ async function handleMaluFlow(args: {
   }
   const wantsDetails = /^details[_-]/i.test(String(buttonResponseId || "")) || isDetailsText;
   const wantsMoreOptions = detectMoreOptionsIntent(message) || /^more_options$/i.test(String(buttonResponseId || ""));
-  const wantsCatalogResend = detectCatalogResendIntent(message);
+  const wantsCatalogResend = detectCatalogResendIntent(message) || wantsFullCatalog;
   const confirmsCatalogRequest = forceCatalogRequest;
   const explicitEyewearCatalogRequest =
     detectCategory(message, {}) === "oculos" || wantsCatalogResend || wantsMoreOptions || confirmsCatalogRequest;
@@ -4732,17 +4841,23 @@ async function handleKeilaFlow(args: {
     resetCatalogChoice(data);
   }
 
-  const requestedColors = getRequestedColors(data, ["dourada", "prata", "preta", "azul"]);
+  const wantsFullCatalog = detectFullCatalogRequest(message);
+  const detectedColorsInMessage = detectColors(message).filter((color) => ["dourada", "prata", "preta", "azul"].includes(color));
+  const requestedColors = wantsFullCatalog && detectedColorsInMessage.length === 0
+    ? []
+    : getRequestedColors(data, ["dourada", "prata", "preta", "azul"]);
   const requestedColorLabel = formatColorList(requestedColors);
-  const colorPhrase = requestedColors.length > 1
+  const colorPhrase = wantsFullCatalog && requestedColors.length === 0
+    ? "disponiveis"
+    : requestedColors.length > 1
     ? `nas cores ${requestedColorLabel}`
     : `na cor ${requestedColorLabel || data.cor || "solicitada"}`;
   const isDatingAlliance = data.finalidade === "namoro";
-  const hasTimeline = isDatingAlliance || !!data.prazo_fechamento;
-  const hasBudget = isDatingAlliance || !!data.orcamento_valor || !!data.orcamento_texto;
-  const hasQuantityType = isDatingAlliance || !!data.quantidade_tipo;
-  const hasSizeInfo = isDatingAlliance || !!data.tamanho_1 || data.numeracao_status === "nao_sabe";
-  const hasColor = requestedColors.length > 0;
+  const hasTimeline = wantsFullCatalog || isDatingAlliance || !!data.prazo_fechamento;
+  const hasBudget = wantsFullCatalog || isDatingAlliance || !!data.orcamento_valor || !!data.orcamento_texto;
+  const hasQuantityType = wantsFullCatalog || isDatingAlliance || !!data.quantidade_tipo;
+  const hasSizeInfo = wantsFullCatalog || isDatingAlliance || !!data.tamanho_1 || data.numeracao_status === "nao_sabe";
+  const hasColor = wantsFullCatalog || requestedColors.length > 0;
   const hasSelectedProduct = hasCurrentCatalogSelection(data);
 
   if (!hasSelectedProduct) {
@@ -4757,7 +4872,7 @@ async function handleKeilaFlow(args: {
 
   const hasDelivery = !!data.delivery_method;
   const hasPayment = !!data.payment_method;
-  const wantsCatalogResend = detectCatalogResendIntent(message);
+  const wantsCatalogResend = detectCatalogResendIntent(message) || wantsFullCatalog;
   const wantsMoreOptions = detectMoreOptionsIntent(message);
 
   const fetchKeilaCatalogCards = async (excludeSkus: string[] = []) => {
@@ -5174,6 +5289,91 @@ Você vai retirar na loja ou prefere delivery? Depois eu confirmo a forma de pag
   });
 }
 
+async function handleGeneralCatalogRequest(args: {
+  supabase: any;
+  conversation: any;
+  phone: string;
+  contactName: string;
+  data: AnyRecord;
+}) {
+  const { supabase, conversation, phone, contactName, data } = args;
+  const catalogSearchData = {
+    ...data,
+    categoria: null,
+    cor: null,
+    cores_solicitadas: [],
+    finalidade: null,
+  };
+  const products = await searchCatalog(supabase, { only_available: true }, catalogSearchData);
+  const cards = buildGeneralCatalogCards(products);
+
+  if (cards.length === 0) {
+    const reply = "Nao encontrei produtos ativos no catalogo agora. Vou chamar um vendedor para verificar para voce.";
+    data.agente_atual = "human";
+    data.customer_stage = "aguardando_humano_catalogo";
+    data.handoff_reason = "catalogo_geral_sem_produtos";
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "human",
+      "human_catalogo_sem_produtos",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "human", reply, "human_catalogo_sem_produtos");
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "human_catalogo_sem_produtos",
+      collectedData: data,
+      agent: "human",
+    });
+  }
+
+  data.catalogo_geral_enviado = true;
+  data.last_catalog = cards.map((product) => ({
+    id: product.id,
+    sku: product.sku,
+    name: product.name,
+    price: product.price,
+    price_formatted: product.price_formatted,
+    category: product.category,
+    color: product.color,
+    description: product.description,
+    image_url: product.image_url,
+    video_url: product.video_url,
+  }));
+  data.catalog_history = mergeCatalogHistory(data.catalog_history, data.last_catalog);
+  data.customer_stage = "catalogo_geral_enviado";
+
+  const reply = "Claro. Vou te mandar os produtos ativos do catalogo para voce escolher. Toque em Quero este no produto que gostar que eu sigo com o agente certo.";
+  const postCatalogMessage = "Gostou de algum modelo? Toque em Quero este no card escolhido que eu sigo com voce.";
+
+  await persistConversation(
+    supabase,
+    conversation.id,
+    "aline",
+    "catalogo_geral",
+    conversation.current_node || null,
+    data,
+  );
+  await saveAssistantMessage(supabase, conversation.id, "aline", reply, "catalogo_geral");
+  await saveAgentMemory(supabase, phone, "aline", contactName, data);
+
+  return buildResponsePayload({
+    phone,
+    message: reply,
+    node: "catalogo_geral",
+    products: cards,
+    collectedData: data,
+    agent: "aline",
+    useProductButtons: true,
+    postCatalogMessage,
+  });
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -5468,6 +5668,175 @@ serve(async (req) => {
     const kateMemory = await loadAgentMemory(supabase, phone, "kate");
     const keilaMemory = await loadAgentMemory(supabase, phone, "keila");
     const maluMemory = await loadAgentMemory(supabase, phone, "malu");
+
+    const wantsFullCatalogMain = detectFullCatalogRequest(inboundText);
+    const selectedFromCatalogContext = findCatalogSelection(
+      buttonResponseId || catalogSelectionHint || inboundText,
+      getCatalogSelectionPool(baseData),
+    );
+    const selectedContextAgent = inferAgentFromProduct(selectedFromCatalogContext);
+
+    if (selectedFromCatalogContext) {
+      baseData.selected_product = selectedFromCatalogContext;
+      baseData.selected_sku = selectedFromCatalogContext.sku || selectedFromCatalogContext.id || null;
+      baseData.selected_name = selectedFromCatalogContext.name || null;
+      baseData.selected_price = selectedFromCatalogContext.price ?? null;
+      baseData.last_catalog = mergeCatalogHistory(baseData.last_catalog, [selectedFromCatalogContext]);
+      baseData.catalog_history = mergeCatalogHistory(baseData.catalog_history, [selectedFromCatalogContext]);
+
+      if (selectedContextAgent === "kate") baseData.categoria = "pingente";
+      if (selectedContextAgent === "malu") baseData.categoria = "oculos";
+      if (selectedContextAgent === "keila") baseData.categoria = "aliancas";
+    }
+
+    if (wantsFullCatalogMain && !explicitCategory && !selectedContextAgent) {
+      const generalCatalogResponse = await handleGeneralCatalogRequest({
+        supabase,
+        conversation,
+        phone,
+        contactName,
+        data: {
+          ...baseData,
+          agente_atual: "aline",
+        },
+      });
+
+      return new Response(JSON.stringify(generalCatalogResponse), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const keepMaluContext =
+      selectedContextAgent === "malu" ||
+      explicitCategory === "oculos" ||
+      (!explicitCategory &&
+        shouldKeepAgentContext({
+          activeAgent,
+          data: baseData,
+          currentNode: conversation.current_node || "",
+          agent: "malu",
+        }));
+    const keepKateContext =
+      !keepMaluContext &&
+      (selectedContextAgent === "kate" ||
+        explicitCategory === "pingente" ||
+        (!explicitCategory &&
+          shouldKeepAgentContext({
+            activeAgent,
+            data: baseData,
+            currentNode: conversation.current_node || "",
+            agent: "kate",
+          })));
+    const keepKeilaContext =
+      !keepMaluContext &&
+      !keepKateContext &&
+      (selectedContextAgent === "keila" ||
+        explicitCategory === "aliancas" ||
+        explicitCategory === "aneis" ||
+        (!explicitCategory &&
+          shouldKeepAgentContext({
+            activeAgent,
+            data: baseData,
+            currentNode: conversation.current_node || "",
+            agent: "keila",
+          })));
+
+    if (keepMaluContext) {
+      const maluResponse = await handleMaluFlow({
+        supabase,
+        conversation: {
+          ...conversation,
+          active_agent: "malu",
+          current_node: isMaluFlowNode(conversation.current_node || "")
+            ? conversation.current_node
+            : "malu_contexto_continuado",
+          collected_data: hydrateDataWithMemory(
+            {
+              ...baseData,
+              agente_atual: "malu",
+              categoria: "oculos",
+            },
+            maluMemory,
+          ),
+        },
+        phone,
+        message,
+        contactName,
+        buttonResponseId,
+        catalogSelectionHint,
+        mediaType: mediaTypeForAgent,
+        mediaUrl: mediaUrlForAgent,
+      });
+
+      return new Response(JSON.stringify(maluResponse), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (keepKateContext) {
+      const kateResponse = await handleKateFlow({
+        supabase,
+        supabaseUrl,
+        supabaseServiceKey,
+        conversation: {
+          ...conversation,
+          active_agent: "kate",
+          current_node: isKateFlowNode(conversation.current_node || "")
+            ? conversation.current_node
+            : "kate_contexto_continuado",
+          collected_data: hydrateDataWithMemory(
+            {
+              ...baseData,
+              agente_atual: "kate",
+              categoria: "pingente",
+            },
+            kateMemory,
+          ),
+        },
+        phone,
+        message,
+        contactName,
+        buttonResponseId,
+        catalogSelectionHint,
+        mediaType: mediaTypeForAgent,
+        mediaUrl: mediaUrlForAgent,
+      });
+
+      return new Response(JSON.stringify(kateResponse), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (keepKeilaContext) {
+      const keilaResponse = await handleKeilaFlow({
+        supabase,
+        supabaseUrl,
+        supabaseServiceKey,
+        conversation: {
+          ...conversation,
+          active_agent: "keila",
+          current_node: isKeilaFlowNode(conversation.current_node || "")
+            ? conversation.current_node
+            : "keila_contexto_continuado",
+          collected_data: {
+            ...baseData,
+            agente_atual: "keila",
+            categoria: "aliancas",
+            finalidade: baseData.finalidade || detectAllianceType(inboundText, baseData) || "casamento",
+          },
+        },
+        phone,
+        message,
+        contactName,
+        buttonResponseId,
+        catalogSelectionHint,
+      });
+
+      return new Response(JSON.stringify(keilaResponse), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     if (
       explicitCategory === "oculos" ||
       (baseData.categoria === "oculos" && detectMaluCatalogRequest(inboundText, buttonResponseId, catalogSelectionHint))

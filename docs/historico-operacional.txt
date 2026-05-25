@@ -1109,3 +1109,12 @@ Proximos passos: reparar/alinhar historico de migrations do Supabase para voltar
 - Apos cadastrar os secrets, o workflow passou por validacao, install, build e link do Supabase. O bloqueio atual e somente o historico remoto de migrations desalinhado.
 - Ajustado workflow para tentar publicar Edge Functions mesmo quando `supabase db push` falhar por historico de migrations; ao final, o job continua sinalizando erro para lembrar que migrations precisam ser alinhadas.
 Proximos passos: alinhar o historico remoto de migrations para o passo `db push` passar sem bloqueio.
+
+## 2026-05-25 - Contexto dos agentes e acumulador de mensagens picadas
+- Em andamento: `aline-reply` passou a reconhecer pedido de catalogo completo/todas as pecas e a responder com catalogo geral quando o cliente pedir tudo sem especificar categoria.
+- O clique em produto vindo do catalogo geral agora preserva o historico do produto e roteia para Kate, Keila ou Malu conforme a categoria do item escolhido.
+- O roteamento principal ganhou uma trava de contexto: se a conversa esta com Kate, Keila ou Malu, o agente continua respondendo perguntas do cliente antes de cair na saudacao generica da Aline.
+- A categoria de pingentes passou a reconhecer termos de fotogravacao, evitando mandar cliente interessado em fotogravacao para aliancas por causa de palavras como namorado/namorada.
+- A Kate passou a tratar "somente pingente" como duvida de produto, explicando que corrente/cordao nao acompanha e e vendido separadamente.
+- O webhook `zapi-unified` ganhou acumulador com pequeno delay configuravel para juntar mensagens picadas do cliente antes de chamar o agente; mensagens antigas da mesma janela sao salvas, mas apenas a mais recente dispara resposta.
+Proximos passos: validar build/typecheck, publicar `aline-reply` e `zapi-unified`, e testar catalogo completo, pingente com duvida de corrente e mensagens picadas em conversa real.
