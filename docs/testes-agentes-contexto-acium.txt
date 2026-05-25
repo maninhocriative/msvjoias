@@ -117,7 +117,29 @@ Esperado: Aviso de seguranca, flag harassment_detected e pausa do fluxo comercia
 7.2 Depois de assedio, cliente manda mensagem normal
 Esperado: Nao reabrir venda automaticamente; manter humano/seguranca.
 
-8. Validacoes tecnicas
+8. Catalogo da Kate com cravejados
+
+8.1 Catalogo amplo
+Mensagem: "Ola! Quero saber mais sobre a fotogravacao para o Dia das Maes"
+Esperado: Aline direciona para Kate; Kate envia catalogo amplo de pingentes fotogravaveis. Se houver cravejados ativos com imagem e preco, pelo menos 1 deve aparecer no primeiro lote.
+
+8.2 Pedido explicito de cravejado
+Mensagem: "Quero ver pingentes cravejados"
+Esperado: Kate filtra por estilo cravejado/cravado/pedras/zirconia/strass quando houver itens ativos. Se nao houver, nao inventa produto e mostra catalogo normal com aviso seguro.
+
+8.3 Pedido por pedrinhas
+Mensagem: "Tem modelo com pedrinhas?"
+Esperado: Kate entende como cravejado/cravado e tenta enviar os modelos correspondentes.
+
+8.4 Cor sem excluir cravejado
+Mensagem: "Quero pingente dourado"
+Esperado: Kate envia dourados lisos e dourados cravejados, se existirem.
+
+8.5 Quero mais
+Mensagem: "Quero mais"
+Esperado: Kate usa last_catalog/catalog_history para excluir os itens ja enviados e priorizar cravejados restantes antes de repetir modelos lisos.
+
+9. Validacoes tecnicas
 
 Comandos:
 - git diff --check

@@ -180,3 +180,13 @@ Atualizado em: 2026-05-25
 - A integracao inicial na `aline-reply` e conservadora: carrega o contexto e enriquece `collected_data`, mas nao substitui os fluxos atuais de Kate, Keila, Malu e Aline.
 - Foram adicionadas funcoes controladas para escrita futura: salvar produto escolhido, atualizar memoria, marcar humano, salvar nota interna, atualizar etapa, registrar catalogo enviado, lembrar ultima resposta, contar fallback e marcar flags de seguranca.
 - Essa fase prepara as proximas correcoes sem espalhar novas consultas e updates por todo o arquivo dos agentes.
+
+17. Kate - catalogo com pingentes cravejados
+
+- Ajustada a selecao de catalogo da Kate para nao depender apenas dos templates lisos de simulacao.
+- Produtos de pingente agora sao classificados por acabamento, estilo e formato antes do envio.
+- Estilo cravejado detecta termos como cravejado, cravado, pedra, pedrinhas, zirconia e strass em nome, descricao, categoria, cor, SKU ou tags.
+- Catalogo amplo tenta incluir cravejados no primeiro lote quando existirem ativos com imagem e preco.
+- Pedido explicito por cravejado filtra primeiro esses produtos; se nao houver, Kate nao inventa e mostra modelos disponiveis com aviso seguro.
+- Pedido por cor continua respeitando prata/dourada sem excluir cravejados dessa cor.
+- "Quero mais" usa itens ja enviados para evitar repeticao e priorizar cravejados restantes.

@@ -80,6 +80,7 @@ interface CatalogProduct {
   button_label?: string;
   buttons?: Array<{ id: string; label: string }>;
   force_separate_buttons?: boolean;
+  tags?: unknown;
 }
 
 interface KatePendantTemplate {
@@ -1158,11 +1159,172 @@ function inferPendantFamilyFromText(text: string): "coracao" | "octagonal" | "re
 
 function inferKatePendantColor(product: Partial<CatalogProduct> | AnyRecord): "prata" | "dourada" | null {
   const detected = detectColor(
-    `${product.color || ""} ${product.name || ""} ${product.description || ""} ${product.category || ""}`,
+    normalizeProductText(product),
   );
 
   if (detected === "prata" || detected === "dourada") return detected;
   return null;
+}
+
+function normalizeProductText(product: Partial<CatalogProduct> | AnyRecord): string {
+  const tagsText = Array.isArray(product.tags)
+    ? product.tags.map((tag: unknown) => String(tag || "")).join(" ")
+    : String(product.tags || "");
+  const metadataText = product.metadata && typeof product.metadata === "object"
+    ? JSON.stringify(product.metadata)
+    : String(product.metadata || "");
+
+  return normalizeText([
+    product.name,
+    product.title,
+    product.sku,
+    product.category,
+    product.color,
+    product.description,
+    tagsText,
+    metadataText,
+  ].filter(Boolean).join(" "));
+}
+
+function isPingenteFotogravavel(product: Partial<CatalogProduct> | AnyRecord): boolean {
+  const text = normalizeProductText(product);
+  const isPendant = /pingente|medalha|medalhao|fotograv|foto grav|placa/.test(text);
+  const isOtherProduct = /chaveiro|oculos|oculo|armacao|alianca|aliancas|anel|aneis/.test(text);
+
+  return isPendant && !isOtherProduct;
+}
+
+function detectPingenteColor(product: Partial<CatalogProduct> | AnyRecord): "prata" | "dourada" | null {
+  const detected = detectColor(normalizeProductText(product));
+  if (detected === "prata" || detected === "dourada") return detected;
+  return null;
+}
+
+function detectPingenteStyle(product: Partial<CatalogProduct> | AnyRecord): "cravejado" | "liso" | null {
+  const text = normalizeProductText(product);
+  if (/cravejad|cravad|zircon|zirconia|pedrinh|pedra|pedras|strass/.test(text)) return "cravejado";
+  if (/liso|chapado|sem pedra|sem pedras/.test(text)) return "liso";
+  return null;
+}
+
+function detectPingenteShape(product: Partial<CatalogProduct> | AnyRecord): "redondo" | "coracao" | "octagonal" | null {
+  const text = normalizeProductText(product);
+  if (/coracao|heart/.test(text)) return "coracao";
+  if (/octagonal|octogonal|octag/.test(text)) return "octagonal";
+  if (/redondo|redonda|circular|circulo/.test(text)) return "redondo";
+  return null;
+}
+
+function detectRequestedPingenteStyle(text: string): "cravejado" | null {
+  const normalized = normalizeText(text);
+  if (/cravejad|cravad|com pedra|com pedrinh|pedrinh|zircon|zirconia|strass/.test(normalized)) {
+    return "cravejado";
+  }
+  return null;
+}
+
+function buildKateCatalogSelection(
+  products: CatalogProduct[],
+  options: {
+    colorFilters?: string[];
+    styleFilter?: "cravejado" | null;
+    excludeSkus?: string[];
+    limit?: number;
+    requestType?: string;
+  } = {},
+): CatalogProduct[] {
+  const limit = Number.isFinite(Number(options.limit)) && Number(options.limit) > 0 ? Number(options.limit) : 8;
+  const colorFilters = (options.colorFilters || []).filter((color) => color === "prata" || color === "dourada");
+  const excluded = new Set((options.excludeSkus || []).map((item) => normalizeText(String(item || ""))).filter(Boolean));
+  const seen = new Set<string>();
+
+  const candidates = products.filter((product) => {
+    const key = normalizeText(String(product.sku || product.id || ""));
+    if (!key || seen.has(key) || excluded.has(key)) return false;
+    seen.add(key);
+    if (!isPingenteFotogravavel(product)) return false;
+    if (!product.image_url && !product.video_url) return false;
+    if (!product.price || Number(product.price) <= 0) return false;
+
+    const color = detectPingenteColor(product);
+    if (colorFilters.length > 0 && (!color || !colorFilters.includes(color))) return false;
+
+    if (options.styleFilter === "cravejado" && detectPingenteStyle(product) !== "cravejado") return false;
+
+    return true;
+  });
+
+  const selected: CatalogProduct[] = [];
+  const selectedKeys = new Set<string>();
+  const addProduct = (product?: CatalogProduct | null) => {
+    if (!product || selected.length >= limit) return;
+    const key = normalizeText(String(product.sku || product.id || ""));
+    if (!key || selectedKeys.has(key)) return;
+    selectedKeys.add(key);
+    selected.push(product);
+  };
+
+  const byStyle = (style: "cravejado" | "liso" | null) =>
+    candidates.filter((product) => {
+      const detected = detectPingenteStyle(product);
+      return style === null ? detected === null : detected === style;
+    });
+  const byColor = (color: "prata" | "dourada") =>
+    candidates.filter((product) => detectPingenteColor(product) === color);
+
+  const cravejados = byStyle("cravejado");
+  const lisosOuSemEstilo = [...byStyle("liso"), ...byStyle(null)];
+
+  if (options.styleFilter === "cravejado") {
+    cravejados.forEach(addProduct);
+  } else {
+    cravejados.slice(0, 2).forEach(addProduct);
+    addProduct(lisosOuSemEstilo.find((product) => detectPingenteColor(product) === "prata"));
+    addProduct(lisosOuSemEstilo.find((product) => detectPingenteColor(product) === "dourada"));
+
+    const usedShapes = new Set(selected.map((product) => detectPingenteShape(product)).filter(Boolean));
+    for (const product of candidates) {
+      const shape = detectPingenteShape(product);
+      if (shape && !usedShapes.has(shape)) {
+        addProduct(product);
+        usedShapes.add(shape);
+      }
+      if (selected.length >= limit) break;
+    }
+
+    if (colorFilters.length > 0) {
+      colorFilters.forEach((color) => byColor(color as "prata" | "dourada").forEach(addProduct));
+    }
+
+    candidates.forEach(addProduct);
+  }
+
+  const selectedIds = new Set(selected.map((product) => normalizeText(String(product.sku || product.id || ""))));
+  const excludedIds = products
+    .map((product) => normalizeText(String(product.sku || product.id || "")))
+    .filter((id) => id && !selectedIds.has(id));
+
+  console.log("[ALINE-REPLY] kate_catalog_selection", {
+    kate_catalog_request_type: options.requestType || "auto",
+    filters_detected: {
+      colors: colorFilters,
+      style: options.styleFilter || null,
+      excluded_count: excluded.size,
+    },
+    total_pingentes_found: candidates.length,
+    total_cravejados_found: cravejados.length,
+    total_lisos_found: lisosOuSemEstilo.length,
+    total_prata_found: candidates.filter((product) => detectPingenteColor(product) === "prata").length,
+    total_dourado_found: candidates.filter((product) => detectPingenteColor(product) === "dourada").length,
+    total_products_selected: selected.length,
+    selected_product_names: selected.map((product) => product.name).slice(0, 12),
+    selected_product_ids: selected.map((product) => product.sku || product.id).slice(0, 12),
+    excluded_product_ids: excludedIds.slice(0, 20),
+    exclusion_reason: "fora_do_lote_ou_filtro_seguro",
+    catalog_batch_index: excluded.size > 0 ? "more" : "initial",
+  });
+
+  return selected;
 }
 
 function matchKateTemplateForProduct(product: Partial<CatalogProduct> | AnyRecord): KatePendantTemplate | null {
@@ -1899,7 +2061,7 @@ async function searchCatalog(
     }
 
     if (requestedCategory === "pingente") {
-      const isPendant = category.includes("pingente") || name.includes("pingente") || name.includes("medalha");
+      const isPendant = isPingenteFotogravavel(product);
       if (!isPendant) return false;
     }
 
@@ -1931,9 +2093,9 @@ async function searchCatalog(
     );
 
     const allowWithoutVariantStock =
-      requestedCategory === "oculos" &&
       variantCount === 0 &&
-      !!product.image_url;
+      !!product.image_url &&
+      (requestedCategory === "oculos" || (requestedCategory === "pingente" && Number(product.price || 0) > 0));
 
     if (stock <= 0 && !allowWithoutVariantStock) return false;
 
@@ -1993,6 +2155,7 @@ async function searchCatalog(
       in_stock: stock > 0,
       caption: "",
       index: index + 1,
+      tags: product.tags || null,
     };
 
     mapped.caption = formatProductCaption(mapped);
@@ -2998,6 +3161,14 @@ async function handleKateFlow(args: {
     data.payment_method = paymentMethod;
   }
 
+  const requestedPendantStyle = detectRequestedPingenteStyle(message);
+  if (requestedPendantStyle && !data.selected_sku && !data.selected_product?.id) {
+    if (data.estilo_pingente !== requestedPendantStyle) {
+      resetCatalogChoice(data);
+    }
+    data.estilo_pingente = requestedPendantStyle;
+  }
+
   const pendantColorChanged = applyDetectedColorsToData(data, message, ["prata", "dourada"]);
   if (pendantColorChanged) {
     resetCatalogChoice(data);
@@ -3113,10 +3284,11 @@ async function handleKateFlow(args: {
 
   const fetchKateCatalogCards = async (excludeSkus: string[] = []) => {
     const colorFilters = getRequestedColors(data, ["prata", "dourada"]);
+    const styleFilter = data.estilo_pingente === "cravejado" ? "cravejado" : null;
     const searchParams: AnyRecord = {
       category: "pingente",
       only_available: true,
-      limit: 30,
+      limit: 80,
     };
 
     if (data.cor) {
@@ -3133,22 +3305,41 @@ async function handleKateFlow(args: {
     }
 
     const catalog = await searchCatalog(supabase, searchParams, data);
-    const filtered = catalog.filter((product) => {
-      const template = matchKateTemplateForProduct(product);
-      if (!template) return false;
-      if (colorFilters.length === 0) return true;
-      return colorFilters.includes(template.color);
+    const selected = buildKateCatalogSelection(catalog, {
+      colorFilters,
+      styleFilter,
+      excludeSkus,
+      limit: 8,
+      requestType: styleFilter
+        ? "style_cravejado"
+        : excludeSkus.length > 0
+          ? "more_options"
+          : colorFilters.length > 0
+            ? "color"
+            : "broad",
     });
 
-    return buildKateCards(filtered);
+    return buildKateCards(selected);
   };
 
   const sendKateCatalogForBothFinishes = async (reply: string) => {
     const previousColor = data.cor;
     const previousColors = Array.isArray(data.cores_solicitadas) ? [...data.cores_solicitadas] : null;
+    const previousStyle = data.estilo_pingente;
     delete data.cor;
     delete data.cores_solicitadas;
-    const cards = await fetchKateCatalogCards([]);
+    let cards = await fetchKateCatalogCards([]);
+    let replyText = reply;
+    if (cards.length === 0 && previousStyle === "cravejado") {
+      delete data.estilo_pingente;
+      cards = await fetchKateCatalogCards([]);
+      if (cards.length > 0) {
+        data.kate_requested_style_unavailable = previousStyle;
+        replyText = "Nao encontrei nenhum pingente marcado como cravejado no catalogo ativo agora. Para nao te deixar sem opcao, vou te mostrar os pingentes fotogravaveis disponiveis e, se quiser algum detalhe especifico, chamo um vendedor para confirmar.";
+      } else {
+        data.estilo_pingente = previousStyle;
+      }
+    }
     if (previousColor === "prata" || previousColor === "dourada") {
       data.cor = previousColor;
     }
@@ -3178,7 +3369,7 @@ async function handleKateFlow(args: {
       conversation.current_node || null,
       data,
     );
-    const finalReply = withKateIntro(reply);
+    const finalReply = withKateIntro(replyText);
     await saveAssistantMessage(supabase, conversation.id, "kate", finalReply, "catalogo_pingente");
     await saveAgentMemory(supabase, phone, "kate", contactName, data);
 
@@ -3301,7 +3492,13 @@ async function handleKateFlow(args: {
 
   if (!hasSelectedProduct && wantsFullCatalog) {
     return await sendKateCatalogForBothFinishes(
-      "Claro. Vou te mandar o catalogo de pingentes fotogravaveis disponiveis em prata e dourado. Todos sao de aco, e a fotogravacao de 1 lado ja esta inclusa.",
+      "Claro. Vou te mandar alguns modelos de pingentes fotogravaveis, incluindo opcoes lisas e cravejadas, nos acabamentos prata e dourado, para voce comparar pelas fotos.",
+    );
+  }
+
+  if (!hasSelectedProduct && requestedPendantStyle === "cravejado" && !data.catalogo_kate_enviado) {
+    return await sendKateCatalogForBothFinishes(
+      "Tenho sim. Vou te mostrar os modelos de pingentes fotogravaveis que aparecem como cravejados no catalogo. Se quiser algum detalhe especifico, chamo um vendedor para confirmar certinho com voce.",
     );
   }
 
@@ -3313,19 +3510,19 @@ async function handleKateFlow(args: {
 
   if (!hasSelectedProduct && hasColor && detectCatalogIntent(message) && !data.catalogo_kate_enviado) {
     return await sendKateCatalogForCurrentColor(
-      `Claro. Vou te mostrar os pingentes fotogravaveis no acabamento ${data.cor}.`,
+      `Claro. Vou te mostrar os pingentes fotogravaveis no acabamento ${data.cor}, incluindo modelos lisos e cravejados quando estiverem disponiveis.`,
     );
   }
 
   if (!hasSelectedProduct && hasColor && isSimpleColorChoice(message)) {
     return await sendKateCatalogForCurrentColor(
-      `Perfeito, vou te mostrar os pingentes fotogravaveis no acabamento ${data.cor}. A fotogravacao de 1 lado ja esta inclusa.`,
+      `Perfeito, vou te mostrar os pingentes fotogravaveis no acabamento ${data.cor}, incluindo opcoes lisas e cravejadas se tiverem no catalogo. A fotogravacao de 1 lado ja esta inclusa.`,
     );
   }
 
   if (!hasSelectedProduct && asksFinishPhotos) {
     return await sendKateCatalogForBothFinishes(
-      "Tenho sim. Vou te mandar os modelos com acabamento dourado e prata para voce comparar pelas fotos.",
+      "Tenho sim. Vou te mandar alguns modelos de pingentes fotogravaveis, incluindo opcoes lisas e cravejadas, nos acabamentos prata e dourado, para voce comparar pelas fotos.",
     );
   }
 

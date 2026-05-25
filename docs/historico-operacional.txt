@@ -1161,3 +1161,10 @@ Proximos passos: validar Fase 1 em deploy; depois implementar Fase 2 com pergunt
 - GitHub Actions run 26417389336 executou build do frontend no runner e publicou Edge Functions.
 - aline-reply foi publicada carregando supabase/functions/_shared/agent-system-context.ts.
 - Workflow permaneceu vermelho somente pelo db push/migration drift remoto ja conhecido; nao foi executado supabase db push localmente.
+
+2026-05-25 - Ajuste catalogo Kate com pingentes cravejados
+- Ajustada a selecao de catalogo da Kate para separar acabamento (prata/dourada), estilo (liso/cravejado) e formato (redondo/coracao/octagonal).
+- Pingentes cravejados/cravados com termos como cravejado, cravado, pedra, pedrinhas, zirconia ou strass deixam de depender dos templates antigos de simulacao para aparecer nos cards.
+- Primeiro lote amplo passa a priorizar diversidade: cravejados, prata, dourado e formatos diferentes quando existirem no catalogo ativo.
+- "Quero mais" continua excluindo o ultimo catalogo enviado e agora prioriza cravejados restantes antes de completar com outros pingentes.
+- Adicionados logs seguros kate_catalog_selection com contagens de pingentes, cravejados, lisos, prata, dourado e IDs selecionados, sem secrets.
