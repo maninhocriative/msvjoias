@@ -1117,4 +1117,6 @@ Proximos passos: alinhar o historico remoto de migrations para o passo `db push`
 - A categoria de pingentes passou a reconhecer termos de fotogravacao, evitando mandar cliente interessado em fotogravacao para aliancas por causa de palavras como namorado/namorada.
 - A Kate passou a tratar "somente pingente" como duvida de produto, explicando que corrente/cordao nao acompanha e e vendido separadamente.
 - O webhook `zapi-unified` ganhou acumulador com pequeno delay configuravel para juntar mensagens picadas do cliente antes de chamar o agente; mensagens antigas da mesma janela sao salvas, mas apenas a mais recente dispara resposta.
-Proximos passos: validar build/typecheck, publicar `aline-reply` e `zapi-unified`, e testar catalogo completo, pingente com duvida de corrente e mensagens picadas em conversa real.
+- Commit `b652049` enviado para `main`. O GitHub Actions validou build e publicou as Edge Functions, incluindo `aline-reply` e `zapi-unified`, no projeto Supabase `ahbjwpkpxqqrpvpzmqwa`.
+- O workflow continua marcado como falha apenas pelo bloqueio antigo de historico remoto de migrations desalinhado; as Edge Functions foram publicadas com sucesso.
+Proximos passos: testar catalogo completo, pingente com duvida de corrente e mensagens picadas em conversa real; depois alinhar historico de migrations para o workflow ficar verde.
