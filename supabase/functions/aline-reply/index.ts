@@ -1,6 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { buildPhoneVariants, normalizeWhatsappPhone } from "../_shared/phone.ts";
+import {
+  buildAgentSystemContext,
+  getAgentSystemContextSummary,
+} from "../_shared/agent-system-context.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -5511,6 +5515,71 @@ serve(async (req) => {
     };
 
     const activeAgent = (conversation.active_agent || baseData.agente_atual || "aline") as ConversationAgent;
+    const systemContext = await buildAgentSystemContext({
+      supabase,
+      conversationId: conversation.id,
+      phone,
+      normalizedMessage: {
+        phone,
+        text: inboundText,
+        originalText: message,
+        buttonResponseId,
+        buttonText: catalogSelectionHint,
+        mediaType,
+        mediaUrl,
+        hasMedia: !!mediaUrl || !!mediaType,
+      },
+      activeAgent,
+    });
+    const systemContextSummary = getAgentSystemContextSummary(systemContext);
+    baseData.agent_system_context = systemContextSummary;
+    baseData.store_rules = systemContext.storeRules;
+
+    if (systemContext.selectedProduct) {
+      if (!baseData.selected_product && systemContext.selectedProduct.raw) {
+        baseData.selected_product = systemContext.selectedProduct.raw;
+      }
+      if (!baseData.selected_sku && systemContext.selectedProduct.sku) {
+        baseData.selected_sku = systemContext.selectedProduct.sku;
+      }
+      if (!baseData.selected_name && systemContext.selectedProduct.name) {
+        baseData.selected_name = systemContext.selectedProduct.name;
+      }
+      if (!baseData.selected_price && systemContext.selectedProduct.price) {
+        baseData.selected_price = systemContext.selectedProduct.price;
+      }
+    }
+
+    if (!Array.isArray(baseData.catalog_history) && systemContext.recentCatalog.length > 0) {
+      baseData.catalog_history = systemContext.recentCatalog;
+    }
+
+    if (systemContext.mediaContext.lastCustomerImage && !baseData.last_customer_image_url) {
+      baseData.last_customer_image_url = systemContext.mediaContext.lastCustomerImage;
+    }
+    if (systemContext.mediaContext.lastCustomerAudio && !baseData.last_customer_audio_url) {
+      baseData.last_customer_audio_url = systemContext.mediaContext.lastCustomerAudio;
+    }
+    if (systemContext.mediaContext.lastCustomerDocument && !baseData.last_customer_document_url) {
+      baseData.last_customer_document_url = systemContext.mediaContext.lastCustomerDocument;
+    }
+    if (systemContext.safetyFlags.isHarassment) {
+      baseData.harassment_detected = true;
+    }
+    if (systemContext.handoffContext.shouldHandoff) {
+      baseData.pending_handoff_context = systemContext.handoffContext;
+    }
+
+    console.log("[ALINE-REPLY] agent_system_context", {
+      route_decision: "context_loaded",
+      active_agent_before: activeAgent,
+      detected_intent: baseData.triagem_categoria || baseData.categoria || null,
+      selected_product_id: systemContext.selectedProduct?.id || null,
+      handoff_reason: systemContext.handoffContext.reason || null,
+      catalog_count: systemContext.recentCatalog.length,
+      media_type: mediaType || null,
+    });
+
     const recentCrmContext = await loadRecentCrmMessageContext(supabase, phone);
     if (recentCrmContext) {
       baseData.recent_crm_context = recentCrmContext;

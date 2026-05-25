@@ -1144,3 +1144,14 @@ Proximos passos: validar em WhatsApp real os tres cenarios: novo lead de fotogra
 - Criado `docs/alteracoes-agentes-ate-agora.txt` com resumo operacional das alteracoes feitas nos agentes Aline, Kate, Keila e Malu.
 - O documento tambem registra mudancas em roteamento, catalogo, memoria, acumulador de mensagens, follow-up, tags, acao humana, assedio, midias e deploy.
 Proximos passos: manter este arquivo atualizado quando houver novas mudancas relevantes nos agentes.
+
+## 2026-05-25 - AgentSystemContext Fase 1
+- Criada a camada compartilhada `supabase/functions/_shared/agent-system-context.ts`.
+- A camada centraliza leitura de conversa, mensagens recentes, memoria dos agentes, produto escolhido, catalogo recente, produtos ativos, ofertas ativas, midias recentes, regras comerciais fixas e flags de seguranca.
+- Adicionadas funcoes controladas de escrita para uso incremental: atualizar collected_data, salvar produto escolhido, salvar memoria, marcar handoff humano, salvar nota interna, registrar catalogo enviado, lembrar ultima resposta, contar fallback e marcar flag de seguranca.
+- `aline-reply` passou a chamar `buildAgentSystemContext` antes do roteamento principal e enriquecer `baseData` com contexto seguro sem substituir os handlers atuais.
+- Adicionados logs seguros de observabilidade: route_decision, active_agent_before, selected_product_id, handoff_reason, catalog_count e media_type.
+- Nao foi executado `supabase db push` e nenhuma migration foi criada.
+- Criado `docs/testes-agentes-contexto-acium.txt` com os testes manuais obrigatorios para validar Aline, Kate, Keila, Malu, midias, seguranca e anti-repeticao nas proximas fases.
+- Validacao local: `git diff --check` passou. `npm run build` nao rodou nesta maquina porque `vite` nao esta disponivel no ambiente local. `deno check` nao rodou porque `deno` nao esta instalado no ambiente local.
+Proximos passos: validar Fase 1 em deploy; depois implementar Fase 2 com perguntas comerciais antes de fallback, comecando pela Kate.

@@ -1,0 +1,129 @@
+TESTES MANUAIS DOS AGENTES - AGENT SYSTEM CONTEXT
+Atualizado em: 2026-05-25
+
+Objetivo:
+Validar as melhorias dos agentes sem disparar mensagens reais em massa e sem mexer em migrations.
+
+Regras de teste:
+- Usar numero controlado.
+- Nao rodar follow-up em lote.
+- Nao enviar catalogo em massa para leads reais.
+- Registrar mensagem enviada, agente retornado, node, produto/categoria, handoff e resposta final.
+
+1. Roteamento
+
+1.1 Novo lead
+Mensagem: "Quero saber sobre fotogravacao"
+Esperado: Aline se apresenta, direciona para Kate e Kate continua com pingentes/fotogravacao.
+
+1.2 Conversa em pingente
+Mensagem: "Gostaria de presentear meu marido"
+Esperado: Continua com Kate. Nao manda para Keila por causa da palavra marido.
+
+1.3 Conversa em pingente
+Mensagem: "Tem alianca?"
+Esperado: Troca explicita para Keila.
+
+1.4 Conversa em alianca
+Mensagem: "Tem oculos?"
+Esperado: Troca explicita para Malu.
+
+1.5 Chaveiro
+Mensagem: "Quero chaveiro"
+Esperado: Atendimento humano.
+
+2. Kate - pingentes
+
+2.1 Depois de catalogo de pingente
+Mensagem: "Vem com cordao?"
+Esperado: Kate responde que corrente/cordao e vendido separadamente.
+
+2.2 Depois de catalogo de pingente
+Mensagem: "E ouro?"
+Esperado: Kate responde que o pingente e de aco e que dourado/prata sao acabamentos.
+
+2.3 Depois de escolher pingente
+Mensagem: "Quero este"
+Esperado: Salvar produto escolhido e perguntar se quer simulacao com foto ou seguir direto para entrega/pagamento.
+
+2.4 Depois de escolher
+Mensagem: "Sem simulacao, quero pagar no Pix"
+Esperado: Venda iniciada + atendimento humano + resumo para vendedor.
+
+2.5 Prazo
+Mensagem: "Pagando agora finaliza hoje?"
+Esperado: Responder que depende da fila, geralmente de 8 a 24 horas apos pagamento e fechamento, e chamar vendedor para confirmar antes do pagamento.
+
+2.6 Endereco
+Mensagem: "Qual endereco de voces?"
+Esperado: Responder Shopping Sumauma, Av. Noel Nutels, 1762 - Cidade Nova, Manaus - AM, e tratar como venda quente.
+
+3. Malu - oculos
+
+3.1 Novo lead
+Mensagem: "Quero oculos"
+Esperado: Aline direciona para Malu e Malu envia catalogo.
+
+3.2 Em Malu
+Mensagem: "Ver modelos"
+Esperado: Enviar cards com botao "Quero este".
+
+3.3 Apos escolher modelo
+Mensagem: selfie/imagem
+Esperado: Gerar simulacao ou responder falha amigavel se nao for possivel.
+
+3.4 Limite de simulacoes
+Acao: tentar gerar mais de 2 simulacoes.
+Esperado: Atendimento humano.
+
+4. Keila - aliancas
+
+4.1 Multiplas cores
+Mensagem: "Aliancas azul e preto ou dourado"
+Esperado: Buscar produtos que batam com qualquer uma das cores solicitadas.
+
+4.2 Namoro
+Mensagem: "Alianca de namoro"
+Esperado: Nao forcar casamento automaticamente.
+
+4.3 Fechamento
+Mensagem: cliente escolheu alianca e pergunta pagamento.
+Esperado: Venda iniciada + atendimento humano.
+
+5. Anti-repeticao
+
+5.1 Duas mensagens que cairiam no mesmo fallback
+Esperado: Nao repetir a mesma resposta. Na segunda repeticao, marcar atendimento humano com resumo.
+
+6. Midias
+
+6.1 Audio sem transcricao segura
+Esperado: Atendimento humano.
+
+6.2 Imagem de produto nao identificada
+Esperado: Atendimento humano.
+
+6.3 Selfie com produto de oculos escolhido
+Esperado: Malu usa a imagem para simulacao, respeitando limite de 2.
+
+6.4 Foto para pingente escolhido
+Esperado: Kate usa a imagem para simulacao de fotogravacao, sem chamar previa de arte final.
+
+7. Seguranca
+
+7.1 Mensagem de assedio
+Esperado: Aviso de seguranca, flag harassment_detected e pausa do fluxo comercial.
+
+7.2 Depois de assedio, cliente manda mensagem normal
+Esperado: Nao reabrir venda automaticamente; manter humano/seguranca.
+
+8. Validacoes tecnicas
+
+Comandos:
+- git diff --check
+- npm run build
+- deno check supabase/functions/aline-reply/index.ts
+- deno check supabase/functions/zapi-unified/index.ts
+- deno check supabase/functions/aline-followup/index.ts
+
+Se algum comando nao existir no ambiente local, registrar o erro e validar pelo GitHub Actions/deploy, sem mascarar erro real.

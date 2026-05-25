@@ -167,7 +167,16 @@ Atualizado em: 2026-05-25
 - supabase/functions/aline-reply/index.ts
 - supabase/functions/zapi-unified/index.ts
 - supabase/functions/aline-followup/index.ts
+- supabase/functions/_shared/agent-system-context.ts
 - src/pages/Chat.tsx
 - docs/historico-operacional.txt
 - docs/funcionamento-agentes-chat-acium.txt
 - docs/alteracoes-agentes-ate-agora.txt
+
+16. AgentSystemContext - Fase 1
+
+- Criada camada central `AgentSystemContext` para os agentes consultarem contexto operacional antes de responder.
+- O contexto consolida conversa, telefone, status, agente ativo, mensagens recentes, memoria dos agentes, produto escolhido, catalogo recente, produtos ativos, ofertas ativas, regras fixas da loja, midias recentes, flags de seguranca e sugestao de handoff.
+- A integracao inicial na `aline-reply` e conservadora: carrega o contexto e enriquece `collected_data`, mas nao substitui os fluxos atuais de Kate, Keila, Malu e Aline.
+- Foram adicionadas funcoes controladas para escrita futura: salvar produto escolhido, atualizar memoria, marcar humano, salvar nota interna, atualizar etapa, registrar catalogo enviado, lembrar ultima resposta, contar fallback e marcar flags de seguranca.
+- Essa fase prepara as proximas correcoes sem espalhar novas consultas e updates por todo o arquivo dos agentes.
