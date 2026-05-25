@@ -1,4 +1,5 @@
 name: Supabase Deploy
+run-name: Supabase production deploy by @${{ github.actor }}
 
 on:
   push:
