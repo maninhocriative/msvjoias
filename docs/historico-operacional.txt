@@ -1155,3 +1155,9 @@ Proximos passos: manter este arquivo atualizado quando houver novas mudancas rel
 - Criado `docs/testes-agentes-contexto-acium.txt` com os testes manuais obrigatorios para validar Aline, Kate, Keila, Malu, midias, seguranca e anti-repeticao nas proximas fases.
 - Validacao local: `git diff --check` passou. `npm run build` nao rodou nesta maquina porque `vite` nao esta disponivel no ambiente local. `deno check` nao rodou porque `deno` nao esta instalado no ambiente local.
 Proximos passos: validar Fase 1 em deploy; depois implementar Fase 2 com perguntas comerciais antes de fallback, comecando pela Kate.
+
+2026-05-25 - Deploy AgentSystemContext Fase 1
+- Commit 4eb123f enviado para main.
+- GitHub Actions run 26417389336 executou build do frontend no runner e publicou Edge Functions.
+- aline-reply foi publicada carregando supabase/functions/_shared/agent-system-context.ts.
+- Workflow permaneceu vermelho somente pelo db push/migration drift remoto ja conhecido; nao foi executado supabase db push localmente.
