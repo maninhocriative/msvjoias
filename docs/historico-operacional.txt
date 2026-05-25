@@ -1136,4 +1136,6 @@ Proximos passos: testar no caso Melanina: depois de catalogo de pingente, pergun
 - A Keila passou a usar a mesma regra de introducao segura da Aline, evitando uma transferencia seca quando o cliente entra direto em aliancas.
 - Corrigido um retorno do catalogo geral sem produtos que podia referenciar `finalReply` sem existir.
 - Criado documento `docs/funcionamento-agentes-chat-acium.txt` com o mapa completo do funcionamento dos agentes, fluxo tecnico, problemas conhecidos e proximos cuidados.
-Proximos passos: validar em WhatsApp real os tres cenarios: novo lead de fotogravacao, novo lead de oculos e cliente antigo perguntando apos catalogo; depois publicar a Edge Function `aline-reply`.
+- Commit `65f7ea0` enviado para `main`. O GitHub Actions validou build e publicou `aline-reply` em producao no projeto `ahbjwpkpxqqrpvpzmqwa`.
+- O workflow seguiu vermelho apenas pelo bloqueio antigo de migrations desalinhadas; as Edge Functions foram publicadas com sucesso.
+Proximos passos: validar em WhatsApp real os tres cenarios: novo lead de fotogravacao, novo lead de oculos e cliente antigo perguntando apos catalogo.
