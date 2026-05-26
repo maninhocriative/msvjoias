@@ -1168,3 +1168,11 @@ Proximos passos: validar Fase 1 em deploy; depois implementar Fase 2 com pergunt
 - Primeiro lote amplo passa a priorizar diversidade: cravejados, prata, dourado e formatos diferentes quando existirem no catalogo ativo.
 - "Quero mais" continua excluindo o ultimo catalogo enviado e agora prioriza cravejados restantes antes de completar com outros pingentes.
 - Adicionados logs seguros kate_catalog_selection com contagens de pingentes, cravejados, lisos, prata, dourado e IDs selecionados, sem secrets.
+
+2026-05-26 - Roteamento expresso para catalogo dos agentes
+- Ajustada a `aline-reply` para reconhecer pedidos curtos como "pingente", "pingentes", "oculos" e "aliancas" como pedido direto de catalogo do agente especialista.
+- Quando o cliente primeiro pede catalogo geral e depois informa "pingentes", a conversa agora força a Kate a enviar catalogo amplo de pingentes, sem cair novamente na saudacao generica da Aline.
+- A Malu passa a tratar pedido expresso de oculos como envio de catalogo, usando texto curto e evitando reapresentacao duplicada.
+- A Keila tambem passa a consumir a flag de catalogo expresso para enviar opcoes de aliancas/aneis quando o cliente pede diretamente.
+- As flags de introducao dos especialistas sao preservadas nesses pedidos expressos para evitar mensagens duplicadas de apresentacao.
+Proximos passos: publicar a `aline-reply` em producao e testar no numero controlado: "Ola" -> "Quero ver o catalogo" -> "Pingentes"; esperado: Kate envia cards de pingentes.

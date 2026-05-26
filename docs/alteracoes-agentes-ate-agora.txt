@@ -190,3 +190,12 @@ Atualizado em: 2026-05-25
 - Pedido explicito por cravejado filtra primeiro esses produtos; se nao houver, Kate nao inventa e mostra modelos disponiveis com aviso seguro.
 - Pedido por cor continua respeitando prata/dourada sem excluir cravejados dessa cor.
 - "Quero mais" usa itens ja enviados para evitar repeticao e priorizar cravejados restantes.
+
+18. Roteamento expresso para catalogo
+
+- A Aline continua fazendo triagem, mas pedidos curtos de produto agora podem acionar diretamente o catalogo do agente certo.
+- Exemplos cobertos: "pingente", "pingentes", "medalha", "fotogravado", "oculos", "armacao", "alianca" e "aneis".
+- Se o cliente diz "Quero ver o catalogo" e depois responde "Pingentes", a Kate recebe uma flag de catalogo amplo e envia cards de pingentes, sem repetir a apresentacao da Aline.
+- Se o cliente pede oculos, a Malu recebe flag de catalogo e envia modelos com texto curto, sem se reapresentar de novo.
+- A Keila passa a consumir a mesma regra para pedidos diretos de aliancas/aneis, sem ficar presa em perguntas iniciais quando a intencao e ver catalogo.
+- As flags `kate_intro_sent`, `malu_intro_sent` e `keila_intro_sent` sao preservadas em pedidos expressos para reduzir duplicidade de apresentacao.

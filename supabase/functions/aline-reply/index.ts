@@ -444,6 +444,27 @@ function detectFullCatalogRequest(text: string): boolean {
   );
 }
 
+function detectBareProductCatalogRequest(text: string, category: string | null): boolean {
+  const normalized = normalizeText(text).replace(/\s+/g, " ").trim();
+  if (!normalized || !category) return false;
+
+  if (category === "pingente") {
+    return /^(pingente|pingentes|medalha|medalhas|fotogravacao|fotogravado|fotogravados)$/.test(normalized);
+  }
+
+  if (category === "oculos") {
+    return /^(oculos|oculo|armacao|armacoes|lente|lentes)$/.test(normalized);
+  }
+
+  if (category === "aliancas" || category === "aneis") {
+    return /^(alianca|aliancas|anel|aneis|aneis de namoro|alianca de namoro|aliancas de namoro|alianca de casamento|aliancas de casamento)$/.test(
+      normalized,
+    );
+  }
+
+  return false;
+}
+
 function detectPriceIntent(text: string): boolean {
   const normalized = normalizeText(text);
   return /valor|preco|pre[cç]o|quanto|orcamento|or[cç]amento|ate quanto|faixa/.test(normalized);
@@ -3118,7 +3139,7 @@ async function handleKateFlow(args: {
   delete data.tamanho_2;
   delete data.numeracao_status;
 
-  if (!isKateFlowNode(currentNode)) {
+  if (!isKateFlowNode(currentNode) || data.kate_force_catalogo_amplo === true) {
     resetKateFlowState(data);
     if (preservedPendantColors.length > 0) {
       data.cores_solicitadas = preservedPendantColors;
@@ -3490,7 +3511,16 @@ async function handleKateFlow(args: {
     });
   }
 
-  if (!hasSelectedProduct && wantsFullCatalog) {
+  const wantsInitialBroadPendantCatalog =
+    wantsFullCatalog ||
+    data.kate_force_catalogo_amplo === true ||
+    (!data.catalogo_kate_enviado && !hasColor && (
+      detectCatalogIntent(message) ||
+      detectBareProductCatalogRequest(message, "pingente")
+    ));
+
+  if (!hasSelectedProduct && wantsInitialBroadPendantCatalog) {
+    delete data.kate_force_catalogo_amplo;
     return await sendKateCatalogForBothFinishes(
       "Claro. Vou te mandar alguns modelos de pingentes fotogravaveis, incluindo opcoes lisas e cravejadas, nos acabamentos prata e dourado, para voce comparar pelas fotos.",
     );
@@ -4604,6 +4634,7 @@ async function handleMaluFlow(args: {
   const isChoiceText = /escolher este|quero este|escolher|quero esse|quero esse modelo|preview|previa|prévia|testar|provar/.test(normalizedSelectionToken);
   const isDetailsText = /ver mais|detalhes|mais detalhes/.test(normalizedSelectionToken);
   const forceCatalogRequest =
+    data.malu_force_catalogo === true ||
     !isChoiceText &&
     !isDetailsText &&
     detectMaluCatalogRequest(message, buttonResponseId, catalogSelectionHint);
@@ -4778,6 +4809,8 @@ Quer ficar com esse, testar outro modelo ou falar com atendente?`;
   }
 
   if (!hasSelectedProduct && (forceCatalogRequest || !data.catalogo_malu_enviado || wantsMoreOptions || wantsCatalogResend || confirmsCatalogRequest)) {
+    const wasForcedMaluCatalog = data.malu_force_catalogo === true;
+    delete data.malu_force_catalogo;
     const shownSkus = Array.isArray(data.last_catalog)
       ? data.last_catalog.map((item: any) => String(item?.sku || item?.id || "")).filter(Boolean)
       : [];
@@ -4813,9 +4846,16 @@ Quer ficar com esse, testar outro modelo ou falar com atendente?`;
     }));
     data.catalog_history = mergeCatalogHistory(data.catalog_history, data.last_catalog);
 
+    const shouldUseShortCatalogIntro =
+      wasForcedMaluCatalog ||
+      data.malu_intro_sent ||
+      data.catalogo_malu_enviado ||
+      isMaluFlowNode(currentNode);
     const reply = wantsMoreOptions
       ? "Separei mais alguns modelos de óculos para você ver."
-      : `Oi, eu sou a Malu.
+      : shouldUseShortCatalogIntro
+        ? "Separei alguns modelos de oculos disponiveis para voce escolher."
+        : `Oi, eu sou a Malu.
 Vou te ajudar a escolher o óculos ideal.
 
 Separei alguns modelos disponíveis. Você pode escolher um modelo ou me mandar uma selfie de frente para eu gerar uma prévia.`;
@@ -4827,7 +4867,7 @@ Separei alguns modelos disponíveis. Você pode escolher um modelo ou me mandar 
 
     return buildResponsePayload({
       phone,
-      message: reply,
+      message: finalReply,
       node: "catalogo_oculos",
       products: cards,
       collectedData: data,
@@ -5050,7 +5090,7 @@ async function handleKeilaFlow(args: {
     return `${buildAlineTransferIntro(contactName, "keila")}\n\n${reply}`;
   };
 
-  if (!isKeilaFlowNode(currentNode)) {
+  if (!isKeilaFlowNode(currentNode) || data.keila_force_catalogo === true) {
     resetKeilaFlowState(data);
     if (preservedAllianceColors.length > 0) {
       data.cores_solicitadas = preservedAllianceColors;
@@ -5121,7 +5161,7 @@ async function handleKeilaFlow(args: {
     resetCatalogChoice(data);
   }
 
-  const wantsFullCatalog = detectFullCatalogRequest(message);
+  const wantsFullCatalog = detectFullCatalogRequest(message) || data.keila_force_catalogo === true;
   const detectedColorsInMessage = detectColors(message).filter((color) => ["dourada", "prata", "preta", "azul"].includes(color));
   const requestedColors = wantsFullCatalog && detectedColorsInMessage.length === 0
     ? []
@@ -5326,6 +5366,7 @@ async function handleKeilaFlow(args: {
   }
 
   if (!data.catalogo_keila_enviado) {
+    delete data.keila_force_catalogo;
     const { cards, usedBudgetFallback, usedWeddingFallback } = await fetchKeilaCatalogCards();
 
     if (cards.length === 0) {
@@ -6054,6 +6095,30 @@ serve(async (req) => {
       if (selectedContextAgent === "keila") baseData.categoria = "aliancas";
     }
 
+    const forceKateCatalogFromRequest =
+      explicitCategory === "pingente" &&
+      !selectedContextAgent &&
+      (
+        detectCatalogIntent(inboundText) ||
+        detectFullCatalogRequest(inboundText) ||
+        detectBareProductCatalogRequest(inboundText, "pingente")
+      );
+    const forceMaluCatalogFromRequest =
+      explicitCategory === "oculos" &&
+      !selectedContextAgent &&
+      (
+        detectMaluCatalogRequest(inboundText, buttonResponseId, catalogSelectionHint) ||
+        detectCatalogIntent(inboundText) ||
+        detectBareProductCatalogRequest(inboundText, "oculos")
+      );
+    const forceKeilaCatalogFromRequest =
+      (explicitCategory === "aliancas" || explicitCategory === "aneis") &&
+      !selectedContextAgent &&
+      (
+        detectCatalogIntent(inboundText) ||
+        detectBareProductCatalogRequest(inboundText, explicitCategory)
+      );
+
     if (wantsFullCatalogMain && !explicitCategory && !selectedContextAgent) {
       const generalCatalogResponse = await handleGeneralCatalogRequest({
         supabase,
@@ -6110,7 +6175,9 @@ serve(async (req) => {
       const maluCurrentNode =
         isMaluFlowNode(conversation.current_node || "")
           ? conversation.current_node
-          : selectedContextAgent === "malu" || explicitCategory === "oculos"
+          : forceMaluCatalogFromRequest
+            ? "malu_pedido_catalogo_expresso"
+            : selectedContextAgent === "malu" || explicitCategory === "oculos"
             ? conversation.current_node || ""
             : "malu_contexto_continuado";
       const maluResponse = await handleMaluFlow({
@@ -6124,6 +6191,8 @@ serve(async (req) => {
               ...baseData,
               agente_atual: "malu",
               categoria: "oculos",
+              malu_force_catalogo: forceMaluCatalogFromRequest || undefined,
+              malu_intro_sent: forceMaluCatalogFromRequest ? true : baseData.malu_intro_sent,
             },
             maluMemory,
           ),
@@ -6146,7 +6215,9 @@ serve(async (req) => {
       const kateCurrentNode =
         isKateFlowNode(conversation.current_node || "")
           ? conversation.current_node
-          : selectedContextAgent === "kate" || explicitCategory === "pingente"
+          : forceKateCatalogFromRequest
+            ? "kate_pedido_catalogo_expresso"
+            : selectedContextAgent === "kate" || explicitCategory === "pingente"
             ? conversation.current_node || ""
             : "kate_contexto_continuado";
       const kateResponse = await handleKateFlow({
@@ -6162,6 +6233,8 @@ serve(async (req) => {
               ...baseData,
               agente_atual: "kate",
               categoria: "pingente",
+              kate_force_catalogo_amplo: forceKateCatalogFromRequest || undefined,
+              kate_intro_sent: forceKateCatalogFromRequest ? true : baseData.kate_intro_sent,
             },
             kateMemory,
           ),
@@ -6184,7 +6257,9 @@ serve(async (req) => {
       const keilaCurrentNode =
         isKeilaFlowNode(conversation.current_node || "")
           ? conversation.current_node
-          : selectedContextAgent === "keila" || explicitCategory === "aliancas" || explicitCategory === "aneis"
+          : forceKeilaCatalogFromRequest
+            ? "keila_pedido_catalogo_expresso"
+            : selectedContextAgent === "keila" || explicitCategory === "aliancas" || explicitCategory === "aneis"
             ? conversation.current_node || ""
             : "keila_contexto_continuado";
       const keilaResponse = await handleKeilaFlow({
@@ -6199,6 +6274,8 @@ serve(async (req) => {
             ...baseData,
             agente_atual: "keila",
             categoria: "aliancas",
+            keila_force_catalogo: forceKeilaCatalogFromRequest || undefined,
+            keila_intro_sent: forceKeilaCatalogFromRequest ? true : baseData.keila_intro_sent,
             finalidade: baseData.finalidade || detectAllianceType(inboundText, baseData) || "casamento",
           },
         },
@@ -6231,6 +6308,8 @@ serve(async (req) => {
               ...baseData,
               agente_atual: "malu",
               categoria: "oculos",
+              malu_force_catalogo: forceMaluCatalogFromRequest || undefined,
+              malu_intro_sent: forceMaluCatalogFromRequest ? true : baseData.malu_intro_sent,
             },
             maluMemory,
           ),
@@ -6383,11 +6462,14 @@ serve(async (req) => {
         conversation: {
           ...conversation,
           active_agent: "malu",
+          current_node: forceMaluCatalogFromRequest ? "malu_pedido_catalogo_expresso" : conversation.current_node,
           collected_data: hydrateDataWithMemory(
             {
               ...baseData,
               agente_atual: "malu",
               categoria: "oculos",
+              malu_force_catalogo: forceMaluCatalogFromRequest || undefined,
+              malu_intro_sent: forceMaluCatalogFromRequest ? true : baseData.malu_intro_sent,
             },
             maluMemory,
           ),
@@ -6414,11 +6496,14 @@ serve(async (req) => {
         conversation: {
           ...conversation,
           active_agent: "kate",
+          current_node: forceKateCatalogFromRequest ? "kate_pedido_catalogo_expresso" : conversation.current_node,
           collected_data: hydrateDataWithMemory(
             {
               ...baseData,
               agente_atual: "kate",
               categoria: "pingente",
+              kate_force_catalogo_amplo: forceKateCatalogFromRequest || undefined,
+              kate_intro_sent: forceKateCatalogFromRequest ? true : baseData.kate_intro_sent,
             },
             kateMemory,
           ),
@@ -6445,10 +6530,13 @@ serve(async (req) => {
         conversation: {
           ...conversation,
           active_agent: "keila",
+          current_node: forceKeilaCatalogFromRequest ? "keila_pedido_catalogo_expresso" : conversation.current_node,
           collected_data: {
             ...baseData,
             agente_atual: "keila",
             categoria: "aliancas",
+            keila_force_catalogo: forceKeilaCatalogFromRequest || undefined,
+            keila_intro_sent: forceKeilaCatalogFromRequest ? true : baseData.keila_intro_sent,
             finalidade: baseData.finalidade || detectAllianceType(inboundText, baseData) || "casamento",
           },
         },
