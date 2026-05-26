@@ -1176,3 +1176,11 @@ Proximos passos: validar Fase 1 em deploy; depois implementar Fase 2 com pergunt
 - A Keila tambem passa a consumir a flag de catalogo expresso para enviar opcoes de aliancas/aneis quando o cliente pede diretamente.
 - As flags de introducao dos especialistas sao preservadas nesses pedidos expressos para evitar mensagens duplicadas de apresentacao.
 Proximos passos: publicar a `aline-reply` em producao e testar no numero controlado: "Ola" -> "Quero ver o catalogo" -> "Pingentes"; esperado: Kate envia cards de pingentes.
+
+2026-05-26 - Correcoes de contexto apos catalogo e nota de produto escolhido
+- Ajustada a `aline-reply` para nao tratar automaticamente colar, pulseira, conjunto, bracelete e acessorios fora do fluxo como pingente; nesses casos o atendimento vai para humano para evitar resposta inventada.
+- Fotos recebidas como referencia de produto agora sao encaminhadas para humano quando a IA nao consegue identificar com seguranca, em vez de voltar para Aline ou forcar catalogo errado.
+- Perguntas como "nome da loja", "localizacao" e "endereco" passam a ser respondidas pela Kate no contexto do pingente, sem reapresentar a Aline no meio da conversa.
+- Respostas curtas de agradecimento/ok depois do catalogo deixam de acionar a saudacao generica da Aline e recebem uma resposta contextual da Kate.
+- O `zapi-unified` passou a registrar nota interna de produto escolhido sempre que houver produto selecionado em resposta nao catalogo, para o vendedor humano ver SKU/nome/valor no chat.
+Proximos passos: publicar `aline-reply` e `zapi-unified`, testar no numero controlado com catalogo de pingentes, pergunta de localizacao, pergunta de cordao, foto de referencia de produto e clique em "Quero este".

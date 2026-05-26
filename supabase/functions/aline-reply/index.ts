@@ -257,7 +257,11 @@ function detectCategory(text: string, data: AnyRecord): string | null {
     return "oculos";
   }
 
-  if (/pingente|pingentes|medalh|fotograv|foto no pingente|gravar foto|colar|cord|corrente/.test(searchable)) {
+  const pendantContext = data.categoria === "pingente" || data.agente_atual === "kate";
+  if (
+    /pingente|pingentes|medalh|fotograv|foto no pingente|gravar foto/.test(searchable) ||
+    (pendantContext && /cordao|corda|corrente/.test(searchable))
+  ) {
     return "pingente";
   }
 
@@ -275,6 +279,33 @@ function detectCategory(text: string, data: AnyRecord): string | null {
 function detectKeychainIntent(text: string): boolean {
   const normalized = normalizeText(text);
   return /chaveiro|chaveiros|porta chave|porta-chave/.test(normalized);
+}
+
+function detectUnsupportedAccessoryIntent(text: string): boolean {
+  const normalized = normalizeText(text);
+  if (!normalized || detectKeychainIntent(normalized)) return false;
+
+  const mentionsUnsupportedAccessory =
+    /pulseira|pulseiras|bracelete|tornozeleira|brinco|brincos|argola|argolas|escapulario|conjunto|kit|combinad|colar/.test(
+      normalized,
+    );
+
+  if (!mentionsUnsupportedAccessory) return false;
+
+  const isPendantSpecific =
+    /pingente|pingentes|medalha|medalhas|fotograv|foto no pingente|gravar foto/.test(normalized);
+
+  return !isPendantSpecific || /pulseira|pulseiras|bracelete|conjunto|kit|combinad/.test(normalized);
+}
+
+function detectThanksOnly(text: string): boolean {
+  const normalized = normalizeText(text).replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+  if (!normalized) return false;
+
+  return (
+    /^(obrigado|obrigada|valeu|agradeco)$/.test(normalized) ||
+    /^(ok|ta ok|tudo certo|ta certo|ta bom|tudo bem|beleza|blz|show)( obrigado| obrigada| valeu)?$/.test(normalized)
+  );
 }
 function detectAllianceType(text: string, data: AnyRecord): string | null {
   const normalized = normalizeText(text);
@@ -506,7 +537,7 @@ function buildRuleBasedIntelligence(args: {
   const normalized = normalizeText(text);
   const mentionedCategories = [
     detectCategory(text, {}) === "oculos" ? "oculos" : null,
-    /pingente|pingentes|medalh|colar|cord|corrente|fotograv|gravar foto/.test(normalized)
+    /pingente|pingentes|medalh|fotograv|gravar foto/.test(normalized)
       ? "pingente"
       : null,
     /alianc|anel|aneis|an[eé]is/.test(normalized) ? "aliancas" : null,
@@ -536,6 +567,18 @@ function buildRuleBasedIntelligence(args: {
       shouldSwitchAgent: activeAgent !== "human",
       customerStage: "produto_chaveiro_humano",
       extracted: { ...extracted, categoria: "chaveiro" },
+      source: "rules",
+      needsClarification: false,
+    };
+  }
+  if (detectUnsupportedAccessoryIntent(text)) {
+    return {
+      intent: "atendimento_humano",
+      targetAgent: "human",
+      confidence: 0.9,
+      shouldSwitchAgent: activeAgent !== "human",
+      customerStage: "produto_acessorio_humano",
+      extracted: { ...extracted, categoria: "acessorio" },
       source: "rules",
       needsClarification: false,
     };
@@ -962,9 +1005,14 @@ function detectPriceQuestion(text: string): boolean {
 
 function detectStoreAddressQuestion(text: string): boolean {
   const normalized = normalizeText(text);
-  return /endere[cç]o|onde fica|localiza[cç]ao|localizacao|qual a loja|loja fica|shopping|retirar na loja|buscar na loja/.test(
+  return /endere[cç]o|onde fica|localiza[cç]ao|localizacao|qual a loja|nome da loja|nome.*loja|loja fica|shopping|retirar na loja|buscar na loja/.test(
     normalized,
   );
+}
+
+function detectStoreNameQuestion(text: string): boolean {
+  const normalized = normalizeText(text);
+  return /nome da loja|nome.*loja|qual.*loja|como chama.*loja/.test(normalized);
 }
 
 function detectFinishPhotosQuestion(text: string): boolean {
@@ -3511,6 +3559,65 @@ async function handleKateFlow(args: {
     });
   }
 
+  if (detectUnsupportedAccessoryIntent(message)) {
+    data.kate_needs_human = true;
+    data.agente_atual = "human";
+    data.handoff_reason = "produto_acessorio_sem_fluxo";
+    const reply = "Consigo te ajudar com essa peca, mas para nao te passar informacao errada vou chamar um vendedor para confirmar os modelos e valores certinhos com voce.";
+
+    await supabase
+      .from("aline_conversations")
+      .update({
+        status: "human_takeover",
+        active_agent: "human",
+        assignment_reason: "Kate encaminhou acessorio fora do fluxo automatico para vendedor",
+        collected_data: data,
+        last_message_at: new Date().toISOString(),
+        agent_handoff_at: new Date().toISOString(),
+      })
+      .eq("id", conversation.id);
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "human_acessorio");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+    await updateCrmLeadStatus(supabase, phone, "humano");
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "human_acessorio",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "human",
+    });
+  }
+
+  if (detectThanksOnly(message)) {
+    const reply = hasSelectedProduct
+      ? `Eu que agradeco! Deixei o *${cleanCustomerProductName(data.selected_name)}* no contexto. Se quiser finalizar, me diga se prefere retirada na loja ou delivery.`
+      : data.catalogo_kate_enviado
+        ? "Eu que agradeco! Se algum modelo te agradou, toque em Quero este no pingente escolhido que eu sigo com voce."
+        : "Eu que agradeco! Quando quiser, me diga se prefere ver os pingentes no acabamento prata ou dourado.";
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "kate",
+      "kate_ack",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "kate", reply, "kate_ack");
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "kate_ack",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "kate",
+    });
+  }
+
   const wantsInitialBroadPendantCatalog =
     wantsFullCatalog ||
     data.kate_force_catalogo_amplo === true ||
@@ -3659,7 +3766,9 @@ async function handleKateFlow(args: {
     const nextLine = hasSelectedProduct && !hasPayment
       ? "\n\nSe você for retirar na loja, me confirma também a forma de pagamento: Pix, Crediario Bemol ou cartão de crédito?"
       : "";
-    const reply = `Nossa loja fica no Shopping Sumaúma, Av. Noel Nutels, 1762 - Cidade Nova, Manaus - AM.${nextLine}`;
+    const reply = detectStoreNameQuestion(message)
+      ? `O nome da loja e ACIUM Manaus. Ficamos no Shopping Sumauma, Av. Noel Nutels, 1762 - Cidade Nova, Manaus - AM.${nextLine}`
+      : `Nossa loja fica no Shopping Sumauma, Av. Noel Nutels, 1762 - Cidade Nova, Manaus - AM.${nextLine}`;
 
     await persistConversation(
       supabase,
@@ -5940,7 +6049,47 @@ serve(async (req) => {
       );
     }
 
-    if (imageUnderstanding?.kind === "product_reference" && !explicitCategory) {
+    const unsupportedAccessoryFromMessage =
+      detectUnsupportedAccessoryIntent(inboundText) ||
+      (imageUnderstanding?.kind === "product_reference" && detectUnsupportedAccessoryIntent(recentCrmContext || ""));
+
+    if (unsupportedAccessoryFromMessage) {
+      baseData.categoria = "acessorio";
+      baseData.agente_atual = "human";
+      baseData.handoff_reason = "produto_acessorio_sem_fluxo";
+      const reply = "Recebi sua duvida sobre essa peca. Para nao te passar informacao errada, vou chamar um vendedor para identificar o produto, confirmar disponibilidade e seguir com voce.";
+
+      await supabase
+        .from("aline_conversations")
+        .update({
+          status: "human_takeover",
+          active_agent: "human",
+          assignment_reason: "Cliente perguntou por acessorio fora do fluxo automatico",
+          collected_data: baseData,
+          current_node: "human_acessorio",
+          last_message_at: new Date().toISOString(),
+          agent_handoff_at: new Date().toISOString(),
+        })
+        .eq("id", conversation.id);
+      await saveAssistantMessage(supabase, conversation.id, "human", reply, "human_acessorio");
+      await saveAgentMemory(supabase, phone, "aline", contactName, baseData);
+      await updateCrmLeadStatus(supabase, phone, "humano");
+
+      return new Response(
+        JSON.stringify(
+          buildResponsePayload({
+            phone,
+            message: reply,
+            node: "human_acessorio",
+            collectedData: baseData,
+            agent: "human",
+          }),
+        ),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (imageUnderstanding?.kind === "product_reference") {
       baseData.agente_atual = "human";
       baseData.handoff_reason = "referencia_produto_nao_identificada";
       const reply = "Recebi a foto como referencia de produto. Para nao te passar informacao errada, vou chamar um vendedor para identificar a peca e seguir com voce.";

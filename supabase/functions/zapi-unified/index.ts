@@ -1643,9 +1643,10 @@ serve(async (req) => {
     const selectedSku = selectedProduct?.sku || selectedMemory?.produto_sku || null;
     const selectedName = selectedProduct?.name || selectedProduct?.nome || selectedMemory?.produto_nome || null;
     const selectedPrice = selectedProduct?.price ?? selectedProduct?.preco ?? selectedMemory?.produto_preco ?? null;
+    const selectedNode = String(alineResponse.node_tecnico || "");
     const selectedProductShouldBeLogged = Boolean(
       selectedSku || selectedName,
-    ) && /kate_foto|kate_entrega|kate_pagamento|human_takeover|selecao_pingente/i.test(String(alineResponse.node_tecnico || ""));
+    ) && !/^catalogo_/i.test(selectedNode) && !/sem_catalogo|catalogo_sem_produtos/i.test(selectedNode);
 
     let textSent = false;
     let productsSent = 0;
