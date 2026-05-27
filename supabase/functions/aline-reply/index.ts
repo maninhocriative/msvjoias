@@ -1521,15 +1521,15 @@ function detectMaluCatalogRequest(text: string, buttonResponseId?: string | null
 
 function recentContextHasMaluEyewearPrompt(context?: string | null): boolean {
   const normalized = normalizeText(context || "");
-  if (/modelos.*culos|culos disponiveis/.test(normalized)) return true;
-  return /modelos de oculos|oculos disponiveis|previa com selfie|quer ver os modelos|catalogo_oculos|malu/.test(normalized);
+  if (!normalized) return false;
+  return /catalogo_oculos|malu|modelos de oculos|oculos disponiveis|previa com selfie|selfie.*oculos|oculos.*quero este/.test(normalized);
 }
 
 function recentContextHasKatePendantPrompt(context?: string | null): boolean {
   const normalized = normalizeText(context || "");
   if (!normalized) return false;
 
-  return /pingente|pingentes|medalha|medalhao|fotograv|fotogravacao|foto no pingente|quero este no pingente|catalogo_pingente|kate/.test(
+  return /catalogo_pingente|kate|sou a kate|pingentes fotogravaveis|fotogravacao de 1 lado|foto no pingente|quero este no pingente|no pingente escolhido|somente do pingente|pingente\/medalha|corrente.*cordao|cordao.*vendido separadamente|simulacao de fotogravacao|valor da unidade.*pingente|pingente.*valor da unidade|cod:\s*pf/i.test(
     normalized,
   );
 }
@@ -1538,7 +1538,7 @@ function recentContextHasKeilaAlliancePrompt(context?: string | null): boolean {
   const normalized = normalizeText(context || "");
   if (!normalized) return false;
 
-  return /alianca|aliancas|anel|aneis|namoro|casamento|tungsten|quero esta|catalogo_alianca|keila/.test(
+  return /catalogo_alianca|keila|sou a keila|aliancas de aco|alianca.*tamanho|tamanhos:|quero esta.*alianca|alianca.*valor da unidade|cod:\s*e0/i.test(
     normalized,
   );
 }
@@ -2424,6 +2424,96 @@ function findSingleCatalogSelection(data: AnyRecord): AnyRecord | null {
   const catalog = getCatalogSelectionPool(data);
   if (catalog.length !== 1) return null;
   return catalog[0] || null;
+}
+
+function extractCatalogSkuFromText(text: string): string | null {
+  const normalized = normalizeText(text);
+  if (!normalized) return null;
+
+  const explicit = normalized.match(/(?:cod|codigo|sku)\s*:?\s*([a-z0-9_-]{3,})/i);
+  if (explicit?.[1]) return explicit[1].toUpperCase();
+
+  const sku = normalized.match(/\b(pf[a-z0-9_-]{5,}|e0\d{5,}|oculos[-_]?\d+)\b/i);
+  return sku?.[1] ? sku[1].toUpperCase() : null;
+}
+
+async function lookupCatalogProductBySkuOrId(supabase: any, token: string | null): Promise<AnyRecord | null> {
+  if (!token) return null;
+  const value = String(token).trim();
+  if (!value) return null;
+
+  async function byField(field: "sku" | "id") {
+    const { data, error } = await supabase
+      .from("products")
+      .select("id, name, sku, price, image_url, video_url, category, color, description, tags")
+      .eq(field, value)
+      .eq("active", true)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.warn("[ALINE-REPLY] lookupCatalogProductBySkuOrId failed:", error.message || error);
+      return null;
+    }
+
+    return data || null;
+  }
+
+  return (await byField("sku")) || (await byField("id"));
+}
+
+async function findRecentCrmCatalogSelection(
+  supabase: any,
+  phone: string,
+  data: AnyRecord,
+): Promise<AnyRecord | null> {
+  const phoneVariants = buildPhoneVariants(phone);
+  const catalogPool = getCatalogSelectionPool(data);
+
+  const { data: crmConversation } = await supabase
+    .from("conversations")
+    .select("id")
+    .in("contact_number", phoneVariants)
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!crmConversation?.id) return null;
+
+  const { data: recentMessages, error } = await supabase
+    .from("messages")
+    .select("content, is_from_me, message_type, created_at")
+    .eq("conversation_id", crmConversation.id)
+    .or("message_type.is.null,message_type.neq.internal_note")
+    .order("created_at", { ascending: false })
+    .limit(30);
+
+  if (error) {
+    console.warn("[ALINE-REPLY] findRecentCrmCatalogSelection failed:", error.message || error);
+    return null;
+  }
+
+  for (const row of recentMessages || []) {
+    if (!row?.is_from_me) continue;
+
+    const content = String(row.content || "");
+    if (!content.trim()) continue;
+
+    const matchedFromPool = findCatalogSelection(content, catalogPool);
+    if (matchedFromPool) return matchedFromPool;
+
+    const sku = extractCatalogSkuFromText(content);
+    if (!sku) continue;
+
+    const matchedBySku = findCatalogSelection(sku, catalogPool);
+    if (matchedBySku) return matchedBySku;
+
+    const product = await lookupCatalogProductBySkuOrId(supabase, sku);
+    if (product) return product;
+  }
+
+  return null;
 }
 
 async function resolveMaluSelectedProductForPreview(
@@ -5963,21 +6053,42 @@ serve(async (req) => {
     if (!explicitCategory && imageUnderstanding?.kind === "product_reference" && imageUnderstanding.product_category) {
       explicitCategory = imageUnderstanding.product_category;
     }
+    const recentHasKatePendantPrompt = !explicitCategory && recentContextHasKatePendantPrompt(recentCrmContext);
+    const recentHasMaluEyewearPrompt = !explicitCategory && recentContextHasMaluEyewearPrompt(recentCrmContext);
+    const recentHasKeilaAlliancePrompt = !explicitCategory && recentContextHasKeilaAlliancePrompt(recentCrmContext);
     const recentContextCategory = !explicitCategory
       ? detectCategory(recentCrmContext || "", {})
       : null;
     baseData.categoria = explicitCategory || recentContextCategory || detectCategory(inboundText, baseData) || baseData.categoria || null;
-    if (!explicitCategory && recentContextCategory === "pingente") {
+    if (!explicitCategory && (recentContextCategory === "pingente" || recentHasKatePendantPrompt)) {
       baseData.agente_atual = "kate";
-      baseData.catalogo_kate_enviado = baseData.catalogo_kate_enviado ?? recentContextHasKatePendantPrompt(recentCrmContext);
+      baseData.categoria = "pingente";
+      baseData.catalogo_kate_enviado = baseData.catalogo_kate_enviado ?? true;
     }
-    if (!explicitCategory && recentContextCategory === "oculos") {
+    if (!explicitCategory && (recentContextCategory === "oculos" || recentHasMaluEyewearPrompt)) {
       baseData.agente_atual = "malu";
-      baseData.catalogo_malu_enviado = baseData.catalogo_malu_enviado ?? recentContextHasMaluEyewearPrompt(recentCrmContext);
+      baseData.categoria = "oculos";
+      baseData.catalogo_malu_enviado = baseData.catalogo_malu_enviado ?? true;
     }
-    if (!explicitCategory && (recentContextCategory === "aliancas" || recentContextCategory === "aneis")) {
+    if (!explicitCategory && (recentContextCategory === "aliancas" || recentContextCategory === "aneis" || recentHasKeilaAlliancePrompt)) {
       baseData.agente_atual = "keila";
-      baseData.catalogo_keila_enviado = baseData.catalogo_keila_enviado ?? recentContextHasKeilaAlliancePrompt(recentCrmContext);
+      baseData.categoria = recentContextCategory === "aneis" ? "aneis" : "aliancas";
+      baseData.catalogo_keila_enviado = baseData.catalogo_keila_enviado ?? true;
+    }
+    if (!explicitCategory && !baseData.catalogo_geral_enviado && catalogHasAgentProduct(baseData, "kate")) {
+      baseData.agente_atual = "kate";
+      baseData.categoria = "pingente";
+      baseData.catalogo_kate_enviado = baseData.catalogo_kate_enviado ?? true;
+    }
+    if (!explicitCategory && !baseData.catalogo_geral_enviado && catalogHasAgentProduct(baseData, "malu")) {
+      baseData.agente_atual = "malu";
+      baseData.categoria = "oculos";
+      baseData.catalogo_malu_enviado = baseData.catalogo_malu_enviado ?? true;
+    }
+    if (!explicitCategory && !baseData.catalogo_geral_enviado && catalogHasAgentProduct(baseData, "keila")) {
+      baseData.agente_atual = "keila";
+      baseData.categoria = baseData.categoria === "aneis" ? "aneis" : "aliancas";
+      baseData.catalogo_keila_enviado = baseData.catalogo_keila_enviado ?? true;
     }
     baseData.finalidade = detectAllianceType(inboundText, baseData) || baseData.finalidade || null;
     applyDetectedColorsToData(baseData, inboundText);
@@ -6225,10 +6336,19 @@ serve(async (req) => {
     const maluMemory = await loadAgentMemory(supabase, phone, "malu");
 
     const wantsFullCatalogMain = detectFullCatalogRequest(inboundText);
-    const selectedFromCatalogContext = findCatalogSelection(
+    let selectedFromCatalogContext = findCatalogSelection(
       buttonResponseId || catalogSelectionHint || inboundText,
       getCatalogSelectionPool(baseData),
     );
+    if (
+      !selectedFromCatalogContext &&
+      detectChoiceIntent(inboundText, buttonResponseId, catalogSelectionHint)
+    ) {
+      selectedFromCatalogContext = await findRecentCrmCatalogSelection(supabase, phone, baseData);
+      if (selectedFromCatalogContext) {
+        baseData.selected_product_source = "recent_crm_catalog_card";
+      }
+    }
     const selectedContextAgent = inferAgentFromProduct(selectedFromCatalogContext);
 
     if (selectedFromCatalogContext) {
@@ -6288,6 +6408,7 @@ serve(async (req) => {
     const keepMaluContext =
       selectedContextAgent === "malu" ||
       explicitCategory === "oculos" ||
+      recentHasMaluEyewearPrompt ||
       (!explicitCategory &&
         shouldKeepAgentContext({
           activeAgent,
@@ -6299,6 +6420,7 @@ serve(async (req) => {
       !keepMaluContext &&
       (selectedContextAgent === "kate" ||
         explicitCategory === "pingente" ||
+        recentHasKatePendantPrompt ||
         (!explicitCategory &&
           shouldKeepAgentContext({
             activeAgent,
@@ -6312,6 +6434,7 @@ serve(async (req) => {
       (selectedContextAgent === "keila" ||
         explicitCategory === "aliancas" ||
         explicitCategory === "aneis" ||
+        recentHasKeilaAlliancePrompt ||
         (!explicitCategory &&
           shouldKeepAgentContext({
             activeAgent,

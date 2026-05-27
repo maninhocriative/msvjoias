@@ -80,6 +80,8 @@ interface ConversationState {
   selected_sku: string | null;
   selected_name: string | null;
   selected_price: number | null;
+  selected_product_id?: string | null;
+  selected_product?: any;
   categoria: string | null;
   cor_preferida: string | null;
   tipo_alianca: string | null;
@@ -96,6 +98,138 @@ interface Product {
   image_url: string;
   category: string;
 }
+
+const buildPhoneVariants = (value: string) => {
+  const digits = String(value || '').replace(/\D/g, '');
+  const variants = new Set<string>();
+  if (digits) variants.add(digits);
+  if (digits.startsWith('55') && digits.length > 11) variants.add(digits.slice(2));
+  if (digits && !digits.startsWith('55')) variants.add(`55${digits}`);
+  return Array.from(variants);
+};
+
+const parseMoneyValue = (value: unknown) => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (typeof value !== 'string') return Number(value || 0) || 0;
+  const normalized = value.includes(',')
+    ? value.replace(/\./g, '').replace(',', '.')
+    : value;
+  return Number(normalized.replace(/[^\d.-]/g, '')) || 0;
+};
+
+const parseSelectedProductNote = (content?: string | null): Partial<Product> | null => {
+  const text = String(content || '').trim();
+  if (!/modelo escolhido pelo cliente/i.test(text)) return null;
+
+  const product = text.match(/Produto:\s*(.+)/i)?.[1]?.trim();
+  const sku = text.match(/SKU:\s*([^\n]+)/i)?.[1]?.trim();
+  const price = text.match(/Valor:\s*([^\n]+)/i)?.[1]?.trim();
+
+  if (!product && !sku) return null;
+
+  return {
+    id: '',
+    name: product || sku || '',
+    sku: sku || '',
+    price: parseMoneyValue(price),
+    image_url: '',
+    category: '',
+  };
+};
+
+const normalizePanelText = (value: unknown) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const isChoiceLikeText = (value: unknown) => {
+  const text = normalizePanelText(value);
+  return /\b(quero este|quero esse|este modelo|esse modelo|assim|e esse|e este)\b/.test(text);
+};
+
+const parseProductFromMessageContent = (content?: string | null): Product | null => {
+  const text = String(content || '').trim();
+  if (!text) return null;
+
+  const normalized = normalizePanelText(text);
+  const sku =
+    text.match(/(?:SKU|Cod|C[oó]digo|C[oó]d)\s*:?\s*([A-Z0-9_-]{3,})/i)?.[1]?.trim() ||
+    text.match(/\b(PF[A-Z0-9_-]{5,}|E0\d{5,}|[OÓ]CULOS[-_]?\d+)\b/i)?.[1]?.trim() ||
+    '';
+
+  const name =
+    text.match(/\*([^*\n]{3,})\*/)?.[1]?.trim() ||
+    text.split('\n').find((line) => normalizePanelText(line).includes('pingente') || normalizePanelText(line).includes('oculos') || normalizePanelText(line).includes('alianca'))?.replace(/\*/g, '').trim() ||
+    '';
+
+  const priceText =
+    text.match(/(?:Valor(?: da unidade)?|Preço|Preco)\s*:?\s*R?\$?\s*([0-9.,]+)/i)?.[1] ||
+    text.match(/R\$\s*([0-9.,]+)/i)?.[1] ||
+    null;
+
+  const category = normalized.includes('oculos')
+    ? 'oculos'
+    : normalized.includes('alianca')
+      ? 'aliancas'
+      : normalized.includes('pingente')
+        ? 'pingente'
+        : '';
+
+  if (!name && !sku) return null;
+
+  return {
+    id: '',
+    name: name || sku,
+    sku,
+    price: parseMoneyValue(priceText),
+    image_url: '',
+    category,
+  };
+};
+
+const normalizeProductCandidate = (candidate: any): Product | null => {
+  if (!candidate) return null;
+
+  const name = String(candidate.name || candidate.nome || candidate.product_name || candidate.selected_name || '').trim();
+  const sku = String(candidate.sku || candidate.product_sku || candidate.selected_sku || '').trim();
+  const id = String(candidate.id || candidate.product_id || candidate.selected_product_id || '').trim();
+
+  if (!name && !sku && !id) return null;
+
+  return {
+    id,
+    name: name || sku || id,
+    sku,
+    price: parseMoneyValue(candidate.price ?? candidate.preco ?? candidate.unit_price ?? candidate.selected_price),
+    image_url: String(candidate.image_url || candidate.imageUrl || candidate.media_url || '').trim(),
+    category: String(candidate.category || candidate.categoria || '').trim(),
+  };
+};
+
+const mergeProductData = (base: Product | null, details?: Partial<Product> | null): Product | null => {
+  if (!base && !details) return null;
+  const source = base || normalizeProductCandidate(details) || {
+    id: '',
+    name: '',
+    sku: '',
+    price: 0,
+    image_url: '',
+    category: '',
+  };
+  const baseNameIsOnlyIdentifier = !!base?.name && (base.name === base.sku || base.name === base.id);
+
+  return {
+    id: details?.id || source.id || '',
+    name: baseNameIsOnlyIdentifier ? (details?.name || base?.name || source.name || '') : (base?.name || details?.name || source.name || ''),
+    sku: base?.sku || details?.sku || source.sku || '',
+    price: base?.price || details?.price || source.price || 0,
+    image_url: details?.image_url || source.image_url || '',
+    category: details?.category || source.category || '',
+  };
+};
 
 const QUICK_RESPONSES = [
   { label: 'Saudação', text: 'Olá! Sou o vendedor da ACIUM Manaus. Como posso te ajudar?' },
@@ -129,75 +263,182 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
 
   useEffect(() => {
     fetchData();
-  }, [phone]);
+    const phoneVariants = buildPhoneVariants(phone);
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const fetchData = async () => {
-    setLoading(true);
+    const scheduleRefresh = () => {
+      if (refreshTimer) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => fetchData(true), 250);
+    };
+
+    const matchesPhone = (value?: string | null) => {
+      const digits = String(value || '').replace(/\D/g, '');
+      return !!digits && phoneVariants.includes(digits);
+    };
+
+    let channel = supabase
+      .channel(`seller-tools-product-${conversationId || phone}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversation_state' }, (payload) => {
+        const row: any = payload.new || payload.old;
+        if (matchesPhone(row?.phone)) scheduleRefresh();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'aline_conversations' }, (payload) => {
+        const row: any = payload.new || payload.old;
+        if (matchesPhone(row?.phone)) scheduleRefresh();
+      });
+
+    if (conversationId) {
+      channel = channel.on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'messages', filter: `conversation_id=eq.${conversationId}` },
+        scheduleRefresh,
+      );
+    }
+
+    channel.subscribe();
+
+    return () => {
+      if (refreshTimer) window.clearTimeout(refreshTimer);
+      supabase.removeChannel(channel);
+    };
+  }, [phone, conversationId]);
+
+  const fetchData = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
+      const phoneVariants = buildPhoneVariants(phone);
+      const lookupPhones = phoneVariants.length ? phoneVariants : [phone];
       // Buscar cliente
-      const { data: customerData } = await supabase
+      const { data: customerRows } = await supabase
         .from('customers')
         .select('*')
-        .eq('whatsapp', phone)
-        .maybeSingle();
+        .in('whatsapp', lookupPhones)
+        .limit(1);
       
-      setCustomer(customerData);
+      setCustomer(customerRows?.[0] || null);
 
       // Buscar dados coletados pela Aline
-      const { data: alineConv } = await supabase
+      const { data: alineRows } = await supabase
         .from('aline_conversations')
         .select('collected_data, current_node, status')
-        .eq('phone', phone)
+        .in('phone', lookupPhones)
         .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(1);
       
+      const alineConv = alineRows?.[0] || null;
       setAlineData(alineConv);
 
       // Buscar conversation_state que contém o produto selecionado
-      const { data: convState } = await supabase
+      const { data: convStateRows } = await supabase
         .from('conversation_state')
         .select('selected_sku, selected_name, selected_price, categoria, cor_preferida, tipo_alianca, stage, crm_entrega, crm_pagamento')
-        .eq('phone', phone)
-        .maybeSingle();
+        .in('phone', lookupPhones)
+        .limit(1);
       
+      const convState = convStateRows?.[0] || null;
       setConversationState(convState);
 
-      // Se temos produto selecionado no conversation_state, buscar detalhes do produto
-      if (convState?.selected_sku) {
-        const { data: productData } = await supabase
-          .from('products')
-          .select('id, name, sku, price, image_url, category')
-          .eq('sku', convState.selected_sku)
-          .maybeSingle();
-        
-        if (productData) {
-          setSelectedProduct({
-            id: productData.id,
-            name: convState.selected_name || productData.name,
-            sku: convState.selected_sku,
-            price: convState.selected_price || productData.price || 0,
-            image_url: productData.image_url || '',
-            category: productData.category || '',
-          });
+      let noteCandidate: Product | null = null;
+      let recentCardCandidate: Product | null = null;
+      if (conversationId) {
+        const { data: noteRows } = await supabase
+          .from('messages')
+          .select('content')
+          .eq('conversation_id', conversationId)
+          .eq('message_type', 'internal_note')
+          .ilike('content', '%Modelo escolhido pelo cliente%')
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        noteCandidate = normalizeProductCandidate(parseSelectedProductNote(noteRows?.[0]?.content));
+
+        const { data: recentRows } = await supabase
+          .from('messages')
+          .select('content, is_from_me, message_type, created_at')
+          .eq('conversation_id', conversationId)
+          .or('message_type.is.null,message_type.neq.internal_note')
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        let customerChoseRecentCard = false;
+        for (const row of recentRows || []) {
+          if (!row?.is_from_me && isChoiceLikeText(row.content)) {
+            customerChoseRecentCard = true;
+            continue;
+          }
+
+          if (!customerChoseRecentCard || !row?.is_from_me) continue;
+
+          const parsedProduct = parseProductFromMessageContent(row.content);
+          if (parsedProduct) {
+            recentCardCandidate = parsedProduct;
+            break;
+          }
         }
-      } else if (alineConv?.collected_data?.selected_product) {
-        // Fallback para dados coletados pela Aline
-        const selectedProd = alineConv.collected_data.selected_product;
-        setSelectedProduct({
-          id: selectedProd.id || '',
-          name: selectedProd.name || '',
-          sku: selectedProd.sku || '',
-          price: selectedProd.price || 0,
-          image_url: selectedProd.image_url || '',
-          category: selectedProd.category || '',
-        });
       }
+
+      const stateCandidate = normalizeProductCandidate({
+        selected_sku: convState?.selected_sku,
+        selected_name: convState?.selected_name,
+        selected_price: convState?.selected_price,
+        category: convState?.categoria,
+      });
+
+      const collected = alineConv?.collected_data || {};
+      const memoryCandidate =
+        normalizeProductCandidate(collected.selected_product) ||
+        normalizeProductCandidate({
+          selected_sku: collected.selected_sku || collected.produto_sku || collected.product_sku,
+          selected_name: collected.selected_name || collected.produto_nome || collected.product_name,
+          selected_price: collected.selected_price || collected.produto_preco || collected.product_price,
+          category: collected.categoria,
+        });
+
+      const candidate = stateCandidate || memoryCandidate || noteCandidate || recentCardCandidate;
+      if (!candidate) {
+        setSelectedProduct(null);
+        return;
+      }
+
+      let productDetails: Product | null = null;
+      const productSelect = 'id, name, sku, price, image_url, category';
+
+      if (candidate.sku) {
+        const { data } = await supabase
+          .from('products')
+          .select(productSelect)
+          .eq('sku', candidate.sku)
+          .eq('active', true)
+          .limit(1);
+        productDetails = normalizeProductCandidate(data?.[0]);
+      }
+
+      if (!productDetails && candidate.id) {
+        const { data } = await supabase
+          .from('products')
+          .select(productSelect)
+          .eq('id', candidate.id)
+          .eq('active', true)
+          .limit(1);
+        productDetails = normalizeProductCandidate(data?.[0]);
+      }
+
+      if (!productDetails && candidate.name) {
+        const { data } = await supabase
+          .from('products')
+          .select(productSelect)
+          .ilike('name', `%${candidate.name}%`)
+          .eq('active', true)
+          .limit(1);
+        productDetails = normalizeProductCandidate(data?.[0]);
+      }
+
+      setSelectedProduct(mergeProductData(candidate, productDetails));
 
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 

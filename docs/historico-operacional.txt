@@ -1184,3 +1184,12 @@ Proximos passos: publicar a `aline-reply` em producao e testar no numero control
 - Respostas curtas de agradecimento/ok depois do catalogo deixam de acionar a saudacao generica da Aline e recebem uma resposta contextual da Kate.
 - O `zapi-unified` passou a registrar nota interna de produto escolhido sempre que houver produto selecionado em resposta nao catalogo, para o vendedor humano ver SKU/nome/valor no chat.
 Proximos passos: publicar `aline-reply` e `zapi-unified`, testar no numero controlado com catalogo de pingentes, pergunta de localizacao, pergunta de cordao, foto de referencia de produto e clique em "Quero este".
+
+2026-05-27 - Produto escolhido visivel para o vendedor
+- O painel lateral `SellerToolsPanel` passou a buscar produto escolhido por variantes do telefone, evitando falha quando o numero aparece com ou sem DDI 55.
+- O produto selecionado agora e resolvido em camadas: `conversation_state`, memoria/collected_data da Aline/Kate/Keila/Malu, nota interna "Modelo escolhido pelo cliente" e, como fallback conservador, card de produto enviado antes de uma resposta do cliente como "quero este" ou "este modelo".
+- O painel lateral assina mudancas em `conversation_state`, `aline_conversations` e `messages`, atualizando o produto escolhido em tempo real sem precisar clicar de novo na conversa.
+- A `aline-reply` ganhou fallback para inferir o produto escolhido a partir do card recente do CRM quando a Z-API nao entrega SKU claro no botao ou na resposta do cliente.
+- O `zapi-unified` passou a reconhecer SKUs de pingentes `PF...` e oculos `OCULOS-..` como pistas fortes de selecao, alem dos SKUs antigos de aliancas.
+- O follow-up foi ajustado para usar `public.messages` como fonte principal de ultima atividade, considerando a mensagem mais recente do CRM e evitando morrer por depender apenas do historico antigo da `aline_messages`.
+Proximos passos: validar em producao com conversa real: enviar catalogo, clicar "Quero este", conferir nota interna no chat e produto carregado automaticamente no painel de pedido.

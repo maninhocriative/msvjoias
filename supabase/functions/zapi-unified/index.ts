@@ -827,7 +827,8 @@ function pickBestCatalogSelectionHint(payload: unknown): string {
 
     let score = 0;
 
-    if (/\be0\d{5,}\b/i.test(normalized)) score += 100;
+    if (/\b(?:e0\d{5,}|pf[a-z0-9-]{5,}|[oó]culos[-_]?\d+)\b/i.test(normalized)) score += 100;
+    if (/(culos|arma[cÃ§]ao|lente)/i.test(normalized)) score += 25;
     if (/c[oó]d[:\s]/i.test(normalized)) score += 30;
     if (/(alianca|aliança|pingente|medalha|tungsten|tungstenio|facetad|solidblack|designer|zirc[oô]nia|zirconia|black)/i.test(normalized)) {
       score += 25;
@@ -1233,7 +1234,7 @@ serve(async (req) => {
       findNestedString(
         payload,
         (candidate) =>
-          /^e0\d{5,}$/i.test(candidate) ||
+          /^(?:e0\d{5,}|pf[a-z0-9-]{5,}|[oó]culos[-_]?\d+)$/i.test(candidate) ||
           /alianca|aliança|tungsten|casamento|facetad|solidblack|designer|dourad|pret|azul|blue/i.test(candidate),
       ) || "";
     catalogSelectionHint = pickBestCatalogSelectionHint(payload) || catalogSelectionHint;

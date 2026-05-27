@@ -163,6 +163,11 @@ function getAgentSlug(conversation: any): AgentSlug {
   return "aline";
 }
 
+function isAgentMessageRole(role: unknown): boolean {
+  const normalized = normalizeText(String(role || ""));
+  return ["assistant", "aline", "keila", "kate", "malu"].includes(normalized);
+}
+
 function hasCatalogSent(conversation: any): boolean {
   const data = conversation?.collected_data || {};
   return Boolean(
@@ -576,8 +581,10 @@ async function getLastConversationMessage(supabase: any, conversationId: string)
 async function getLastCrmMessage(supabase: any, crmConversationId: string) {
   const { data, error } = await supabase
     .from("messages")
-    .select("is_from_me, created_at")
+    .select("is_from_me, created_at, message_type")
     .eq("conversation_id", crmConversationId)
+    .is("deleted_at", null)
+    .or("message_type.is.null,message_type.neq.internal_note")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -697,7 +704,7 @@ serve(async (req) => {
 
     conversationsQuery = forceKatePendants
       ? conversationsQuery.eq("active_agent", "kate").eq("followup_count", 0).order("last_message_at", { ascending: false, nullsFirst: false })
-      : conversationsQuery.in("active_agent", ["aline", "keila", "kate", "malu"]).lt("followup_count", safeMaxAttempts).order("last_message_at", { ascending: true, nullsFirst: true });
+      : conversationsQuery.in("active_agent", ["aline", "keila", "kate", "malu"]).lt("followup_count", safeMaxAttempts).order("last_message_at", { ascending: false, nullsFirst: false });
 
     const { data: activeConversations, error: fetchError } = await conversationsQuery;
 
@@ -746,32 +753,6 @@ serve(async (req) => {
         continue;
       }
 
-      const lastMessage = await getLastConversationMessage(supabase, conversation.id);
-      if (!lastMessage) {
-        addDebugSkip("no_last_message");
-        continue;
-      }
-
-      const isLastMessageFromBot =
-        lastMessage.role === "assistant" ||
-        lastMessage.role === "aline" ||
-        lastMessage.role === "keila" ||
-        lastMessage.role === "kate" ||
-        lastMessage.role === "malu";
-      if (!isLastMessageFromBot) {
-        addDebugSkip(`last_role_${lastMessage.role || "unknown"}`);
-        continue;
-      }
-
-      const lastMessageTime = new Date(
-        lastMessage.created_at || conversation.last_message_at || 0,
-      ).getTime();
-      const elapsedMinutes = (now - lastMessageTime) / 60000;
-      if (!forceKatePendants && (!Number.isFinite(lastMessageTime) || elapsedMinutes < nextConfig.intervalMinutes)) {
-        addDebugSkip("too_early");
-        continue;
-      }
-
       const { data: crmConversation, error: crmError } = await supabase
         .from("conversations")
         .select("id, lead_status")
@@ -787,21 +768,54 @@ serve(async (req) => {
         continue;
       }
 
+      const lastCrmMessage = crmConversation?.id
+        ? await getLastCrmMessage(supabase, crmConversation.id)
+        : null;
+      const lastAgentMessage = await getLastConversationMessage(supabase, conversation.id);
+
+      let lastMessageTime = 0;
+      let activitySource = "none";
+
       if (crmConversation?.id) {
-        const lastCrmMessage = await getLastCrmMessage(supabase, crmConversation.id);
         const lastCrmMessageTime = lastCrmMessage?.created_at
           ? new Date(lastCrmMessage.created_at).getTime()
           : 0;
 
-        if (
-          lastCrmMessage &&
-          lastCrmMessage.is_from_me === false &&
-          Number.isFinite(lastCrmMessageTime) &&
-          lastCrmMessageTime >= lastMessageTime
-        ) {
+        if (lastCrmMessage && lastCrmMessage.is_from_me === false) {
           addDebugSkip("last_crm_message_from_customer");
           continue;
         }
+
+        if (lastCrmMessage && Number.isFinite(lastCrmMessageTime) && lastCrmMessageTime > 0) {
+          lastMessageTime = lastCrmMessageTime;
+          activitySource = "crm";
+        }
+      }
+
+      if ((!Number.isFinite(lastMessageTime) || lastMessageTime <= 0) && lastAgentMessage) {
+        if (!isAgentMessageRole(lastAgentMessage.role)) {
+          addDebugSkip(`last_role_${lastAgentMessage.role || "unknown"}`);
+          continue;
+        }
+
+        const lastAgentMessageTime = new Date(
+          lastAgentMessage.created_at || conversation.last_message_at || 0,
+        ).getTime();
+        if (Number.isFinite(lastAgentMessageTime) && lastAgentMessageTime > 0) {
+          lastMessageTime = lastAgentMessageTime;
+          activitySource = "agent_messages";
+        }
+      }
+
+      if (!Number.isFinite(lastMessageTime) || lastMessageTime <= 0) {
+        addDebugSkip("no_last_message");
+        continue;
+      }
+
+      const elapsedMinutes = (now - lastMessageTime) / 60000;
+      if (!forceKatePendants && elapsedMinutes < nextConfig.intervalMinutes) {
+        addDebugSkip(`too_early_${activitySource}`);
+        continue;
       }
 
       eligibleConversations.push({
