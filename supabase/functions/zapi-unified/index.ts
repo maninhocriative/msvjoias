@@ -899,13 +899,86 @@ function normalizePresenceStatus(value: unknown) {
   return normalized || "unknown";
 }
 
-function buildSafeAlineFallback(contactName: string) {
+function normalizeFallbackText(value: unknown): string {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function loadAgentFallbackContext(supabase: any, phone: string) {
+  try {
+    const phoneVariants = buildPhoneVariants(phone);
+    const { data } = await supabase
+      .from("aline_conversations")
+      .select("active_agent,current_node,status,collected_data,assigned_seller_id,assigned_seller_name,last_message_at,created_at")
+      .in("phone", phoneVariants)
+      .order("last_message_at", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    return data || null;
+  } catch (error) {
+    console.warn("[ZAPI-UNIFIED] Nao foi possivel carregar contexto de fallback:", error);
+    return null;
+  }
+}
+
+function inferFallbackAgent(context: any, message: string): string {
+  const data = context?.collected_data || {};
+  const text = normalizeFallbackText([
+    message,
+    context?.active_agent,
+    context?.current_node,
+    data.agente_atual,
+    data.categoria,
+    data.customer_stage,
+    data.handoff_reason,
+  ].filter(Boolean).join(" "));
+
+  if (context?.assigned_seller_id || context?.assigned_seller_name || context?.status === "human_takeover") {
+    return "human";
+  }
+  if (/\bmalu\b|oculos|oculo|armacao|catalogo_oculos|malu_/.test(text)) return "malu";
+  if (/\bkate\b|pingente|pingentes|fotograv|catalogo_pingente|kate_/.test(text)) return "kate";
+  if (/\bkeila\b|alianca|aliancas|aneis|anel|catalogo_alianca|keila_/.test(text)) return "keila";
+  return "aline";
+}
+
+function buildSafeAlineFallback(contactName: string, context?: any, message = "") {
   const firstName = String(contactName || "")
     .trim()
     .split(/\s+/)[0]
     ?.replace(/\d+/g, "")
     .trim();
   const greetingName = firstName && firstName.length > 1 ? `, ${firstName}` : "";
+  const fallbackAgent = inferFallbackAgent(context, message);
+
+  if (fallbackAgent !== "aline") {
+    const specialistLabel = fallbackAgent === "malu"
+      ? "oculos"
+      : fallbackAgent === "keila"
+        ? "aliancas"
+        : fallbackAgent === "kate"
+          ? "pingentes/fotogravacao"
+          : "seu atendimento";
+
+    return {
+      success: true,
+      response: `Tive uma instabilidade para continuar automaticamente com ${specialistLabel}. Para nao te responder errado, vou chamar um vendedor para assumir daqui e ver o historico da conversa.`,
+      mensagem_whatsapp: `Tive uma instabilidade para continuar automaticamente com ${specialistLabel}. Para nao te responder errado, vou chamar um vendedor para assumir daqui e ver o historico da conversa.`,
+      produtos: [],
+      media_items: [],
+      tem_produtos: false,
+      agent: "human",
+      status: "human_takeover",
+      node_tecnico: "human_takeover",
+      fallback_reason: `aline-reply-unavailable-${fallbackAgent}`,
+    };
+  }
 
   return {
     success: true,
@@ -1590,7 +1663,8 @@ serve(async (req) => {
       alineResponse = await alineResponseRequest.json();
     } catch (error) {
       console.error("[ZAPI-UNIFIED] Falha no aline-reply, usando resposta segura:", error);
-      alineResponse = buildSafeAlineFallback(contactName);
+      const fallbackContext = await loadAgentFallbackContext(supabase, phone);
+      alineResponse = buildSafeAlineFallback(contactName, fallbackContext, messageForAline);
     }
 
     if (alineResponse.skipped) {

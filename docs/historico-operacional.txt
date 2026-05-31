@@ -1200,3 +1200,11 @@ Proximos passos: validar em producao com conversa real: enviar catalogo, clicar 
 - Adicionado `overflowAnchor: none` no container de mensagens para diminuir pulos visuais quando imagens e midias carregam.
 - Validacao local: `git diff --check -- src/pages/Chat.tsx` passou; `npm run build` nao rodou porque `node_modules/.bin/vite.cmd` nao existe no ambiente local.
 Proximos passos: validar visualmente no CRM, depois atacar virtualizacao da lista de conversas e revisao fina de duplicidade entre `public.messages` e `aline_messages`.
+
+2026-05-31 - Trava contra reapresentacao indevida da Aline
+- Ajustada a `aline-reply` para bloquear resposta de apresentacao da Aline quando o historico recente ou a memoria da conversa indicarem que o atendimento ja esta com Kate, Keila ou Malu.
+- Quando a IA/fallback tentar devolver uma saudacao generica em conversa com contexto especialista, a resposta agora vira uma continuacao contextual curta, sem reapresentar a Aline.
+- A persistencia final desse caminho tambem passa a manter o agente especialista (`kate`, `keila` ou `malu`) quando o contexto indicar, evitando que a conversa volte a ser salva como `aline`.
+- Reforcados sinais de contexto recente da Kate para catalogo de pingentes, simulacao, aprovacao de arte, material em aco, SKU PF e CTAs de "Quero este"; reforcados tambem sinais de contexto recente da Malu para oculos/modelo/testar outro.
+- Ajustado o fallback seguro do `zapi-unified`: se a `aline-reply` falhar, o webhook consulta `aline_conversations`; se a conversa ja era de especialista ou humano, nao envia saudacao generica da Aline e encaminha para humano com mensagem segura.
+Proximos passos: publicar as Edge Functions, testar no numero controlado com "Ola" -> "Quero ver os produtos" -> "Pingentes", e validar que apos catalogo perguntas como nome da loja/cordao nao voltam para saudacao da Aline.

@@ -384,6 +384,29 @@ function buildAlineFallbackGreeting(contactName: string): string {
   return `Oi${greetingName}! Sou a Aline da ACIUM Manaus. Posso te ajudar com alianças, pingentes ou algum modelo do catálogo?`;
 }
 
+function buildAlineContinuationFallback(contactName: string, data: AnyRecord): string {
+  const category = String(data?.categoria || data?.triagem_categoria || "").toLowerCase();
+
+  if (category.includes("pingente") || data?.catalogo_kate_enviado || data?.agente_atual === "kate") {
+    return "Certo, sigo com os pingentes. Voce quer ver os modelos disponiveis, tirar uma duvida ou escolher um modelo para continuar?";
+  }
+
+  if (category.includes("oculos") || data?.catalogo_malu_enviado || data?.agente_atual === "malu") {
+    return "Certo, sigo com os oculos. Voce quer ver os modelos disponiveis, escolher um modelo ou mandar uma selfie para simulacao?";
+  }
+
+  if (category.includes("alianca") || category.includes("aneis") || data?.catalogo_keila_enviado || data?.agente_atual === "keila") {
+    return "Certo, sigo com as aliancas. Voce quer ver os modelos, informar a cor/tamanho ou continuar com algum modelo que gostou?";
+  }
+
+  return buildAlineFallbackGreeting(contactName);
+}
+
+function isAlineIntroMessage(text: string): boolean {
+  const normalized = normalizeText(text);
+  return /sou a aline da acium manaus/.test(normalized) && /posso te ajudar/.test(normalized);
+}
+
 function getCustomerFirstName(contactName: string): string {
   return String(contactName || "")
     .trim()
@@ -1522,14 +1545,14 @@ function detectMaluCatalogRequest(text: string, buttonResponseId?: string | null
 function recentContextHasMaluEyewearPrompt(context?: string | null): boolean {
   const normalized = normalizeText(context || "");
   if (!normalized) return false;
-  return /catalogo_oculos|malu|modelos de oculos|oculos disponiveis|previa com selfie|selfie.*oculos|oculos.*quero este/.test(normalized);
+  return /catalogo_oculos|malu|modelos de oculos|oculos disponiveis|previa com selfie|selfie.*oculos|oculos.*quero este|modelo.*oculos|oculos-0|quero este.*oculos|testar outro.*modelo/.test(normalized);
 }
 
 function recentContextHasKatePendantPrompt(context?: string | null): boolean {
   const normalized = normalizeText(context || "");
   if (!normalized) return false;
 
-  return /catalogo_pingente|kate|sou a kate|pingentes fotogravaveis|fotogravacao de 1 lado|foto no pingente|quero este no pingente|no pingente escolhido|somente do pingente|pingente\/medalha|corrente.*cordao|cordao.*vendido separadamente|simulacao de fotogravacao|valor da unidade.*pingente|pingente.*valor da unidade|cod:\s*pf/i.test(
+  return /catalogo_pingente|kate|sou a kate|pingentes fotogravaveis|modelos de pingentes|pingente escolhido|fotogravacao de 1 lado|foto no pingente|quero este no pingente|toque em quero este no pingente|no pingente escolhido|gostou de algum modelo.*pingente|somente do pingente|pingente\/medalha|corrente.*cordao|cordao.*vendido separadamente|simulacao de fotogravacao|preparar outra simulacao|arte original.*aprovacao|aprovacao antes da gravacao|valor da unidade.*pingente|pingente.*valor da unidade|material:\s*aco|cod:\s*pf/i.test(
     normalized,
   );
 }
@@ -6866,10 +6889,11 @@ serve(async (req) => {
       aiPayload = await aiChatResponse.json();
     } catch (error) {
       console.error("[ALINE-REPLY] Falha no ai-chat, usando saudacao segura:", error);
+      const safeContinuation = buildAlineContinuationFallback(contactName, alineData);
       aiPayload = {
         success: true,
-        response: buildAlineFallbackGreeting(contactName),
-        mensagem_whatsapp: buildAlineFallbackGreeting(contactName),
+        response: safeContinuation,
+        mensagem_whatsapp: safeContinuation,
         filtros: {
           intencao: "conversa",
           categoria: alineData.categoria || null,
@@ -6898,17 +6922,66 @@ serve(async (req) => {
       };
     }
 
+    const aiMessageText = String(aiPayload?.mensagem_whatsapp || aiPayload?.response || "");
+    const guardData = {
+      ...alineData,
+      agente_atual: recentHasKatePendantPrompt
+        ? "kate"
+        : recentHasMaluEyewearPrompt
+          ? "malu"
+          : recentHasKeilaAlliancePrompt
+            ? "keila"
+            : alineData.agente_atual,
+      categoria: recentHasKatePendantPrompt
+        ? "pingente"
+        : recentHasMaluEyewearPrompt
+          ? "oculos"
+          : recentHasKeilaAlliancePrompt
+            ? "aliancas"
+            : alineData.categoria,
+      catalogo_kate_enviado: recentHasKatePendantPrompt ? true : alineData.catalogo_kate_enviado,
+      catalogo_malu_enviado: recentHasMaluEyewearPrompt ? true : alineData.catalogo_malu_enviado,
+      catalogo_keila_enviado: recentHasKeilaAlliancePrompt ? true : alineData.catalogo_keila_enviado,
+    };
+    const hasSpecialistContextForGuard =
+      guardData.agente_atual === "kate" ||
+      guardData.agente_atual === "malu" ||
+      guardData.agente_atual === "keila" ||
+      guardData.categoria === "pingente" ||
+      guardData.categoria === "oculos" ||
+      guardData.categoria === "aliancas" ||
+      guardData.categoria === "aneis";
+
+    if (isAlineIntroMessage(aiMessageText) && hasSpecialistContextForGuard) {
+      const safeContinuation = buildAlineContinuationFallback(contactName, guardData);
+      aiPayload.response = safeContinuation;
+      aiPayload.mensagem_whatsapp = safeContinuation;
+      aiPayload.node_tecnico = aiPayload.node_tecnico || "contexto_continuado_sem_reapresentacao";
+      aiPayload.fallback_reason = "blocked_repeated_aline_intro";
+      aiPayload.memoria = {
+        ...(aiPayload.memoria || {}),
+        agente_atual: guardData.agente_atual || aiPayload.memoria?.agente_atual || "aline",
+        categoria: guardData.categoria || aiPayload.memoria?.categoria || null,
+      };
+    }
+
     alineData.categoria = aiPayload?.memoria?.categoria || alineData.categoria || null;
     alineData.finalidade = aiPayload?.memoria?.tipo_alianca || alineData.finalidade || null;
     alineData.cor = aiPayload?.memoria?.cor || alineData.cor || null;
     alineData.selected_sku = aiPayload?.memoria?.produto_sku || alineData.selected_sku || null;
     alineData.selected_name = aiPayload?.memoria?.produto_nome || alineData.selected_name || null;
     alineData.triagem_categoria = aiPayload?.filtros?.intencao || alineData.triagem_categoria || null;
+    alineData.agente_atual = aiPayload?.memoria?.agente_atual || alineData.agente_atual || "aline";
+    const finalAgentFromPayload = normalizeConversationAgent(aiPayload?.memoria?.agente_atual || aiPayload?.agent);
+    const finalAlineBranchAgent: ConversationAgent =
+      finalAgentFromPayload === "kate" || finalAgentFromPayload === "keila" || finalAgentFromPayload === "malu"
+        ? finalAgentFromPayload
+        : "aline";
 
     await persistConversation(
       supabase,
       conversation.id,
-      "aline",
+      finalAlineBranchAgent,
       aiPayload.node_tecnico || conversation.current_node || "abertura",
       conversation.current_node || null,
       alineData,
@@ -6917,12 +6990,12 @@ serve(async (req) => {
     await saveAssistantMessage(
       supabase,
       conversation.id,
-      "aline",
+      finalAlineBranchAgent,
       aiPayload.mensagem_whatsapp || aiPayload.response || "Posso te ajudar com alianças ou pingentes? 😊",
       aiPayload.node_tecnico || conversation.current_node || "abertura",
     );
 
-    await saveAgentMemory(supabase, phone, "aline", contactName, alineData);
+    await saveAgentMemory(supabase, phone, finalAlineBranchAgent, contactName, alineData);
 
     return new Response(JSON.stringify(aiPayload), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
