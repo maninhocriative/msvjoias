@@ -1193,3 +1193,10 @@ Proximos passos: publicar `aline-reply` e `zapi-unified`, testar no numero contr
 - O `zapi-unified` passou a reconhecer SKUs de pingentes `PF...` e oculos `OCULOS-..` como pistas fortes de selecao, alem dos SKUs antigos de aliancas.
 - O follow-up foi ajustado para usar `public.messages` como fonte principal de ultima atividade, considerando a mensagem mais recente do CRM e evitando morrer por depender apenas do historico antigo da `aline_messages`.
 Proximos passos: validar em producao com conversa real: enviar catalogo, clicar "Quero este", conferir nota interna no chat e produto carregado automaticamente no painel de pedido.
+
+2026-05-30 - Correcao de scroll e pulos no chat
+- Corrigido `src/pages/Chat.tsx` para usar o `messagesContainerRef` no container real com `overflow-y-auto`.
+- Removido um scroll imediato antes do carregamento/renderizacao das mensagens e reduzidos os timeouts duplicados para um unico ajuste controlado.
+- Adicionado `overflowAnchor: none` no container de mensagens para diminuir pulos visuais quando imagens e midias carregam.
+- Validacao local: `git diff --check -- src/pages/Chat.tsx` passou; `npm run build` nao rodou porque `node_modules/.bin/vite.cmd` nao existe no ambiente local.
+Proximos passos: validar visualmente no CRM, depois atacar virtualizacao da lista de conversas e revisao fina de duplicidade entre `public.messages` e `aline_messages`.

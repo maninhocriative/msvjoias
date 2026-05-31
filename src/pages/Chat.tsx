@@ -153,11 +153,28 @@ const areDuplicateMessageRecords = (a: Partial<Message>, b: Partial<Message>) =>
 
   const aType = a.message_type || 'text';
   const bType = b.message_type || 'text';
-  if (aType !== bType) return false;
+  const aContent = normalizeMessageText(a.content);
+  const bContent = normalizeMessageText(b.content);
 
   const aMediaUrl = normalizeMediaUrl(a.media_url);
   const bMediaUrl = normalizeMediaUrl(b.media_url);
   if (aMediaUrl && bMediaUrl && aMediaUrl === bMediaUrl) return true;
+
+  if (
+    aContent &&
+    bContent &&
+    aContent === bContent &&
+    isSameTimeWindow(a, b, 60000) &&
+  (
+    aType === bType ||
+    (aType === 'text' && ['image', 'video'].includes(bType)) ||
+    (bType === 'text' && ['image', 'video'].includes(aType))
+  )
+  ) {
+    return true;
+  }
+
+  if (aType !== bType) return false;
 
   if (
     (isOptimisticMessage(a) || isOptimisticMessage(b)) &&
@@ -184,6 +201,26 @@ const mergeDuplicateMessageRecords = (current: Message, incoming: Message) => {
       status: current.status || incoming.status,
       media_url: current.media_url || incoming.media_url,
       content: current.content || incoming.content,
+    };
+  }
+
+  const currentHasMedia = ['image', 'video'].includes(current.message_type || '') && !!current.media_url;
+  const incomingHasMedia = ['image', 'video'].includes(incoming.message_type || '') && !!incoming.media_url;
+
+  if (currentHasMedia && !incomingHasMedia) {
+    return {
+      ...current,
+      status: incoming.status || current.status,
+      zapi_message_id: incoming.zapi_message_id || current.zapi_message_id,
+    };
+  }
+
+  if (!currentHasMedia && incomingHasMedia) {
+    return {
+      ...incoming,
+      id: current.id,
+      created_at: current.created_at || incoming.created_at,
+      zapi_message_id: incoming.zapi_message_id || current.zapi_message_id,
     };
   }
 
@@ -583,11 +620,9 @@ const Chat = () => {
 
   const scrollMessagesToBottom = useCallback(() => {
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        const container = messagesContainerRef.current;
-        if (!container) return;
-        container.scrollTop = container.scrollHeight;
-      });
+      const container = messagesContainerRef.current;
+      if (!container) return;
+      container.scrollTop = container.scrollHeight;
     });
   }, []);
 
@@ -1361,7 +1396,6 @@ const Chat = () => {
       setIsContactTyping(false);
       fetchAlineStatus(selectedConversation.contact_number);
       startChatting(selectedConversation.contact_number);
-      scrollMessagesToBottom();
       const channel = supabase
         .channel(`messages-related-${selectedConversation.id}`)
         .on(
@@ -1549,13 +1583,14 @@ const Chat = () => {
     if (!selectedConversation?.id) return;
 
     shouldAutoScroll.current = true;
-    const timers = [
-      window.setTimeout(scrollMessagesToBottom, 80),
-      window.setTimeout(scrollMessagesToBottom, 300),
-    ];
+    const timer = window.setTimeout(() => {
+      if (shouldAutoScroll.current) {
+        scrollMessagesToBottom();
+      }
+    }, 120);
 
     return () => {
-      timers.forEach((timer) => window.clearTimeout(timer));
+      window.clearTimeout(timer);
     };
   }, [scrollMessagesToBottom, selectedConversation?.id]);
 
@@ -3201,15 +3236,16 @@ const Chat = () => {
             </div>
 
             <div
+              ref={messagesContainerRef}
               className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scrollbar-hide bg-[#0b141a]"
               onScroll={handleMessagesScroll}
               style={{
+                overflowAnchor: 'none',
                 backgroundImage:
                   'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'0.015\'%3E%3Ccircle cx=\'30\' cy=\'30\' r=\'1\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")',
               }}
             >
               <div
-                ref={messagesContainerRef}
                 className="w-full px-4 sm:px-6 lg:px-10 xl:px-12 py-4 max-w-5xl xl:max-w-6xl mx-auto min-h-full"
               >
                 {messages.length === 0 ? (
