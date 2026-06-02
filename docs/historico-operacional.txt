@@ -1227,3 +1227,11 @@ Proximos passos: testar audio novo recebido apos deploy; se audio antigo nao toc
 - GitHub Actions run 26839581566 executou build frontend com sucesso, link Supabase com sucesso, Apply database migrations com sucesso e Deploy Edge Functions com sucesso.
 - O job ficou marcado como failure no passo final "Report migration failure" porque o workflow ainda for�a exit 1 ao detectar/aludir historico remoto de migrations desalinhado.
 - Resultado pratico desta execucao: Edge Functions publicadas; frontend compilou na action, mas publicacao visual do frontend depende do fluxo conectado ao Git/Lovable/host.
+
+2026-06-02 - Kate: campanha Dia dos Namorados e oferta de pingente R$139 com video
+- Troquei os textos automáticos de follow-up da Kate que ainda falavam de Dia das Maes para Dia dos Namorados.
+- O follow-up de pingentes agora prioriza oferta/produto de R$139,00 e, quando houver video_url cadastrado no produto, envia o video no card pela Z-API.
+- A seleção do catalogo da Kate passou a ranquear primeiro o produto preferencial da oferta ativa, depois produtos de R$139, depois produtos com video_url.
+- O card da oferta de R$139 passa a exibir o marcador "Oferta Dia dos Namorados".
+- Foram adicionados logs seguros para diagnosticar se a oferta selecionada tem video_url e se o primeiro produto do catalogo e a oferta esperada.
+Proximos passos: validar em producao se o produto R$139 tem video_url preenchido no cadastro e testar follow-up de Kate em numero controlado.

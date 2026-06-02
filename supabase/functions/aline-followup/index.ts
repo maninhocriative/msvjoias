@@ -35,10 +35,11 @@ const SAFE_DEFAULT_MESSAGES = [
   "Este e meu ultimo lembrete automatico. Quando quiser retomar, e so me chamar que eu sigo com voce.",
 ];
 
-const KATE_MOTHERS_DAY_FALLBACK_MESSAGES = [
-  "Como voce nao falou nada, vou te mandar os modelos de pingentes fotogravaveis dourados e prata para voce ver com calma.",
-  "Ainda da para escolher um pingente fotogravado de aco para presentear no Dia das Maes. Posso te ajudar a escolher entre acabamento dourado e prata e seguir com a previa pelo WhatsApp.",
-  "Ultimo lembrete por aqui: se quiser garantir o pingente fotogravado para o Dia das Maes, me chama que eu retomo de onde paramos.",
+const KATE_VALENTINES_OFFER_PRICE = 139;
+const KATE_VALENTINES_DAY_FALLBACK_MESSAGES = [
+  "Como voce nao falou nada, vou te mandar a oferta de Dia dos Namorados e alguns modelos de pingentes fotogravaveis para voce ver com calma.",
+  "Ainda da para escolher um pingente fotogravado de aco para presentear no Dia dos Namorados. Posso te ajudar a escolher entre acabamento dourado e prata e seguir com a simulacao pelo WhatsApp.",
+  "Ultimo lembrete por aqui: se quiser garantir um pingente fotogravado para o Dia dos Namorados, me chama que eu retomo de onde paramos.",
 ];
 
 function sleep(ms: number) {
@@ -104,6 +105,36 @@ function formatCurrency(value: unknown): string | null {
   return `R$ ${number.toFixed(2).replace(".", ",")}`;
 }
 
+function getOfferProduct(offer: any): any | null {
+  return Array.isArray(offer?.products) ? offer.products[0] || null : offer?.products || null;
+}
+
+function isPriceCloseTo(value: unknown, target: number): boolean {
+  const number = Number(value);
+  return Number.isFinite(number) && Math.abs(number - target) < 0.01;
+}
+
+function getProductKey(product: any): string {
+  return String(product?.sku || product?.id || product?.name || "").trim().toLowerCase();
+}
+
+function isValentinesOfferPrice(product: any, offer?: any | null): boolean {
+  return isPriceCloseTo(offer?.promotional_price, KATE_VALENTINES_OFFER_PRICE) ||
+    isPriceCloseTo(product?.price, KATE_VALENTINES_OFFER_PRICE);
+}
+
+function rankValentinesPendantProduct(product: any, preferredProduct?: any | null): number {
+  const preferredKey = getProductKey(preferredProduct);
+  const productKey = getProductKey(product);
+  let score = 0;
+
+  if (preferredKey && productKey && preferredKey === productKey) score -= 1000;
+  if (isValentinesOfferPrice(product)) score -= 500;
+  if (product?.video_url) score -= 200;
+  if (product?.image_url) score -= 20;
+
+  return score;
+}
 function isPendantProduct(product: any): boolean {
   const category = normalizeText(String(product?.category || ""));
   const name = normalizeText(String(product?.name || ""));
@@ -117,18 +148,20 @@ function isPendantColor(product: any): boolean {
       Array.isArray(product?.tags) ? product.tags.join(" ") : product?.tags || ""
     }`,
   );
-  return /dourad|prata|pratead|aco|aço|inox/.test(searchable);
+  return /dourad|prata|pratead|aco|inox/.test(searchable);
 }
 
 function buildPendantFollowupCard(product: any) {
   const price = formatCurrency(product.price);
+  const isValentinesOffer = isValentinesOfferPrice(product);
   const caption = [
+    isValentinesOffer ? "*Oferta Dia dos Namorados*" : null,
     `*${product.name}*`,
     product.color ? `Cor: ${product.color}` : null,
-    "Material: aço",
-    product.sku ? `Cód: ${product.sku}` : null,
+    "Material: aco",
+    product.sku ? `Cod: ${product.sku}` : null,
     price ? `Valor da unidade: ${price}` : null,
-    "Fotogravação de 1 lado inclusa.",
+    "Fotogravacao de 1 lado inclusa.",
   ].filter(Boolean).join("\n");
 
   return {
@@ -246,7 +279,7 @@ function buildNextFollowupConfig(args: {
     return {
       intervalMinutes: forceKatePendants ? 0 : AGENT_RESCUE_INTERVAL_MINUTES[followupCount],
       message: shouldSendPendantCatalog
-        ? KATE_MOTHERS_DAY_FALLBACK_MESSAGES[0]
+        ? KATE_VALENTINES_DAY_FALLBACK_MESSAGES[0]
         : buildAgentRescueMessage(conversation, followupCount),
       kind: shouldSendPendantCatalog ? "pendant_catalog_rescue" : "agent_rescue",
     };
@@ -275,7 +308,7 @@ async function getActivePendantOffer(supabase: any) {
   const now = new Date().toISOString();
   const { data, error } = await supabase
     .from("offers")
-    .select("id, promotional_price, gift_description, end_date, products(id, name, price, category)")
+    .select("id, promotional_price, gift_description, end_date, created_at, products(id, name, sku, price, image_url, video_url, category, color, description, tags)")
     .eq("active", true)
     .lte("start_date", now)
     .gte("end_date", now)
@@ -287,15 +320,37 @@ async function getActivePendantOffer(supabase: any) {
     return null;
   }
 
-  return (data || []).find((offer: any) => {
-    const product = Array.isArray(offer.products) ? offer.products[0] : offer.products;
-    const category = normalizeText(String(product?.category || ""));
-    const name = normalizeText(String(product?.name || ""));
-    return category.includes("pingente") || /pingente|fotograv|medalha/.test(name);
-  }) || null;
+  const pendantOffers = (data || [])
+    .map((offer: any, index: number) => ({ offer, product: getOfferProduct(offer), index }))
+    .filter(({ product }: any) => product && isPendantProduct(product));
+
+  pendantOffers.sort((a: any, b: any) => {
+    const aTarget = isValentinesOfferPrice(a.product, a.offer);
+    const bTarget = isValentinesOfferPrice(b.product, b.offer);
+    if (aTarget !== bTarget) return aTarget ? -1 : 1;
+    const aVideo = !!a.product?.video_url;
+    const bVideo = !!b.product?.video_url;
+    if (aVideo !== bVideo) return aVideo ? -1 : 1;
+    return a.index - b.index;
+  });
+
+  const selected = pendantOffers[0] || null;
+  if (selected) {
+    console.log("[ALINE-FOLLOWUP] kate_valentines_offer", {
+      offer_id: selected.offer?.id || null,
+      product_id: selected.product?.id || null,
+      product_name: selected.product?.name || null,
+      promotional_price: selected.offer?.promotional_price || null,
+      product_price: selected.product?.price || null,
+      has_video: !!selected.product?.video_url,
+      is_target_139: isValentinesOfferPrice(selected.product, selected.offer),
+    });
+  }
+
+  return selected?.offer || null;
 }
 
-function buildKateMothersDayFollowupMessage(
+function buildKateValentinesDayFollowupMessage(
   followupIndex: number,
   offer: any | null,
   conversation: any,
@@ -309,14 +364,14 @@ function buildKateMothersDayFollowupMessage(
   const gift = offer?.gift_description ? `\n\nTem tambem: ${offer.gift_description}` : "";
 
   if (offer && followupIndex === 0) {
-    return `Oi! Passando rapidinho porque esse presente combina muito com o Dia das Maes: o *${productName}* de aco com fotogravacao fica personalizado com uma foto especial.${price ? `\n\nOferta ativa: ${price}.` : ""}${gift}\n\nSe quiser, eu te mostro os modelos e ja preparo a previa pelo WhatsApp.`;
+    return `Oi! Passando rapidinho com uma oferta para o Dia dos Namorados: o *${productName}* de aco com fotogravacao fica personalizado com uma foto especial.${price ? `\n\nOferta ativa: ${price}.` : ""}${gift}\n\nVou te mandar o video/modelo para voce ver melhor. Se gostar, eu sigo com voce pelo WhatsApp.`;
   }
 
   if (offer && followupIndex === 1) {
-    return `Ainda posso te ajudar com o *${productName}* de aco para o Dia das Maes.${price ? ` A oferta esta por ${price}.` : ""}\n\nMe responde com acabamento *dourado* ou *prata* que eu sigo com as opcoes.`;
+    return `Ainda posso te ajudar com o *${productName}* de aco para o Dia dos Namorados.${price ? ` A oferta esta por ${price}.` : ""}\n\nMe responde com acabamento *dourado* ou *prata* que eu sigo com as opcoes.`;
   }
 
-  return KATE_MOTHERS_DAY_FALLBACK_MESSAGES[Math.min(followupIndex, KATE_MOTHERS_DAY_FALLBACK_MESSAGES.length - 1)];
+  return KATE_VALENTINES_DAY_FALLBACK_MESSAGES[Math.min(followupIndex, KATE_VALENTINES_DAY_FALLBACK_MESSAGES.length - 1)];
 }
 
 function resolveFollowupMessage(args: {
@@ -325,12 +380,16 @@ function resolveFollowupMessage(args: {
   followupIndex: number;
   pendantOffer: any | null;
 }) {
-  if (args.config.kind === "agent_rescue" || args.config.kind === "pendant_catalog_rescue") {
+  if (args.config.kind === "agent_rescue") {
     return args.config.message;
   }
 
+  if (args.config.kind === "pendant_catalog_rescue") {
+    return buildKateValentinesDayFollowupMessage(0, args.pendantOffer, args.conversation);
+  }
+
   if (isPendantConversation(args.conversation)) {
-    return buildKateMothersDayFollowupMessage(
+    return buildKateValentinesDayFollowupMessage(
       args.config.normalIndex ?? args.followupIndex,
       args.pendantOffer,
       args.conversation,
@@ -384,7 +443,7 @@ async function sendInteractiveProductCard(
   });
 }
 
-async function getKatePendantCatalog(supabase: any) {
+async function getKatePendantCatalog(supabase: any, preferredProduct: any | null = null) {
   const { data, error } = await supabase
     .from("products")
     .select("id, name, sku, price, image_url, video_url, category, color, description, tags, created_at")
@@ -397,9 +456,44 @@ async function getKatePendantCatalog(supabase: any) {
     return [];
   }
 
-  return (data || [])
-    .filter((product: any) => isPendantProduct(product) && isPendantColor(product))
-    .map(buildPendantFollowupCard);
+  const productMap = new Map<string, any>();
+  for (const product of data || []) {
+    if (isPendantProduct(product) && isPendantColor(product)) {
+      productMap.set(getProductKey(product), product);
+    }
+  }
+
+  if (preferredProduct && isPendantProduct(preferredProduct) && isPendantColor(preferredProduct)) {
+    productMap.set(getProductKey(preferredProduct), preferredProduct);
+  }
+
+  const products = Array.from(productMap.values()).sort((a: any, b: any) => {
+    const rankDiff = rankValentinesPendantProduct(a, preferredProduct) - rankValentinesPendantProduct(b, preferredProduct);
+    if (rankDiff !== 0) return rankDiff;
+    const aTime = new Date(a.created_at || 0).getTime();
+    const bTime = new Date(b.created_at || 0).getTime();
+    return bTime - aTime;
+  });
+
+  console.log("[ALINE-FOLLOWUP] kate_valentines_catalog_selection", {
+    total_pingentes: products.length,
+    total_offer_139: products.filter((product: any) => isValentinesOfferPrice(product)).length,
+    total_with_video: products.filter((product: any) => !!product.video_url).length,
+    first_product_id: products[0]?.id || null,
+    first_product_name: products[0]?.name || null,
+    first_product_price: products[0]?.price || null,
+    first_has_video: !!products[0]?.video_url,
+  });
+
+  if (products[0] && isValentinesOfferPrice(products[0]) && !products[0].video_url) {
+    console.warn("[ALINE-FOLLOWUP] Produto da oferta de R$139 sem video_url cadastrado", {
+      product_id: products[0].id || null,
+      product_name: products[0].name || null,
+      sku: products[0].sku || null,
+    });
+  }
+
+  return products.map(buildPendantFollowupCard);
 }
 
 async function sendKatePendantCatalogFollowup(args: {
@@ -410,9 +504,10 @@ async function sendKatePendantCatalogFollowup(args: {
   conversation: any;
   crmConversation: any;
   message: string;
+  pendantOffer?: any | null;
 }) {
-  const { supabase, zapiInstanceId, zapiToken, zapiClientToken, conversation, crmConversation, message } = args;
-  const products = await getKatePendantCatalog(supabase);
+  const { supabase, zapiInstanceId, zapiToken, zapiClientToken, conversation, crmConversation, message, pendantOffer } = args;
+  const products = await getKatePendantCatalog(supabase, getOfferProduct(pendantOffer));
   let sentProducts = 0;
 
   await sendWithZapiGovernor(
@@ -445,7 +540,7 @@ async function sendKatePendantCatalogFollowup(args: {
     await sleep(SEND_PAUSE_MS);
   }
 
-  const finalQuestion = "Gostou de algum modelo? Se sim, toque em *Quero este* no pingente escolhido que eu sigo com voce.";
+  const finalQuestion = "Gostou da oferta ou de algum modelo? Se sim, toque em *Quero este* no pingente escolhido que eu sigo com voce.";
   await sendWithZapiGovernor(
     supabase,
     { lane: "followup", bypassBurstLimit: false },
@@ -922,6 +1017,7 @@ serve(async (req) => {
             conversation,
             crmConversation,
             message,
+            pendantOffer,
           });
 
           await supabase
