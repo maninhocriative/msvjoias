@@ -1221,3 +1221,9 @@ Proximos passos: publicar as Edge Functions, testar no numero controlado com "Ol
 - aline-followup: follow-up passa a considerar ultima atividade real do CRM e nao dispara quando cliente respondeu apos a ultima mensagem do agente.
 Validacao: git diff --check passou. deno check nao rodou porque Deno nao esta instalado. npm run build nao rodou porque vite nao esta instalado/disponivel neste ambiente.
 Proximos passos: testar audio novo recebido apos deploy; se audio antigo nao tocar, o link temporario pode ter expirado antes do espelhamento.
+
+[2026-06-02 14:29:44] Deploy do commit c7f39f9
+- Commit enviado para main: c7f39f9 fix(agents): stabilize message batching and audio.
+- GitHub Actions run 26839581566 executou build frontend com sucesso, link Supabase com sucesso, Apply database migrations com sucesso e Deploy Edge Functions com sucesso.
+- O job ficou marcado como failure no passo final "Report migration failure" porque o workflow ainda força exit 1 ao detectar/aludir historico remoto de migrations desalinhado.
+- Resultado pratico desta execucao: Edge Functions publicadas; frontend compilou na action, mas publicacao visual do frontend depende do fluxo conectado ao Git/Lovable/host.
