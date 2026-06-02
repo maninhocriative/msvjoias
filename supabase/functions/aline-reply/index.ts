@@ -2658,6 +2658,8 @@ function buildResponsePayload(args: {
       last_question_kind: collectedData.last_question_kind || null,
       pending_customer_question: collectedData.pending_customer_question || null,
       buying_signal_detected: collectedData.buying_signal_detected || null,
+      recent_crm_context: collectedData.recent_crm_context || null,
+      human_chat_summary: collectedData.human_chat_summary || null,
     },
     use_product_buttons: useProductButtons,
     agente_atual: agent,
@@ -4927,6 +4929,29 @@ async function handleMaluFlow(args: {
   const hasPhoto = !!data.malu_customer_photo_url;
   const hasPreview = !!data.malu_preview_image_url;
 
+  if (detectStoreAddressQuestion(message)) {
+    if (hasSelectedProduct) data.delivery_method = "retirada";
+    const nextLine = hasSelectedProduct
+      ? "\n\nSe voce for retirar na loja, me confirma tambem a forma de pagamento: Pix, Crediario Bemol ou cartao de credito?"
+      : "";
+    const reply = detectStoreNameQuestion(message)
+      ? `O nome da loja e ACIUM Manaus. Ficamos no Shopping Sumauma, Av. Noel Nutels, 1762 - Cidade Nova, Manaus - AM.${nextLine}`
+      : `Nossa loja fica no Shopping Sumauma, Av. Noel Nutels, 1762 - Cidade Nova, Manaus - AM.${nextLine}`;
+
+    await persistConversation(supabase, conversation.id, "malu", hasSelectedProduct ? "malu_pagamento" : "malu_endereco", conversation.current_node || null, data);
+    await saveAssistantMessage(supabase, conversation.id, "malu", reply, "malu_endereco");
+    await saveAgentMemory(supabase, phone, "malu", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: hasSelectedProduct ? "malu_pagamento" : "malu_endereco",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "malu",
+    });
+  }
+
   const fetchMaluCatalogCards = async (excludeSkus: string[] = []) => {
     const catalog = await searchCatalog(
       supabase,
@@ -5994,6 +6019,9 @@ serve(async (req) => {
     const systemContextSummary = getAgentSystemContextSummary(systemContext);
     baseData.agent_system_context = systemContextSummary;
     baseData.store_rules = systemContext.storeRules;
+    if (systemContext.humanContext?.summary) {
+      baseData.human_chat_summary = systemContext.humanContext.summary;
+    }
 
     if (systemContext.selectedProduct) {
       if (!baseData.selected_product && systemContext.selectedProduct.raw) {
@@ -6043,7 +6071,6 @@ serve(async (req) => {
     const recentCrmContext = await loadRecentCrmMessageContext(supabase, phone);
     if (recentCrmContext) {
       baseData.recent_crm_context = recentCrmContext;
-      baseData.human_chat_summary = recentCrmContext;
     }
 
     const imageUnderstanding = mediaType === "image" && mediaUrl

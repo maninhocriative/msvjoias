@@ -13,12 +13,12 @@ const corsHeaders = {
 };
 
 const AGENT_ACCUMULATOR_DELAY_MS = Math.max(
-  0,
-  Number(Deno.env.get("AGENT_ACCUMULATOR_DELAY_MS") || 2800),
+  15000,
+  Number(Deno.env.get("AGENT_ACCUMULATOR_DELAY_MS") || 15000),
 );
 const AGENT_ACCUMULATOR_WINDOW_MS = Math.max(
-  AGENT_ACCUMULATOR_DELAY_MS + 2000,
-  Number(Deno.env.get("AGENT_ACCUMULATOR_WINDOW_MS") || 9000),
+  AGENT_ACCUMULATOR_DELAY_MS + 10000,
+  Number(Deno.env.get("AGENT_ACCUMULATOR_WINDOW_MS") || 45000),
 );
 
 interface ZAPIMessage {
@@ -316,7 +316,7 @@ function normalizeInboundPayload(rawPayload: ZAPIMessage): ZAPIMessage {
     normalizeString(rawPayload.nome_contato) ||
     normalizeString(rawPayload.customer_name) ||
     (typeof rawPayload.text === "object" ? normalizeString(rawPayload.text?.senderName) : "");
-  const messageType =
+  let messageType =
     normalizeString(rawPayload.message_type) ||
     normalizeString(rawPayload.messageType) ||
     "text";
@@ -350,6 +350,21 @@ function normalizeInboundPayload(rawPayload: ZAPIMessage): ZAPIMessage {
   const mediaUrl =
     (isWhatsAppProfileImageUrl(explicitMediaUrl) ? "" : explicitMediaUrl) ||
     (shouldUseNestedMediaUrl(rawPayload, messageType, messageContent, nestedMediaUrl) ? nestedMediaUrl : "");
+  if (messageType === "text" && mediaUrl) {
+    const inferredMediaType =
+      rawPayload.audio || normalizeString(rawPayload.audioUrl) || isLikelyMediaUrl(mediaUrl, "audio")
+        ? "audio"
+        : rawPayload.image || normalizeString(rawPayload.imageUrl) || isLikelyMediaUrl(mediaUrl, "image")
+          ? "image"
+          : rawPayload.video || normalizeString(rawPayload.videoUrl) || isLikelyMediaUrl(mediaUrl, "video")
+            ? "video"
+            : rawPayload.document || normalizeString(rawPayload.documentUrl) || isLikelyMediaUrl(mediaUrl, "document")
+              ? "document"
+              : detectMediaUrlFromText(mediaUrl)?.type || "text";
+    messageType = inferredMediaType;
+  }
+  payload.message_type = messageType;
+  payload.messageType = messageType;
   const fileName =
     normalizeString(rawPayload.file_name) ||
     normalizeString(rawPayload.fileName);
@@ -576,6 +591,14 @@ async function shouldSkipNearDuplicateMessage(
         return { skip: true, reason: "near_duplicate_content" };
       }
 
+      const existingType = String(existing.message_type || "");
+      if (
+        ["text", "button_reply"].includes(args.messageType) &&
+        ["text", "button_reply"].includes(existingType)
+      ) {
+        return { skip: true, reason: "near_duplicate_text_or_button" };
+      }
+
       if (
         args.messageType === "text" &&
         ["image", "video"].includes(String(existing.message_type || ""))
@@ -758,8 +781,11 @@ async function mirrorInboundMediaToStorage(
 
     const rawContentType = response.headers.get("content-type") || "";
     const extension = inferMediaExtension(mediaUrl, rawContentType, args.messageType);
-    const contentType = rawContentType && !rawContentType.includes("text/html")
-      ? rawContentType.split(";")[0]
+    const normalizedRawContentType = rawContentType.split(";")[0].trim().toLowerCase();
+    const contentType = normalizedRawContentType &&
+      !normalizedRawContentType.includes("text/html") &&
+      normalizedRawContentType !== "application/octet-stream"
+      ? normalizedRawContentType
       : defaultMediaContentType(args.messageType, extension);
     const safePhone = args.phone.replace(/\D/g, "") || "unknown";
     const safeId = (args.messageId || crypto.randomUUID()).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80);

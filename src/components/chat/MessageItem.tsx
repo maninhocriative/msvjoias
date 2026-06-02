@@ -93,6 +93,17 @@ const isRedundantMediaLinkText = (content?: string | null, mediaUrl?: string | n
   return /^https?:\/\/\S+$/i.test(trimmed) && /whatsapp\.net|backblazeb2|temp-file-download|\.(jpg|jpeg|png|webp|gif|mp4|mov|webm)(?:$|[?#])/i.test(trimmed);
 };
 
+const isAudioPlaceholderContent = (content?: string | null) => {
+  const normalized = String(content || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[\[\]()]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return !normalized || normalized === 'audio recebido' || normalized === 'audio';
+};
 const MessageItem = memo(({
   message,
   showTail,
@@ -135,7 +146,7 @@ const MessageItem = memo(({
 
   const showTextContent =
     !isDeleted &&
-    message.message_type !== 'audio' &&
+    (message.message_type !== 'audio' || !isAudioPlaceholderContent(message.content)) &&
     !!message.content &&
     message.content.trim().length > 0 &&
     !isRedundantMediaLinkText(message.content, message.media_url);
@@ -266,11 +277,21 @@ const MessageItem = memo(({
                   rel="noopener noreferrer"
                   className="ml-7 text-[11px] text-emerald-200/75 underline-offset-2 hover:text-emerald-100 hover:underline"
                 >
-                  Abrir audio
+                  Abrir áudio
                 </a>
               </div>
             )}
 
+
+            {message.message_type === 'audio' && !hasMedia && !showTextContent && !isDeleted && (
+              <div className="flex items-center gap-2 rounded-2xl border border-white/8 bg-black/10 px-3 py-2 text-sm text-slate-300">
+                <Volume2 className="w-4 h-4 shrink-0 text-emerald-300" />
+                <div className="min-w-0">
+                  <span className="block">Audio recebido</span>
+                  <span className="block text-[11px] leading-4 text-slate-400">Arquivo ainda nao disponivel para reproducao.</span>
+                </div>
+              </div>
+            )}
             {message.message_type === 'video' && hasMedia && (
               <video
                 controls

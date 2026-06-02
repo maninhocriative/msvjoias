@@ -96,6 +96,14 @@ export interface AgentSystemContext {
     summary?: string;
     priority?: HandoffPriority;
   };
+  humanContext?: {
+    summary?: string | null;
+    recentMessages: Array<{
+      content: string;
+      createdAt?: string;
+      mediaType?: string | null;
+    }>;
+  };
 }
 
 interface AgentSystemContextRuntime {
@@ -305,7 +313,34 @@ async function loadCrmConversation(supabase: any, phoneVariants: string[]) {
   }
 }
 
-async function loadRecentMessages(supabase: any, crmConversationId?: string | null) {
+function isHumanContextActive(alineConversation: any, crmConversation: any, collectedData: AnyRecord): boolean {
+  const crmStatus = normalizeText(crmConversation?.lead_status);
+  const agentStatus = normalizeText(alineConversation?.status);
+  const activeAgent = normalizeText(alineConversation?.active_agent || collectedData.agente_atual);
+
+  return (
+    crmStatus === "humano" ||
+    crmStatus === "venda iniciada" ||
+    crmStatus === "venda_iniciada" ||
+    agentStatus === "human takeover" ||
+    agentStatus === "human_takeover" ||
+    activeAgent === "human" ||
+    Boolean(alineConversation?.assigned_seller_id || collectedData.assigned_seller_id)
+  );
+}
+
+function buildHumanChatSummary(messages: AgentSystemContext["recentMessages"]): string | null {
+  const humanMessages = messages
+    .filter((message) => message.role === "human" && String(message.content || "").trim())
+    .slice(-8);
+
+  if (!humanMessages.length) return null;
+
+  return humanMessages
+    .map((message) => `humano: ${String(message.content || "").trim()}`.slice(0, 220))
+    .join("\n");
+}
+async function loadRecentMessages(supabase: any, crmConversationId?: string | null, options: { humanContextActive?: boolean } = {}) {
   if (!crmConversationId) return [];
 
   try {
@@ -325,7 +360,7 @@ async function loadRecentMessages(supabase: any, crmConversationId?: string | nu
     return (data || [])
       .reverse()
       .map((item: any) => ({
-        role: item.is_from_me ? "assistant" : "user",
+        role: item.is_from_me ? (options.humanContextActive ? "human" : "assistant") : "user",
         content: String(item.content || ""),
         createdAt: item.created_at || undefined,
         mediaType: item.message_type || null,
@@ -507,7 +542,20 @@ export async function buildAgentSystemContext(params: {
   const collectedData = {
     ...safeObject(alineConversation?.collected_data),
   } as AgentSystemContext["collectedData"];
-  const recentMessages = await loadRecentMessages(params.supabase, crmConversation?.id || null);
+  const humanContextActive = isHumanContextActive(alineConversation, crmConversation, collectedData);
+  const recentMessages = await loadRecentMessages(params.supabase, crmConversation?.id || null, { humanContextActive });
+  const humanSummary = buildHumanChatSummary(recentMessages);
+  const humanRecentMessages = recentMessages
+    .filter((message) => message.role === "human")
+    .slice(-8)
+    .map((message) => ({
+      content: message.content,
+      createdAt: message.createdAt,
+      mediaType: message.mediaType,
+    }));
+  if (humanSummary && !collectedData.human_chat_summary) {
+    collectedData.human_chat_summary = humanSummary;
+  }
   const selectedProduct = await resolveSelectedProduct(params.supabase, collectedData);
   const recentCatalog = getRecentCatalog(collectedData);
   const mediaContext = buildMediaContext(recentMessages, {
@@ -574,6 +622,10 @@ export async function buildAgentSystemContext(params: {
     mediaContext,
     safetyFlags,
     handoffContext,
+    humanContext: {
+      summary: humanSummary || collectedData.human_chat_summary || null,
+      recentMessages: humanRecentMessages,
+    },
     __runtime: {
       supabase: params.supabase,
       phoneVariants,
@@ -616,6 +668,9 @@ export function getAgentSystemContextSummary(context: AgentSystemContext) {
     media_context: context.mediaContext,
     safety_flags: context.safetyFlags,
     handoff_context: context.handoffContext,
+    recent_messages_count: context.recentMessages.length,
+    recent_human_messages_count: context.humanContext?.recentMessages?.length || 0,
+    recent_human_summary: context.humanContext?.summary || null,
     store_rules: context.storeRules,
   };
 }

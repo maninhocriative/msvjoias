@@ -1208,3 +1208,16 @@ Proximos passos: validar visualmente no CRM, depois atacar virtualizacao da list
 - Reforcados sinais de contexto recente da Kate para catalogo de pingentes, simulacao, aprovacao de arte, material em aco, SKU PF e CTAs de "Quero este"; reforcados tambem sinais de contexto recente da Malu para oculos/modelo/testar outro.
 - Ajustado o fallback seguro do `zapi-unified`: se a `aline-reply` falhar, o webhook consulta `aline_conversations`; se a conversa ja era de especialista ou humano, nao envia saudacao generica da Aline e encaminha para humano com mensagem segura.
 Proximos passos: publicar as Edge Functions, testar no numero controlado com "Ola" -> "Quero ver os produtos" -> "Pingentes", e validar que apos catalogo perguntas como nome da loja/cordao nao voltam para saudacao da Aline.
+
+[2026-06-02 14:11:29] Correcoes de mensagens, audio e acumulador
+- zapi-unified: acumulador dos agentes agora tem espera minima real de 15 segundos e janela minima maior para juntar mensagens fracionadas antes de chamar a aline-reply.
+- zapi-unified: se chegar nova mensagem mais recente durante a espera, o webhook salva a mensagem e nao chama o agente naquele disparo; a ultima mensagem consolidada fica responsavel pela resposta.
+- zapi-unified: reforcada deduplicacao entre texto e botao para reduzir duplicidade de respostas como "Quero este".
+- zapi-unified: audio recebido pela Z-API agora pode ser inferido como message_type audio mesmo quando o payload vier sem message_type explicito, usando audioUrl/objeto audio/mediaUrl.
+- zapi-unified: audio/midia continua tentando ser espelhado para o bucket chat-media antes de salvar no CRM; se falhar, mantem o link original como fallback.
+- MessageItem: player de audio no CRM continua exibido quando ha media_url; texto de audio so fica oculto quando for placeholder como "audio recebido".
+- MessageItem: quando audio chega sem media_url, mostra aviso claro de arquivo ainda indisponivel em vez de parecer que deveria tocar.
+- AgentSystemContext/aline-reply: contexto dos agentes passou a carregar resumo recente de mensagens humanas quando a conversa esta em humano/venda iniciada/assumida, para os bots nao ignorarem o que o vendedor ja falou.
+- aline-followup: follow-up passa a considerar ultima atividade real do CRM e nao dispara quando cliente respondeu apos a ultima mensagem do agente.
+Validacao: git diff --check passou. deno check nao rodou porque Deno nao esta instalado. npm run build nao rodou porque vite nao esta instalado/disponivel neste ambiente.
+Proximos passos: testar audio novo recebido apos deploy; se audio antigo nao tocar, o link temporario pode ter expirado antes do espelhamento.

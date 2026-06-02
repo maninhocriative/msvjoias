@@ -22,6 +22,7 @@ const AGENT_RESCUE_ATTEMPTS = AGENT_RESCUE_INTERVAL_MINUTES.length;
 const NORMAL_FOLLOWUP_ATTEMPTS = 3;
 const SAFE_MAX_ATTEMPTS = AGENT_RESCUE_ATTEMPTS + NORMAL_FOLLOWUP_ATTEMPTS;
 const MAX_SENDS_PER_RUN = 20;
+const MAX_CANDIDATES_PER_RUN = 500;
 const CATALOG_CARD_FOLLOWUP_BATCH_LIMIT = 3;
 const SEND_PAUSE_MS = 1200;
 const BUSINESS_HOUR_START = 9;
@@ -81,6 +82,20 @@ function normalizeText(text: string): string {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .trim();
+}
+
+function buildPhoneVariants(phone: string): string[] {
+  const raw = String(phone || "").trim();
+  const digits = String(phone || "").replace(/\D/g, "");
+  const variants = new Set<string>();
+
+  if (digits) variants.add(digits);
+  if (digits.startsWith("55") && digits.length > 2) variants.add(digits.slice(2));
+  if (!digits.startsWith("55") && (digits.length === 10 || digits.length === 11)) variants.add(`55${digits}`);
+  if (!variants.size && raw) variants.add(raw);
+  if (!variants.size) variants.add("__empty_phone__");
+
+  return Array.from(variants);
 }
 
 function formatCurrency(value: unknown): string | null {
@@ -551,7 +566,7 @@ async function markAsBuyer(supabase: any, phone: string): Promise<void> {
     const { error } = await supabase
       .from("conversations")
       .update({ lead_status: "comprador" })
-      .eq("contact_number", phone);
+      .in("contact_number", buildPhoneVariants(phone));
 
     if (error) {
       console.error("[ALINE-FOLLOWUP] Erro ao marcar como comprador:", error);
@@ -578,7 +593,7 @@ async function getLastConversationMessage(supabase: any, conversationId: string)
   return data;
 }
 
-async function getLastCrmMessage(supabase: any, crmConversationId: string) {
+async function getLastCrmActivitySnapshot(supabase: any, crmConversationId: string) {
   const { data, error } = await supabase
     .from("messages")
     .select("is_from_me, created_at, message_type")
@@ -586,15 +601,23 @@ async function getLastCrmMessage(supabase: any, crmConversationId: string) {
     .is("deleted_at", null)
     .or("message_type.is.null,message_type.neq.internal_note")
     .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(12);
 
   if (error) {
-    console.error("[ALINE-FOLLOWUP] Erro ao buscar ultima mensagem do CRM:", error);
+    console.error("[ALINE-FOLLOWUP] Erro ao buscar atividade recente do CRM:", error);
     return null;
   }
 
-  return data;
+  const messages = data || [];
+  const lastAny = messages[0] || null;
+  const lastCustomer = messages.find((message: any) => message.is_from_me === false) || null;
+  const lastOutbound = messages.find((message: any) => message.is_from_me === true) || null;
+
+  return {
+    lastAny,
+    lastCustomer,
+    lastOutbound,
+  };
 }
 
 serve(async (req) => {
@@ -626,7 +649,9 @@ serve(async (req) => {
       const { data: crmConversation } = await supabase
         .from("conversations")
         .select("contact_name")
-        .eq("contact_number", body.phone)
+        .in("contact_number", buildPhoneVariants(body.phone))
+        .order("last_message_at", { ascending: false, nullsFirst: false })
+        .limit(1)
         .maybeSingle();
 
       await markAsBuyer(supabase, body.phone);
@@ -700,11 +725,11 @@ serve(async (req) => {
       .from("aline_conversations")
       .select("id, phone, status, current_node, followup_count, last_message_at, active_agent, collected_data")
       .eq("status", "active")
-      .limit(200);
+      .limit(forceKatePendants ? 200 : MAX_CANDIDATES_PER_RUN);
 
     conversationsQuery = forceKatePendants
       ? conversationsQuery.eq("active_agent", "kate").eq("followup_count", 0).order("last_message_at", { ascending: false, nullsFirst: false })
-      : conversationsQuery.in("active_agent", ["aline", "keila", "kate", "malu"]).lt("followup_count", safeMaxAttempts).order("last_message_at", { ascending: false, nullsFirst: false });
+      : conversationsQuery.in("active_agent", ["aline", "keila", "kate", "malu"]).lt("followup_count", safeMaxAttempts).order("last_message_at", { ascending: true, nullsFirst: false });
 
     const { data: activeConversations, error: fetchError } = await conversationsQuery;
 
@@ -756,7 +781,9 @@ serve(async (req) => {
       const { data: crmConversation, error: crmError } = await supabase
         .from("conversations")
         .select("id, lead_status")
-        .eq("contact_number", conversation.phone)
+        .in("contact_number", buildPhoneVariants(conversation.phone))
+        .order("last_message_at", { ascending: false, nullsFirst: false })
+        .limit(1)
         .maybeSingle();
 
       if (crmError) {
@@ -768,51 +795,56 @@ serve(async (req) => {
         continue;
       }
 
-      const lastCrmMessage = crmConversation?.id
-        ? await getLastCrmMessage(supabase, crmConversation.id)
+      const crmActivity = crmConversation?.id
+        ? await getLastCrmActivitySnapshot(supabase, crmConversation.id)
         : null;
       const lastAgentMessage = await getLastConversationMessage(supabase, conversation.id);
 
-      let lastMessageTime = 0;
+      let lastAgentTime = 0;
       let activitySource = "none";
+      const lastCustomerTime = crmActivity?.lastCustomer?.created_at
+        ? new Date(crmActivity.lastCustomer.created_at).getTime()
+        : 0;
 
-      if (crmConversation?.id) {
-        const lastCrmMessageTime = lastCrmMessage?.created_at
-          ? new Date(lastCrmMessage.created_at).getTime()
+      if (crmActivity?.lastOutbound?.created_at) {
+        const lastOutboundTime = crmActivity.lastOutbound.created_at
+          ? new Date(crmActivity.lastOutbound.created_at).getTime()
           : 0;
 
-        if (lastCrmMessage && lastCrmMessage.is_from_me === false) {
-          addDebugSkip("last_crm_message_from_customer");
-          continue;
-        }
-
-        if (lastCrmMessage && Number.isFinite(lastCrmMessageTime) && lastCrmMessageTime > 0) {
-          lastMessageTime = lastCrmMessageTime;
+        if (Number.isFinite(lastOutboundTime) && lastOutboundTime > 0) {
+          lastAgentTime = lastOutboundTime;
           activitySource = "crm";
         }
       }
 
-      if ((!Number.isFinite(lastMessageTime) || lastMessageTime <= 0) && lastAgentMessage) {
+      if (lastAgentMessage) {
         if (!isAgentMessageRole(lastAgentMessage.role)) {
-          addDebugSkip(`last_role_${lastAgentMessage.role || "unknown"}`);
-          continue;
-        }
-
-        const lastAgentMessageTime = new Date(
-          lastAgentMessage.created_at || conversation.last_message_at || 0,
-        ).getTime();
-        if (Number.isFinite(lastAgentMessageTime) && lastAgentMessageTime > 0) {
-          lastMessageTime = lastAgentMessageTime;
-          activitySource = "agent_messages";
+          if (!lastAgentTime) {
+            addDebugSkip(`last_role_${lastAgentMessage.role || "unknown"}`);
+            continue;
+          }
+        } else {
+          const lastAgentMessageTime = new Date(
+            lastAgentMessage.created_at || conversation.last_message_at || 0,
+          ).getTime();
+          if (Number.isFinite(lastAgentMessageTime) && lastAgentMessageTime > lastAgentTime) {
+            lastAgentTime = lastAgentMessageTime;
+            activitySource = activitySource === "crm" ? "crm_agent_messages" : "agent_messages";
+          }
         }
       }
 
-      if (!Number.isFinite(lastMessageTime) || lastMessageTime <= 0) {
-        addDebugSkip("no_last_message");
+      if (Number.isFinite(lastCustomerTime) && lastCustomerTime > 0 && (!lastAgentTime || lastCustomerTime > lastAgentTime + 1000)) {
+        addDebugSkip("customer_replied_after_agent");
         continue;
       }
 
-      const elapsedMinutes = (now - lastMessageTime) / 60000;
+      if (!Number.isFinite(lastAgentTime) || lastAgentTime <= 0) {
+        addDebugSkip("no_last_agent_message");
+        continue;
+      }
+
+      const elapsedMinutes = (now - lastAgentTime) / 60000;
       if (!forceKatePendants && elapsedMinutes < nextConfig.intervalMinutes) {
         addDebugSkip(`too_early_${activitySource}`);
         continue;
