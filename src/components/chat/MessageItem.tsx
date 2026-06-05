@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import type { Message } from '@/lib/supabase';
+import { supabaseUrl } from '@/lib/supabase';
 
 interface MessageItemProps {
   message: Message;
@@ -93,6 +94,14 @@ const isRedundantMediaLinkText = (content?: string | null, mediaUrl?: string | n
   return /^https?:\/\/\S+$/i.test(trimmed) && /whatsapp\.net|backblazeb2|temp-file-download|\.(jpg|jpeg|png|webp|gif|mp4|mov|webm)(?:$|[?#])/i.test(trimmed);
 };
 
+const getPlayableAudioUrl = (message: Message) => {
+  const mediaUrl = String(message.media_url || '').trim();
+  if (!mediaUrl) return '';
+  if (mediaUrl.includes('/storage/v1/object/public/chat-media/')) return mediaUrl;
+  if (mediaUrl.startsWith('blob:')) return mediaUrl;
+  return `${supabaseUrl}/functions/v1/chat-media-proxy?message_id=${encodeURIComponent(message.id)}`;
+};
+
 const isAudioPlaceholderContent = (content?: string | null) => {
   const normalized = String(content || '')
     .normalize('NFD')
@@ -136,6 +145,7 @@ const MessageItem = memo(({
     );
   }
   const isProfileMediaUrl = isWhatsAppProfileImageUrl(message.media_url);
+  const playableAudioUrl = message.message_type === 'audio' ? getPlayableAudioUrl(message) : '';
   const hasMedia =
     (message.message_type === 'image' ||
       message.message_type === 'audio' ||
@@ -267,12 +277,12 @@ const MessageItem = memo(({
               <div className="flex flex-col gap-1.5 bg-black/20 rounded-2xl p-2.5 mb-2 w-full max-w-[320px] min-w-0 border border-white/8">
                 <div className="flex items-center gap-2">
                   <Volume2 className="w-5 h-5 shrink-0 text-emerald-300" />
-                  <audio controls className="w-full min-w-0 h-8" preload="metadata" src={message.media_url}>
-                    <source src={message.media_url} type={inferAudioMimeType(message.media_url)} />
+                  <audio controls className="w-full min-w-0 h-8" preload="metadata" src={playableAudioUrl}>
+                    <source src={playableAudioUrl} type={inferAudioMimeType(message.media_url)} />
                   </audio>
                 </div>
                 <a
-                  href={message.media_url}
+                  href={playableAudioUrl || message.media_url || undefined}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="ml-7 text-[11px] text-emerald-200/75 underline-offset-2 hover:text-emerald-100 hover:underline"
@@ -305,7 +315,7 @@ const MessageItem = memo(({
 
             {message.message_type === 'document' && hasMedia && (
               <a
-                href={message.media_url}
+                href={playableAudioUrl || message.media_url || undefined}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 text-sm underline mb-2 hover:opacity-80 break-all rounded-2xl border border-white/8 bg-black/10 px-3 py-2"

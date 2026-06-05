@@ -753,17 +753,38 @@ async function mirrorInboundMediaToStorage(
   const timeoutId = setTimeout(() => controller.abort(), 30_000);
 
   try {
-    const response = await fetch(mediaUrl, {
-      signal: controller.signal,
-      headers: {
-        Accept: args.messageType === "audio" ? "audio/*,*/*" : "*/*",
-        "User-Agent": "Mozilla/5.0",
-      },
-      redirect: "follow",
-    });
+    const zapiClientToken = Deno.env.get("ZAPI_CLIENT_TOKEN");
+    const downloadAttempts: Array<{ name: string; headers: Record<string, string> }> = [
+      { name: "direct", headers: {} },
+      { name: "with-client-token", headers: zapiClientToken ? { "Client-Token": zapiClientToken } : {} },
+    ];
 
-    if (!response.ok) {
-      console.warn("[ZAPI-UNIFIED] Nao foi possivel baixar midia recebida:", response.status, mediaUrl.substring(0, 120));
+    let response: Response | null = null;
+
+    for (const attempt of downloadAttempts) {
+      if (attempt.name === "with-client-token" && !zapiClientToken) continue;
+
+      response = await fetch(mediaUrl, {
+        signal: controller.signal,
+        headers: {
+          Accept: args.messageType === "audio" ? "audio/*,*/*" : "*/*",
+          "User-Agent": "Mozilla/5.0",
+          ...attempt.headers,
+        },
+        redirect: "follow",
+      });
+
+      if (response.ok) break;
+      console.warn(
+        "[ZAPI-UNIFIED] Falha ao baixar midia recebida:",
+        attempt.name,
+        response.status,
+        mediaUrl.substring(0, 120),
+      );
+    }
+
+    if (!response?.ok) {
+      console.warn("[ZAPI-UNIFIED] Nao foi possivel baixar midia recebida:", response?.status || "unknown", mediaUrl.substring(0, 120));
       return null;
     }
 

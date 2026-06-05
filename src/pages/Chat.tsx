@@ -413,9 +413,9 @@ const formatContactPresence = (conversation: Conversation | null) => {
 
   const presence = String(conversation.contact_presence || '').toLowerCase();
 
-  if (conversation.contact_is_online || presence === 'available') return 'online agora';
   if (presence === 'composing') return 'digitando...';
   if (presence === 'recording') return 'gravando audio...';
+  if (conversation.contact_is_online || presence === 'available') return 'online agora';
 
   const lastSeen = conversation.contact_last_seen_at || conversation.contact_presence_updated_at;
   if (!lastSeen) return '';

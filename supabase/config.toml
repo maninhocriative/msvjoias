@@ -93,6 +93,9 @@ verify_jwt = false
 [functions.transcribe-audio]
 verify_jwt = true
 
+[functions.chat-media-proxy]
+verify_jwt = false
+
 [functions.zapi-profile-picture]
 verify_jwt = true
 

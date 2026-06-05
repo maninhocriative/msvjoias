@@ -51,6 +51,32 @@ const formatTime = (date: string) => {
   });
 };
 
+const formatContactPresence = (conv: Conversation) => {
+  const presence = String(conv.contact_presence || '').toLowerCase();
+
+  if (presence === 'composing') return 'digitando...';
+  if (presence === 'recording') return 'gravando audio...';
+  if (conv.contact_is_online || presence === 'available') return 'online agora';
+
+  const lastSeen = conv.contact_last_seen_at || conv.contact_presence_updated_at;
+  if (!lastSeen) return '';
+
+  const date = new Date(lastSeen);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const diffMins = Math.max(0, Math.floor((Date.now() - date.getTime()) / 60000));
+  if (diffMins < 1) return 'visto agora';
+  if (diffMins < 60) return `visto ha ${diffMins}m`;
+
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `visto ha ${diffHours}h`;
+
+  return `visto em ${date.toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+  })}`;
+};
+
 const STATUS_CONFIG: Record<
   string,
   { dot: string; label: string; bg: string; text: string }
@@ -228,14 +254,7 @@ const ConversationItem = memo(
     const contactPresence = String(conv.contact_presence || '').toLowerCase();
     const isContactOnline =
       conv.contact_is_online || ['available', 'composing', 'recording'].includes(contactPresence);
-    const contactPresenceLabel =
-      contactPresence === 'composing'
-        ? 'digitando'
-        : contactPresence === 'recording'
-          ? 'gravando'
-          : isContactOnline
-            ? 'online'
-            : '';
+    const contactPresenceLabel = formatContactPresence(conv);
     const attendingSinceMs = conv.attending_since ? new Date(conv.attending_since).getTime() : 0;
     const hasActiveAttendant =
       Boolean(conv.attending_name) &&
@@ -311,16 +330,36 @@ const ConversationItem = memo(
           </div>
 
           <div className="mt-0.5 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
-            <p
-              title={previewText}
-              style={twoLineClamp}
-              className={cn(
-                'text-[12px] leading-[1.35] break-words min-h-0 pr-1',
-                hasUnread ? 'text-slate-200' : 'text-slate-500',
+            <div className="min-w-0 pr-1">
+              <p
+                title={previewText}
+                style={twoLineClamp}
+                className={cn(
+                  'text-[12px] leading-[1.35] break-words min-h-0',
+                  hasUnread ? 'text-slate-200' : 'text-slate-500',
+                )}
+              >
+                {previewText}
+              </p>
+
+              {contactPresenceLabel && (
+                <div
+                  className={cn(
+                    'mt-1 inline-flex max-w-full items-center gap-1 text-[10px] font-medium leading-4',
+                    isContactOnline ? 'text-emerald-300' : 'text-slate-500',
+                  )}
+                  title={contactPresenceLabel}
+                >
+                  <span
+                    className={cn(
+                      'h-1.5 w-1.5 shrink-0 rounded-full',
+                      isContactOnline ? 'bg-emerald-300' : 'bg-slate-500',
+                    )}
+                  />
+                  <span className="truncate">{contactPresenceLabel}</span>
+                </div>
               )}
-            >
-              {previewText}
-            </p>
+            </div>
 
             {hasUnread && (
               <span className="mt-0.5 min-w-[20px] h-5 px-1.5 rounded-full bg-[#00a884] text-[#111b21] text-[10px] font-bold flex items-center justify-center">
