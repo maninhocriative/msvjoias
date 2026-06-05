@@ -107,7 +107,7 @@ function getConversationStageMeta(conv: Conversation, alineData?: AlineConversat
   const data = alineData?.collected_data || {};
   const text = String(conv.last_message || '').toLowerCase();
 
-  if (leadStatus === 'humano' || alineData?.status === 'human_takeover') {
+  if (leadStatus === 'humano' || alineData?.status === 'human_takeover' || alineData?.active_agent === 'human') {
     return { label: 'Ação humana', className: 'bg-amber-500/15 text-amber-300 border-amber-500/20' };
   }
 
@@ -242,12 +242,13 @@ const ConversationItem = memo(
     const leadStatus = (conv.lead_status as LeadStatus) || 'novo';
     const stageMeta = getConversationStageMeta(conv, alineData);
     const statusCfg = STATUS_CONFIG[leadStatus] ?? STATUS_CONFIG.novo;
-    const needsHumanAttention =
-      !hasAssignedSeller &&
-      (leadStatus === 'humano' ||
-        leadStatus === 'venda_iniciada' ||
-        isHumanTakeover ||
-        String(stageMeta?.label || '').toLowerCase().includes('humana'));
+    const isWaitingHumanAttention =
+      leadStatus === 'humano' ||
+      leadStatus === 'venda_iniciada' ||
+      isHumanTakeover ||
+      alineData?.active_agent === 'human' ||
+      String(stageMeta?.label || '').toLowerCase().includes('humana');
+    const needsHumanAttention = isWaitingHumanAttention && !hasAssignedSeller;
     const displayName = customerProfile?.name || conv.contact_name || conv.contact_number;
     const lastMsgTime = (conv as any).last_message_at || conv.created_at;
     const previewText = conv.last_message || 'Sem mensagens';
@@ -400,10 +401,22 @@ const ConversationItem = memo(
                 {agentMeta.label}
               </span>
             )}
-            {needsHumanAttention && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-[0.02em] bg-[#00a884]/25 text-emerald-50 ring-1 ring-[#00a884]/35 animate-pulse">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 shrink-0" />
-                Precisa atendimento humano
+            {isWaitingHumanAttention && (
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-[0.02em] ring-1',
+                  needsHumanAttention
+                    ? 'bg-[#00a884]/25 text-emerald-50 ring-[#00a884]/35 animate-pulse'
+                    : 'bg-amber-500/15 text-amber-200 ring-amber-500/25',
+                )}
+              >
+                <span
+                  className={cn(
+                    'w-1.5 h-1.5 rounded-full shrink-0',
+                    needsHumanAttention ? 'bg-emerald-300' : 'bg-amber-300',
+                  )}
+                />
+                {needsHumanAttention ? 'Precisa atendimento humano' : 'Em atendimento humano'}
               </span>
             )}
             {stageMeta && (

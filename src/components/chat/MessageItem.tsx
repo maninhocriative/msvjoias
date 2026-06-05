@@ -97,7 +97,6 @@ const isRedundantMediaLinkText = (content?: string | null, mediaUrl?: string | n
 const getPlayableAudioUrl = (message: Message) => {
   const mediaUrl = String(message.media_url || '').trim();
   if (!mediaUrl) return '';
-  if (mediaUrl.includes('/storage/v1/object/public/chat-media/')) return mediaUrl;
   if (mediaUrl.startsWith('blob:')) return mediaUrl;
   return `${supabaseUrl}/functions/v1/chat-media-proxy?message_id=${encodeURIComponent(message.id)}`;
 };
@@ -131,6 +130,15 @@ const MessageItem = memo(({
   const isMe = message.is_from_me;
   const isInternalNote = message.message_type === 'internal_note';
   const isDeleted = Boolean(message.deleted_at);
+
+  if (
+    !isDeleted &&
+    (message.message_type === 'text' || !message.message_type) &&
+    !message.media_url &&
+    isAudioPlaceholderContent(message.content)
+  ) {
+    return null;
+  }
 
   if (isInternalNote) {
     return (
@@ -274,21 +282,31 @@ const MessageItem = memo(({
             )}
 
             {message.message_type === 'audio' && hasMedia && (
-              <div className="flex flex-col gap-1.5 bg-black/20 rounded-2xl p-2.5 mb-2 w-full max-w-[320px] min-w-0 border border-white/8">
-                <div className="flex items-center gap-2">
-                  <Volume2 className="w-5 h-5 shrink-0 text-emerald-300" />
-                  <audio controls className="w-full min-w-0 h-8" preload="metadata" src={playableAudioUrl}>
-                    <source src={playableAudioUrl} type={inferAudioMimeType(message.media_url)} />
+              <div className="flex w-[280px] max-w-[70vw] flex-col gap-2 rounded-2xl border border-white/8 bg-black/18 p-3 sm:w-[340px]">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-200">
+                    <Volume2 className="w-4 h-4" />
+                  </div>
+                  <audio controls className="h-9 w-full min-w-0 accent-emerald-400" preload="metadata">
+                    {message.media_url && (
+                      <source src={message.media_url} type={inferAudioMimeType(message.media_url)} />
+                    )}
+                    {playableAudioUrl && playableAudioUrl !== message.media_url && (
+                      <source src={playableAudioUrl} type={inferAudioMimeType(message.media_url)} />
+                    )}
                   </audio>
                 </div>
-                <a
-                  href={playableAudioUrl || message.media_url || undefined}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="ml-7 text-[11px] text-emerald-200/75 underline-offset-2 hover:text-emerald-100 hover:underline"
-                >
-                  Abrir áudio
-                </a>
+                <div className="flex items-center justify-between gap-2 pl-11 text-[11px] leading-4">
+                  <span className="truncate text-slate-400">Audio recebido</span>
+                  <a
+                    href={message.media_url || playableAudioUrl || undefined}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 font-medium text-emerald-200/85 underline-offset-2 hover:text-emerald-100 hover:underline"
+                  >
+                    Abrir
+                  </a>
+                </div>
               </div>
             )}
 
@@ -315,7 +333,7 @@ const MessageItem = memo(({
 
             {message.message_type === 'document' && hasMedia && (
               <a
-                href={playableAudioUrl || message.media_url || undefined}
+                href={message.media_url || undefined}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 text-sm underline mb-2 hover:opacity-80 break-all rounded-2xl border border-white/8 bg-black/10 px-3 py-2"

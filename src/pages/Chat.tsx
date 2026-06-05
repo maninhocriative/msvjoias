@@ -778,7 +778,10 @@ const Chat = () => {
   );
 
   const getIsHumanTakeover = useCallback(
-    (phone: string) => getAlineDataForPhone(phone)?.status === 'human_takeover',
+    (phone: string) => {
+      const data = getAlineDataForPhone(phone);
+      return data?.status === 'human_takeover' || data?.active_agent === 'human';
+    },
     [getAlineDataForPhone],
   );
 

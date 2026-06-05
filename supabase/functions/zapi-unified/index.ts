@@ -1650,23 +1650,31 @@ serve(async (req) => {
 
         const transcriptionData = await transcriptionResponse.json().catch(() => null);
         const transcription = transcriptionData?.transcription?.trim();
+        const normalizedTranscription = normalizeFallbackText(transcription || "");
+        const isUsableTranscription =
+          transcriptionResponse.ok &&
+          transcription &&
+          !transcriptionData?.error &&
+          !/audio recebido|audio nao reconhecido|audio sem fala|transcricao indisponivel|nao consegui|inaudivel/.test(normalizedTranscription);
 
-        if (transcriptionResponse.ok && transcription) {
+        if (isUsableTranscription) {
           messageForAline = transcription;
 
           await supabase
             .from("messages")
-            .update({ content: `🎤 ${transcription}` })
-            .eq("conversation_id", conversationId)
-            .eq("zapi_message_id", zapiMessageId);
+            .update({ content: `[Audio transcrito]\n${transcription}` })
+            .eq("id", storedInboundMessage.id);
 
           await supabase
             .from("conversations")
-            .update({ last_message: `🎤 ${transcription}`.substring(0, 100) })
+            .update({ last_message: `[Audio transcrito] ${transcription}`.substring(0, 100) })
             .eq("id", conversationId);
+        } else {
+          messageForAline = "[audio recebido]";
         }
       } catch (error) {
         console.error("[ZAPI-UNIFIED] Erro ao transcrever áudio:", error);
+        messageForAline = "[audio recebido]";
       }
     }
 

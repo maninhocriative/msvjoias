@@ -6002,6 +6002,40 @@ serve(async (req) => {
     };
 
     const activeAgent = (conversation.active_agent || baseData.agente_atual || "aline") as ConversationAgent;
+    const normalizedInboundMessage = normalizeText(message);
+
+    if (mediaType === "audio" && /audio recebido|audio nao reconhecido|audio sem fala|transcricao indisponivel/.test(normalizedInboundMessage)) {
+      baseData.needs_human_audio = true;
+      baseData.agente_atual = "human";
+
+      const reply = "Recebi seu audio. Para nao te responder errado, vou chamar um vendedor para ouvir e continuar seu atendimento por aqui.";
+
+      await supabase
+        .from("aline_conversations")
+        .update({
+          status: "human_takeover",
+          active_agent: "human",
+          assignment_reason: "Audio recebido sem transcricao automatica",
+          collected_data: baseData,
+          last_message_at: new Date().toISOString(),
+          agent_handoff_at: new Date().toISOString(),
+        })
+        .eq("id", conversation.id);
+
+      await saveAssistantMessage(supabase, conversation.id, activeAgent, reply, "human_takeover_audio");
+      await saveAgentMemory(supabase, phone, activeAgent, contactName, baseData);
+      await updateCrmLeadStatus(supabase, phone, "humano");
+
+      return buildResponsePayload({
+        phone,
+        message: reply,
+        node: "human_takeover_audio",
+        selectedProduct: baseData.selected_product || null,
+        collectedData: baseData,
+        agent: "human",
+      });
+    }
+
     const systemContext = await buildAgentSystemContext({
       supabase,
       conversationId: conversation.id,
