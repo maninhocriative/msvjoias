@@ -664,6 +664,7 @@ const Chat = () => {
   const hasOlderMessagesRef = useRef(false);
   const actionHumanAlertReadyRef = useRef(false);
   const actionHumanConversationIdsRef = useRef<Set<string>>(new Set());
+  const profilePictureRequestsRef = useRef<Set<string>>(new Set());
   const pendingAttachmentsRef = useRef<PendingChatAttachment[]>([]);
   const composerSendingRef = useRef(false);
 
@@ -719,6 +720,61 @@ const Chat = () => {
       return undefined;
     },
     [customerProfiles],
+  );
+
+  const requestMissingProfilePictures = useCallback(
+    async (conversationList: Conversation[], profilesMap: Record<string, CustomerProfile>) => {
+      const phones = conversationList
+        .filter((conversation) => {
+          const variants = buildPhoneVariants(conversation.contact_number);
+          return !variants.some((variant) => profilesMap[variant]?.profile_pic_url);
+        })
+        .map((conversation) => buildPhoneVariants(conversation.contact_number)[0])
+        .filter((phone): phone is string => Boolean(phone))
+        .filter((phone) => {
+          if (profilePictureRequestsRef.current.has(phone)) return false;
+          profilePictureRequestsRef.current.add(phone);
+          return true;
+        })
+        .slice(0, 40);
+
+      if (phones.length === 0) return;
+
+      try {
+        const { data, error } = await supabase.functions.invoke('zapi-profile-picture', {
+          body: { phones },
+        });
+
+        if (error) throw error;
+
+        const results = Array.isArray(data?.results) ? data.results : [];
+        const withPictures = results.filter((item: any) => item?.phone && item?.profilePicUrl);
+        if (withPictures.length === 0) return;
+
+        setCustomerProfiles((prev) => {
+          const next = { ...prev };
+
+          withPictures.forEach((item: any) => {
+            const variants = buildPhoneVariants(String(item.phone));
+            const existing = variants.map((variant) => next[variant] || profilesMap[variant]).find(Boolean);
+            const profile: CustomerProfile = {
+              whatsapp: String(item.phone),
+              name: existing?.name || String(item.phone),
+              profile_pic_url: String(item.profilePicUrl),
+            };
+
+            variants.forEach((variant) => {
+              next[variant] = profile;
+            });
+          });
+
+          return next;
+        });
+      } catch (error) {
+        console.warn('Nao foi possivel buscar fotos de perfil dos contatos:', error);
+      }
+    },
+    [],
   );
 
   const getIsHumanTakeover = useCallback(
@@ -1886,6 +1942,7 @@ const Chat = () => {
         setAlineStatusMap(statusMap);
         setCustomerProfiles(profilesMap);
         setConversations(conversationList);
+        void requestMissingProfilePictures(conversationList, profilesMap);
         setSelectedConversation((prev) => {
           if (!prev) return prev;
           return conversationList.find((conversation) => conversation.id === prev.id) || prev;
@@ -1910,7 +1967,7 @@ const Chat = () => {
         setRefreshing(false);
       }
     },
-    [toast],
+    [requestMissingProfilePictures, toast],
   );
 
   useEffect(() => {
@@ -2829,6 +2886,11 @@ const Chat = () => {
     ? isActionHumanConversation(selectedConversation)
     : false;
   const contactPresenceLabel = formatContactPresence(selectedConversation);
+  const selectedContactPresence = String(selectedConversation?.contact_presence || '').toLowerCase();
+  const selectedContactIsOnline = Boolean(
+    selectedConversation?.contact_is_online ||
+      ['available', 'composing', 'recording'].includes(selectedContactPresence),
+  );
 
   const currentAgentSlug = isCurrentHumanTakeover
     ? 'human'
@@ -2861,17 +2923,6 @@ const Chat = () => {
           : currentAgentSlug === 'malu'
             ? 'bg-violet-500/15 text-violet-300 border border-violet-500/25'
         : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
-
-  const currentAgentDotClass =
-    currentAgentSlug === 'human'
-      ? 'bg-amber-500'
-      : currentAgentSlug === 'keila'
-        ? 'bg-sky-500'
-        : currentAgentSlug === 'kate'
-          ? 'bg-fuchsia-500'
-          : currentAgentSlug === 'malu'
-            ? 'bg-violet-500'
-        : 'bg-emerald-500';
 
   const activeStatusLabel =
     statusFilters.find((item) => item.key === filterStatus)?.label || 'Todos';
@@ -3263,12 +3314,16 @@ const Chat = () => {
                       </div>
                     )}
 
-                    <span
-                      className={cn(
-                        'absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-[#202c33]',
-                        currentAgentDotClass,
-                      )}
-                    />
+                    {contactPresenceLabel && (
+                      <span
+                        title={contactPresenceLabel}
+                        className={cn(
+                          'absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-[#202c33]',
+                          selectedContactIsOnline ? 'bg-emerald-400 ring-2 ring-emerald-400/25' : 'bg-slate-500',
+                          ['composing', 'recording'].includes(selectedContactPresence) && 'animate-pulse',
+                        )}
+                      />
+                    )}
                   </div>
 
                   <div className="min-w-0">

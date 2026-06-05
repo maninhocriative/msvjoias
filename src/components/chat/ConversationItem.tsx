@@ -295,14 +295,16 @@ const ConversationItem = memo(
             </div>
           )}
 
-          <span
-            className={cn(
-              'absolute bottom-0 right-0 w-4 h-4 rounded-full border-2 border-[#111b21] flex items-center justify-center shadow-sm',
-              agentMeta.dotClass,
-            )}
-          >
-            <AgentIcon className={cn('w-2 h-2', agentMeta.iconClass)} />
-          </span>
+          {contactPresenceLabel && (
+            <span
+              title={contactPresenceLabel}
+              className={cn(
+                'absolute bottom-0 right-0 h-4 w-4 rounded-full border-2 border-[#111b21] shadow-sm',
+                isContactOnline ? 'bg-emerald-400 ring-2 ring-emerald-400/25' : 'bg-slate-500',
+                ['composing', 'recording'].includes(contactPresence) && 'animate-pulse',
+              )}
+            />
+          )}
         </div>
 
         <div className="flex-1 min-w-0 w-full">

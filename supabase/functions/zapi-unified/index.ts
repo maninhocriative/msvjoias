@@ -935,13 +935,16 @@ function parseZapiPresenceDate(value: unknown): string | null {
 }
 
 function normalizePresenceStatus(value: unknown) {
+  if (value === true) return "available";
+  if (value === false) return "unavailable";
+
   const normalized = String(value || "unknown").trim().toLowerCase();
 
-  if (["available", "online"].includes(normalized)) return "available";
-  if (["unavailable", "offline"].includes(normalized)) return "unavailable";
+  if (["available", "online", "connected", "active", "true"].includes(normalized)) return "available";
+  if (["unavailable", "offline", "disconnected", "inactive", "false"].includes(normalized)) return "unavailable";
   if (["composing", "typing"].includes(normalized)) return "composing";
   if (["paused"].includes(normalized)) return "paused";
-  if (["recording"].includes(normalized)) return "recording";
+  if (["recording", "audio"].includes(normalized)) return "recording";
 
   return normalized || "unknown";
 }
@@ -1238,12 +1241,12 @@ serve(async (req) => {
     console.log("[ZAPI-UNIFIED] Payload:", JSON.stringify(payload).substring(0, 1000));
 
     const eventType = payload.type || payload.event || "";
+    const normalizedEventType = String(eventType || "").trim().toLowerCase();
     const hasError = !!(payload as any).error;
     const isPresenceCallback =
       eventType === "PresenceChatCallback" ||
-      eventType === "presence-chat" ||
-      eventType === "presence_update" ||
-      eventType === "PresenceCallback";
+      eventType === "PresenceCallback" ||
+      ["presence-chat", "presence_update", "presence-update", "presence"].includes(normalizedEventType);
     const isStatusCallback =
       eventType === "DeliveryCallback" ||
       eventType === "ReadCallback" ||
@@ -1257,21 +1260,30 @@ serve(async (req) => {
         payload.phone ||
         (payload as any).chatId ||
         (payload as any).participantPhone ||
+        (payload as any).participant ||
+        (payload as any).remoteJid ||
+        (payload as any).fromMePhone ||
+        (payload as any).connectedPhone ||
         (payload as any).from ||
+        findNestedString(payload, (candidate) => /^\+?\d{10,15}(?:@[cg]\.us)?$/.test(candidate), 4) ||
         "";
       const presencePhone = normalizeWhatsappPhone(rawPresencePhone);
-      const presenceVariants = buildPhoneVariants(rawPresencePhone);
+      const presenceVariants = buildPhoneVariants(presencePhone || rawPresencePhone);
       const presence = normalizePresenceStatus(
         (payload as any).status ||
           (payload as any).presence ||
           (payload as any).presenceStatus ||
-          (payload as any).state,
+          (payload as any).state ||
+          (payload as any).isOnline ||
+          (payload as any).online,
       );
       const nowIso = new Date().toISOString();
       const lastSeenAt =
         parseZapiPresenceDate((payload as any).lastSeen) ||
         parseZapiPresenceDate((payload as any).lastSeenAt) ||
-        (presence === "unavailable" ? nowIso : null);
+        parseZapiPresenceDate((payload as any).last_seen_at) ||
+        parseZapiPresenceDate((payload as any).timestamp) ||
+          (presence === "unavailable" ? nowIso : null);
       const isOnline = ["available", "composing", "recording"].includes(presence);
 
       if (presenceVariants.length > 0) {

@@ -6,6 +6,29 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+function buildPhoneVariants(phone: string): string[] {
+  const digits = String(phone || '').replace(/\D/g, '');
+  const variants = new Set<string>();
+
+  if (digits) variants.add(digits);
+  if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+    variants.add(digits.slice(2));
+  }
+  if (!digits.startsWith('55') && (digits.length === 10 || digits.length === 11)) {
+    variants.add(`55${digits}`);
+  }
+  if (digits.startsWith('55') && digits.length === 13 && digits[4] === '9') {
+    variants.add(`${digits.slice(0, 4)}${digits.slice(5)}`);
+    variants.add(`${digits.slice(2, 4)}${digits.slice(5)}`);
+  }
+  if (digits.startsWith('55') && digits.length === 12) {
+    variants.add(`${digits.slice(0, 4)}9${digits.slice(4)}`);
+    variants.add(`${digits.slice(2, 4)}9${digits.slice(4)}`);
+  }
+
+  return Array.from(variants);
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -51,7 +74,7 @@ serve(async (req) => {
         console.log(`[ZAPI-PROFILE] Response for ${phoneNumber}:`, JSON.stringify(data));
         
         // Z-API retorna { link: "url" } ou { imgUrl: "url" } dependendo da versão
-        const profilePicUrl = data.link || data.imgUrl || data.profilePictureUrl || null;
+        const profilePicUrl = data.link || data.imgUrl || data.profilePictureUrl || data.picture || data.url || null;
         
         return { phone: phoneNumber, profilePicUrl };
       } catch (error) {
@@ -84,26 +107,38 @@ serve(async (req) => {
     const updates = results.filter(r => r.profilePicUrl);
     
     for (const update of updates) {
-      // Atualizar customer existente com a foto
-      const { error } = await supabase
+      const variants = buildPhoneVariants(update.phone);
+      const { data: existingCustomers, error: selectError } = await supabase
         .from('customers')
-        .update({ profile_pic_url: update.profilePicUrl })
-        .eq('whatsapp', update.phone);
+        .select('whatsapp')
+        .in('whatsapp', variants);
 
-      if (error) {
-        console.log(`[ZAPI-PROFILE] Could not update customer ${update.phone}:`, error.message);
-        
-        // Se não existe, tentar criar
-        const { error: insertError } = await supabase
+      if (selectError) {
+        console.log(`[ZAPI-PROFILE] Could not lookup customer ${update.phone}:`, selectError.message);
+        continue;
+      }
+
+      if (existingCustomers && existingCustomers.length > 0) {
+        const { error } = await supabase
+          .from('customers')
+          .update({ profile_pic_url: update.profilePicUrl })
+          .in('whatsapp', variants);
+
+        if (error) {
+          console.log(`[ZAPI-PROFILE] Could not update customer ${update.phone}:`, error.message);
+        }
+      } else {
+        const whatsapp = variants[0] || update.phone;
+        const { error } = await supabase
           .from('customers')
           .insert({
-            whatsapp: update.phone,
-            name: update.phone,
+            whatsapp,
+            name: whatsapp,
             profile_pic_url: update.profilePicUrl,
           });
-          
-        if (insertError) {
-          console.log(`[ZAPI-PROFILE] Could not insert customer ${update.phone}:`, insertError.message);
+
+        if (error) {
+          console.log(`[ZAPI-PROFILE] Could not insert customer ${whatsapp}:`, error.message);
         }
       }
     }
