@@ -81,6 +81,13 @@ type PendingChatAttachment = {
   sizeLabel: string;
 };
 
+type MessagesCacheState = {
+  messages: Message[];
+  hasOlder: boolean;
+  oldestCrmCursor: string | null;
+  oldestAlineCursor: string | null;
+};
+
 const statusFilters = [
   { key: 'all', label: 'Todos', color: 'bg-slate-500' },
   { key: 'novo', label: 'Novos', color: 'bg-slate-400' },
@@ -93,8 +100,9 @@ const statusFilters = [
 
 const CONVERSATION_LIST_SELECT =
   'id, contact_name, contact_number, platform, last_message, last_message_at, unread_count, lead_status, contact_presence, contact_is_online, contact_last_seen_at, contact_presence_updated_at, attending_by, attending_name, attending_since, created_at';
-const INITIAL_MESSAGE_LIMIT = 80;
-const INITIAL_ALINE_LOG_LIMIT = 120;
+const INITIAL_MESSAGE_LIMIT = 40;
+const INITIAL_ALINE_LOG_LIMIT = 60;
+const MESSAGE_PAGE_LIMIT = 40;
 const CONVERSATION_LIST_LIMIT = 500;
 const MESSAGE_DUPLICATE_WINDOW_MS = 2 * 60 * 1000;
 const OPTIMISTIC_REPLACEMENT_WINDOW_MS = 45 * 1000;
@@ -601,6 +609,8 @@ const Chat = () => {
   const [deletingMessageBusyId, setDeletingMessageBusyId] = useState<string | null>(null);
   const [pendingAttachments, setPendingAttachments] = useState<PendingChatAttachment[]>([]);
   const [composerSending, setComposerSending] = useState(false);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
+  const [hasOlderMessages, setHasOlderMessages] = useState(false);
   const audioStreamRef = useRef<MediaStream | null>(null);
   const recordingCancelledRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -611,8 +621,12 @@ const Chat = () => {
   const relatedConversationIdsRef = useRef<Set<string>>(new Set());
   const relatedAlineConversationIdsRef = useRef<Set<string>>(new Set());
   const fetchMessagesRequestRef = useRef(0);
-  const messagesCacheRef = useRef<Map<string, Message[]>>(new Map());
+  const messagesCacheRef = useRef<Map<string, MessagesCacheState>>(new Map());
   const currentMessagesCacheKeyRef = useRef<string>('');
+  const oldestCrmMessageCursorRef = useRef<string | null>(null);
+  const oldestAlineMessageCursorRef = useRef<string | null>(null);
+  const loadingOlderMessagesRef = useRef(false);
+  const hasOlderMessagesRef = useRef(false);
   const actionHumanAlertReadyRef = useRef(false);
   const actionHumanConversationIdsRef = useRef<Set<string>>(new Set());
   const pendingAttachmentsRef = useRef<PendingChatAttachment[]>([]);
@@ -1223,11 +1237,19 @@ const Chat = () => {
     fetchMessagesRequestRef.current = requestId;
     const cacheKey = `${conversationId}:${phone || ''}`;
     currentMessagesCacheKeyRef.current = cacheKey;
-    const cachedMessages = messagesCacheRef.current.get(cacheKey);
+    const cachedState = messagesCacheRef.current.get(cacheKey);
 
-    if (cachedMessages) {
-      setMessages((prev) => (areMessagesEqual(prev, cachedMessages) ? prev : cachedMessages));
+    if (cachedState) {
+      oldestCrmMessageCursorRef.current = cachedState.oldestCrmCursor;
+      oldestAlineMessageCursorRef.current = cachedState.oldestAlineCursor;
+      hasOlderMessagesRef.current = cachedState.hasOlder;
+      setHasOlderMessages(cachedState.hasOlder);
+      setMessages((prev) => (areMessagesEqual(prev, cachedState.messages) ? prev : cachedState.messages));
     } else {
+      oldestCrmMessageCursorRef.current = null;
+      oldestAlineMessageCursorRef.current = null;
+      hasOlderMessagesRef.current = false;
+      setHasOlderMessages(false);
       setMessages((prev) => (prev.length === 0 ? prev : []));
     }
 
@@ -1270,15 +1292,19 @@ const Chat = () => {
         )
         .in('conversation_id', relatedConversationIds)
         .order('created_at', { ascending: false })
-        .limit(INITIAL_MESSAGE_LIMIT);
+        .limit(INITIAL_MESSAGE_LIMIT + 1);
 
       if (error) throw error;
 
-      let mergedMessages = [...(data || [])].reverse().filter(
+      const crmRows = data || [];
+      const initialCrmMessages = crmRows.slice(0, INITIAL_MESSAGE_LIMIT).reverse().filter(
         (message) => message.content?.trim() || message.media_url || message.deleted_at,
       );
+      let mergedMessages = [...initialCrmMessages];
 
       const alineConversationId = alineConversationResult?.data?.id;
+      let hasOlderAlineLogs = false;
+      let initialAlineMessages: Message[] = [];
       relatedAlineConversationIdsRef.current = new Set(alineConversationId ? [alineConversationId] : []);
 
       if (requestId !== fetchMessagesRequestRef.current) {
@@ -1291,9 +1317,10 @@ const Chat = () => {
           .select('id, message, created_at, role')
           .eq('conversation_id', alineConversationId)
           .order('created_at', { ascending: false })
-          .limit(INITIAL_ALINE_LOG_LIMIT);
+          .limit(INITIAL_ALINE_LOG_LIMIT + 1);
 
         if (!alineHistoryError && alineHistory?.length) {
+          hasOlderAlineLogs = alineHistory.length > INITIAL_ALINE_LOG_LIMIT;
           const mirroredTextMessages = mergedMessages.filter(
             (message) =>
               !message.media_url &&
@@ -1301,7 +1328,7 @@ const Chat = () => {
               message.content?.trim(),
           );
 
-          const fallbackAlineMessages = [...alineHistory].reverse()
+          const fallbackAlineMessages = alineHistory.slice(0, INITIAL_ALINE_LOG_LIMIT).reverse()
             .filter((entry) => entry.message?.trim())
             .filter((entry) => {
               const entryTime = new Date(entry.created_at || '').getTime();
@@ -1333,6 +1360,7 @@ const Chat = () => {
             );
 
           if (fallbackAlineMessages.length > 0) {
+            initialAlineMessages = fallbackAlineMessages;
             mergedMessages = [...mergedMessages, ...fallbackAlineMessages].sort(
               (a, b) =>
                 new Date(a.created_at || '').getTime() -
@@ -1343,12 +1371,26 @@ const Chat = () => {
       }
 
       mergedMessages = dedupeMessagesStable(mergedMessages);
+      const oldestCrmCursor = initialCrmMessages[0]?.created_at || null;
+      const oldestAlineCursor = initialAlineMessages[0]?.created_at || null;
+      const hasOlder =
+        crmRows.length > INITIAL_MESSAGE_LIMIT ||
+        hasOlderAlineLogs;
 
       if (requestId !== fetchMessagesRequestRef.current) {
         return;
       }
 
-      messagesCacheRef.current.set(cacheKey, mergedMessages);
+      oldestCrmMessageCursorRef.current = oldestCrmCursor;
+      oldestAlineMessageCursorRef.current = oldestAlineCursor;
+      hasOlderMessagesRef.current = hasOlder;
+      setHasOlderMessages(hasOlder);
+      messagesCacheRef.current.set(cacheKey, {
+        messages: mergedMessages,
+        hasOlder,
+        oldestCrmCursor,
+        oldestAlineCursor,
+      });
       setMessages((prev) => (areMessagesEqual(prev, mergedMessages) ? prev : mergedMessages));
     } catch {
       // silent
@@ -1427,7 +1469,15 @@ const Chat = () => {
               );
               const next = mergeMessagesStable(withoutAlineDuplicate, [newMessage]);
               const cacheKey = currentMessagesCacheKeyRef.current;
-              if (cacheKey) messagesCacheRef.current.set(cacheKey, next);
+              if (cacheKey) {
+                const currentCache = messagesCacheRef.current.get(cacheKey);
+                messagesCacheRef.current.set(cacheKey, {
+                  messages: next,
+                  hasOlder: currentCache?.hasOlder ?? hasOlderMessagesRef.current,
+                  oldestCrmCursor: currentCache?.oldestCrmCursor ?? oldestCrmMessageCursorRef.current,
+                  oldestAlineCursor: currentCache?.oldestAlineCursor ?? oldestAlineMessageCursorRef.current,
+                });
+              }
               return areMessagesEqual(prev, next) ? prev : next;
             });
           },
@@ -1452,7 +1502,15 @@ const Chat = () => {
                 ),
               );
               const cacheKey = currentMessagesCacheKeyRef.current;
-              if (cacheKey) messagesCacheRef.current.set(cacheKey, next);
+              if (cacheKey) {
+                const currentCache = messagesCacheRef.current.get(cacheKey);
+                messagesCacheRef.current.set(cacheKey, {
+                  messages: next,
+                  hasOlder: currentCache?.hasOlder ?? hasOlderMessagesRef.current,
+                  oldestCrmCursor: currentCache?.oldestCrmCursor ?? oldestCrmMessageCursorRef.current,
+                  oldestAlineCursor: currentCache?.oldestAlineCursor ?? oldestAlineMessageCursorRef.current,
+                });
+              }
               return areMessagesEqual(prev, next) ? prev : next;
             });
           },
@@ -1540,7 +1598,15 @@ const Chat = () => {
 
               const next = mergeMessagesStable(prev, [fallbackMessage]);
               const cacheKey = currentMessagesCacheKeyRef.current;
-              if (cacheKey) messagesCacheRef.current.set(cacheKey, next);
+              if (cacheKey) {
+                const currentCache = messagesCacheRef.current.get(cacheKey);
+                messagesCacheRef.current.set(cacheKey, {
+                  messages: next,
+                  hasOlder: currentCache?.hasOlder ?? hasOlderMessagesRef.current,
+                  oldestCrmCursor: currentCache?.oldestCrmCursor ?? oldestCrmMessageCursorRef.current,
+                  oldestAlineCursor: currentCache?.oldestAlineCursor ?? oldestAlineMessageCursorRef.current,
+                });
+              }
               return next;
             });
             bumpConversationFromMessage(fallbackMessage);
@@ -1594,11 +1660,124 @@ const Chat = () => {
     };
   }, [scrollMessagesToBottom, selectedConversation?.id]);
 
+  const loadOlderMessages = useCallback(async () => {
+    if (!selectedConversation?.id) return;
+    if (loadingOlderMessagesRef.current || !hasOlderMessagesRef.current) return;
+
+    const crmCursor = oldestCrmMessageCursorRef.current;
+    const alineCursor = oldestAlineMessageCursorRef.current;
+    if (!crmCursor && !alineCursor) return;
+
+    const container = messagesContainerRef.current;
+    const previousScrollHeight = container?.scrollHeight || 0;
+    const previousScrollTop = container?.scrollTop || 0;
+
+    loadingOlderMessagesRef.current = true;
+    setLoadingOlderMessages(true);
+
+    try {
+      const relatedConversationIds = Array.from(relatedConversationIdsRef.current);
+      const relatedAlineConversationIds = Array.from(relatedAlineConversationIdsRef.current);
+
+      const [crmResult, alineResult] = await Promise.all([
+        relatedConversationIds.length && crmCursor
+          ? supabase
+              .from('messages')
+              .select(
+                'id, content, created_at, is_from_me, media_url, message_type, status, conversation_id, zapi_message_id, edited_at, deleted_at, replaced_message_id',
+              )
+              .in('conversation_id', relatedConversationIds)
+              .lt('created_at', crmCursor)
+              .order('created_at', { ascending: false })
+              .limit(MESSAGE_PAGE_LIMIT + 1)
+          : Promise.resolve({ data: [], error: null }),
+        relatedAlineConversationIds.length && alineCursor
+          ? supabase
+              .from('aline_messages')
+              .select('id, message, created_at, role')
+              .in('conversation_id', relatedAlineConversationIds)
+              .lt('created_at', alineCursor)
+              .order('created_at', { ascending: false })
+              .limit(MESSAGE_PAGE_LIMIT + 1)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+
+      if (crmResult.error) throw crmResult.error;
+      if (alineResult.error) throw alineResult.error;
+
+      const crmRows = crmResult.data || [];
+      const alineRows = alineResult.data || [];
+      const olderCrmMessages = crmRows.slice(0, MESSAGE_PAGE_LIMIT).reverse().filter(
+        (message) => message.content?.trim() || message.media_url || message.deleted_at,
+      );
+      const olderAlineMessages = alineRows.slice(0, MESSAGE_PAGE_LIMIT).reverse()
+        .filter((entry) => entry.message?.trim())
+        .map(
+          (entry): Message => ({
+            id: `aline-log:${entry.id}`,
+            conversation_id: selectedConversation.id,
+            content: entry.message,
+            message_type: 'text',
+            media_url: null,
+            is_from_me: entry.role !== 'user',
+            status: entry.role === 'user' ? 'received' : 'sent',
+            created_at: entry.created_at || new Date().toISOString(),
+          }),
+        );
+
+      const nextHasOlder =
+        crmRows.length > MESSAGE_PAGE_LIMIT || alineRows.length > MESSAGE_PAGE_LIMIT;
+      const nextOldestCrmCursor = olderCrmMessages[0]?.created_at || crmCursor;
+      const nextOldestAlineCursor = olderAlineMessages[0]?.created_at || alineCursor;
+      hasOlderMessagesRef.current = nextHasOlder;
+      setHasOlderMessages(nextHasOlder);
+
+      setMessages((prev) => {
+        const next = dedupeMessagesStable([
+          ...olderCrmMessages,
+          ...olderAlineMessages,
+          ...prev,
+        ]);
+        const cacheKey = currentMessagesCacheKeyRef.current;
+
+        oldestCrmMessageCursorRef.current = nextOldestCrmCursor;
+        oldestAlineMessageCursorRef.current = nextOldestAlineCursor;
+
+        if (cacheKey) {
+          messagesCacheRef.current.set(cacheKey, {
+            messages: next,
+            hasOlder: nextHasOlder,
+            oldestCrmCursor: nextOldestCrmCursor,
+            oldestAlineCursor: nextOldestAlineCursor,
+          });
+        }
+
+        window.requestAnimationFrame(() => {
+          const nextContainer = messagesContainerRef.current;
+          if (!nextContainer) return;
+          nextContainer.scrollTop =
+            nextContainer.scrollHeight - previousScrollHeight + previousScrollTop;
+        });
+
+        return areMessagesEqual(prev, next) ? prev : next;
+      });
+    } catch {
+      // silent
+    } finally {
+      loadingOlderMessagesRef.current = false;
+      setLoadingOlderMessages(false);
+    }
+  }, [messages, selectedConversation?.id]);
+
   const handleMessagesScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
     const target = event.currentTarget;
     shouldAutoScroll.current =
       target.scrollHeight - target.scrollTop - target.clientHeight < 100;
-  }, []);
+
+    if (target.scrollTop < 160) {
+      void loadOlderMessages();
+    }
+  }, [loadOlderMessages]);
 
   const fetchConversations = useCallback(
     async (showToast = false) => {
@@ -3248,6 +3427,26 @@ const Chat = () => {
               <div
                 className="w-full px-4 sm:px-6 lg:px-10 xl:px-12 py-4 max-w-5xl xl:max-w-6xl mx-auto min-h-full"
               >
+                {(loadingOlderMessages || hasOlderMessages) && messages.length > 0 && (
+                  <div className="flex justify-center pb-2">
+                    <button
+                      type="button"
+                      onClick={() => void loadOlderMessages()}
+                      disabled={loadingOlderMessages || !hasOlderMessages}
+                      className="inline-flex items-center gap-2 rounded-full border border-white/8 bg-slate-800/80 px-3 py-1.5 text-[11px] font-medium text-slate-400 transition-colors hover:border-white/14 hover:text-slate-200 disabled:cursor-default disabled:opacity-70"
+                    >
+                      {loadingOlderMessages ? (
+                        <>
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Carregando mensagens anteriores
+                        </>
+                      ) : (
+                        'Carregar mensagens anteriores'
+                      )}
+                    </button>
+                  </div>
+                )}
+
                 {messages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-20 text-slate-600">
                     <Sparkles className="w-8 h-8 mb-3 opacity-30" />
