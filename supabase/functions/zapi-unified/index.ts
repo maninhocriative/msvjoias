@@ -750,7 +750,7 @@ async function mirrorInboundMediaToStorage(
   if (mediaUrl.includes("/storage/v1/object/public/chat-media/")) return mediaUrl;
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15_000);
+  const timeoutId = setTimeout(() => controller.abort(), 30_000);
 
   try {
     const response = await fetch(mediaUrl, {
@@ -1799,7 +1799,7 @@ serve(async (req) => {
     }
 
     if (products.length > 0) {
-      await sleep(1200);
+      await sleep(500);
 
       for (let index = 0; index < products.length; index++) {
         const product = products[index];
@@ -1840,7 +1840,7 @@ serve(async (req) => {
           }
 
           if (result?.success) {
-            await sleep(700);
+            await sleep(350);
             const separateButtons = (
               await sendWithGovernorLease(sequenceLeaseResult.lease, () =>
                 sendProductChoiceButtons(
@@ -1871,7 +1871,7 @@ serve(async (req) => {
           ).result;
 
           if (result?.success && product.force_separate_buttons) {
-            await sleep(700);
+            await sleep(350);
             const separateButtons = (
               await sendWithGovernorLease(sequenceLeaseResult.lease, () =>
                 sendProductChoiceButtons(
@@ -1906,7 +1906,7 @@ serve(async (req) => {
             ).result;
 
             if (result?.success) {
-              await sleep(700);
+              await sleep(350);
               const buttonFallback = (
                 await sendWithGovernorLease(sequenceLeaseResult.lease, () =>
                   sendProductChoiceButtons(
@@ -1969,13 +1969,13 @@ serve(async (req) => {
         }
 
         if (index < products.length - 1) {
-          await sleep(1100);
+          await sleep(450);
         }
       }
     }
 
     if (mediaItems.length > 0) {
-      await sleep(1200);
+      await sleep(500);
 
       for (let index = 0; index < mediaItems.length; index++) {
         const item = mediaItems[index];
@@ -2028,13 +2028,13 @@ serve(async (req) => {
         }
 
         if (index < mediaItems.length - 1) {
-          await sleep(1100);
+          await sleep(450);
         }
       }
     }
 
     if (actionButtons.length > 0) {
-      await sleep(700);
+      await sleep(350);
 
       const buttonResult = (
         await sendWithGovernorLease(sequenceLeaseResult.lease, () =>
@@ -2066,7 +2066,7 @@ serve(async (req) => {
     }
 
     if ((productsSent > 0 || mediaItemsSent > 0) && postCatalogMessage) {
-      await sleep(1200);
+      await sleep(500);
 
       const postResult = (
         await sendWithGovernorLease(sequenceLeaseResult.lease, () =>

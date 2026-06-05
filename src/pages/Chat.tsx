@@ -100,9 +100,9 @@ const statusFilters = [
 
 const CONVERSATION_LIST_SELECT =
   'id, contact_name, contact_number, platform, last_message, last_message_at, unread_count, lead_status, contact_presence, contact_is_online, contact_last_seen_at, contact_presence_updated_at, attending_by, attending_name, attending_since, created_at';
-const INITIAL_MESSAGE_LIMIT = 40;
+const INITIAL_MESSAGE_LIMIT = 30;
 const INITIAL_ALINE_LOG_LIMIT = 60;
-const MESSAGE_PAGE_LIMIT = 40;
+const MESSAGE_PAGE_LIMIT = 30;
 const CONVERSATION_LIST_LIMIT = 500;
 const MESSAGE_DUPLICATE_WINDOW_MS = 2 * 60 * 1000;
 const OPTIMISTIC_REPLACEMENT_WINDOW_MS = 45 * 1000;
@@ -120,6 +120,41 @@ const normalizeMediaUrl = (value?: string | null) => {
   const url = String(value || '').trim();
   if (!url || url.startsWith('blob:')) return '';
   return url.split('?')[0];
+};
+
+const detectAudioUrlFromText = (value?: string | null) => {
+  const text = String(value || '').trim();
+  const match = text.match(/https?:\/\/\S+/i);
+  if (!match) return '';
+
+  const url = match[0].replace(/[)\].,;!?]+$/, '');
+  const lower = url.toLowerCase();
+  if (
+    /\.(mp3|ogg|oga|opus|wav|m4a|aac|amr|webm)(?:$|[?#])/i.test(lower) ||
+    /temp-file-download\/.*(?:=\.mp3|=\.ogg|=\.oga|=\.opus|=\.wav|=\.m4a|=\.aac|=\.amr|=\.webm)/i.test(lower) ||
+    /(audio|voice|ptt|recording|microphone|opus|ogg|m4a|mp3|amr|aac|wav)/i.test(lower)
+  ) {
+    return url;
+  }
+
+  return '';
+};
+
+const normalizeMessageForDisplay = (message: Message): Message => {
+  const audioUrlFromContent = detectAudioUrlFromText(message.content);
+  const audioUrlFromMedia = detectAudioUrlFromText(message.media_url);
+  const audioUrl = audioUrlFromMedia || audioUrlFromContent;
+
+  if (!audioUrl) return message;
+
+  return {
+    ...message,
+    message_type: 'audio',
+    media_url: message.media_url || audioUrl,
+    content: audioUrlFromContent && normalizeMessageText(message.content) === audioUrl
+      ? '[Audio recebido]'
+      : message.content,
+  };
 };
 
 const isSameTimeWindow = (
@@ -246,7 +281,7 @@ const mergeDuplicateMessageRecords = (current: Message, incoming: Message) => {
 const dedupeMessagesStable = (items: Message[]) => {
   const deduped: Message[] = [];
 
-  sortMessagesByTime(items).forEach((message) => {
+  sortMessagesByTime(items.map(normalizeMessageForDisplay)).forEach((message) => {
     if (!message?.id) return;
 
     const duplicateIndex = deduped.findIndex((existing) =>

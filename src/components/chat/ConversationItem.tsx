@@ -360,9 +360,9 @@ const ConversationItem = memo(
               </span>
             )}
             {needsHumanAttention && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-[#00a884]/20 text-emerald-100 animate-pulse">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-[0.02em] bg-[#00a884]/25 text-emerald-50 ring-1 ring-[#00a884]/35 animate-pulse">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 shrink-0" />
-                Humano
+                Precisa atendimento humano
               </span>
             )}
             {stageMeta && (

@@ -42,6 +42,14 @@ const KATE_VALENTINES_DAY_FALLBACK_MESSAGES = [
   "Ultimo lembrete por aqui: se quiser garantir um pingente fotogravado para o Dia dos Namorados, me chama que eu retomo de onde paramos.",
 ];
 
+function promisesPendantCatalog(message: string): boolean {
+  const normalized = normalizeText(message || "");
+  return (
+    /vou te mandar.*(oferta|modelo|modelos|pingente|pingentes|video|catalogo)/.test(normalized) ||
+    /mandar.*(oferta|modelo|modelos|pingente|pingentes|video|catalogo).*ver/.test(normalized)
+  );
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -493,7 +501,7 @@ async function getKatePendantCatalog(supabase: any, preferredProduct: any | null
     });
   }
 
-  return products.map(buildPendantFollowupCard);
+  return products.slice(0, 4).map(buildPendantFollowupCard);
 }
 
 async function sendKatePendantCatalogFollowup(args: {
@@ -1008,7 +1016,10 @@ serve(async (req) => {
       });
 
       try {
-        if (config.kind === "pendant_catalog_rescue") {
+        if (
+          config.kind === "pendant_catalog_rescue" ||
+          (isPendantConversation(conversation) && promisesPendantCatalog(message))
+        ) {
           const catalogResult = await sendKatePendantCatalogFollowup({
             supabase,
             zapiInstanceId,
@@ -1083,19 +1094,36 @@ serve(async (req) => {
           throw new Error(`Z-API error: ${JSON.stringify(zapiPayload)}`);
         }
 
+        const agentSlug = getAgentSlug(conversation);
+        const followupData = {
+          ...(conversation.collected_data || {}),
+          agente_atual: agentSlug,
+          last_followup_kind: config.kind || "normal",
+          last_followup_message: message,
+          last_followup_at: new Date().toISOString(),
+          ...(isPendantConversation(conversation)
+            ? {
+                categoria: "pingente",
+                last_followup_product_context: "pingente_fotogravado",
+              }
+            : {}),
+        };
+
         await supabase
           .from("aline_conversations")
           .update({
             followup_count: followupNumber,
             last_message_at: new Date().toISOString(),
+            current_node: conversation.current_node || `${agentSlug}_followup_resgate`,
+            collected_data: followupData,
           })
           .eq("id", conversation.id);
 
         await supabase.from("aline_messages").insert({
           conversation_id: conversation.id,
-          role: (conversation.active_agent || "aline") as AgentSlug,
+          role: agentSlug,
           message,
-          node: conversation.current_node,
+          node: conversation.current_node || `${agentSlug}_followup_resgate`,
         });
 
         if (crmConversation?.id) {

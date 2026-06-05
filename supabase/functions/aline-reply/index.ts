@@ -1515,9 +1515,11 @@ function customerDoesNotKnowSize(text: string): boolean {
 
 function detectCatalogResendIntent(text: string): boolean {
   const normalized = normalizeText(text);
-  const asksToSend = /(envia|enviar|mande|manda|manda ai|mostra|mostrar|quero ver|me manda|me mande|me envia|sim.*modelos|pode.*modelos)/.test(normalized);
+  const asksToSend = /(envia|enviar|reenviar|reenvia|mande|manda|manda ai|manda de novo|mande de novo|envia de novo|me manda de novo|mostra|mostrar|mostra de novo|quero ver|quero rever|me manda|me mande|me envia|sim.*modelos|pode.*modelos)/.test(normalized);
   const mentionsCatalog = /(modelo|modelos|opcao|opcoes|catalogo|alianca|aliancas|pingente|pingentes|oculos|armacao)/.test(normalized);
-  return asksToSend && mentionsCatalog;
+  const asksAgain = /(de novo|novamente|outra vez|reenviar|reenvia|reenviar os cards|cards de novo|manda os cards|mande os cards)/.test(normalized);
+  const mentionsCards = /(card|cards|foto|fotos|imagem|imagens)/.test(normalized);
+  return (asksToSend && mentionsCatalog) || (asksAgain && (mentionsCatalog || mentionsCards));
 }
 
 function detectMoreOptionsIntent(text: string): boolean {
