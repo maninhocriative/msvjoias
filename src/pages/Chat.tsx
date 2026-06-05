@@ -451,11 +451,11 @@ const ChatComposer = memo(function ChatComposer({
   return (
     <div className="space-y-2">
       {pendingAttachments.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto rounded-2xl border border-white/8 bg-slate-950/70 px-3 py-2">
+        <div className="flex gap-2 overflow-x-auto rounded-lg bg-[#111b21] px-3 py-2">
           {pendingAttachments.map((attachment) => (
             <div
               key={attachment.id}
-              className="relative flex w-28 shrink-0 flex-col gap-1 overflow-hidden rounded-xl border border-white/10 bg-slate-900/90 p-2"
+              className="relative flex w-28 shrink-0 flex-col gap-1 overflow-hidden rounded-lg bg-[#202c33] p-2"
             >
               <button
                 type="button"
@@ -466,7 +466,7 @@ const ChatComposer = memo(function ChatComposer({
                 <X className="h-3 w-3" />
               </button>
 
-              <div className="grid h-16 place-items-center overflow-hidden rounded-lg bg-slate-950/70">
+              <div className="grid h-16 place-items-center overflow-hidden rounded-md bg-[#111b21]">
                 {attachment.messageType === 'image' && attachment.previewUrl ? (
                   <img
                     src={attachment.previewUrl}
@@ -507,7 +507,7 @@ const ChatComposer = memo(function ChatComposer({
           aria-label="Anexar arquivos"
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled}
-          className="grid h-10 w-10 place-items-center rounded-full text-slate-400 transition-colors hover:bg-white/5 hover:text-emerald-300 disabled:cursor-not-allowed disabled:opacity-40"
+          className="grid h-10 w-10 place-items-center rounded-full text-slate-300 transition-colors hover:bg-white/8 hover:text-[#00a884] disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Paperclip className="w-5 h-5" />
         </button>
@@ -517,13 +517,13 @@ const ChatComposer = memo(function ChatComposer({
           aria-label="Preparar captura de tela"
           onClick={onCaptureScreenshot}
           disabled={disabled}
-          className="hidden sm:grid h-10 w-10 place-items-center rounded-full text-slate-400 transition-colors hover:bg-white/5 hover:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40"
+          className="hidden sm:grid h-10 w-10 place-items-center rounded-full text-slate-300 transition-colors hover:bg-white/8 hover:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Camera className="w-5 h-5" />
         </button>
       </div>
 
-      <div className="flex-1 min-w-0 rounded-3xl border border-white/8 bg-slate-900/85 px-4 py-2 shadow-inner shadow-black/20 focus-within:border-emerald-400/25">
+      <div className="flex-1 min-w-0 rounded-lg bg-[#2a3942] px-4 py-2 focus-within:ring-1 focus-within:ring-[#00a884]/35">
         <textarea
           ref={textareaRef}
           value={draft}
@@ -552,7 +552,7 @@ const ChatComposer = memo(function ChatComposer({
           placeholder={pendingAttachments.length > 0 ? 'Adicione uma legenda ou envie o anexo' : 'Digite uma mensagem'}
           disabled={disabled}
           rows={1}
-          className="block max-h-[120px] min-h-[24px] w-full resize-none bg-transparent text-[15px] leading-6 text-slate-100 outline-none placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-60"
+          className="block max-h-[120px] min-h-[24px] w-full resize-none bg-transparent text-[15px] leading-6 text-slate-100 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed disabled:opacity-60"
         />
       </div>
 
@@ -560,7 +560,7 @@ const ChatComposer = memo(function ChatComposer({
         <button
           type="submit"
           aria-label="Enviar mensagem"
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-emerald-500 text-white transition-colors hover:bg-emerald-400"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#00a884] text-[#111b21] transition-colors hover:bg-[#06cf9c]"
         >
           <Send className="w-4 h-4" />
         </button>
@@ -569,7 +569,7 @@ const ChatComposer = memo(function ChatComposer({
           type="button"
           aria-label="Gravar áudio"
           onClick={onStartRecording}
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-slate-900/85 text-slate-300 transition-colors hover:bg-white/5 hover:text-emerald-300"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#00a884] text-[#111b21] transition-colors hover:bg-[#06cf9c]"
         >
           <Mic className="w-5 h-5" />
         </button>
@@ -2851,19 +2851,19 @@ const Chat = () => {
   const hasActiveFilters = filterStatus !== 'all' || filterAttendant !== 'all';
 
   return (
-    <div className="h-full min-h-0 min-w-0 flex bg-[#0d1117] overflow-hidden">
+    <div className="h-full min-h-0 min-w-0 flex bg-[#0b141a] overflow-hidden">
       <div
         className={cn(
-          'flex flex-col shrink-0 min-h-0 border-r border-white/5 bg-slate-950 overflow-x-hidden',
-          'w-full md:w-[400px] lg:w-[460px] xl:w-[500px] 2xl:w-[540px]',
+          'flex flex-col shrink-0 min-h-0 border-r border-[#2a3942] bg-[#111b21] overflow-x-hidden',
+          'w-full md:w-[390px] lg:w-[430px] xl:w-[460px] 2xl:w-[500px]',
           selectedConversation ? 'hidden md:flex' : 'flex',
         )}
       >
-        <div className="px-3 py-2.5 sm:px-4 sm:py-3 border-b border-white/5 shrink-0">
+        <div className="px-3 py-3 border-b border-[#2a3942] shrink-0 bg-[#202c33]">
           <div className="flex items-center justify-between mb-2.5 sm:mb-3">
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="relative shrink-0">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-full bg-[#00a884] flex items-center justify-center">
                   <MessageCircle className="w-[18px] h-[18px] text-white" />
                 </div>
 
@@ -2875,10 +2875,10 @@ const Chat = () => {
               </div>
 
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-white leading-tight truncate">
+                <p className="text-[15px] font-medium text-slate-100 leading-tight truncate">
                   Chat CRM
                 </p>
-                <p className="text-[10px] text-slate-500 truncate">
+                <p className="text-[11px] text-slate-400 truncate">
                   {conversations.length} conversas
                 </p>
               </div>
@@ -2887,14 +2887,14 @@ const Chat = () => {
             <button
               onClick={() => fetchConversations(true)}
               disabled={refreshing}
-              className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition-colors shrink-0"
+              className="p-2 rounded-full text-slate-400 hover:text-white hover:bg-white/8 transition-colors shrink-0"
             >
               <RefreshCw className={cn('w-3.5 h-3.5', refreshing && 'animate-spin')} />
             </button>
           </div>
 
           {onlineSellers.length > 0 && (
-            <div className="flex items-center gap-2 mb-2.5 sm:mb-3 px-2.5 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+            <div className="flex items-center gap-2 mb-2.5 sm:mb-3 px-2.5 py-1.5 bg-[#111b21] rounded-lg">
               <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse shrink-0" />
               <span className="text-[11px] text-emerald-400 font-medium shrink-0">
                 {onlineSellers.length} online
@@ -2912,7 +2912,7 @@ const Chat = () => {
                           )
                         : toast({ title: 'Selecione uma conversa primeiro' })
                     }
-                    className="flex-none flex items-center gap-1 px-2 py-0.5 bg-slate-800/60 rounded-full border border-white/5 hover:border-emerald-500/40 transition-colors"
+                    className="flex-none flex items-center gap-1 px-2 py-0.5 bg-[#2a3942] rounded-full hover:bg-[#33444f] transition-colors"
                   >
                     <div className="w-4 h-4 rounded-full bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center text-white text-[9px] font-bold">
                       {(seller.full_name || 'V').charAt(0)}
@@ -2927,12 +2927,12 @@ const Chat = () => {
           )}
 
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-600" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
             <Input
               placeholder="Buscar conversa..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 h-9 bg-slate-800/60 border-white/5 text-sm text-white placeholder:text-slate-600 focus-visible:ring-emerald-500/40 rounded-lg"
+              className="pl-9 h-9 bg-[#111b21] border-transparent text-sm text-slate-100 placeholder:text-slate-500 focus-visible:ring-[#00a884]/40 rounded-lg"
             />
             {searchTerm && (
               <button
@@ -2945,11 +2945,11 @@ const Chat = () => {
           </div>
         </div>
 
-        <div className="px-2 py-2 md:px-3 md:py-3 border-b border-white/5 shrink-0 bg-slate-950/80">
-          <div className="rounded-xl border border-white/5 bg-slate-900/45 p-2.5 md:p-3 space-y-2 md:space-y-3">
+        <div className="px-3 py-2 border-b border-[#2a3942] shrink-0 bg-[#111b21]">
+          <div className="space-y-2">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                <p className="text-[10px] font-semibold uppercase text-slate-500">
                   Filtros
                 </p>
                 <p className="text-[11px] text-slate-400 mt-1">
@@ -2966,7 +2966,7 @@ const Chat = () => {
                       setFilterStatus('all');
                       setFilterAttendant('all');
                     }}
-                    className="px-2 py-1 rounded-lg border border-white/5 bg-slate-800/70 text-[10px] font-medium text-slate-400 hover:text-white hover:border-white/10 transition-colors"
+                    className="px-2 py-1 rounded-full bg-[#202c33] text-[10px] font-medium text-slate-400 hover:text-white transition-colors"
                   >
                     Limpar
                   </button>
@@ -2974,7 +2974,7 @@ const Chat = () => {
 
                 <button
                   onClick={() => setMobileFiltersOpen((prev) => !prev)}
-                  className="md:hidden px-2 py-1 rounded-lg border border-white/5 bg-slate-800/70 text-[10px] font-semibold text-slate-300 hover:text-white hover:border-white/10 transition-colors"
+                  className="md:hidden px-2 py-1 rounded-full bg-[#202c33] text-[10px] font-semibold text-slate-300 hover:text-white transition-colors"
                 >
                   {mobileFiltersOpen ? 'Ocultar' : 'Filtros'}
                 </button>
@@ -2987,7 +2987,7 @@ const Chat = () => {
                 Status
               </p>
 
-              <div className="grid grid-cols-2 xl:grid-cols-3 gap-1.5">
+              <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-hide">
                 {statusFilters.map(({ key, label, color }) => {
                   const active = filterStatus === key;
 
@@ -2996,10 +2996,10 @@ const Chat = () => {
                       key={key}
                       onClick={() => setFilterStatus(key)}
                       className={cn(
-                        'w-full min-w-0 rounded-xl border px-3 py-2 transition-all text-left',
+                        'min-w-fit rounded-full px-3 py-1.5 transition-colors text-left',
                         active
-                          ? 'border-emerald-500/35 bg-emerald-500/14 text-white shadow-[0_0_0_1px_rgba(16,185,129,0.08)]'
-                          : 'border-white/5 bg-slate-800/45 text-slate-400 hover:text-slate-200 hover:border-white/10',
+                          ? 'bg-[#00a884] text-[#111b21]'
+                          : 'bg-[#202c33] text-slate-400 hover:text-slate-200',
                       )}
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -3007,7 +3007,7 @@ const Chat = () => {
                           <span
                             className={cn(
                               'w-1.5 h-1.5 rounded-full shrink-0',
-                              active ? 'bg-emerald-300' : color,
+                              active ? 'bg-[#111b21]' : color,
                             )}
                           />
                           <span className="truncate text-[10px] sm:text-[11px] font-medium">
@@ -3019,7 +3019,7 @@ const Chat = () => {
                           className={cn(
                             'shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
                             active
-                              ? 'bg-white/12 text-white'
+                              ? 'bg-[#111b21]/10 text-[#111b21]'
                               : 'bg-white/5 text-slate-500',
                           )}
                         >
@@ -3076,10 +3076,10 @@ const Chat = () => {
                         setFilterAttendant((prev) => (prev === key ? 'all' : key))
                       }
                       className={cn(
-                        'w-full min-w-0 rounded-xl border px-3 py-2 transition-all text-left',
+                        'w-full min-w-0 rounded-full px-3 py-1.5 transition-colors text-left',
                         active
                           ? activeClass
-                          : 'border-white/5 bg-slate-800/45 text-slate-400 hover:text-slate-200 hover:border-white/10',
+                          : 'bg-[#202c33] text-slate-400 hover:text-slate-200',
                       )}
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -3126,7 +3126,7 @@ const Chat = () => {
               </p>
             </div>
           ) : (
-            <div className="space-y-1.5 px-2 pb-20 md:space-y-2 md:pb-3">
+            <div className="pb-20 md:pb-3">
               {filteredConversations.map((conv) => (
                 <ConversationItem
                   key={conv.id}
@@ -3153,7 +3153,7 @@ const Chat = () => {
           <>
             <div
               className={cn(
-                'px-4 border-b border-white/5 flex flex-col justify-center bg-slate-950/90 backdrop-blur-xl shrink-0 gap-0',
+                'px-4 border-b border-[#2a3942] flex flex-col justify-center bg-[#202c33] shrink-0 gap-0',
                 isSaleFinalized || selectedNeedsHumanAttention ? 'h-auto py-2' : 'h-14',
               )}
             >
@@ -3188,7 +3188,7 @@ const Chat = () => {
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   <button
-                    className="md:hidden shrink-0 p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition-colors"
+                    className="md:hidden shrink-0 p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-white/8 transition-colors"
                     onClick={() => setSelectedConversation(null)}
                   >
                     <ArrowLeft className="w-4 h-4" />
@@ -3230,7 +3230,7 @@ const Chat = () => {
 
                     <span
                       className={cn(
-                        'absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-slate-950',
+                        'absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-[#202c33]',
                         currentAgentDotClass,
                       )}
                     />
@@ -3294,10 +3294,10 @@ const Chat = () => {
                     onClick={handleFinalizeSale}
                     disabled={finalizingSale}
                     className={cn(
-                      'hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all',
+                      'hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-semibold transition-all',
                       isSaleFinalized
                         ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30'
-                        : 'bg-slate-800/80 text-slate-400 border border-white/5 hover:bg-emerald-500/10 hover:text-emerald-400 hover:border-emerald-500/20',
+                        : 'bg-[#111b21] text-slate-400 hover:bg-[#2a3942] hover:text-emerald-400',
                       finalizingSale && 'opacity-50 cursor-not-allowed',
                     )}
                   >
@@ -3325,14 +3325,14 @@ const Chat = () => {
 
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <button className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition-colors">
+                      <button className="p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-white/8 transition-colors">
                         <MoreVertical className="w-4 h-4" />
                       </button>
                     </DropdownMenuTrigger>
 
                     <DropdownMenuContent
                       align="end"
-                      className="w-52 bg-slate-800 border-white/10"
+                      className="w-52 bg-[#233138] border-[#2a3942]"
                     >
                       <div className="sm:hidden px-2 py-1.5 border-b border-white/10">
                         <LeadStatusSelect
@@ -3498,7 +3498,7 @@ const Chat = () => {
               </div>
             </div>
 
-            <div className="px-4 py-3 bg-slate-950/95 border-t border-white/5 shrink-0">
+            <div className="px-4 py-3 bg-[#202c33] border-t border-[#2a3942] shrink-0">
               <div className="max-w-5xl xl:max-w-6xl mx-auto">
                 {isRecording && (
                   <div className="flex items-center justify-between mb-2 px-3 py-2 bg-rose-500/10 border border-rose-500/20 rounded-lg">

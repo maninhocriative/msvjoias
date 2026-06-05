@@ -1,6 +1,6 @@
 import { memo, type CSSProperties } from 'react';
 import { cn } from '@/lib/utils';
-import { Bot, Crown, Glasses, UserCheck, Instagram, Clock, Sparkles } from 'lucide-react';
+import { Bot, Crown, Glasses, UserCheck, Instagram, Sparkles } from 'lucide-react';
 import type { Conversation, LeadStatus } from '@/lib/supabase';
 
 interface CustomerProfile {
@@ -247,12 +247,12 @@ const ConversationItem = memo(
       <button
         onClick={onClick}
         className={cn(
-          'w-full min-w-0 px-3 py-2.5 sm:px-3.5 sm:py-3 flex items-start gap-2.5 sm:gap-3 text-left transition-all relative group rounded-2xl border shadow-[0_18px_42px_-36px_rgba(15,23,42,0.9)]',
+          'w-full min-w-0 px-3 py-2.5 flex items-start gap-3 text-left transition-colors relative group border-b border-white/[0.06]',
           isSelected
-            ? 'border-emerald-500/35 bg-[linear-gradient(160deg,rgba(16,185,129,0.16),rgba(15,23,42,0.92))] ring-1 ring-emerald-500/20'
-            : 'border-white/[0.06] bg-slate-900/55 hover:bg-slate-900/75 hover:border-white/12',
-          isSaleFinalized && !isSelected && 'bg-emerald-500/[0.05]',
-          needsHumanAttention && 'border-emerald-400/40 ring-1 ring-emerald-400/20',
+            ? 'bg-[#2a3942]'
+            : 'bg-transparent hover:bg-[#202c33]',
+          isSaleFinalized && !isSelected && 'bg-emerald-500/[0.035]',
+          needsHumanAttention && 'bg-emerald-500/[0.08]',
         )}
       >
         <div className="relative shrink-0 mt-0.5">
@@ -260,13 +260,13 @@ const ConversationItem = memo(
             <img
               src={customerProfile.profile_pic_url}
               alt={displayName}
-              className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl object-cover ring-1 ring-white/10"
+              className="w-12 h-12 rounded-full object-cover ring-1 ring-white/10"
               loading="lazy"
             />
           ) : (
             <div
               className={cn(
-                'w-10 h-10 sm:w-11 sm:h-11 rounded-2xl flex items-center justify-center text-sm font-bold text-white ring-1 ring-white/10 shadow-[0_16px_30px_-18px_rgba(15,23,42,0.8)]',
+                'w-12 h-12 rounded-full flex items-center justify-center text-base font-semibold text-white ring-1 ring-white/10',
                 isInstagram
                   ? 'bg-gradient-to-br from-fuchsia-500 to-orange-400'
                   : agentMeta.avatarClass,
@@ -278,7 +278,7 @@ const ConversationItem = memo(
 
           <span
             className={cn(
-              'absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-slate-950 flex items-center justify-center shadow-sm',
+              'absolute bottom-0 right-0 w-4 h-4 rounded-full border-2 border-[#111b21] flex items-center justify-center shadow-sm',
               agentMeta.dotClass,
             )}
           >
@@ -287,11 +287,11 @@ const ConversationItem = memo(
         </div>
 
         <div className="flex-1 min-w-0 w-full">
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 mb-1">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
             <p
               title={displayName}
               className={cn(
-                'text-[13px] font-semibold leading-tight min-w-0 truncate tracking-[0.01em]',
+                'text-[14px] font-medium leading-5 min-w-0 truncate',
                 hasUnread ? 'text-white' : 'text-slate-300',
               )}
             >
@@ -299,23 +299,40 @@ const ConversationItem = memo(
             </p>
 
             <div className="flex items-center gap-1.5 shrink-0">
-              {hasUnread && (
-                <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-emerald-500 text-white text-[9px] font-bold flex items-center justify-center">
-                  {(conv.unread_count ?? 0) > 99 ? '99+' : conv.unread_count}
-                </span>
-              )}
-
-              <span className="text-[10px] text-slate-500 leading-tight flex items-center gap-1 rounded-full bg-white/[0.03] px-2 py-1">
-                <Clock className="w-2.5 h-2.5" />
+              <span
+                className={cn(
+                  'text-[11px] leading-5',
+                  hasUnread ? 'text-[#00a884]' : 'text-slate-500',
+                )}
+              >
                 {formatTime(lastMsgTime)}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-x-1.5 gap-y-1 mb-1 flex-wrap">
+          <div className="mt-0.5 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+            <p
+              title={previewText}
+              style={twoLineClamp}
+              className={cn(
+                'text-[12px] leading-[1.35] break-words min-h-0 pr-1',
+                hasUnread ? 'text-slate-200' : 'text-slate-500',
+              )}
+            >
+              {previewText}
+            </p>
+
+            {hasUnread && (
+              <span className="mt-0.5 min-w-[20px] h-5 px-1.5 rounded-full bg-[#00a884] text-[#111b21] text-[10px] font-bold flex items-center justify-center">
+                {(conv.unread_count ?? 0) > 99 ? '99+' : conv.unread_count}
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-x-1.5 gap-y-1 mt-1.5 flex-wrap">
             <span
               className={cn(
-                'inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium border border-white/8',
+                'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium',
                 statusCfg.bg,
                 statusCfg.text,
               )}
@@ -325,7 +342,7 @@ const ConversationItem = memo(
             </span>
 
             {isHumanTakeover && hasAssignedSeller ? (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium bg-amber-500/15 text-amber-300 border border-amber-500/20 max-w-full">
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-amber-500/15 text-amber-300 max-w-full">
                 <span className="w-3.5 h-3.5 rounded-full bg-amber-500 text-amber-950 text-[8px] font-bold flex items-center justify-center shrink-0">
                   {sellerInitial}
                 </span>
@@ -335,7 +352,7 @@ const ConversationItem = memo(
               </span>
             ) : (
               <span className={cn(
-                'inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium border border-white/8',
+                'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium',
                 agentMeta.badgeClass,
               )}>
                 <AgentIcon className="w-2.5 h-2.5 shrink-0" />
@@ -343,33 +360,33 @@ const ConversationItem = memo(
               </span>
             )}
             {needsHumanAttention && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-[0.02em] bg-emerald-500/20 text-emerald-200 border border-emerald-400/40 shadow-[0_0_20px_rgba(16,185,129,0.45)] animate-pulse">
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-[#00a884]/20 text-emerald-100 animate-pulse">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 shrink-0" />
-                Precisa atendimento humano
+                Humano
               </span>
             )}
             {stageMeta && (
-              <span className={cn('inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold border', stageMeta.className)}>
+              <span className={cn('inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold', stageMeta.className)}>
                 <Sparkles className="w-2.5 h-2.5 shrink-0" />
                 {stageMeta.label}
               </span>
             )}
             {isInstagram && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/15">
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-fuchsia-500/10 text-fuchsia-400">
                 <Instagram className="w-2.5 h-2.5 shrink-0" />
                 IG
               </span>
             )}
 
             {contactPresenceLabel && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/15">
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-emerald-500/10 text-emerald-300">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
                 {contactPresenceLabel}
               </span>
             )}
 
             {hasActiveAttendant && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 max-w-full">
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-emerald-500/10 text-emerald-300 max-w-full">
                 <span className="relative flex h-2 w-2 shrink-0">
                   <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-70 animate-ping" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-300" />
@@ -380,17 +397,6 @@ const ConversationItem = memo(
               </span>
             )}
           </div>
-
-          <p
-            title={previewText}
-            style={twoLineClamp}
-            className={cn(
-              'text-[11px] leading-[1.45] break-words min-h-0 sm:min-h-[2.1rem] pr-1',
-              hasUnread ? 'text-slate-300' : 'text-slate-500',
-            )}
-          >
-            {previewText}
-          </p>
         </div>
       </button>
     );
