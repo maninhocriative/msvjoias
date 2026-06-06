@@ -40,6 +40,136 @@ function getMedia(message: any): { type: string; url: string | null } {
   return { type, url };
 }
 
+async function fetchInstagramProfile(senderId: string): Promise<string | null> {
+  const accessToken = Deno.env.get("INSTAGRAM_ACCESS_TOKEN");
+  if (!accessToken) return null;
+
+  try {
+    const response = await fetch(
+      `https://graph.facebook.com/v20.0/${senderId}?fields=name,username&access_token=${encodeURIComponent(accessToken)}`,
+    );
+    if (!response.ok) return null;
+
+    const profile = await response.json();
+    return asString(profile?.name) || asString(profile?.username) || null;
+  } catch (error) {
+    console.warn("[INSTAGRAM-WEBHOOK] Nao foi possivel buscar perfil:", error);
+    return null;
+  }
+}
+
+async function sendInstagramText(recipientId: string, text: string) {
+  const accessToken = Deno.env.get("INSTAGRAM_ACCESS_TOKEN");
+  const senderAccountId =
+    Deno.env.get("INSTAGRAM_BUSINESS_ACCOUNT_ID") ||
+    Deno.env.get("INSTAGRAM_PAGE_ID") ||
+    "me";
+
+  if (!accessToken) {
+    return { success: false, messageId: null, error: "INSTAGRAM_ACCESS_TOKEN not configured" };
+  }
+
+  const response = await fetch(
+    `https://graph.facebook.com/v20.0/${senderAccountId}/messages?access_token=${encodeURIComponent(accessToken)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        recipient: { id: recipientId },
+        message: { text },
+      }),
+    },
+  );
+
+  const result = await response.json().catch(() => null);
+  return {
+    success: response.ok && !!result?.message_id,
+    messageId: result?.message_id || null,
+    error: response.ok ? null : result,
+  };
+}
+
+async function runAgentAndReply(args: {
+  supabase: any;
+  supabaseUrl: string;
+  supabaseKey: string;
+  senderId: string;
+  conversationId: string;
+  contactNumber: string;
+  contactName: string;
+  message: string;
+  messageType: string;
+  mediaUrl: string | null;
+}) {
+  const messageForAgent =
+    args.message ||
+    (args.messageType === "image"
+      ? "[imagem recebida]"
+      : args.messageType === "video"
+        ? "[video recebido]"
+        : args.messageType === "audio"
+          ? "[audio recebido]"
+          : args.messageType !== "text"
+            ? `[${args.messageType} recebido]`
+            : "");
+
+  if (!messageForAgent) return { skipped: true, reason: "empty_agent_message" };
+
+  const agentResponse = await fetch(`${args.supabaseUrl}/functions/v1/aline-reply`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${args.supabaseKey}`,
+    },
+    body: JSON.stringify({
+      phone: args.contactNumber,
+      message: messageForAgent,
+      contact_name: args.contactName,
+      media_type: args.messageType,
+      media_url: args.mediaUrl,
+      platform: "instagram",
+      isInstagram: true,
+    }),
+  });
+
+  if (!agentResponse.ok) {
+    const errorText = await agentResponse.text();
+    throw new Error(`aline-reply failed: ${agentResponse.status} - ${errorText}`);
+  }
+
+  const data = await agentResponse.json();
+  if (data?.skipped) return { skipped: true, reason: data.reason || "agent_skipped" };
+
+  const text = asString(data?.mensagem_whatsapp) || asString(data?.response);
+  if (!text) return { skipped: true, reason: "empty_agent_response" };
+
+  const sendResult = await sendInstagramText(args.senderId, text);
+  if (!sendResult.success) {
+    console.error("[INSTAGRAM-WEBHOOK] Falha ao enviar resposta:", sendResult.error);
+    return { sent: false, error: sendResult.error };
+  }
+
+  await args.supabase.from("messages").insert({
+    conversation_id: args.conversationId,
+    content: text,
+    message_type: "text",
+    is_from_me: true,
+    status: "sent",
+    zapi_message_id: `instagram:${sendResult.messageId}`,
+  });
+
+  await args.supabase
+    .from("conversations")
+    .update({
+      last_message: text.substring(0, 100),
+      last_message_at: new Date().toISOString(),
+      unread_count: 0,
+    })
+    .eq("id", args.conversationId);
+
+  return { sent: true, message_id: sendResult.messageId };
+}
+
 async function storeInstagramMessage(supabase: any, event: any) {
   const senderId = asString(event?.sender?.id);
   const message = event?.message;
@@ -50,7 +180,7 @@ async function storeInstagramMessage(supabase: any, event: any) {
 
   const mid = asString(message?.mid) || `ig:${senderId}:${event?.timestamp || Date.now()}`;
   const contactNumber = `ig:${senderId}`;
-  const contactName = `Instagram ${senderId}`;
+  const contactName = (await fetchInstagramProfile(senderId)) || `Instagram ${senderId}`;
   const text = getMessageText(message);
   const media = getMedia(message);
   const content = text || (media.type !== "text" ? `[${media.type}]` : "");
@@ -124,7 +254,17 @@ async function storeInstagramMessage(supabase: any, event: any) {
 
   if (messageError) throw messageError;
 
-  return { stored: true, conversation_id: conversationId, message_id: storedMessage.id };
+  return {
+    stored: true,
+    conversation_id: conversationId,
+    message_id: storedMessage.id,
+    sender_id: senderId,
+    contact_number: contactNumber,
+    contact_name: contactName,
+    content,
+    message_type: media.type,
+    media_url: media.url,
+  };
 }
 
 serve(async (req) => {
@@ -155,7 +295,24 @@ serve(async (req) => {
 
     for (const entry of body?.entry || []) {
       for (const event of entry?.messaging || []) {
-        results.push(await storeInstagramMessage(supabase, event));
+        const stored = await storeInstagramMessage(supabase, event);
+        if (stored?.stored) {
+          const agent = await runAgentAndReply({
+            supabase,
+            supabaseUrl,
+            supabaseKey,
+            senderId: stored.sender_id,
+            conversationId: stored.conversation_id,
+            contactNumber: stored.contact_number,
+            contactName: stored.contact_name,
+            message: stored.content,
+            messageType: stored.message_type,
+            mediaUrl: stored.media_url,
+          });
+          results.push({ ...stored, agent });
+        } else {
+          results.push(stored);
+        }
       }
     }
 
