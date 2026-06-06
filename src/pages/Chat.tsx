@@ -474,13 +474,13 @@ const ChatComposer = memo(function ChatComposer({
     textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
   }, [draft]);
 
-  const handleSubmit = async (event?: React.FormEvent) => {
+  const handleSubmit = (event?: React.FormEvent) => {
     event?.preventDefault();
     if (!canSend) return;
 
     const messageText = draft;
     setDraft('');
-    await onSendMessage(messageText);
+    void onSendMessage(messageText);
   };
 
   return (
@@ -2322,64 +2322,42 @@ const Chat = () => {
         };
       });
 
-      const uploadedAttachments = await Promise.allSettled(
-        optimisticEntries.map(async (entry) => ({
-          tempId: entry.tempId,
-          attachment: await uploadAttachmentFile(entry.file, entry.messageType, conversation.id),
-        })),
-      );
+      await Promise.allSettled(
+        optimisticEntries.map(async (entry) => {
+          try {
+            const attachment = await uploadAttachmentFile(
+              entry.file,
+              entry.messageType,
+              conversation.id,
+            );
 
-      const successfulUploads = uploadedAttachments.flatMap((result, index) => {
-        if (result.status === 'fulfilled') {
-          return [result.value];
-        }
+            await invokeAutomationSend({
+              attachments: [attachment],
+            }, conversation);
 
-        markOptimisticFailed(optimisticEntries[index].tempId);
-        return [];
-      });
-
-      if (!successfulUploads.length) {
-        toast({
-          title: 'Erro',
-          description: 'Nao foi possivel enviar os arquivos selecionados.',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      try {
-        await invokeAutomationSend({
-          attachments: successfulUploads.map((item) => item.attachment),
-        }, conversation);
-
-        setTimeout(() => {
-          removeOptimisticMessages(successfulUploads.map((item) => item.tempId));
-          optimisticEntries
-            .filter((entry) =>
-              successfulUploads.some((item) => item.tempId === entry.tempId),
-            )
-            .forEach((entry) => {
+            setTimeout(() => {
+              removeOptimisticMessages([entry.tempId]);
               if (entry.localPreviewUrl) URL.revokeObjectURL(entry.localPreviewUrl);
-            });
-        }, 300);
-
-        if (successfulUploads.length !== files.length) {
+            }, 300);
+          } catch (error) {
+            markOptimisticFailed(entry.tempId);
+            if (entry.localPreviewUrl) URL.revokeObjectURL(entry.localPreviewUrl);
+            throw error;
+          }
+        }),
+      ).then((results) => {
+        const failedCount = results.filter((result) => result.status === 'rejected').length;
+        if (failedCount > 0) {
           toast({
-            title: 'Envio parcial',
-            description: `${successfulUploads.length} de ${files.length} arquivo(s) foram enviados.`,
+            title: failedCount === files.length ? 'Erro' : 'Envio parcial',
+            description:
+              failedCount === files.length
+                ? 'Nao foi possivel enviar os arquivos selecionados.'
+                : `${files.length - failedCount} de ${files.length} arquivo(s) foram enviados.`,
+            variant: failedCount === files.length ? 'destructive' : undefined,
           });
         }
-      } catch (error) {
-        successfulUploads.forEach((item) => markOptimisticFailed(item.tempId));
-        toast({
-          title: 'Erro',
-          description:
-            error instanceof Error
-              ? error.message
-              : 'Nao foi possivel enviar os arquivos.',
-          variant: 'destructive',
-        });
-      }
+      });
     },
     [
       addOptimisticMessage,
