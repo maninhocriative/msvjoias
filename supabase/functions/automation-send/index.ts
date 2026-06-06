@@ -203,7 +203,10 @@ async function sendViaInstagram(
     return { text: content || "" };
   };
 
-  const sendToEndpoint = async (accountId: string) =>
+  const sendToEndpoint = async (
+    accountId: string,
+    messagingType: "RESPONSE" | "MESSAGE_TAG",
+  ) =>
     fetch(`https://graph.instagram.com/v20.0/${accountId}/messages`, {
       method: "POST",
       headers: {
@@ -211,16 +214,24 @@ async function sendViaInstagram(
         Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
-        messaging_type: "RESPONSE",
+        messaging_type: messagingType,
+        ...(messagingType === "MESSAGE_TAG" ? { tag: "HUMAN_AGENT" } : {}),
         recipient: { id: cleanRecipientId },
         message: buildMessage(),
       }),
     });
 
   try {
-    let response = await sendToEndpoint(senderAccountId);
+    let response = await sendToEndpoint(senderAccountId, "RESPONSE");
     if (!response.ok && senderAccountId !== "me") {
-      response = await sendToEndpoint("me");
+      response = await sendToEndpoint("me", "RESPONSE");
+    }
+
+    if (!response.ok) {
+      response = await sendToEndpoint(senderAccountId, "MESSAGE_TAG");
+      if (!response.ok && senderAccountId !== "me") {
+        response = await sendToEndpoint("me", "MESSAGE_TAG");
+      }
     }
 
     const result = await readResponseBody(response);
@@ -692,7 +703,10 @@ serve(async (req) => {
       );
     }
 
-    const normalizedPhone = String(phone).replace(/\D/g, "");
+    const effectivePlatform = String(platform || "whatsapp").toLowerCase().startsWith("instagram")
+      ? "instagram"
+      : String(platform || "whatsapp").toLowerCase();
+    const normalizedPhone = String(phone).replace(/^ig:/i, "").replace(/\D/g, "");
     const hasZapi = !!(zapiInstanceId && zapiToken);
     const preferZapi = prefer_zapi === true;
 
@@ -701,7 +715,7 @@ serve(async (req) => {
       supabase,
       rawConversationId,
       normalizedPhone,
-      platform,
+      effectivePlatform,
       fallbackPreview,
     );
 
@@ -794,7 +808,7 @@ serve(async (req) => {
       errors: [],
     };
     const sequenceLeaseResult =
-      hasZapi && zapiInstanceId && zapiToken
+      effectivePlatform !== "instagram" && hasZapi && zapiInstanceId && zapiToken
         ? await acquireZapiGovernorLease(supabase, {
             lane: "manual",
             bypassBurstLimit: true,
@@ -827,7 +841,7 @@ serve(async (req) => {
           zapiInstanceId,
           zapiToken,
           zapiClientToken,
-          platform,
+          platform: effectivePlatform,
           messageId: introMessageId,
         });
 
@@ -888,7 +902,7 @@ serve(async (req) => {
           zapiInstanceId,
           zapiToken,
           zapiClientToken,
-          platform,
+          platform: effectivePlatform,
           messageId: storedMessageId,
         });
 
@@ -915,6 +929,18 @@ serve(async (req) => {
         .from("conversations")
         .update({ last_message: `[Catalogo: ${products.length} produtos]` })
         .eq("id", conversationId);
+
+      if (results.forwarded === 0 && results.errors.length > 0) {
+        return new Response(
+          JSON.stringify({
+            error: results.errors.join("; "),
+            mode: "catalog",
+            message_ids: results.messages,
+            conversation_id: conversationId,
+          }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
 
       return new Response(
         JSON.stringify({
@@ -966,7 +992,7 @@ serve(async (req) => {
           zapiInstanceId,
           zapiToken,
           zapiClientToken,
-          platform,
+          platform: effectivePlatform,
           messageId: storedMessageId,
         });
 
@@ -1001,6 +1027,18 @@ serve(async (req) => {
         .from("conversations")
         .update({ last_message: lastPreview })
         .eq("id", conversationId);
+
+      if (results.forwarded === 0 && results.errors.length > 0) {
+        return new Response(
+          JSON.stringify({
+            error: results.errors.join("; "),
+            mode: "attachments",
+            message_ids: results.messages,
+            conversation_id: conversationId,
+          }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
 
       return new Response(
         JSON.stringify({
@@ -1044,7 +1082,7 @@ serve(async (req) => {
       zapiInstanceId,
       zapiToken,
       zapiClientToken,
-      platform,
+      platform: effectivePlatform,
       messageId: storedMessageId,
     });
 
@@ -1058,6 +1096,19 @@ serve(async (req) => {
         .from("conversations")
         .update({ last_message: buildConversationPreview(outgoingMessage, outgoingMessageType) })
         .eq("id", conversationId);
+    }
+
+    if (!sendResult.forwarded && sendResult.error) {
+      return new Response(
+        JSON.stringify({
+          error: sendResult.error,
+          mode: replace_message_id ? "edit" : "single",
+          message_id: storedMessageId,
+          conversation_id: conversationId,
+          forwarded: false,
+        }),
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     return new Response(
