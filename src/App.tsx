@@ -37,6 +37,8 @@ import ImportarLeads from "./pages/ImportarLeads";
 import Influencers from "./pages/Influencers";
 import NotFound from "./pages/NotFound";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
+import TermsOfService from "./pages/TermsOfService";
+import DataDeletion from "./pages/DataDeletion";
 
 const queryClient = new QueryClient();
 
@@ -56,6 +58,8 @@ const App = () => (
               <Route path="/nomenclatura" element={<DatabaseNomenclature />} />
               <Route path="/fiqon-integration" element={<FiqonIntegrationText />} />
               <Route path="/privacidade" element={<PrivacyPolicy />} />
+              <Route path="/termos-de-servico" element={<TermsOfService />} />
+              <Route path="/exclusao-de-dados" element={<DataDeletion />} />
 
               <Route element={<ProtectedRoute />}>
                 <Route element={<MainLayout />}>

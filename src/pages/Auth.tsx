@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useTheme } from 'next-themes';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
@@ -280,8 +280,29 @@ const Auth = () => {
             <span className="text-muted-foreground">→</span>
           </button>
 
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-center text-xs text-muted-foreground">
+            <Link
+              to="/privacidade"
+              className="underline-offset-4 transition-colors hover:text-foreground hover:underline"
+            >
+              Política de Privacidade
+            </Link>
+            <Link
+              to="/termos-de-servico"
+              className="underline-offset-4 transition-colors hover:text-foreground hover:underline"
+            >
+              Termos de Serviço
+            </Link>
+            <Link
+              to="/exclusao-de-dados"
+              className="underline-offset-4 transition-colors hover:text-foreground hover:underline"
+            >
+              Exclusão de Dados
+            </Link>
+          </div>
+
           {/* Footer */}
-          <p className="mt-8 text-center text-xs text-muted-foreground">
+          <p className="mt-3 text-center text-xs text-muted-foreground">
             Ao entrar, você concorda com nossos termos de uso
           </p>
         </div>
