@@ -2189,7 +2189,11 @@ async function searchCatalog(
     const allowWithoutVariantStock =
       variantCount === 0 &&
       !!product.image_url &&
-      (requestedCategory === "oculos" || (requestedCategory === "pingente" && Number(product.price || 0) > 0));
+      (
+        requestedCategory === "oculos" ||
+        requestedCategory === "aliancas" ||
+        (requestedCategory === "pingente" && Number(product.price || 0) > 0)
+      );
 
     if (stock <= 0 && !allowWithoutVariantStock) return false;
 
@@ -2225,7 +2229,7 @@ async function searchCatalog(
       (sum: number, item: any) => sum + Number(item.stock || 0),
       0,
     );
-    const stock = requestedCategory === "oculos" && sizes.length === 0 && rawStock <= 0 && product.image_url
+    const stock = (requestedCategory === "oculos" || requestedCategory === "aliancas") && sizes.length === 0 && rawStock <= 0 && product.image_url
       ? 1
       : rawStock;
 
@@ -4829,12 +4833,17 @@ async function handleMaluFlow(args: {
   } = args;
 
   const currentNode = String(conversation.current_node || "");
+  const existingData: AnyRecord = conversation.collected_data || {};
   const data: AnyRecord = {
-    ...(conversation.collected_data || {}),
+    ...existingData,
     agente_atual: "malu",
     categoria: "oculos",
   };
-  const preservedMaluColors = getRequestedColors(data);
+  const shouldPreserveMaluColors =
+    existingData.categoria === "oculos" ||
+    existingData.agente_atual === "malu" ||
+    isMaluFlowNode(currentNode);
+  const preservedMaluColors = shouldPreserveMaluColors ? getRequestedColors(data) : [];
   const shouldSendInitialMaluIntro =
     !isMaluFlowNode(currentNode) &&
     !data.malu_intro_sent &&
@@ -4854,7 +4863,11 @@ async function handleMaluFlow(args: {
       data.cor = preservedMaluColors[0];
     }
   }
-  applyDetectedColorsToData(data, message);
+  const maluColorChanged = applyDetectedColorsToData(data, message);
+  if (!shouldPreserveMaluColors && !maluColorChanged) {
+    delete data.cor;
+    delete data.cores_solicitadas;
+  }
 
   const selectionToken = [buttonResponseId, catalogSelectionHint, message].filter(Boolean).join(" ");
   const normalizedSelectionToken = normalizeText(selectionToken);
@@ -5467,7 +5480,7 @@ async function handleKeilaFlow(args: {
 
     let catalog = await searchCatalog(supabase, searchParams, data);
     let usedBudgetFallback = false;
-    let usedWeddingFallback = false;
+    let usedPurposeFallback = false;
 
     if (catalog.length === 0 && searchParams.max_price) {
       const relaxedSearchParams = { ...searchParams };
@@ -5476,21 +5489,21 @@ async function handleKeilaFlow(args: {
       usedBudgetFallback = catalog.length > 0;
     }
 
-    if (catalog.length === 0 && data.finalidade === "casamento") {
-      const broadWeddingData = {
+    if (catalog.length === 0 && data.finalidade) {
+      const broadPurposeData = {
         ...data,
         finalidade: "",
       };
       const broadSearchParams = { ...searchParams };
       delete broadSearchParams.max_price;
-      catalog = await searchCatalog(supabase, broadSearchParams, broadWeddingData);
-      usedWeddingFallback = catalog.length > 0;
+      catalog = await searchCatalog(supabase, broadSearchParams, broadPurposeData);
+      usedPurposeFallback = catalog.length > 0;
     }
 
     return {
       cards: buildKeilaCards(catalog),
       usedBudgetFallback,
-      usedWeddingFallback,
+      usedPurposeFallback,
     };
   };
 
@@ -5617,7 +5630,7 @@ async function handleKeilaFlow(args: {
 
   if (!data.catalogo_keila_enviado) {
     delete data.keila_force_catalogo;
-    const { cards, usedBudgetFallback, usedWeddingFallback } = await fetchKeilaCatalogCards();
+    const { cards, usedBudgetFallback, usedPurposeFallback } = await fetchKeilaCatalogCards();
 
     if (cards.length === 0) {
       const reply = `Não encontrei modelos prontos ${colorPhrase} dentro dessa faixa agora. Se quiser, eu posso te mostrar outra faixa de valor ou outra cor.`;
@@ -5664,8 +5677,8 @@ async function handleKeilaFlow(args: {
     const reply = `${intro}${
       usedBudgetFallback
         ? `Não encontrei modelos ${colorPhrase} exatamente dentro dessa faixa de valor, mas separei outras opções disponíveis da mesma categoria para te mostrar. 💍`
-        : usedWeddingFallback
-          ? `Não encontrei modelos ${colorPhrase} com o cadastro ideal da linha de casamento, mas separei outras opções compatíveis para te mostrar. 💍`
+        : usedPurposeFallback
+          ? `Não encontrei modelos ${colorPhrase} com esse filtro exato, mas separei outras opções compatíveis para te mostrar. 💍`
           : `Separei opções ${colorPhrase}. 💍`
     }
 O valor do card é da unidade. O par sai pelo dobro.`;
@@ -5700,7 +5713,7 @@ O valor do card é da unidade. O par sai pelo dobro.`;
       ? data.last_catalog.map((item: any) => String(item?.sku || "")).filter(Boolean)
       : [];
 
-    const { cards, usedBudgetFallback, usedWeddingFallback } = await fetchKeilaCatalogCards(wantsMoreOptions ? shownSkus : []);
+    const { cards, usedBudgetFallback, usedPurposeFallback } = await fetchKeilaCatalogCards(wantsMoreOptions ? shownSkus : []);
 
     if (cards.length === 0 && wantsMoreOptions) {
       const reply =
@@ -5749,7 +5762,7 @@ O valor do card é da unidade. O par sai pelo dobro.`;
         ? `${
             usedBudgetFallback
               ? `Tenho outras opções ${colorPhrase}, incluindo modelos fora dessa faixa exata para você comparar. 💍`
-              : usedWeddingFallback
+              : usedPurposeFallback
                 ? `Tenho outras opções compatíveis ${colorPhrase} para te mostrar. 💍`
                 : `Tenho outras opções ${colorPhrase} para te mostrar. 💍`
           }`
