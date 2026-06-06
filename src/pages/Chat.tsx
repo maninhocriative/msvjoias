@@ -643,7 +643,6 @@ const Chat = () => {
   const [editingMessageBusyId, setEditingMessageBusyId] = useState<string | null>(null);
   const [deletingMessageBusyId, setDeletingMessageBusyId] = useState<string | null>(null);
   const [pendingAttachments, setPendingAttachments] = useState<PendingChatAttachment[]>([]);
-  const [composerSending, setComposerSending] = useState(false);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [hasOlderMessages, setHasOlderMessages] = useState(false);
   const audioStreamRef = useRef<MediaStream | null>(null);
@@ -666,7 +665,6 @@ const Chat = () => {
   const actionHumanConversationIdsRef = useRef<Set<string>>(new Set());
   const profilePictureRequestsRef = useRef<Set<string>>(new Set());
   const pendingAttachmentsRef = useRef<PendingChatAttachment[]>([]);
-  const composerSendingRef = useRef(false);
 
   const scrollMessagesToBottom = useCallback(() => {
     requestAnimationFrame(() => {
@@ -2099,14 +2097,19 @@ const Chat = () => {
   }, [conversations]);
 
   const addOptimisticMessage = useCallback(
-    (content: string, messageType = 'text', mediaUrl: string | null = null): string => {
+    (
+      content: string,
+      messageType = 'text',
+      mediaUrl: string | null = null,
+      conversationId = selectedConversation?.id || '',
+    ): string => {
       const tempId = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
       setMessages((prev) => [
         ...prev,
         {
           id: tempId,
-          conversation_id: selectedConversation?.id || '',
+          conversation_id: conversationId,
           content,
           message_type: messageType,
           media_url: mediaUrl,
@@ -2136,16 +2139,16 @@ const Chat = () => {
   }, []);
 
   const invokeAutomationSend = useCallback(
-    async (body: Record<string, unknown>) => {
-      if (!selectedConversation) {
+    async (body: Record<string, unknown>, conversation = selectedConversation) => {
+      if (!conversation) {
         throw new Error('Nenhuma conversa selecionada.');
       }
 
       const { data, error } = await supabase.functions.invoke('automation-send', {
         body: {
-          conversation_id: selectedConversation.id,
-          phone: selectedConversation.contact_number,
-          platform: selectedConversation.platform || 'whatsapp',
+          conversation_id: conversation.id,
+          phone: conversation.contact_number,
+          platform: conversation.platform || 'whatsapp',
           prefer_zapi: true,
           ...body,
         },
@@ -2262,7 +2265,11 @@ const Chat = () => {
   }, [clearPendingAttachments, selectedConversation?.id]);
 
   const uploadAttachmentFile = useCallback(
-    async (file: File, messageType: string): Promise<OutgoingAttachmentPayload> => {
+    async (
+      file: File,
+      messageType: string,
+      conversationId = selectedConversation?.id || 'chat',
+    ): Promise<OutgoingAttachmentPayload> => {
       const extension =
         file.name.split('.').pop() ||
         file.type.split('/').pop() ||
@@ -2271,7 +2278,7 @@ const Chat = () => {
         typeof crypto !== 'undefined' && 'randomUUID' in crypto
           ? crypto.randomUUID()
           : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const fileName = `${selectedConversation?.id || 'chat'}/${uniqueId}.${extension}`;
+      const fileName = `${conversationId}/${uniqueId}.${extension}`;
 
       const { error: uploadError } = await supabase.storage
         .from('chat-media')
@@ -2293,8 +2300,8 @@ const Chat = () => {
   );
 
   const sendAttachments = useCallback(
-    async (files: File[]) => {
-      if (!selectedConversation || !files.length) return;
+    async (files: File[], conversation = selectedConversation) => {
+      if (!conversation || !files.length) return;
 
       const optimisticEntries = files.map((file) => {
         const messageType = getAttachmentMessageType(file);
@@ -2310,6 +2317,7 @@ const Chat = () => {
             getAttachmentDisplayLabel(file, messageType),
             messageType,
             localPreviewUrl,
+            conversation.id,
           ),
         };
       });
@@ -2317,7 +2325,7 @@ const Chat = () => {
       const uploadedAttachments = await Promise.allSettled(
         optimisticEntries.map(async (entry) => ({
           tempId: entry.tempId,
-          attachment: await uploadAttachmentFile(entry.file, entry.messageType),
+          attachment: await uploadAttachmentFile(entry.file, entry.messageType, conversation.id),
         })),
       );
 
@@ -2342,7 +2350,7 @@ const Chat = () => {
       try {
         await invokeAutomationSend({
           attachments: successfulUploads.map((item) => item.attachment),
-        });
+        }, conversation);
 
         setTimeout(() => {
           removeOptimisticMessages(successfulUploads.map((item) => item.tempId));
@@ -2386,17 +2394,20 @@ const Chat = () => {
     ],
   );
 
-  const sendMessageDirect = useCallback(async (messageText: string) => {
+  const sendMessageDirect = useCallback(async (
+    messageText: string,
+    conversation = selectedConversation,
+  ) => {
     const trimmedMessage = messageText.trim();
-    if (!trimmedMessage || !selectedConversation) return;
+    if (!trimmedMessage || !conversation) return;
 
-    const tempId = addOptimisticMessage(trimmedMessage);
+    const tempId = addOptimisticMessage(trimmedMessage, 'text', null, conversation.id);
 
     try {
       await invokeAutomationSend({
         message: trimmedMessage,
         message_type: 'text',
-      });
+      }, conversation);
 
       setTimeout(() => removeOptimisticMessages([tempId]), 300);
     } catch (error) {
@@ -2461,31 +2472,28 @@ const Chat = () => {
   );
 
   const handleComposerSend = useCallback(
-    async (messageText: string) => {
-      if (composerSendingRef.current) return;
-
+    (messageText: string) => {
+      const conversation = selectedConversation;
       const filesToSend = pendingAttachments.map((attachment) => attachment.file);
       const hasText = messageText.trim().length > 0;
-      if (!hasText && !filesToSend.length) return;
+      if (!conversation || (!hasText && !filesToSend.length)) return;
 
-      composerSendingRef.current = true;
-      setComposerSending(true);
+      if (hasText) {
+        void sendMessageDirect(messageText, conversation);
+      }
 
-      try {
-        if (hasText) {
-          await sendMessageDirect(messageText);
-        }
-
-        if (filesToSend.length) {
-          clearPendingAttachments();
-          await sendAttachments(filesToSend);
-        }
-      } finally {
-        composerSendingRef.current = false;
-        setComposerSending(false);
+      if (filesToSend.length) {
+        clearPendingAttachments();
+        void sendAttachments(filesToSend, conversation);
       }
     },
-    [clearPendingAttachments, pendingAttachments, sendAttachments, sendMessageDirect],
+    [
+      clearPendingAttachments,
+      pendingAttachments,
+      selectedConversation,
+      sendAttachments,
+      sendMessageDirect,
+    ],
   );
 
   useEffect(() => {
@@ -3625,7 +3633,7 @@ const Chat = () => {
                 )}
 
                 <ChatComposer
-                  disabled={isRecording || composerSending}
+                  disabled={isRecording}
                   fileInputRef={fileInputRef}
                   pendingAttachments={pendingAttachments}
                   onFileUpload={handleFileUpload}
