@@ -58,7 +58,12 @@ async function fetchInstagramProfile(senderId: string): Promise<string | null> {
 
   try {
     const response = await fetch(
-      `https://graph.facebook.com/v20.0/${senderId}?fields=name,username&access_token=${encodeURIComponent(accessToken)}`,
+      `https://graph.instagram.com/v20.0/${senderId}?fields=name,username`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
     );
     if (!response.ok) return null;
 
@@ -86,9 +91,12 @@ async function sendInstagramText(recipientId: string, text: string) {
   }
 
   const sendToEndpoint = async (accountId: string) =>
-    fetch(`https://graph.facebook.com/v20.0/${accountId}/messages?access_token=${encodeURIComponent(accessToken)}`, {
+    fetch(`https://graph.instagram.com/v20.0/${accountId}/messages`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
       body: JSON.stringify({
         messaging_type: "RESPONSE",
         recipient: { id: recipientId },
