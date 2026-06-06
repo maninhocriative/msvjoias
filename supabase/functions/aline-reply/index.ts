@@ -4022,6 +4022,7 @@ Posso seguir com retirada na loja ou delivery? Depois do fechamento, o vendedor 
   }
 
   if (!hasColor) {
+    const detectedColor = detectColor(message);
     const polishedReply = detectedColor && !["prata", "dourada"].includes(detectedColor)
       ? "Os pingentes fotogravaveis sao de aco e hoje tenho duas opcoes de acabamento: dourado ou prata. Qual voce prefere?"
       : `Oi, eu sou a Kate. A fotogravacao fica linda para presente: usamos uma foto sua e preparo uma simulacao no pingente antes de seguir com o pedido.
