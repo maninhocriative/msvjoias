@@ -24,6 +24,14 @@ function getInstagramAccessToken(): string {
   ).trim();
 }
 
+function getInstagramSenderAccountId(): string {
+  return (
+    Deno.env.get("INSTAGRAM_BUSINESS_ACCOUNT_ID") ||
+    Deno.env.get("INSTAGRAM_PAGE_ID") ||
+    "me"
+  );
+}
+
 function getMessageText(message: any): string {
   const text = asString(message?.text);
   if (text) return text;
@@ -34,6 +42,45 @@ function getMessageText(message: any): string {
   const firstAttachment = Array.isArray(message?.attachments) ? message.attachments[0] : null;
   const attachmentType = asString(firstAttachment?.type);
   return attachmentType ? `[${attachmentType}]` : "";
+}
+
+function getCommentEvents(body: any): any[] {
+  const comments: any[] = [];
+
+  for (const entry of body?.entry || []) {
+    for (const change of entry?.changes || []) {
+      const field = asString(change?.field);
+      const value = change?.value || {};
+      if (!/comments?|live_comments?/i.test(field)) continue;
+
+      const commentId =
+        asString(value?.id) ||
+        asString(value?.comment_id) ||
+        asString(value?.comment?.id);
+      const text =
+        asString(value?.text) ||
+        asString(value?.message) ||
+        asString(value?.comment?.text) ||
+        asString(value?.comment?.message);
+      const from = value?.from || value?.user || value?.comment?.from || {};
+      const fromId = asString(from?.id) || asString(value?.from_id) || asString(value?.user_id);
+      const username = asString(from?.username) || asString(from?.name) || asString(value?.username);
+      const mediaId = asString(value?.media?.id) || asString(value?.media_id) || asString(value?.parent_id);
+
+      if (commentId && text) {
+        comments.push({
+          id: commentId,
+          text,
+          from_id: fromId,
+          username,
+          media_id: mediaId,
+          raw: value,
+        });
+      }
+    }
+  }
+
+  return comments;
 }
 
 function getEventText(event: any): string {
@@ -94,10 +141,7 @@ async function fetchInstagramProfile(senderId: string): Promise<string | null> {
 
 async function sendInstagramText(recipientId: string, text: string) {
   const accessToken = getInstagramAccessToken();
-  const senderAccountId =
-    Deno.env.get("INSTAGRAM_BUSINESS_ACCOUNT_ID") ||
-    Deno.env.get("INSTAGRAM_PAGE_ID") ||
-    "me";
+  const senderAccountId = getInstagramSenderAccountId();
 
   if (!accessToken) {
     return {
@@ -130,6 +174,36 @@ async function sendInstagramText(recipientId: string, text: string) {
   return {
     success: response.ok && !!result?.message_id,
     messageId: result?.message_id || null,
+    error: response.ok ? null : result,
+  };
+}
+
+async function sendInstagramCommentReply(commentId: string, text: string) {
+  const accessToken = getInstagramAccessToken();
+  if (!accessToken) {
+    return { success: false, messageId: null, error: "Instagram access token not configured" };
+  }
+
+  const body = JSON.stringify({ message: text });
+  const sendToEndpoint = (baseUrl: string) =>
+    fetch(`${baseUrl}/v20.0/${commentId}/replies`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body,
+    });
+
+  let response = await sendToEndpoint("https://graph.facebook.com");
+  if (!response.ok) {
+    response = await sendToEndpoint("https://graph.instagram.com");
+  }
+
+  const result = await response.json().catch(() => null);
+  return {
+    success: response.ok,
+    messageId: result?.id || result?.comment_id || null,
     error: response.ok ? null : result,
   };
 }
@@ -253,6 +327,36 @@ async function insertInternalNote(supabase: any, conversationId: string, content
     is_from_me: true,
     status: "sent",
   });
+}
+
+function buildPublicCommentReply(args: { comment: string; agentText: string; products: any[] }): string {
+  const normalizedComment = args.comment.toLowerCase();
+
+  if (args.products.length > 0) {
+    if (/pre[cç]o|valor|quanto|custa/.test(normalizedComment)) {
+      const first = args.products[0];
+      const price = formatMoney(first?.price ?? first?.preco);
+      return price
+        ? `Temos sim! Esse modelo fica a partir de ${price}. Me chama no direct que te envio os detalhes certinhos.`
+        : "Temos sim! Me chama no direct que te envio os modelos e valores certinhos.";
+    }
+
+    return "Temos sim! Me chama no direct que te envio os modelos disponiveis e te ajudo a escolher.";
+  }
+
+  const cleaned = args.agentText
+    .replace(/\*/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/toque em quero este.*$/i, "me chama no direct que te ajudo a escolher.")
+    .replace(/vou te mandar os produtos.*$/i, "me chama no direct que te envio as opcoes.")
+    .trim();
+
+  if (!cleaned) {
+    return "Oi! Me chama no direct que eu te ajudo com os detalhes.";
+  }
+
+  if (cleaned.length <= 240) return cleaned;
+  return `${cleaned.slice(0, 230).replace(/\s+\S*$/, "")}...`;
 }
 
 async function runAgentAndReply(args: {
@@ -394,6 +498,159 @@ async function runAgentAndReply(args: {
   if (!textSent && cardsSent === 0) return { skipped: true, reason: "empty_agent_response" };
 
   return { sent: true, text_sent: textSent, cards_sent: cardsSent };
+}
+
+async function runAgentAndReplyToComment(args: {
+  supabase: any;
+  supabaseUrl: string;
+  supabaseKey: string;
+  comment: any;
+  conversationId: string;
+  contactNumber: string;
+  contactName: string;
+}) {
+  const agentResponse = await fetch(`${args.supabaseUrl}/functions/v1/aline-reply`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${args.supabaseKey}`,
+    },
+    body: JSON.stringify({
+      phone: args.contactNumber,
+      message: `Comentario publico no Instagram: "${args.comment.text}". Responda de forma curta, natural e segura para comentario publico. Se precisar enviar catalogo, valores completos, dados pessoais ou finalizar venda, convide para o direct.`,
+      contact_name: args.contactName,
+      platform: "instagram_comment",
+      isInstagram: true,
+    }),
+  });
+
+  if (!agentResponse.ok) {
+    const errorText = await agentResponse.text();
+    throw new Error(`aline-reply comment failed: ${agentResponse.status} - ${errorText}`);
+  }
+
+  const data = await agentResponse.json();
+  const agentText = asString(data?.mensagem_whatsapp) || asString(data?.response);
+  const products = Array.isArray(data?.produtos) ? data.produtos : [];
+  const publicReply = buildPublicCommentReply({
+    comment: args.comment.text,
+    agentText,
+    products,
+  });
+
+  const sendResult = await sendInstagramCommentReply(args.comment.id, publicReply);
+  if (!sendResult.success) {
+    await insertInternalNote(
+      args.supabase,
+      args.conversationId,
+      `Falha ao responder comentario no Instagram: ${JSON.stringify(sendResult.error).substring(0, 500)}`,
+    );
+    return { sent: false, error: sendResult.error, reply: publicReply };
+  }
+
+  await args.supabase.from("messages").insert({
+    conversation_id: args.conversationId,
+    content: publicReply,
+    message_type: "instagram_comment_reply",
+    is_from_me: true,
+    status: "sent",
+    zapi_message_id: `instagram-comment-reply:${sendResult.messageId || crypto.randomUUID()}`,
+  });
+
+  await args.supabase
+    .from("conversations")
+    .update({
+      last_message: publicReply.substring(0, 100),
+      last_message_at: new Date().toISOString(),
+      unread_count: 0,
+    })
+    .eq("id", args.conversationId);
+
+  return { sent: true, reply: publicReply, comment_reply_id: sendResult.messageId };
+}
+
+async function storeInstagramComment(supabase: any, comment: any) {
+  const commentId = asString(comment?.id);
+  const text = asString(comment?.text);
+  if (!commentId || !text) return { skipped: true, reason: "empty_comment" };
+
+  const ownAccountId = getInstagramSenderAccountId();
+  if (comment.from_id && ownAccountId !== "me" && comment.from_id === ownAccountId) {
+    return { skipped: true, reason: "own_comment" };
+  }
+
+  const contactNumber = `ig-comment:${comment.from_id || comment.username || commentId}`;
+  const contactName = comment.username ? `@${comment.username}` : `Instagram comentario ${comment.from_id || commentId}`;
+  const nowIso = new Date().toISOString();
+
+  const { error: dedupeError } = await supabase
+    .from("processed_messages")
+    .insert({ message_id: `instagram-comment:${commentId}`, phone: contactNumber });
+
+  if (dedupeError) {
+    const { data: existing } = await supabase
+      .from("processed_messages")
+      .select("id")
+      .eq("message_id", `instagram-comment:${commentId}`)
+      .maybeSingle();
+
+    if (existing?.id) return { skipped: true, reason: "duplicate" };
+  }
+
+  const { data: existingConversation } = await supabase
+    .from("conversations")
+    .select("id, unread_count")
+    .eq("contact_number", contactNumber)
+    .maybeSingle();
+
+  let conversationId = existingConversation?.id;
+  const content = `[Comentario Instagram] ${text}`;
+
+  if (!conversationId) {
+    const { data: createdConversation, error } = await supabase
+      .from("conversations")
+      .insert({
+        contact_number: contactNumber,
+        contact_name: contactName,
+        platform: "instagram",
+        last_message: content.substring(0, 100),
+        last_message_at: nowIso,
+        unread_count: 1,
+      })
+      .select("id")
+      .single();
+
+    if (error) throw error;
+    conversationId = createdConversation.id;
+  } else {
+    await supabase
+      .from("conversations")
+      .update({
+        contact_name: contactName,
+        platform: "instagram",
+        last_message: content.substring(0, 100),
+        last_message_at: nowIso,
+        unread_count: Number(existingConversation?.unread_count || 0) + 1,
+      })
+      .eq("id", conversationId);
+  }
+
+  await supabase.from("messages").insert({
+    conversation_id: conversationId,
+    content,
+    message_type: "instagram_comment",
+    is_from_me: false,
+    status: "received",
+    zapi_message_id: `instagram-comment:${commentId}`,
+  });
+
+  return {
+    stored: true,
+    conversation_id: conversationId,
+    contact_number: contactNumber,
+    contact_name: contactName,
+    comment,
+  };
 }
 
 async function storeInstagramMessage(supabase: any, event: any) {
@@ -555,6 +812,40 @@ serve(async (req) => {
         } else {
           results.push(stored);
         }
+      }
+    }
+
+    for (const comment of getCommentEvents(body)) {
+      const stored = await storeInstagramComment(supabase, comment);
+      if (stored?.stored) {
+        try {
+          const agent = await runAgentAndReplyToComment({
+            supabase,
+            supabaseUrl,
+            supabaseKey,
+            comment: stored.comment,
+            conversationId: stored.conversation_id,
+            contactNumber: stored.contact_number,
+            contactName: stored.contact_name,
+          });
+          results.push({ ...stored, agent });
+        } catch (agentError) {
+          console.error("[INSTAGRAM-WEBHOOK] Falha ao responder comentario:", agentError);
+          await insertInternalNote(
+            supabase,
+            stored.conversation_id,
+            `Falha ao responder comentario com agente: ${agentError instanceof Error ? agentError.message : String(agentError)}`.substring(0, 800),
+          );
+          results.push({
+            ...stored,
+            agent: {
+              sent: false,
+              error: agentError instanceof Error ? agentError.message : String(agentError),
+            },
+          });
+        }
+      } else {
+        results.push(stored);
       }
     }
 
