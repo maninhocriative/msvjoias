@@ -44,6 +44,9 @@ interface FollowupConversation {
 interface DailyOrderData {
   date: string; dateLabel: string; total: number; aline: number; forwarded: number;
 }
+interface DailySellerAttendance {
+  seller_id: string; seller_name: string; total: number; last_activity: string | null;
+}
 
 // â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const FOLLOWUP_INTERVALS = [
@@ -122,6 +125,7 @@ const Dashboard = () => {
   const [followupConversations, setFollowupConversations] = useState<FollowupConversation[]>([]);
   const [conversionData, setConversionData] = useState<ConversionData[]>([]);
   const [dailyOrderData, setDailyOrderData] = useState<DailyOrderData[]>([]);
+  const [dailySellerAttendance, setDailySellerAttendance] = useState<DailySellerAttendance[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [currentTime, setCurrentTime] = useState(Date.now());
@@ -139,11 +143,14 @@ const Dashboard = () => {
     try {
       const chartFrom = subDays(new Date(), chartPeriod).toISOString();
       const convFrom = subDays(new Date(), conversionPeriod).toISOString();
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
 
       const [
         productsResult, stockResult, conversationsCountResult, customersResult,
         alineOrdersResult, followupsResult, waitingResult,
         allAlineConversations, allAlineOrders, forwardedOrdersResult, ordersForPeriod,
+        sellerAttendanceResult,
       ] = await Promise.all([
         supabase.from('products').select('*', { count: 'exact', head: true }).eq('active', true),
         supabase.from('product_variants').select('stock'),
@@ -162,6 +169,11 @@ const Dashboard = () => {
         supabase.from('orders').select('customer_phone, created_at').eq('source', 'aline').gte('created_at', convFrom),
         supabase.from('conversations').select('id, lead_status').eq('lead_status', 'vendedor'),
         supabase.from('orders').select('id, source, status, created_at').gte('created_at', chartFrom),
+        supabase.from('conversation_events')
+          .select('phone, ts, payload')
+          .eq('type', 'assignment')
+          .gte('ts', todayStart.toISOString())
+          .order('ts', { ascending: false }),
       ]);
 
       const totalStock = stockResult.data?.reduce((acc, v) => acc + (v.stock || 0), 0) || 0;
@@ -199,6 +211,36 @@ const Dashboard = () => {
             : format(new Date(date + 'T12:00:00'), 'dd/MM', { locale: ptBR }),
           ...data,
         }))
+      );
+
+      const attendanceMap = new Map<string, DailySellerAttendance & { phones: Set<string> }>();
+      sellerAttendanceResult.data?.forEach((event: any) => {
+        const payload = event.payload || {};
+        const action = String(payload.action || '');
+        const sellerId = String(payload.seller_id || '').trim();
+        if (!sellerId || (action !== 'takeover' && action !== 'auto_forward')) return;
+
+        if (!attendanceMap.has(sellerId)) {
+          attendanceMap.set(sellerId, {
+            seller_id: sellerId,
+            seller_name: String(payload.seller_name || 'Vendedor'),
+            total: 0,
+            last_activity: event.ts,
+            phones: new Set<string>(),
+          });
+        }
+
+        const row = attendanceMap.get(sellerId)!;
+        row.phones.add(String(event.phone || ''));
+        row.total = row.phones.size;
+        if (!row.last_activity || new Date(event.ts).getTime() > new Date(row.last_activity).getTime()) {
+          row.last_activity = event.ts;
+        }
+      });
+      setDailySellerAttendance(
+        Array.from(attendanceMap.values())
+          .map(({ phones, ...row }) => row)
+          .sort((a, b) => b.total - a.total),
       );
 
       setAlineOrders(alineOrdersResult.data || []);
@@ -275,6 +317,7 @@ const Dashboard = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, debouncedFetch)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, debouncedFetch)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'aline_conversations' }, debouncedFetch)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversation_events' }, debouncedFetch)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, debouncedFetch)
       .subscribe();
     return () => {
@@ -409,6 +452,39 @@ const Dashboard = () => {
       </div>
 
       {/* GrÃ¡ficos */}
+      <Card className="border-border bg-card">
+        <CardHeader className="px-5 pt-5 pb-2">
+          <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <Users className="w-3.5 h-3.5 text-emerald-500" />
+            Atendimento diario por vendedor
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="px-5 pb-5">
+          {dailySellerAttendance.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Nenhum atendimento assumido hoje.</p>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              {dailySellerAttendance.map((seller) => (
+                <button
+                  key={seller.seller_id}
+                  type="button"
+                  onClick={() => navigate('/seller-monitor')}
+                  className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-left transition-colors hover:bg-muted/35"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="truncate text-sm font-medium text-foreground">{seller.seller_name}</span>
+                    <span className="text-lg font-bold tabular-nums text-emerald-500">{seller.total}</span>
+                  </div>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    {seller.last_activity ? `Ultimo: ${format(new Date(seller.last_activity), 'HH:mm')}` : 'Sem horario'}
+                  </p>
+                </button>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="grid lg:grid-cols-5 gap-4">
 
         {/* Ãrea: pedidos no perÃ­odo */}

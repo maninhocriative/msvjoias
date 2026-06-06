@@ -38,6 +38,26 @@ interface SendResult {
   error?: string | null;
 }
 
+function getInstagramAccessToken(): string {
+  return (
+    Deno.env.get("INSTAGRAM_ACCESS_TOKEN") ||
+    Deno.env.get("INSTAGRAM_PAGE_ACCESS_TOKEN") ||
+    Deno.env.get("FACEBOOK_PAGE_ACCESS_TOKEN") ||
+    Deno.env.get("META_ACCESS_TOKEN") ||
+    Deno.env.get("IG_ACCESS_TOKEN") ||
+    Deno.env.get("INSTAGRAM_TOKEN") ||
+    ""
+  ).trim();
+}
+
+function getInstagramSenderAccountId(): string {
+  return (
+    Deno.env.get("INSTAGRAM_BUSINESS_ACCOUNT_ID") ||
+    Deno.env.get("INSTAGRAM_PAGE_ID") ||
+    "me"
+  );
+}
+
 function buildZapiHeaders(clientToken?: string) {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -131,6 +151,101 @@ async function sendViaZAPI(
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+async function sendViaInstagram(
+  recipientId: string,
+  messageType: string,
+  content: string | null,
+  mediaUrl: string | null,
+): Promise<SendResult> {
+  const accessToken = getInstagramAccessToken();
+  const senderAccountId = getInstagramSenderAccountId();
+
+  if (!accessToken) {
+    return {
+      success: false,
+      messageId: null,
+      error: "Instagram access token not configured",
+    };
+  }
+
+  const cleanRecipientId = String(recipientId || "").replace(/^ig:/i, "").replace(/\D/g, "");
+  if (!cleanRecipientId) {
+    return {
+      success: false,
+      messageId: null,
+      error: "Invalid Instagram recipient id",
+    };
+  }
+
+  const buildMessage = () => {
+    if (mediaUrl && messageType === "image") {
+      return {
+        attachment: {
+          type: "image",
+          payload: { url: mediaUrl },
+        },
+      };
+    }
+
+    if (mediaUrl && messageType === "video") {
+      return {
+        attachment: {
+          type: "video",
+          payload: { url: mediaUrl },
+        },
+      };
+    }
+
+    return { text: content || "" };
+  };
+
+  const sendToEndpoint = async (accountId: string) =>
+    fetch(`https://graph.instagram.com/v20.0/${accountId}/messages`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        messaging_type: "RESPONSE",
+        recipient: { id: cleanRecipientId },
+        message: buildMessage(),
+      }),
+    });
+
+  try {
+    let response = await sendToEndpoint(senderAccountId);
+    if (!response.ok && senderAccountId !== "me") {
+      response = await sendToEndpoint("me");
+    }
+
+    const result = await readResponseBody(response);
+    const messageId =
+      typeof result === "object" && result
+        ? (result as Record<string, unknown>).message_id
+        : null;
+
+    if (response.ok && messageId) {
+      return {
+        success: true,
+        messageId: `instagram:${String(messageId)}`,
+      };
+    }
+
+    return {
+      success: false,
+      messageId: null,
+      error: typeof result === "string" ? result : JSON.stringify(result),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      messageId: null,
+      error: error instanceof Error ? error.message : "Instagram send error",
     };
   }
 }
@@ -369,6 +484,16 @@ async function sendOutgoingItem(args: {
     platform,
     messageId,
   } = args;
+
+  if (platform === "instagram") {
+    const result = await sendViaInstagram(normalizedPhone, messageType, message, mediaUrl);
+    return {
+      forwarded: result.success,
+      status: result.success ? "sent" : "failed",
+      zapiMessageId: result.messageId || null,
+      error: result.error || null,
+    };
+  }
 
   if (preferZapi && hasZapi && zapiInstanceId && zapiToken) {
     const result = lease

@@ -268,6 +268,44 @@ const PendingOrders = () => {
     window.open(`https://wa.me/${SUPPORT_WHATSAPP}`, "_blank");
   };
 
+  const notifyOrderArrived = async (order: Order) => {
+    try {
+      const productName = order.selected_name || order.selected_sku || "seu pedido";
+      const message =
+        `Oi${order.customer_name ? `, ${order.customer_name}` : ""}! Passando para avisar que ${productName} ja chegou na ACIUM Manaus. Pode vir retirar na loja ou falar com a gente por aqui para combinar a entrega.`;
+
+      const { error: sendError } = await supabase.functions.invoke("automation-send", {
+        body: {
+          phone: order.customer_phone,
+          message,
+          message_type: "text",
+          platform: "whatsapp",
+          prefer_zapi: true,
+        },
+      });
+
+      if (sendError) throw sendError;
+
+      const note = `Cliente avisado da chegada em ${format(new Date(), "dd/MM/yyyy HH:mm", { locale: ptBR })}.`;
+      const { error: updateError } = await supabase
+        .from("orders")
+        .update({
+          status: "done",
+          notes: order.notes ? `${order.notes}\n${note}` : note,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", order.id);
+
+      if (updateError) throw updateError;
+
+      toast.success("Cliente avisado pelo WhatsApp");
+      queryClient.invalidateQueries({ queryKey: ["pending-orders"] });
+      setSheetOpen(false);
+    } catch (error) {
+      toast.error(`Erro ao avisar cliente: ${error instanceof Error ? error.message : "tente novamente"}`);
+    }
+  };
+
   const copySummary = (text: string) => {
     navigator.clipboard.writeText(text);
     toast.success("Resumo copiado!");
@@ -508,6 +546,16 @@ const PendingOrders = () => {
                           Finalizar
                         </Button>
                       )}
+                      {order.status !== "done" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => notifyOrderArrived(order)}
+                        >
+                          <Bell className="h-4 w-4 mr-1" />
+                          Avisar chegada
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </CardContent>
@@ -693,6 +741,16 @@ const PendingOrders = () => {
 
                 {/* Status Actions */}
                 <div className="flex gap-2 pt-4">
+                  {selectedOrder.status !== "done" && (
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => notifyOrderArrived(selectedOrder)}
+                    >
+                      <Bell className="h-4 w-4 mr-2" />
+                      Avisar chegada
+                    </Button>
+                  )}
                   {selectedOrder.status === "pending_human" && (
                     <Button
                       className="flex-1"

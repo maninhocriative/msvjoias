@@ -96,6 +96,7 @@ interface Product {
   sku: string;
   price: number;
   image_url: string;
+  video_url?: string | null;
   category: string;
 }
 
@@ -249,8 +250,9 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [creatingOrder, setCreatingOrder] = useState(false);
+  const [sendingCatalog, setSendingCatalog] = useState<string | null>(null);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
-  const [activePanel, setActivePanel] = useState<'info' | 'order' | 'quick' | null>(null);
+  const [activePanel, setActivePanel] = useState<'info' | 'order' | 'catalog' | 'quick' | null>(null);
   
   // Order form
   const [orderDelivery, setOrderDelivery] = useState<'retirada' | 'envio'>('retirada');
@@ -480,6 +482,61 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
     onSendMessage(finalText);
   };
 
+  const sendManualCatalog = async (category: 'aliancas' | 'oculos' | 'pingente') => {
+    setSendingCatalog(category);
+    try {
+      const catalogFilter = {
+        aliancas: 'category.ilike.%alianca%,category.ilike.%aliança%,name.ilike.%alianca%,name.ilike.%aliança%',
+        oculos: 'category.ilike.%oculos%,category.ilike.%óculos%,name.ilike.%oculos%,name.ilike.%óculos%',
+        pingente: 'category.ilike.%pingente%,name.ilike.%pingente%',
+      }[category];
+
+      const { data: catalogProducts, error: productsError } = await supabase
+        .from('products')
+        .select('id, name, sku, price, image_url, video_url, category')
+        .eq('active', true)
+        .or(catalogFilter)
+        .limit(6);
+
+      if (productsError) throw productsError;
+      if (!catalogProducts?.length) {
+        toast({ title: 'Catalogo vazio', description: 'Nao encontrei produtos ativos para essa linha.', variant: 'destructive' });
+        return;
+      }
+
+      const introByCategory = {
+        aliancas: 'Separei algumas opcoes de aliancas para voce conferir:',
+        oculos: 'Separei alguns modelos de oculos para voce conferir:',
+        pingente: 'Separei alguns pingentes para voce conferir:',
+      };
+
+      const { error } = await supabase.functions.invoke('automation-send', {
+        body: {
+          conversation_id: conversationId,
+          phone,
+          platform: 'whatsapp',
+          prefer_zapi: true,
+          message: introByCategory[category],
+          products: catalogProducts,
+        },
+      });
+
+      if (error) throw error;
+
+      toast({ title: 'Catalogo enviado', description: `${catalogProducts.length} item(ns) enviados ao cliente.` });
+      void fetchData(true);
+    } catch (error) {
+      console.error('Error sending catalog:', error);
+      toast({
+        title: 'Erro ao enviar catalogo',
+        description: error instanceof Error ? error.message : 'Tente novamente.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSendingCatalog(null);
+    }
+  };
+
   const createOrder = async () => {
     if (!selectedProduct) {
       toast({ title: 'Selecione um produto', variant: 'destructive' });
@@ -555,7 +612,7 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
     );
   }
 
-  const togglePanel = (panel: 'info' | 'order' | 'quick') => {
+  const togglePanel = (panel: 'info' | 'order' | 'catalog' | 'quick') => {
     setActivePanel(activePanel === panel ? null : panel);
   };
 
@@ -594,6 +651,20 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
         <Button
           variant="ghost"
           size="icon"
+          onClick={() => togglePanel('catalog')}
+          className={cn(
+            "w-10 h-10 rounded-xl transition-all",
+            activePanel === 'catalog'
+              ? "bg-emerald-600 text-white shadow-lg shadow-emerald-500/20"
+              : "text-slate-400 hover:text-white hover:bg-white/10"
+          )}
+          title="Enviar Catalogo"
+        >
+          <Package className="w-5 h-5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={() => togglePanel('quick')}
           className={cn(
             "w-10 h-10 rounded-xl transition-all",
@@ -614,6 +685,7 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
             <h3 className="text-sm font-semibold text-white flex items-center gap-2">
               {activePanel === 'info' && <><User className="w-4 h-4 text-emerald-400" /> Cliente</>}
               {activePanel === 'order' && <><ShoppingCart className="w-4 h-4 text-emerald-400" /> Criar Pedido</>}
+              {activePanel === 'catalog' && <><Package className="w-4 h-4 text-emerald-400" /> Enviar Catalogo</>}
               {activePanel === 'quick' && <><MessageSquare className="w-4 h-4 text-emerald-400" /> Respostas Rápidas</>}
             </h3>
             <Button
@@ -888,6 +960,47 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
                 </CardContent>
               </Card>
             )}
+              </div>
+            )}
+
+            {activePanel === 'catalog' && (
+              <div className="p-3 space-y-3">
+                <Card className="bg-slate-800/50 border-white/5">
+                  <CardHeader className="py-3 px-4">
+                    <CardTitle className="text-sm text-white flex items-center gap-2">
+                      <Package className="w-4 h-4 text-emerald-400" />
+                      Enviar catalogo
+                    </CardTitle>
+                    <CardDescription className="text-xs text-slate-400">
+                      Envia ate 6 itens ativos pelo WhatsApp do cliente.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4 space-y-2">
+                    {[
+                      { key: 'aliancas', label: 'Aliancas' },
+                      { key: 'oculos', label: 'Oculos' },
+                      { key: 'pingente', label: 'Pingentes' },
+                    ].map((item) => (
+                      <Button
+                        key={item.key}
+                        type="button"
+                        disabled={Boolean(sendingCatalog)}
+                        onClick={() => void sendManualCatalog(item.key as 'aliancas' | 'oculos' | 'pingente')}
+                        className="w-full justify-between bg-emerald-600 hover:bg-emerald-700"
+                      >
+                        <span className="flex items-center gap-2">
+                          <Package className="w-4 h-4" />
+                          {item.label}
+                        </span>
+                        {sendingCatalog === item.key ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Send className="w-4 h-4" />
+                        )}
+                      </Button>
+                    ))}
+                  </CardContent>
+                </Card>
               </div>
             )}
 
