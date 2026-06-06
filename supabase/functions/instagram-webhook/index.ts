@@ -69,17 +69,21 @@ async function sendInstagramText(recipientId: string, text: string) {
     return { success: false, messageId: null, error: "INSTAGRAM_ACCESS_TOKEN not configured" };
   }
 
-  const response = await fetch(
-    `https://graph.facebook.com/v20.0/${senderAccountId}/messages?access_token=${encodeURIComponent(accessToken)}`,
-    {
+  const sendToEndpoint = async (accountId: string) =>
+    fetch(`https://graph.facebook.com/v20.0/${accountId}/messages?access_token=${encodeURIComponent(accessToken)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        messaging_type: "RESPONSE",
         recipient: { id: recipientId },
         message: { text },
       }),
-    },
-  );
+    });
+
+  let response = await sendToEndpoint(senderAccountId);
+  if (!response.ok && senderAccountId !== "me") {
+    response = await sendToEndpoint("me");
+  }
 
   const result = await response.json().catch(() => null);
   return {
@@ -87,6 +91,16 @@ async function sendInstagramText(recipientId: string, text: string) {
     messageId: result?.message_id || null,
     error: response.ok ? null : result,
   };
+}
+
+async function insertInternalNote(supabase: any, conversationId: string, content: string) {
+  await supabase.from("messages").insert({
+    conversation_id: conversationId,
+    content,
+    message_type: "internal_note",
+    is_from_me: true,
+    status: "sent",
+  });
 }
 
 async function runAgentAndReply(args: {
@@ -122,7 +136,7 @@ async function runAgentAndReply(args: {
       Authorization: `Bearer ${args.supabaseKey}`,
     },
     body: JSON.stringify({
-      phone: args.contactNumber,
+      phone: args.senderId,
       message: messageForAgent,
       contact_name: args.contactName,
       media_type: args.messageType,
@@ -146,6 +160,11 @@ async function runAgentAndReply(args: {
   const sendResult = await sendInstagramText(args.senderId, text);
   if (!sendResult.success) {
     console.error("[INSTAGRAM-WEBHOOK] Falha ao enviar resposta:", sendResult.error);
+    await insertInternalNote(
+      args.supabase,
+      args.conversationId,
+      `Falha ao enviar resposta no Instagram: ${JSON.stringify(sendResult.error).substring(0, 500)}`,
+    );
     return { sent: false, error: sendResult.error };
   }
 
@@ -297,19 +316,35 @@ serve(async (req) => {
       for (const event of entry?.messaging || []) {
         const stored = await storeInstagramMessage(supabase, event);
         if (stored?.stored) {
-          const agent = await runAgentAndReply({
-            supabase,
-            supabaseUrl,
-            supabaseKey,
-            senderId: stored.sender_id,
-            conversationId: stored.conversation_id,
-            contactNumber: stored.contact_number,
-            contactName: stored.contact_name,
-            message: stored.content,
-            messageType: stored.message_type,
-            mediaUrl: stored.media_url,
-          });
-          results.push({ ...stored, agent });
+          try {
+            const agent = await runAgentAndReply({
+              supabase,
+              supabaseUrl,
+              supabaseKey,
+              senderId: stored.sender_id,
+              conversationId: stored.conversation_id,
+              contactNumber: stored.contact_number,
+              contactName: stored.contact_name,
+              message: stored.content,
+              messageType: stored.message_type,
+              mediaUrl: stored.media_url,
+            });
+            results.push({ ...stored, agent });
+          } catch (agentError) {
+            console.error("[INSTAGRAM-WEBHOOK] Falha no agente:", agentError);
+            await insertInternalNote(
+              supabase,
+              stored.conversation_id,
+              `Falha ao gerar resposta do agente: ${agentError instanceof Error ? agentError.message : String(agentError)}`.substring(0, 800),
+            );
+            results.push({
+              ...stored,
+              agent: {
+                sent: false,
+                error: agentError instanceof Error ? agentError.message : String(agentError),
+              },
+            });
+          }
         } else {
           results.push(stored);
         }

@@ -20,6 +20,7 @@ interface MessageItemProps {
   showTail: boolean;
   canEdit?: boolean;
   canDelete?: boolean;
+  platform?: string | null;
   editValue?: string;
   isEditing?: boolean;
   isSavingEdit?: boolean;
@@ -117,6 +118,7 @@ const MessageItem = memo(({
   showTail,
   canEdit = false,
   canDelete = false,
+  platform,
   editValue = '',
   isEditing = false,
   isSavingEdit = false,
@@ -130,6 +132,7 @@ const MessageItem = memo(({
   const isMe = message.is_from_me;
   const isInternalNote = message.message_type === 'internal_note';
   const isDeleted = Boolean(message.deleted_at);
+  const isInstagram = platform === 'instagram' || String(message.zapi_message_id || '').startsWith('instagram:');
 
   if (
     !isDeleted &&
@@ -258,6 +261,19 @@ const MessageItem = memo(({
           </div>
         ) : (
           <>
+            {isInstagram && (
+              <div
+                className={cn(
+                  'mb-1 flex',
+                  isMe ? 'justify-end' : 'justify-start',
+                )}
+              >
+                <span className="inline-flex items-center rounded border border-fuchsia-400/20 bg-fuchsia-500/15 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-fuchsia-200">
+                  IG
+                </span>
+              </div>
+            )}
+
             {message.message_type === 'image' && hasMedia && (
               <img
                 src={message.media_url}

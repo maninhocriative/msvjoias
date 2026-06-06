@@ -3558,6 +3558,7 @@ const Chat = () => {
                         <MessageItem
                           key={message.id}
                           message={message}
+                          platform={selectedConversation?.platform}
                           showTail={
                             index === 0 ||
                             grouped[index - 1]?.is_from_me !== message.is_from_me
