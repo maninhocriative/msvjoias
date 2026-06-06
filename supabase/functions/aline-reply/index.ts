@@ -5457,6 +5457,10 @@ async function handleKeilaFlow(args: {
   const hasPayment = !!data.payment_method;
   const wantsCatalogResend = detectCatalogResendIntent(message) || wantsFullCatalog;
   const wantsMoreOptions = detectMoreOptionsIntent(message);
+  const asksPrice = detectPriceQuestion(message) || detectPriceIntent(message);
+  const mentionsExternalReference = /foto|imagem|print|anuncio|anúncio|publicacao|publicação|post|stories|story|reels|video|vídeo/.test(
+    normalizeText(message),
+  );
 
   const fetchKeilaCatalogCards = async (excludeSkus: string[] = []) => {
     const searchParams: AnyRecord = {
@@ -5791,6 +5795,62 @@ O valor do card é da unidade. O par sai pelo dobro.`;
           "Lembrando que o valor do card é da unidade e o par sai pelo dobro. Gostou de algum modelo? 😊",
       });
     }
+  }
+
+  if (!hasSelectedProduct && asksPrice) {
+    const singleOption = findSingleCatalogSelection(data);
+
+    if (singleOption?.price) {
+      data.selected_product = singleOption;
+      data.selected_sku = singleOption.sku || singleOption.id;
+      data.selected_name = singleOption.name;
+      data.selected_price = singleOption.price;
+
+      const reply = `${cleanCustomerProductName(singleOption.name)} fica ${formatCurrency(singleOption.price)} a unidade. O par sai pelo dobro. Se for esse modelo mesmo, me confirma que eu sigo com entrega e pagamento.`;
+
+      await persistConversation(
+        supabase,
+        conversation.id,
+        "keila",
+        "keila_valor_modelo_unico",
+        conversation.current_node || null,
+        data,
+      );
+      await saveAssistantMessage(supabase, conversation.id, "keila", reply, "keila_valor_modelo_unico");
+      await saveAgentMemory(supabase, phone, "keila", contactName, data);
+
+      return buildResponsePayload({
+        phone,
+        message: reply,
+        node: "keila_valor_modelo_unico",
+        selectedProduct: data.selected_product || null,
+        collectedData: data,
+        agent: "keila",
+      });
+    }
+
+    const reply = mentionsExternalReference
+      ? "Consigo verificar pra voce, mas preciso identificar qual e o modelo da foto/anuncio. Me envia o print ou a foto desse anuncio aqui, que eu confirmo o valor certinho sem chutar."
+      : "Consigo te passar o valor certinho, mas preciso saber qual modelo voce quer. Toque em Quero esta no card escolhido ou me envie a foto/modelo que voce viu.";
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "keila",
+      "keila_aguardando_referencia_valor",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "keila", reply, "keila_aguardando_referencia_valor");
+    await saveAgentMemory(supabase, phone, "keila", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "keila_aguardando_referencia_valor",
+      collectedData: data,
+      agent: "keila",
+    });
   }
 
   if (hasSelectedProduct && !hasDelivery) {
