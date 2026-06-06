@@ -12,6 +12,18 @@ function asString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function getInstagramAccessToken(): string {
+  return (
+    Deno.env.get("INSTAGRAM_ACCESS_TOKEN") ||
+    Deno.env.get("INSTAGRAM_PAGE_ACCESS_TOKEN") ||
+    Deno.env.get("FACEBOOK_PAGE_ACCESS_TOKEN") ||
+    Deno.env.get("META_ACCESS_TOKEN") ||
+    Deno.env.get("IG_ACCESS_TOKEN") ||
+    Deno.env.get("INSTAGRAM_TOKEN") ||
+    ""
+  ).trim();
+}
+
 function getMessageText(message: any): string {
   const text = asString(message?.text);
   if (text) return text;
@@ -41,7 +53,7 @@ function getMedia(message: any): { type: string; url: string | null } {
 }
 
 async function fetchInstagramProfile(senderId: string): Promise<string | null> {
-  const accessToken = Deno.env.get("INSTAGRAM_ACCESS_TOKEN");
+  const accessToken = getInstagramAccessToken();
   if (!accessToken) return null;
 
   try {
@@ -59,14 +71,18 @@ async function fetchInstagramProfile(senderId: string): Promise<string | null> {
 }
 
 async function sendInstagramText(recipientId: string, text: string) {
-  const accessToken = Deno.env.get("INSTAGRAM_ACCESS_TOKEN");
+  const accessToken = getInstagramAccessToken();
   const senderAccountId =
     Deno.env.get("INSTAGRAM_BUSINESS_ACCOUNT_ID") ||
     Deno.env.get("INSTAGRAM_PAGE_ID") ||
     "me";
 
   if (!accessToken) {
-    return { success: false, messageId: null, error: "INSTAGRAM_ACCESS_TOKEN not configured" };
+    return {
+      success: false,
+      messageId: null,
+      error: "Instagram access token not configured. Expected one of: INSTAGRAM_ACCESS_TOKEN, INSTAGRAM_PAGE_ACCESS_TOKEN, FACEBOOK_PAGE_ACCESS_TOKEN, META_ACCESS_TOKEN, IG_ACCESS_TOKEN, INSTAGRAM_TOKEN",
+    };
   }
 
   const sendToEndpoint = async (accountId: string) =>
