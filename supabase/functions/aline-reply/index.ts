@@ -4046,10 +4046,10 @@ Posso seguir com retirada na loja ou delivery? Depois do fechamento, o vendedor 
   if (!hasColor) {
     const detectedColor = detectColor(message);
     const polishedReply = detectedColor && !["prata", "dourada"].includes(detectedColor)
-      ? "Os pingentes fotogravaveis sao de aco e hoje tenho duas opcoes de acabamento: dourado ou prata. Qual voce prefere?"
-      : `Oi, eu sou a Kate. A fotogravacao fica linda para presente: usamos uma foto sua e preparo uma simulacao no pingente antes de seguir com o pedido.
+      ? "Os pingentes fotograváveis são de aço e hoje tenho duas opções de acabamento: dourado ou prata. Qual você prefere?"
+      : `Oi, eu sou a Kate. A fotogravação fica linda para presente: usamos uma foto sua e preparo uma simulação no pingente antes de seguir com o pedido.
 
-Os pingentes sao de aco, com acabamento dourado ou prata. Qual acabamento voce prefere ver?`;
+Os pingentes são de aço, com acabamento dourado ou prata. Qual acabamento você prefere ver?`;
     const finalReply = withKateIntro(polishedReply);
 
     await persistConversation(
@@ -4306,7 +4306,7 @@ A fotogravação de 1 lado já está inclusa.`;
         data.kate_preview_approved = false;
         registerPreviewGeneration(data, "kate");
 
-        const reply = `Recebi sua foto! Preparei uma simulacao de fotogravacao do *${cleanCustomerProductName(data.selected_name)}* para voce conferir. Importante: essa imagem e apenas uma simulacao. Apos o fechamento, o vendedor envia a arte original para sua aprovacao antes da gravacao.`;
+        const reply = `Recebi sua foto! Preparei uma simulação de fotogravação do *${cleanCustomerProductName(data.selected_name)}* para você conferir. Importante: essa imagem é apenas uma simulação. Após o fechamento, o vendedor envia a arte original para sua aprovação antes da gravação.`;
 
         await persistConversation(
           supabase,
@@ -4367,9 +4367,9 @@ A fotogravação de 1 lado já está inclusa.`;
 
     if (hasDelivery || hasPayment || wantsCloseWithoutPhoto || wantsPreviewApproval || wantsProceedWithSelectedProduct) {
       if (!hasDelivery) {
-        const reply = `Perfeito, seguimos com *${cleanCustomerProductName(data.selected_name)}* sem simulacao.
+        const reply = `Perfeito, seguimos com *${cleanCustomerProductName(data.selected_name)}* sem simulação.
 
-Voce vai retirar na loja ou prefere delivery? Depois do fechamento, o vendedor envia a arte original para sua aprovacao antes da gravacao.`;
+Você vai retirar na loja ou prefere delivery? Depois do fechamento, o vendedor envia a arte original para sua aprovação antes da gravação.`;
 
         await persistConversation(
           supabase,
@@ -4429,9 +4429,9 @@ Voce vai retirar na loja ou prefere delivery? Depois do fechamento, o vendedor e
 
     const reply = `Perfeito! Voce escolheu *${cleanCustomerProductName(data.selected_name)}*.
 
-Esse modelo permite fotogravacao de 1 lado. Se quiser ver antes, me manda a foto que voce quer gravar e eu preparo uma simulacao para ajudar na escolha.
+Esse modelo permite fotogravação de 1 lado. Se quiser ver antes, me manda a foto que você quer gravar e eu preparo uma simulação para ajudar na escolha.
 
-Se preferir seguir sem simulacao, posso avancar com entrega e pagamento agora. Depois do fechamento, o vendedor envia a arte original para sua aprovacao antes da gravacao.`;
+Se preferir seguir sem simulação, posso avançar com entrega e pagamento agora. Depois do fechamento, o vendedor envia a arte original para sua aprovação antes da gravação.`;
 
     data.kate_photo_requested = true;
 
@@ -4585,7 +4585,7 @@ Se preferir seguir sem simulacao, posso avancar com entrega e pagamento agora. D
         data.kate_preview_status = "resent";
         registerPreviewGeneration(data, "kate");
 
-        const reply = "Perfeito! Preparei uma nova simulacao com essa foto para voce conferir. Lembrando: essa imagem e apenas uma simulacao; depois do fechamento, o vendedor envia a arte original para sua aprovacao antes da gravacao.";
+        const reply = "Perfeito! Preparei uma nova simulação com essa foto para você conferir. Lembrando: essa imagem é apenas uma simulação; depois do fechamento, o vendedor envia a arte original para sua aprovação antes da gravação.";
 
         await persistConversation(
           supabase,
