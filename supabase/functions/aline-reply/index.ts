@@ -2703,6 +2703,15 @@ async function resolveConversation(supabase: any, phone: string, contactName: st
 
   if (error) throw error;
 
+  const { data: crmConversation } = await supabase
+    .from("conversations")
+    .select("id, lead_status, attending_by, attending_name")
+    .in("contact_number", phoneVariants)
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   if (existingConversation && existingConversation.phone !== phone) {
     const { data: canonicalized, error: canonicalizeError } = await supabase
       .from("aline_conversations")
@@ -2713,6 +2722,37 @@ async function resolveConversation(supabase: any, phone: string, contactName: st
 
     if (canonicalizeError) throw canonicalizeError;
     existingConversation = canonicalized;
+  }
+
+  const crmLeadStatus = String(crmConversation?.lead_status || "").toLowerCase();
+  const crmHumanActive =
+    crmLeadStatus === "humano" ||
+    crmLeadStatus === "venda_iniciada" ||
+    crmLeadStatus === "vendido" ||
+    Boolean(crmConversation?.attending_by || crmConversation?.attending_name);
+
+  if (crmHumanActive) {
+    if (existingConversation?.id) {
+      await supabase
+        .from("aline_conversations")
+        .update({
+          status: "human_takeover",
+          active_agent: "human",
+          assignment_reason: crmConversation?.attending_name
+            ? `Atendimento humano ativo no CRM: ${crmConversation.attending_name}`
+            : `Lead status no CRM: ${crmLeadStatus || "humano"}`,
+          last_message_at: new Date().toISOString(),
+          followup_count: 0,
+        })
+        .eq("id", existingConversation.id);
+    }
+
+    return {
+      skipped: true,
+      reason: crmConversation?.attending_by || crmConversation?.attending_name
+        ? "crm_attending_human"
+        : `crm_lead_status_${crmLeadStatus || "human"}`,
+    };
   }
 
   if (!existingConversation) {

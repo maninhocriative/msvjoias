@@ -961,12 +961,40 @@ const Chat = () => {
     setUpdatingLeadStatus(true);
 
     try {
+      const targetConversation =
+        conversations.find((conversation) => conversation.id === conversationId) ||
+        (selectedConversation?.id === conversationId ? selectedConversation : null);
+
       const { error } = await supabase
         .from('conversations')
         .update({ lead_status: status })
         .eq('id', conversationId);
 
       if (error) throw error;
+
+      if (status === 'humano' && targetConversation?.contact_number) {
+        const { error: takeoverError } = await supabase.functions.invoke('aline-takeover', {
+          body: {
+            phone: targetConversation.contact_number,
+            action: 'takeover',
+            reason: 'Status alterado para humano no painel',
+          },
+        });
+
+        if (takeoverError) {
+          console.warn('Falha ao sincronizar atendimento humano:', takeoverError);
+        } else {
+          setAlineStatusMap((prev) => ({
+            ...prev,
+            [targetConversation.contact_number]: {
+              ...prev[targetConversation.contact_number],
+              phone: targetConversation.contact_number,
+              status: 'human_takeover',
+              active_agent: 'human',
+            },
+          }));
+        }
+      }
 
       setConversations((prev) =>
         prev.map((c) => (c.id === conversationId ? { ...c, lead_status: status } : c)),
