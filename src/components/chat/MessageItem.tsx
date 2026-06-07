@@ -130,6 +130,40 @@ const isAudioPlaceholderContent = (content?: string | null) => {
 
   return !normalized || normalized === 'audio recebido' || normalized === 'audio';
 };
+
+const normalizePlaceholderContent = (content?: string | null) =>
+  String(content || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[\[\]()]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const isInstagramAttachmentPlaceholderContent = (content?: string | null) => {
+  const normalized = normalizePlaceholderContent(content);
+  return [
+    'ephemeral',
+    'share',
+    'story mention',
+    'ig story',
+    'instagram story',
+    'midia temporaria do instagram',
+    'midia do instagram',
+  ].includes(normalized);
+};
+
+const isInstagramAttachmentType = (messageType?: string | null) =>
+  ['ephemeral', 'share', 'story_mention', 'ig_story', 'instagram_story'].includes(
+    String(messageType || '').toLowerCase(),
+  );
+
+const inferVisualMediaType = (url?: string | null) => {
+  const lower = String(url || '').toLowerCase().split('?')[0];
+  if (/\.(mp4|mov|webm|m4v)$/.test(lower)) return 'video';
+  return 'image';
+};
+
 const MessageItem = memo(({
   message,
   showTail,
@@ -173,21 +207,31 @@ const MessageItem = memo(({
     );
   }
   const isProfileMediaUrl = isWhatsAppProfileImageUrl(message.media_url);
-  const playableAudioUrl = message.message_type === 'audio' ? getPlayableAudioUrl(message) : '';
+  const effectiveMessageType =
+    isInstagramAttachmentType(message.message_type) && message.media_url
+      ? inferVisualMediaType(message.media_url)
+      : message.message_type;
+  const playableAudioUrl = effectiveMessageType === 'audio' ? getPlayableAudioUrl(message) : '';
   const hasMedia =
-    (message.message_type === 'image' ||
-      message.message_type === 'audio' ||
-      message.message_type === 'video' ||
-      message.message_type === 'document') &&
+    (effectiveMessageType === 'image' ||
+      effectiveMessageType === 'audio' ||
+      effectiveMessageType === 'video' ||
+      effectiveMessageType === 'document') &&
     !!message.media_url &&
     !isProfileMediaUrl;
+  const showInstagramAttachmentFallback =
+    !isDeleted &&
+    isInstagram &&
+    isInstagramAttachmentType(message.message_type) &&
+    !hasMedia;
 
   const showTextContent =
     !isDeleted &&
-    (message.message_type !== 'audio' || !isAudioPlaceholderContent(message.content)) &&
+    (effectiveMessageType !== 'audio' || !isAudioPlaceholderContent(message.content)) &&
     !!message.content &&
     message.content.trim().length > 0 &&
-    !isRedundantMediaLinkText(message.content, message.media_url);
+    !isRedundantMediaLinkText(message.content, message.media_url) &&
+    !(isInstagram && isInstagramAttachmentPlaceholderContent(message.content));
 
   if (!isDeleted && !hasMedia && !showTextContent && isProfileMediaUrl) {
     return null;
@@ -291,7 +335,7 @@ const MessageItem = memo(({
               </div>
             )}
 
-            {message.message_type === 'image' && hasMedia && (
+            {effectiveMessageType === 'image' && hasMedia && (
               <img
                 src={message.media_url}
                 alt="Imagem"
@@ -307,14 +351,14 @@ const MessageItem = memo(({
               />
             )}
 
-            {message.message_type === 'image' && !message.media_url && !showTextContent && !isDeleted && (
+            {effectiveMessageType === 'image' && !message.media_url && !showTextContent && !isDeleted && (
               <div className="flex items-center gap-2 rounded-2xl border border-white/8 bg-black/10 px-3 py-2 text-sm text-slate-300">
                 <FileText className="w-4 h-4 shrink-0" />
                 <span>Imagem recebida</span>
               </div>
             )}
 
-            {message.message_type === 'audio' && hasMedia && (
+            {effectiveMessageType === 'audio' && hasMedia && (
               <div className="flex w-[280px] max-w-[70vw] flex-col gap-2 rounded-2xl border border-white/8 bg-black/18 p-3 sm:w-[340px]">
                 <div className="flex items-center gap-2.5">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-200">
@@ -344,7 +388,7 @@ const MessageItem = memo(({
             )}
 
 
-            {message.message_type === 'audio' && !hasMedia && !showTextContent && !isDeleted && (
+            {effectiveMessageType === 'audio' && !hasMedia && !showTextContent && !isDeleted && (
               <div className="flex items-center gap-2 rounded-2xl border border-white/8 bg-black/10 px-3 py-2 text-sm text-slate-300">
                 <Volume2 className="w-4 h-4 shrink-0 text-emerald-300" />
                 <div className="min-w-0">
@@ -353,7 +397,7 @@ const MessageItem = memo(({
                 </div>
               </div>
             )}
-            {message.message_type === 'video' && hasMedia && (
+            {effectiveMessageType === 'video' && hasMedia && (
               <video
                 controls
                 className="block w-full max-w-[280px] sm:max-w-[360px] lg:max-w-[460px] rounded-2xl mb-2 bg-black/20 border border-white/8"
@@ -364,7 +408,7 @@ const MessageItem = memo(({
               </video>
             )}
 
-            {message.message_type === 'document' && hasMedia && (
+            {effectiveMessageType === 'document' && hasMedia && (
               <a
                 href={message.media_url || undefined}
                 target="_blank"
@@ -374,6 +418,16 @@ const MessageItem = memo(({
                 <FileText className="w-4 h-4 shrink-0" />
                 <span>{message.content || 'Documento'}</span>
               </a>
+            )}
+
+            {showInstagramAttachmentFallback && (
+              <div className="flex items-center gap-2 rounded-2xl border border-white/8 bg-black/10 px-3 py-2 text-sm text-slate-300">
+                <FileText className="w-4 h-4 shrink-0 text-fuchsia-200" />
+                <div className="min-w-0">
+                  <span className="block">Midia temporaria do Instagram</span>
+                  <span className="block text-[11px] leading-4 text-slate-400">O Instagram nao disponibilizou a foto para exibicao.</span>
+                </div>
+              </div>
             )}
 
             {isDeleted && (

@@ -12,6 +12,23 @@ function asString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function normalizeInstagramAttachmentLabel(type: string): string {
+  const normalized = type.toLowerCase();
+  if (normalized === "ephemeral") return "midia temporaria do Instagram";
+  if (["share", "story_mention", "ig_story", "instagram_story"].includes(normalized)) {
+    return "midia do Instagram";
+  }
+  return type;
+}
+
+function inferMediaTypeFromUrl(url: string): string {
+  const lower = url.toLowerCase().split("?")[0];
+  if (/\.(mp4|mov|webm|m4v)$/.test(lower)) return "video";
+  if (/\.(mp3|m4a|ogg|oga|opus|wav|aac|amr)$/.test(lower)) return "audio";
+  if (/\.(pdf|doc|docx|xls|xlsx|csv|txt|zip)$/.test(lower)) return "document";
+  return "image";
+}
+
 function getInstagramAccessToken(): string {
   return (
     Deno.env.get("INSTAGRAM_ACCESS_TOKEN") ||
@@ -41,7 +58,7 @@ function getMessageText(message: any): string {
 
   const firstAttachment = Array.isArray(message?.attachments) ? message.attachments[0] : null;
   const attachmentType = asString(firstAttachment?.type);
-  return attachmentType ? `[${attachmentType}]` : "";
+  return attachmentType ? `[${normalizeInstagramAttachmentLabel(attachmentType)}]` : "";
 }
 
 function getCommentEvents(body: any): any[] {
@@ -103,14 +120,21 @@ function getEventMessage(event: any): any {
 function getMedia(message: any): { type: string; url: string | null } {
   const firstAttachment = Array.isArray(message?.attachments) ? message.attachments[0] : null;
   const type = asString(firstAttachment?.type) || "text";
+  const normalizedType = type.toLowerCase();
   const url =
     asString(firstAttachment?.payload?.url) ||
+    asString(firstAttachment?.payload?.image_url) ||
+    asString(firstAttachment?.payload?.video_url) ||
+    asString(firstAttachment?.payload?.media_url) ||
     asString(firstAttachment?.payload?.sticker_id) ||
     null;
 
   if (!firstAttachment) return { type: "text", url: null };
   if (["image", "audio", "video", "file"].includes(type)) {
     return { type: type === "file" ? "document" : type, url };
+  }
+  if (url && ["ephemeral", "share", "story_mention", "ig_story", "instagram_story"].includes(normalizedType)) {
+    return { type: inferMediaTypeFromUrl(url), url };
   }
 
   return { type, url };
