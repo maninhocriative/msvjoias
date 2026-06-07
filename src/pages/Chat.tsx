@@ -3111,7 +3111,7 @@ const Chat = () => {
   const hasActiveFilters = chatView !== 'all' || filterStatus !== 'all' || filterAttendant !== 'all';
 
   return (
-    <div className="h-full min-h-0 min-w-0 flex bg-[#0b141a] overflow-hidden">
+    <div className="h-full min-h-0 min-w-0 flex bg-[#0b141a] overflow-hidden max-md:h-[100dvh]">
       <div
         className={cn(
           'flex flex-col shrink-0 min-h-0 border-r border-[#2a3942] bg-[#111b21] overflow-x-hidden',
@@ -3119,7 +3119,7 @@ const Chat = () => {
           selectedConversation ? 'hidden md:flex' : 'flex',
         )}
       >
-        <div className="px-3 py-3 border-b border-[#2a3942] shrink-0 bg-[#202c33]">
+        <div className="px-3 py-3 border-b border-[#2a3942] shrink-0 bg-[#202c33] max-md:px-4 max-md:pt-3 max-md:pb-2.5">
           <div className="flex items-center justify-between mb-2.5 sm:mb-3">
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="relative shrink-0">
@@ -3192,7 +3192,7 @@ const Chat = () => {
               placeholder="Buscar conversa..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 h-9 bg-[#111b21] border-transparent text-sm text-slate-100 placeholder:text-slate-500 focus-visible:ring-[#00a884]/40 rounded-lg"
+              className="pl-9 h-9 max-md:h-10 bg-[#111b21] border-transparent text-sm text-slate-100 placeholder:text-slate-500 focus-visible:ring-[#00a884]/40 rounded-lg max-md:rounded-2xl"
             />
             {searchTerm && (
               <button
@@ -3205,7 +3205,7 @@ const Chat = () => {
           </div>
         </div>
 
-        <div className="px-3 py-2 border-b border-[#2a3942] shrink-0 bg-[#111b21]">
+        <div className="px-3 py-2 border-b border-[#2a3942] shrink-0 bg-[#111b21] max-md:px-4 max-md:py-2.5">
           <div className="space-y-2">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -3244,9 +3244,8 @@ const Chat = () => {
               </div>
             </div>
 
-            <div className={cn('space-y-3', mobileFiltersOpen ? 'block' : 'hidden md:block')}>
             <div className="space-y-2">
-              <div className="grid grid-cols-3 gap-1.5">
+              <div className="grid grid-cols-3 gap-1.5 rounded-2xl bg-[#0b141a] p-1 md:bg-transparent md:p-0">
                 {chatViewTabs.map(({ key, label }) => {
                   const active = chatView === key;
 
@@ -3258,9 +3257,9 @@ const Chat = () => {
                         setFilterStatus('all');
                       }}
                       className={cn(
-                        'min-w-0 rounded-full px-2.5 py-1.5 transition-colors text-center',
+                        'min-w-0 rounded-full px-2.5 py-1.5 max-md:py-2 transition-colors text-center',
                         active
-                          ? 'bg-cyan-500/18 text-cyan-200 border border-cyan-400/25'
+                          ? 'bg-cyan-500/18 text-cyan-200 border border-cyan-400/25 max-md:bg-[#00a884] max-md:text-[#071513] max-md:border-transparent'
                           : 'bg-[#202c33] text-slate-400 hover:text-slate-200',
                       )}
                     >
@@ -3283,12 +3282,13 @@ const Chat = () => {
               </div>
             </div>
 
+            <div className={cn('space-y-3', mobileFiltersOpen ? 'block' : 'hidden md:block')}>
             <div className="space-y-2">
               <p className="px-1 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-600">
                 Status
               </p>
 
-              <div className="flex flex-wrap gap-1.5 pb-0.5">
+              <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-hide md:flex-wrap md:overflow-visible">
                 {statusFilters.map(({ key, label, color }) => {
                   const active = filterStatus === key;
 
@@ -3297,7 +3297,7 @@ const Chat = () => {
                       key={key}
                       onClick={() => setFilterStatus(key)}
                       className={cn(
-                        'min-w-fit max-w-full rounded-full px-3 py-1.5 transition-colors text-left',
+                        'min-w-fit max-w-full rounded-full px-3 py-1.5 transition-colors text-left max-md:flex-none',
                         active
                           ? 'bg-[#00a884] text-[#111b21]'
                           : 'bg-[#202c33] text-slate-400 hover:text-slate-200',
@@ -3454,8 +3454,8 @@ const Chat = () => {
           <>
             <div
               className={cn(
-                'px-4 border-b border-[#2a3942] flex flex-col justify-center bg-[#202c33] shrink-0 gap-0',
-                isSaleFinalized || selectedNeedsHumanAttention ? 'h-auto py-2' : 'h-14',
+                'px-4 border-b border-[#2a3942] flex flex-col justify-center bg-[#202c33] shrink-0 gap-0 max-md:px-3',
+                isSaleFinalized || selectedNeedsHumanAttention ? 'h-auto py-2' : 'h-14 max-md:h-[58px]',
               )}
             >
               {isSaleFinalized && (
@@ -3487,12 +3487,12 @@ const Chat = () => {
               )}
 
               <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0 flex-1">
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
                   <button
-                    className="md:hidden shrink-0 p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-white/8 transition-colors"
+                    className="md:hidden shrink-0 p-2 -ml-1 rounded-full text-slate-300 hover:text-white hover:bg-white/8 transition-colors"
                     onClick={() => setSelectedConversation(null)}
                   >
-                    <ArrowLeft className="w-4 h-4" />
+                    <ArrowLeft className="w-5 h-5" />
                   </button>
 
                   <div className="relative shrink-0">
@@ -3503,12 +3503,12 @@ const Chat = () => {
                             .profile_pic_url
                         }
                         alt=""
-                        className="w-8 h-8 rounded-full object-cover"
+                        className="w-8 h-8 max-md:w-9 max-md:h-9 rounded-full object-cover"
                       />
                     ) : (
                       <div
                         className={cn(
-                          'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white',
+                          'w-8 h-8 max-md:w-9 max-md:h-9 rounded-full flex items-center justify-center text-sm font-bold text-white',
                           selectedConversation.platform === 'instagram'
                             ? 'bg-gradient-to-br from-fuchsia-500 to-orange-400'
                             : isSaleFinalized
@@ -3541,9 +3541,9 @@ const Chat = () => {
                     )}
                   </div>
 
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-semibold text-white truncate">
+                      <p className="min-w-0 max-w-full truncate text-sm font-semibold text-white max-md:text-[15px]">
                         {getCustomerProfileForPhone(selectedConversation.contact_number)?.name ||
                           selectedConversation.contact_name ||
                           selectedConversation.contact_number}
@@ -3571,7 +3571,7 @@ const Chat = () => {
                       )}
                     </div>
 
-                    <div className="flex items-center gap-1.5 text-[10px] text-slate-600 truncate">
+                    <div className="flex items-center gap-1.5 text-[10px] text-slate-500 truncate max-md:text-[11px]">
                       <span className="truncate">{selectedConversation.contact_number}</span>
                       {contactPresenceLabel && (
                         <>
@@ -3630,8 +3630,8 @@ const Chat = () => {
 
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <button className="p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-white/8 transition-colors">
-                        <MoreVertical className="w-4 h-4" />
+                      <button className="p-1.5 max-md:p-2 rounded-full text-slate-400 hover:text-white hover:bg-white/8 transition-colors">
+                        <MoreVertical className="w-4 h-4 max-md:w-5 max-md:h-5" />
                       </button>
                     </DropdownMenuTrigger>
 
@@ -3720,12 +3720,17 @@ const Chat = () => {
             </div>
 
             <div className="sm:hidden shrink-0 border-b border-[#2a3942] bg-[#111b21] px-3 py-2">
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-1.5 rounded-2xl bg-[#0b141a] p-1">
                 <button
                   type="button"
                   onClick={handleFinalizeSale}
                   disabled={finalizingSale}
-                  className="inline-flex min-w-0 items-center justify-center gap-1.5 rounded-full bg-[#202c33] px-2 py-2 text-[11px] font-semibold text-slate-200 disabled:opacity-50"
+                  className={cn(
+                    'inline-flex min-w-0 items-center justify-center gap-1.5 rounded-full px-2 py-2 text-[11px] font-semibold disabled:opacity-50',
+                    isSaleFinalized
+                      ? 'bg-emerald-500/18 text-emerald-200'
+                      : 'bg-[#00a884] text-[#071513]',
+                  )}
                 >
                   {finalizingSale ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -3758,18 +3763,18 @@ const Chat = () => {
             </div>
 
             {hasSelectedAutomationProduct && (
-              <div className="shrink-0 border-b border-amber-400/20 bg-amber-500/[0.08] px-3 py-2">
+              <div className="shrink-0 border-b border-amber-400/20 bg-amber-500/[0.08] px-3 py-2 max-md:px-3 max-md:py-2">
                 <div className="mx-auto flex max-w-5xl flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between xl:max-w-6xl">
                   <div className="min-w-0">
-                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-300/80">
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-300/80 max-md:text-[9px]">
                       Modelo escolhido pelo cliente
                     </p>
-                    <p className="mt-0.5 truncate text-[13px] font-semibold text-amber-50">
+                    <p className="mt-0.5 truncate text-[13px] font-semibold text-amber-50 max-md:text-[12px]">
                       {selectedAutomationProduct?.name || 'Produto selecionado'}
                     </p>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-amber-100/85">
+                  <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-amber-100/85 max-md:text-[10px]">
                     {selectedAutomationProduct?.sku && (
                       <span className="rounded-full border border-amber-300/20 bg-black/15 px-2 py-1">
                         SKU: {selectedAutomationProduct.sku}
@@ -3796,7 +3801,7 @@ const Chat = () => {
               }}
             >
               <div
-                className="w-full px-4 sm:px-6 lg:px-10 xl:px-12 py-4 max-w-5xl xl:max-w-6xl mx-auto min-h-full"
+                className="w-full px-2.5 py-2.5 sm:px-6 sm:py-4 lg:px-10 xl:px-12 max-w-5xl xl:max-w-6xl mx-auto min-h-full"
               >
                 {(loadingOlderMessages || hasOlderMessages) && messages.length > 0 && (
                   <div className="flex justify-center pb-2">
@@ -3826,7 +3831,7 @@ const Chat = () => {
                 ) : (
                   Object.entries(groupedMessages).map(([date, grouped]) => (
                     <div key={date}>
-                      <div className="flex justify-center my-4">
+                      <div className="flex justify-center my-3 sm:my-4">
                         <span className="px-3 py-1 rounded-full bg-slate-800/80 text-[10px] text-slate-500 font-medium">
                           {formatDate(grouped[0].created_at || '')}
                         </span>
@@ -3870,7 +3875,7 @@ const Chat = () => {
               </div>
             </div>
 
-            <div className="px-4 py-3 bg-[#202c33] border-t border-[#2a3942] shrink-0">
+            <div className="px-4 py-3 bg-[#202c33] border-t border-[#2a3942] shrink-0 max-md:px-2.5 max-md:py-2">
               <div className="max-w-5xl xl:max-w-6xl mx-auto">
                 {isRecording && (
                   <div className="flex items-center justify-between mb-2 px-3 py-2 bg-rose-500/10 border border-rose-500/20 rounded-lg">

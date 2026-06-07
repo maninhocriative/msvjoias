@@ -267,12 +267,13 @@ const ConversationItem = memo(
       <button
         onClick={onClick}
         className={cn(
-          'w-full min-w-0 px-3 py-2.5 flex items-start gap-3 text-left transition-colors relative group border-b border-white/[0.06]',
+          'w-full min-w-0 px-3 py-3 sm:py-2.5 flex items-start gap-3 text-left transition-colors relative group border-b border-white/[0.06]',
           isSelected
             ? 'bg-[#2a3942]'
             : 'bg-transparent hover:bg-[#202c33]',
           isSaleFinalized && !isSelected && 'bg-emerald-500/[0.035]',
           needsHumanAttention && 'bg-emerald-500/[0.08]',
+          isSelected && 'max-md:shadow-[inset_3px_0_0_#00a884]',
         )}
       >
         <div className="relative shrink-0 mt-0.5">
@@ -280,13 +281,13 @@ const ConversationItem = memo(
             <img
               src={customerProfile.profile_pic_url}
               alt={displayName}
-              className="w-12 h-12 rounded-full object-cover ring-1 ring-white/10"
+              className="w-11 h-11 sm:w-12 sm:h-12 rounded-full object-cover ring-1 ring-white/10"
               loading="lazy"
             />
           ) : (
             <div
               className={cn(
-                'w-12 h-12 rounded-full flex items-center justify-center text-base font-semibold text-white ring-1 ring-white/10',
+                'w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-base font-semibold text-white ring-1 ring-white/10',
                 isInstagram
                   ? 'bg-gradient-to-br from-fuchsia-500 to-orange-400'
                   : agentMeta.avatarClass,
@@ -300,7 +301,7 @@ const ConversationItem = memo(
             <span
               title={contactPresenceLabel}
               className={cn(
-                'absolute bottom-0 right-0 h-4 w-4 rounded-full border-2 border-[#111b21] shadow-sm',
+                'absolute bottom-0 right-0 h-3.5 w-3.5 sm:h-4 sm:w-4 rounded-full border-2 border-[#111b21] shadow-sm',
                 isContactOnline ? 'bg-emerald-400 ring-2 ring-emerald-400/25' : 'bg-slate-500',
                 ['composing', 'recording'].includes(contactPresence) && 'animate-pulse',
               )}
@@ -348,7 +349,7 @@ const ConversationItem = memo(
               {contactPresenceLabel && (
                 <div
                   className={cn(
-                    'mt-1 inline-flex max-w-full items-center gap-1 text-[10px] font-medium leading-4',
+                    'mt-1 inline-flex max-w-full items-center gap-1 text-[10px] font-medium leading-4 max-md:hidden',
                     isContactOnline ? 'text-emerald-300' : 'text-slate-500',
                   )}
                   title={contactPresenceLabel}
