@@ -623,12 +623,13 @@ async function storeInstagramComment(supabase: any, comment: any) {
 
   const { data: existingConversation } = await supabase
     .from("conversations")
-    .select("id, unread_count")
+    .select("id, unread_count, lead_status, attending_by, attending_name")
     .eq("contact_number", contactNumber)
     .maybeSingle();
 
   let conversationId = existingConversation?.id;
   const content = `[Comentario Instagram] ${text}`;
+  const automationBlocked = isHumanHandledConversation(existingConversation);
 
   if (!conversationId) {
     const { data: createdConversation, error } = await supabase
@@ -668,13 +669,54 @@ async function storeInstagramComment(supabase: any, comment: any) {
     zapi_message_id: `instagram-comment:${commentId}`,
   });
 
+  if (automationBlocked) {
+    await syncInstagramHumanTakeover(
+      supabase,
+      contactNumber,
+      existingConversation?.attending_name
+        ? `Atendimento humano ativo no CRM: ${existingConversation.attending_name}`
+        : `Lead status no CRM: ${existingConversation?.lead_status || "humano"}`,
+    );
+  }
+
   return {
     stored: true,
+    automation_blocked: automationBlocked,
+    automation_block_reason: automationBlocked
+      ? existingConversation?.attending_by || existingConversation?.attending_name
+        ? "crm_attending_human"
+        : `crm_lead_status_${existingConversation?.lead_status || "human"}`
+      : null,
     conversation_id: conversationId,
     contact_number: contactNumber,
     contact_name: contactName,
     comment,
   };
+}
+
+function isHumanLeadStatus(value: unknown): boolean {
+  const status = String(value || "").trim().toLowerCase();
+  return status === "humano" || status === "venda_iniciada" || status === "vendido";
+}
+
+function isHumanHandledConversation(conversation: any): boolean {
+  return (
+    isHumanLeadStatus(conversation?.lead_status) ||
+    Boolean(conversation?.attending_by || conversation?.attending_name)
+  );
+}
+
+async function syncInstagramHumanTakeover(supabase: any, contactNumber: string, reason: string) {
+  await supabase
+    .from("aline_conversations")
+    .update({
+      status: "human_takeover",
+      active_agent: "human",
+      assignment_reason: reason,
+      last_message_at: new Date().toISOString(),
+      followup_count: 0,
+    })
+    .eq("phone", contactNumber);
 }
 
 async function storeInstagramMessage(supabase: any, event: any) {
@@ -709,12 +751,13 @@ async function storeInstagramMessage(supabase: any, event: any) {
 
   const { data: existingConversation } = await supabase
     .from("conversations")
-    .select("id, unread_count")
+    .select("id, unread_count, lead_status, attending_by, attending_name")
     .eq("contact_number", contactNumber)
     .maybeSingle();
 
   let conversationId = existingConversation?.id;
   const unreadCount = Number(existingConversation?.unread_count || 0) + 1;
+  const automationBlocked = isHumanHandledConversation(existingConversation);
 
   if (!conversationId) {
     const { data: createdConversation, error } = await supabase
@@ -761,8 +804,24 @@ async function storeInstagramMessage(supabase: any, event: any) {
 
   if (messageError) throw messageError;
 
+  if (automationBlocked) {
+    await syncInstagramHumanTakeover(
+      supabase,
+      contactNumber,
+      existingConversation?.attending_name
+        ? `Atendimento humano ativo no CRM: ${existingConversation.attending_name}`
+        : `Lead status no CRM: ${existingConversation?.lead_status || "humano"}`,
+    );
+  }
+
   return {
     stored: true,
+    automation_blocked: automationBlocked,
+    automation_block_reason: automationBlocked
+      ? existingConversation?.attending_by || existingConversation?.attending_name
+        ? "crm_attending_human"
+        : `crm_lead_status_${existingConversation?.lead_status || "human"}`
+      : null,
     conversation_id: conversationId,
     message_id: storedMessage.id,
     sender_id: senderId,
@@ -803,7 +862,12 @@ serve(async (req) => {
     for (const entry of body?.entry || []) {
       for (const event of entry?.messaging || []) {
         const stored = await storeInstagramMessage(supabase, event);
-        if (stored?.stored) {
+        if (stored?.stored && stored?.automation_blocked) {
+          results.push({
+            ...stored,
+            agent: { skipped: true, reason: stored.automation_block_reason || "human_takeover" },
+          });
+        } else if (stored?.stored) {
           try {
             const agent = await runAgentAndReply({
               supabase,
@@ -841,7 +905,12 @@ serve(async (req) => {
 
     for (const comment of getCommentEvents(body)) {
       const stored = await storeInstagramComment(supabase, comment);
-      if (stored?.stored) {
+      if (stored?.stored && stored?.automation_blocked) {
+        results.push({
+          ...stored,
+          agent: { skipped: true, reason: stored.automation_block_reason || "human_takeover" },
+        });
+      } else if (stored?.stored) {
         try {
           const agent = await runAgentAndReplyToComment({
             supabase,
