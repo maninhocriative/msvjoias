@@ -302,9 +302,13 @@ function detectThanksOnly(text: string): boolean {
   const normalized = normalizeText(text).replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
   if (!normalized) return false;
 
+  const closingPattern =
+    "(ok|ta ok|tudo certo|ta certo|ta bom|tudo bem|beleza|blz|show|obrigado|obrigada|muito obrigado|muito obrigada|valeu|agradeco|tenha um bom dia|tenha um otimo dia|bom dia|boa tarde|boa noite|ate mais|ate logo)";
+
   return (
     /^(obrigado|obrigada|valeu|agradeco)$/.test(normalized) ||
-    /^(ok|ta ok|tudo certo|ta certo|ta bom|tudo bem|beleza|blz|show)( obrigado| obrigada| valeu)?$/.test(normalized)
+    /^(ok|ta ok|tudo certo|ta certo|ta bom|tudo bem|beleza|blz|show)( obrigado| obrigada| valeu)?$/.test(normalized) ||
+    new RegExp(`^${closingPattern}(\\s+${closingPattern})*$`).test(normalized)
   );
 }
 function detectAllianceType(text: string, data: AnyRecord): string | null {
@@ -1526,6 +1530,20 @@ function detectMoreOptionsIntent(text: string): boolean {
   const normalized = normalizeText(text);
   return /more_options|ver_mais|quero mais|tem outros|tem outras|mais opcoes|mais modelos|outros modelos|outras opcoes|outras opções|ver mais/.test(
     normalized,
+  );
+}
+
+function detectKeilaCatalogNowIntent(text: string): boolean {
+  const normalized = normalizeText(text).replace(/\s+/g, " ").trim();
+  if (!normalized) return false;
+
+  return (
+    /^(manda|mande|pode mandar|pode enviar|me manda|me mande|envia|envie)$/.test(normalized) ||
+    /(quero|queria|gostaria).*(ver|olhar|receber).*(modelo|modelos|opcao|opcoes|opções|valor|valores)/.test(normalized) ||
+    /(manda|mande|envia|envie|mostra|mostrar|me manda|me mande).*(modelo|modelos|opcao|opcoes|opções|valor|valores|catalogo|catálogo)/.test(normalized) ||
+    /(modelo|modelos|opcao|opcoes|opções).*(valor|valores)/.test(normalized) ||
+    /(nao sei|não sei|nem vi|ainda nao vi|ainda não vi).*(modelo|modelos|produto|produtos)/.test(normalized) ||
+    /^(quero ver modelos|ver modelos|modelos|opcoes|opções|opcoes e valores|opções e valores)$/.test(normalized)
   );
 }
 
@@ -5385,6 +5403,13 @@ async function handleKeilaFlow(args: {
     data.orcamento_texto = budget.raw;
     resetCatalogChoice(data);
   }
+  if (
+    !budget &&
+    String(currentNode || "").includes("orcamento") &&
+    /nao sei|não sei|ainda nao sei|ainda não sei|sem ideia|nao tenho|não tenho/.test(normalizeText(message))
+  ) {
+    data.orcamento_texto = "sem_orcamento_definido";
+  }
 
   const pairOrUnit = extractPairOrUnit(message);
   if (pairOrUnit && data.quantidade_tipo !== pairOrUnit) {
@@ -5424,23 +5449,34 @@ async function handleKeilaFlow(args: {
     resetCatalogChoice(data);
   }
 
-  const wantsFullCatalog = detectFullCatalogRequest(message) || data.keila_force_catalogo === true;
+  const keilaNode = normalizeText(currentNode);
+  const hasKeilaCatalogContext =
+    /catalogo|selecao|sem_mais_opcoes|sem_catalogo|cor/.test(keilaNode) ||
+    getRequestedColors(data, ["dourada", "prata", "preta", "azul"]).length > 0;
+  const confirmsKeilaCatalogContext =
+    hasKeilaCatalogContext && /^(sim|s|ok|pode|claro|beleza|ta bom)$/.test(normalizeText(message));
+  const wantsBroadKeilaCatalog = detectFullCatalogRequest(message) || data.keila_force_catalogo === true;
+  const wantsKeilaCatalogNow =
+    wantsBroadKeilaCatalog ||
+    confirmsKeilaCatalogContext ||
+    detectKeilaCatalogNowIntent(message) ||
+    detectCatalogIntent(message);
   const detectedColorsInMessage = detectColors(message).filter((color) => ["dourada", "prata", "preta", "azul"].includes(color));
-  const requestedColors = wantsFullCatalog && detectedColorsInMessage.length === 0
+  const requestedColors = wantsBroadKeilaCatalog && detectedColorsInMessage.length === 0
     ? []
     : getRequestedColors(data, ["dourada", "prata", "preta", "azul"]);
   const requestedColorLabel = formatColorList(requestedColors);
-  const colorPhrase = wantsFullCatalog && requestedColors.length === 0
+  const colorPhrase = wantsBroadKeilaCatalog && requestedColors.length === 0
     ? "disponiveis"
     : requestedColors.length > 1
     ? `nas cores ${requestedColorLabel}`
     : `na cor ${requestedColorLabel || data.cor || "solicitada"}`;
   const isDatingAlliance = data.finalidade === "namoro";
-  const hasTimeline = wantsFullCatalog || isDatingAlliance || !!data.prazo_fechamento;
-  const hasBudget = wantsFullCatalog || isDatingAlliance || !!data.orcamento_valor || !!data.orcamento_texto;
-  const hasQuantityType = wantsFullCatalog || isDatingAlliance || !!data.quantidade_tipo;
-  const hasSizeInfo = wantsFullCatalog || isDatingAlliance || !!data.tamanho_1 || data.numeracao_status === "nao_sabe";
-  const hasColor = wantsFullCatalog || requestedColors.length > 0;
+  const hasTimeline = wantsKeilaCatalogNow || isDatingAlliance || !!data.prazo_fechamento;
+  const hasBudget = wantsKeilaCatalogNow || isDatingAlliance || !!data.orcamento_valor || !!data.orcamento_texto;
+  const hasQuantityType = wantsKeilaCatalogNow || isDatingAlliance || !!data.quantidade_tipo;
+  const hasSizeInfo = wantsKeilaCatalogNow || isDatingAlliance || !!data.tamanho_1 || data.numeracao_status === "nao_sabe";
+  const hasColor = wantsKeilaCatalogNow || requestedColors.length > 0;
   const hasSelectedProduct = hasCurrentCatalogSelection(data);
 
   if (!hasSelectedProduct) {
@@ -5455,7 +5491,7 @@ async function handleKeilaFlow(args: {
 
   const hasDelivery = !!data.delivery_method;
   const hasPayment = !!data.payment_method;
-  const wantsCatalogResend = detectCatalogResendIntent(message) || wantsFullCatalog;
+  const wantsCatalogResend = detectCatalogResendIntent(message) || wantsKeilaCatalogNow;
   const wantsMoreOptions = detectMoreOptionsIntent(message);
   const asksPrice = detectPriceQuestion(message) || detectPriceIntent(message);
   const mentionsExternalReference = /foto|imagem|print|anuncio|anúncio|publicacao|publicação|post|stories|story|reels|video|vídeo/.test(

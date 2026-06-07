@@ -46,6 +46,7 @@ import { useAssignmentNotification } from '@/hooks/useAssignmentNotification';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useAuth } from '@/contexts/AuthContext';
 import { useChatAttending } from '@/hooks/useChatAttending';
+import { ToastAction } from '@/components/ui/toast';
 
 interface AlineConversation {
   id: string;
@@ -57,8 +58,11 @@ interface AlineConversation {
   assignment_reason?: string;
   assigned_at?: string;
   current_node?: string;
+  followup_count?: number;
   collected_data?: Record<string, any> | null;
 }
+
+type ChatInboxView = 'all' | 'today' | 'recovery';
 
 interface CustomerProfile {
   whatsapp: string;
@@ -97,6 +101,12 @@ const statusFilters = [
   { key: 'vendido', label: 'Vendidos', color: 'bg-emerald-400' },
 ];
 
+const chatViewTabs: Array<{ key: ChatInboxView; label: string }> = [
+  { key: 'all', label: 'Todas' },
+  { key: 'today', label: 'Hoje' },
+  { key: 'recovery', label: 'Recuperacao' },
+];
+
 
 const CONVERSATION_LIST_SELECT =
   'id, contact_name, contact_number, platform, last_message, last_message_at, unread_count, lead_status, contact_presence, contact_is_online, contact_last_seen_at, contact_presence_updated_at, attending_by, attending_name, attending_since, created_at';
@@ -106,6 +116,15 @@ const MESSAGE_PAGE_LIMIT = 30;
 const CONVERSATION_LIST_LIMIT = 500;
 const MESSAGE_DUPLICATE_WINDOW_MS = 2 * 60 * 1000;
 const OPTIMISTIC_REPLACEMENT_WINDOW_MS = 45 * 1000;
+
+const normalizeComparablePhone = (phone: string | null | undefined) =>
+  String(phone || '').replace(/\D/g, '');
+
+const getStartOfTodayTime = () => {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  return start.getTime();
+};
 
 const getMessageTime = (message: Partial<Message>) =>
   new Date(message.created_at || '').getTime() || 0;
@@ -630,6 +649,7 @@ const Chat = () => {
   const [updatingLeadStatus, setUpdatingLeadStatus] = useState(false);
   const [takingOver, setTakingOver] = useState(false);
   const [isContactTyping, setIsContactTyping] = useState(false);
+  const [chatView, setChatView] = useState<ChatInboxView>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterAttendant, setFilterAttendant] = useState<string>('all');
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
@@ -802,6 +822,43 @@ const Chat = () => {
     return leadStatus === 'humano' || leadStatus === 'venda_iniciada' || getIsHumanTakeover(conv.contact_number) || getDerivedActionStage(conv);
   }, [getIsHumanTakeover, getDerivedActionStage]);
 
+  const isRecoveryAutomationConversation = useCallback(
+    (conv: Conversation) => {
+      const data = getAlineDataForPhone(conv.contact_number);
+      const currentNode = String(data?.current_node || '').toLowerCase();
+      const collectedData = data?.collected_data || {};
+      const lastFollowupKind = String(collectedData.last_followup_kind || '').toLowerCase();
+
+      return (
+        Number(data?.followup_count || 0) > 0 ||
+        currentNode.includes('followup') ||
+        currentNode.includes('resgate') ||
+        currentNode.includes('recuper') ||
+        Boolean(collectedData.last_followup_at) ||
+        lastFollowupKind.includes('followup') ||
+        lastFollowupKind.includes('resgate')
+      );
+    },
+    [getAlineDataForPhone],
+  );
+
+  const matchesChatView = useCallback(
+    (conv: Conversation, view: ChatInboxView) => {
+      if (view === 'all') return true;
+
+      if (view === 'today') {
+        const lastMessageTime = new Date(
+          conv.last_message_at || conv.updated_at || conv.created_at || '',
+        ).getTime();
+
+        return Number.isFinite(lastMessageTime) && lastMessageTime >= getStartOfTodayTime();
+      }
+
+      return isRecoveryAutomationConversation(conv);
+    },
+    [isRecoveryAutomationConversation],
+  );
+
   useEffect(() => {
     const actionHumanConversations = conversations.filter(isActionHumanConversation);
     const nextIds = new Set(actionHumanConversations.map((conversation) => conversation.id));
@@ -834,6 +891,19 @@ const Chat = () => {
         newAttentionConversations.length === 1
           ? `${displayName} esta aguardando um vendedor online.`
           : `${newAttentionConversations.length} conversas entraram na fila humana.`,
+      action: (
+        <ToastAction
+          altText="Abrir conversa"
+          onClick={() => {
+            setSelectedConversation(firstConversation);
+            setChatView('all');
+            setFilterStatus('all');
+            setFilterAttendant('all');
+          }}
+        >
+          Abrir
+        </ToastAction>
+      ),
     });
   }, [conversations, isActionHumanConversation, getCustomerProfileForPhone, toast]);
 
@@ -1499,7 +1569,7 @@ const Chat = () => {
       const { data } = await supabase
         .from('aline_conversations')
         .select(
-          'id, phone, status, active_agent, assigned_seller_id, assigned_seller_name, assignment_reason, assigned_at, current_node, collected_data',
+          'id, phone, status, active_agent, assigned_seller_id, assigned_seller_name, assignment_reason, assigned_at, current_node, followup_count, collected_data',
         )
         .in('phone', phoneVariants)
         .order('created_at', { ascending: false })
@@ -1901,7 +1971,7 @@ const Chat = () => {
                 supabase
                   .from('aline_conversations')
                   .select(
-                    'id, phone, status, active_agent, assigned_seller_id, assigned_seller_name, assignment_reason, assigned_at, current_node, collected_data',
+                    'id, phone, status, active_agent, assigned_seller_id, assigned_seller_name, assignment_reason, assigned_at, current_node, followup_count, collected_data',
                   )
                   .in('phone', chunk),
               ),
@@ -2076,25 +2146,47 @@ const Chat = () => {
     };
   }, [bumpConversationFromMessage, fetchConversations]);
 
-  useEffect(() => {
-    if (conversations.length === 0) return;
-
+  const openConversationFromStoredTarget = useCallback(() => {
     const targetConversationId = localStorage.getItem('crm_open_conversation_id');
     const targetPhone = localStorage.getItem('crm_open_phone');
-    if (!targetConversationId && !targetPhone) return;
+    if (!targetConversationId && !targetPhone) return false;
 
     const target = conversations.find((conversation) => {
       if (targetConversationId && conversation.id === targetConversationId) return true;
       if (!targetPhone) return false;
-      return buildPhoneVariants(conversation.contact_number).includes(targetPhone);
+      return buildPhoneVariants(conversation.contact_number).some(
+        (variant) => normalizeComparablePhone(variant) === normalizeComparablePhone(targetPhone),
+      );
     });
 
-    if (!target) return;
+    if (!target) return false;
 
     setSelectedConversation(target);
+    setChatView('all');
+    setFilterStatus('all');
+    setFilterAttendant('all');
     localStorage.removeItem('crm_open_conversation_id');
     localStorage.removeItem('crm_open_phone');
+    return true;
   }, [conversations]);
+
+  useEffect(() => {
+    if (conversations.length === 0) return;
+    openConversationFromStoredTarget();
+  }, [conversations, openConversationFromStoredTarget]);
+
+  useEffect(() => {
+    const handleOpenRequestedConversation = () => {
+      if (!openConversationFromStoredTarget()) {
+        void fetchConversations(false);
+      }
+    };
+
+    window.addEventListener('crm-open-conversation', handleOpenRequestedConversation);
+    return () => {
+      window.removeEventListener('crm-open-conversation', handleOpenRequestedConversation);
+    };
+  }, [fetchConversations, openConversationFromStoredTarget]);
 
   const addOptimisticMessage = useCallback(
     (
@@ -2782,6 +2874,7 @@ const Chat = () => {
 
   const filteredConversations = useMemo(() => {
     return searchedConversations
+      .filter((conv) => matchesChatView(conv, chatView))
       .filter((conv) => matchesStatusFilter(conv, filterStatus))
       .filter((conv) => matchesAttendantFilter(conv, filterAttendant))
       .sort((a, b) => {
@@ -2791,8 +2884,10 @@ const Chat = () => {
       });
   }, [
     searchedConversations,
+    chatView,
     filterStatus,
     filterAttendant,
+    matchesChatView,
     matchesStatusFilter,
     matchesAttendantFilter,
   ]);
@@ -2800,10 +2895,10 @@ const Chat = () => {
   const statusCounts = useMemo(() => {
     const source =
       filterAttendant === 'all'
-        ? searchedConversations
-        : searchedConversations.filter((conv) =>
-            matchesAttendantFilter(conv, filterAttendant),
-          );
+        ? searchedConversations.filter((conv) => matchesChatView(conv, chatView))
+        : searchedConversations
+            .filter((conv) => matchesChatView(conv, chatView))
+            .filter((conv) => matchesAttendantFilter(conv, filterAttendant));
 
     return {
       all: source.length,
@@ -2813,21 +2908,44 @@ const Chat = () => {
       acao_humana: source.filter((c) => isActionHumanConversation(c)).length,
       vendido: source.filter((c) => c.lead_status === 'vendido').length,
     };
-  }, [searchedConversations, filterAttendant, matchesAttendantFilter, isActionHumanConversation]);
+  }, [
+    searchedConversations,
+    chatView,
+    filterAttendant,
+    matchesChatView,
+    matchesAttendantFilter,
+    isActionHumanConversation,
+  ]);
 
   const attendantCounts = useMemo(() => {
     const source =
       filterStatus === 'all'
-        ? searchedConversations
-        : searchedConversations.filter((conv) =>
-            matchesStatusFilter(conv, filterStatus),
-          );
+        ? searchedConversations.filter((conv) => matchesChatView(conv, chatView))
+        : searchedConversations
+            .filter((conv) => matchesChatView(conv, chatView))
+            .filter((conv) => matchesStatusFilter(conv, filterStatus));
 
     return {
       aline: source.filter((conv) => !isActionHumanConversation(conv)).length,
       vendedor: source.filter((conv) => isActionHumanConversation(conv)).length,
     };
-  }, [searchedConversations, filterStatus, matchesStatusFilter, isActionHumanConversation]);
+  }, [
+    searchedConversations,
+    chatView,
+    filterStatus,
+    matchesChatView,
+    matchesStatusFilter,
+    isActionHumanConversation,
+  ]);
+
+  const chatViewCounts = useMemo(
+    () => ({
+      all: searchedConversations.length,
+      today: searchedConversations.filter((conv) => matchesChatView(conv, 'today')).length,
+      recovery: searchedConversations.filter((conv) => matchesChatView(conv, 'recovery')).length,
+    }),
+    [searchedConversations, matchesChatView],
+  );
 
   const groupedMessages = useMemo(() => {
     return messages.reduce((groups, message) => {
@@ -2916,6 +3034,9 @@ const Chat = () => {
   const activeStatusLabel =
     statusFilters.find((item) => item.key === filterStatus)?.label || 'Todos';
 
+  const activeChatViewLabel =
+    chatViewTabs.find((item) => item.key === chatView)?.label || 'Todas';
+
   const activeAttendantLabel =
     filterAttendant === 'all'
       ? 'Todos os atendimentos'
@@ -2923,7 +3044,7 @@ const Chat = () => {
         ? 'Aline, Keila e Kate'
         : 'Vendedor';
 
-  const hasActiveFilters = filterStatus !== 'all' || filterAttendant !== 'all';
+  const hasActiveFilters = chatView !== 'all' || filterStatus !== 'all' || filterAttendant !== 'all';
 
   return (
     <div className="h-full min-h-0 min-w-0 flex bg-[#0b141a] overflow-hidden">
@@ -3028,6 +3149,8 @@ const Chat = () => {
                   Filtros
                 </p>
                 <p className="text-[11px] text-slate-400 mt-1">
+                  <span className="text-slate-300">{activeChatViewLabel}</span>
+                  <span className="text-slate-600"> / </span>
                   <span className="text-slate-300">{activeStatusLabel}</span>
                   <span className="text-slate-600"> • </span>
                   <span className="text-slate-300">{activeAttendantLabel}</span>
@@ -3038,6 +3161,7 @@ const Chat = () => {
                 {hasActiveFilters && (
                   <button
                     onClick={() => {
+                      setChatView('all');
                       setFilterStatus('all');
                       setFilterAttendant('all');
                     }}
@@ -3058,11 +3182,46 @@ const Chat = () => {
 
             <div className={cn('space-y-3', mobileFiltersOpen ? 'block' : 'hidden md:block')}>
             <div className="space-y-2">
+              <div className="grid grid-cols-3 gap-1.5">
+                {chatViewTabs.map(({ key, label }) => {
+                  const active = chatView === key;
+
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => setChatView(key)}
+                      className={cn(
+                        'min-w-0 rounded-full px-2.5 py-1.5 transition-colors text-center',
+                        active
+                          ? 'bg-cyan-500/18 text-cyan-200 border border-cyan-400/25'
+                          : 'bg-[#202c33] text-slate-400 hover:text-slate-200',
+                      )}
+                    >
+                      <div className="flex items-center justify-center gap-1.5 min-w-0">
+                        <span className="truncate text-[10px] sm:text-[11px] font-semibold">
+                          {label}
+                        </span>
+                        <span
+                          className={cn(
+                            'shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
+                            active ? 'bg-white/12 text-current' : 'bg-white/5 text-slate-500',
+                          )}
+                        >
+                          {chatViewCounts[key]}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-2">
               <p className="px-1 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-600">
                 Status
               </p>
 
-              <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-hide">
+              <div className="flex flex-wrap gap-1.5 pb-0.5">
                 {statusFilters.map(({ key, label, color }) => {
                   const active = filterStatus === key;
 
@@ -3071,7 +3230,7 @@ const Chat = () => {
                       key={key}
                       onClick={() => setFilterStatus(key)}
                       className={cn(
-                        'min-w-fit rounded-full px-3 py-1.5 transition-colors text-left',
+                        'min-w-fit max-w-full rounded-full px-3 py-1.5 transition-colors text-left',
                         active
                           ? 'bg-[#00a884] text-[#111b21]'
                           : 'bg-[#202c33] text-slate-400 hover:text-slate-200',

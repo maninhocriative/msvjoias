@@ -110,25 +110,26 @@ const FinalizeSaleDialog = ({
       try {
         setLoadingProducts(true);
 
-        const [
-          { data: productsData, error: productsError },
-          { data: variantsData, error: variantsError },
-        ] = await Promise.all([
-          supabase
-            .from('products')
-            .select('id, name, sku, price, active, image_url, category')
-            .eq('active', true)
-            .order('name', { ascending: true }),
-          supabase.from('product_variants').select('product_id, stock'),
-        ]);
+        const { data: productsData, error: productsError } = await supabase
+          .from('products')
+          .select('id, name, sku, price, active, image_url, category')
+          .eq('active', true)
+          .order('name', { ascending: true });
 
         if (productsError) throw productsError;
-        if (variantsError) throw variantsError;
+
+        const { data: variantsData, error: variantsError } = await supabase
+          .from('product_variants')
+          .select('product_id, stock');
+
+        if (variantsError) {
+          console.warn('Estoque por variante indisponivel ao finalizar venda:', variantsError);
+        }
 
         const stockByProduct: Record<string, number> = {};
         const hasVariants: Record<string, boolean> = {};
 
-        (variantsData || []).forEach((variant: any) => {
+        (variantsError ? [] : variantsData || []).forEach((variant: any) => {
           hasVariants[variant.product_id] = true;
           stockByProduct[variant.product_id] =
             (stockByProduct[variant.product_id] || 0) + Number(variant.stock || 0);

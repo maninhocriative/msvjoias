@@ -188,6 +188,7 @@ export default function GlobalHumanAttentionAlert() {
   const handleOpenChat = () => {
     if (targetPhone) localStorage.setItem('crm_open_phone', normalizePhone(targetPhone));
     if (targetConversationId) localStorage.setItem('crm_open_conversation_id', targetConversationId);
+    window.dispatchEvent(new Event('crm-open-conversation'));
     navigate('/chat');
   };
 
