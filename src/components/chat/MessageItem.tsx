@@ -49,6 +49,23 @@ const getStatusIcon = (status: string) => {
   }
 };
 
+const getStatusLabel = (status: string) => {
+  switch (status) {
+    case 'sending':
+      return 'Enviando';
+    case 'failed':
+      return 'Falhou';
+    case 'sent':
+      return 'Enviada';
+    case 'delivered':
+      return 'Entregue';
+    case 'read':
+      return 'Lida';
+    default:
+      return 'Aguardando';
+  }
+};
+
 const formatTime = (date: string) => {
   return new Date(date).toLocaleTimeString('pt-BR', {
     hour: '2-digit',
@@ -400,12 +417,18 @@ const MessageItem = memo(({
 
               {isMe && (
                 <span
+                  title={getStatusLabel(message.status || 'sent')}
+                  aria-label={getStatusLabel(message.status || 'sent')}
                   className={cn(
+                    'inline-flex items-center gap-1',
                     message.status === 'read'
                       ? 'text-blue-400'
                       : 'text-emerald-200/60',
                   )}
                 >
+                  <span className="hidden sm:inline text-[10px]">
+                    {getStatusLabel(message.status || 'sent')}
+                  </span>
                   {getStatusIcon(message.status || 'sent')}
                 </span>
               )}

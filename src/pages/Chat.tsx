@@ -126,6 +126,16 @@ const getStartOfTodayTime = () => {
   return start.getTime();
 };
 
+const formatChatCurrency = (value: unknown) => {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) return '';
+
+  return amount.toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  });
+};
+
 const getMessageTime = (message: Partial<Message>) =>
   new Date(message.created_at || '').getTime() || 0;
 
@@ -650,6 +660,7 @@ const Chat = () => {
   const [takingOver, setTakingOver] = useState(false);
   const [isContactTyping, setIsContactTyping] = useState(false);
   const [chatView, setChatView] = useState<ChatInboxView>('all');
+  const [todayInboundConversationIds, setTodayInboundConversationIds] = useState<Set<string>>(new Set());
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterAttendant, setFilterAttendant] = useState<string>('all');
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
@@ -803,6 +814,28 @@ const Chat = () => {
     [getAlineDataForPhone],
   );
 
+  const fetchTodayInboundConversationIds = useCallback(async () => {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const { data, error } = await supabase
+      .from('messages')
+      .select('conversation_id')
+      .eq('is_from_me', false)
+      .gte('created_at', startOfToday.toISOString())
+      .order('created_at', { ascending: false })
+      .limit(5000);
+
+    if (error) {
+      console.warn('Nao foi possivel carregar mensagens recebidas hoje:', error);
+      return;
+    }
+
+    setTodayInboundConversationIds(
+      new Set((data || []).map((message) => message.conversation_id).filter(Boolean)),
+    );
+  }, []);
+
   const getDerivedActionStage = useCallback((conv: Conversation) => {
     const text = String(conv.last_message || '').toLowerCase();
     return (
@@ -847,16 +880,12 @@ const Chat = () => {
       if (view === 'all') return true;
 
       if (view === 'today') {
-        const lastMessageTime = new Date(
-          conv.last_message_at || conv.updated_at || conv.created_at || '',
-        ).getTime();
-
-        return Number.isFinite(lastMessageTime) && lastMessageTime >= getStartOfTodayTime();
+        return todayInboundConversationIds.has(conv.id);
       }
 
       return isRecoveryAutomationConversation(conv);
     },
-    [isRecoveryAutomationConversation],
+    [isRecoveryAutomationConversation, todayInboundConversationIds],
   );
 
   useEffect(() => {
@@ -2013,6 +2042,7 @@ const Chat = () => {
         setAlineStatusMap(statusMap);
         setCustomerProfiles(profilesMap);
         setConversations(conversationList);
+        void fetchTodayInboundConversationIds();
         void requestMissingProfilePictures(conversationList, profilesMap);
         setSelectedConversation((prev) => {
           if (!prev) return prev;
@@ -2038,7 +2068,7 @@ const Chat = () => {
         setRefreshing(false);
       }
     },
-    [requestMissingProfilePictures, toast],
+    [fetchTodayInboundConversationIds, requestMissingProfilePictures, toast],
   );
 
   useEffect(() => {
@@ -2089,6 +2119,18 @@ const Chat = () => {
         (payload) => {
           const newMessage = payload.new as Message;
           if (!newMessage?.conversation_id) return;
+
+          if (!newMessage.is_from_me) {
+            const messageTime = new Date(newMessage.created_at || '').getTime();
+            if (Number.isFinite(messageTime) && messageTime >= getStartOfTodayTime()) {
+              setTodayInboundConversationIds((prev) => {
+                if (prev.has(newMessage.conversation_id)) return prev;
+                const next = new Set(prev);
+                next.add(newMessage.conversation_id);
+                return next;
+              });
+            }
+          }
 
           bumpConversationFromMessage(newMessage);
         },
@@ -2989,6 +3031,28 @@ const Chat = () => {
   const currentSellerFirstName = currentSellerName.split(' ')[0];
   const currentSellerInitial = currentSellerName.charAt(0).toUpperCase() || 'V';
   const isSaleFinalized = selectedConversation?.lead_status === 'vendido';
+  const selectedAutomationProduct = currentAlineData?.collected_data
+    ? {
+        name:
+          currentAlineData.collected_data.selected_name ||
+          currentAlineData.collected_data.selected_product?.name ||
+          currentAlineData.collected_data.produto_nome ||
+          '',
+        sku:
+          currentAlineData.collected_data.selected_sku ||
+          currentAlineData.collected_data.selected_product?.sku ||
+          currentAlineData.collected_data.produto_sku ||
+          '',
+        price:
+          currentAlineData.collected_data.selected_price ||
+          currentAlineData.collected_data.selected_product?.price ||
+          currentAlineData.collected_data.produto_preco ||
+          null,
+      }
+    : null;
+  const hasSelectedAutomationProduct = Boolean(
+    selectedAutomationProduct?.name || selectedAutomationProduct?.sku,
+  );
   const selectedNeedsHumanAttention = selectedConversation
     ? isActionHumanConversation(selectedConversation)
     : false;
@@ -3189,7 +3253,10 @@ const Chat = () => {
                   return (
                     <button
                       key={key}
-                      onClick={() => setChatView(key)}
+                      onClick={() => {
+                        setChatView(key);
+                        setFilterStatus('all');
+                      }}
                       className={cn(
                         'min-w-0 rounded-full px-2.5 py-1.5 transition-colors text-center',
                         active
@@ -3651,6 +3718,72 @@ const Chat = () => {
                 </div>
               </div>
             </div>
+
+            <div className="sm:hidden shrink-0 border-b border-[#2a3942] bg-[#111b21] px-3 py-2">
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={handleFinalizeSale}
+                  disabled={finalizingSale}
+                  className="inline-flex min-w-0 items-center justify-center gap-1.5 rounded-full bg-[#202c33] px-2 py-2 text-[11px] font-semibold text-slate-200 disabled:opacity-50"
+                >
+                  {finalizingSale ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <ShoppingBag className="h-3.5 w-3.5" />
+                  )}
+                  <span className="truncate">{isSaleFinalized ? 'Desfazer' : 'Venda'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleTakeover('takeover')}
+                  disabled={takingOver}
+                  className="inline-flex min-w-0 items-center justify-center gap-1.5 rounded-full bg-[#202c33] px-2 py-2 text-[11px] font-semibold text-slate-200 disabled:opacity-50"
+                >
+                  <UserCheck className="h-3.5 w-3.5" />
+                  <span className="truncate">Assumir</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleTakeover('release')}
+                  disabled={takingOver}
+                  className="inline-flex min-w-0 items-center justify-center gap-1.5 rounded-full bg-[#202c33] px-2 py-2 text-[11px] font-semibold text-slate-200 disabled:opacity-50"
+                >
+                  <Bot className="h-3.5 w-3.5" />
+                  <span className="truncate">Aline</span>
+                </button>
+              </div>
+            </div>
+
+            {hasSelectedAutomationProduct && (
+              <div className="shrink-0 border-b border-amber-400/20 bg-amber-500/[0.08] px-3 py-2">
+                <div className="mx-auto flex max-w-5xl flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between xl:max-w-6xl">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-amber-300/80">
+                      Modelo escolhido pelo cliente
+                    </p>
+                    <p className="mt-0.5 truncate text-[13px] font-semibold text-amber-50">
+                      {selectedAutomationProduct?.name || 'Produto selecionado'}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-amber-100/85">
+                    {selectedAutomationProduct?.sku && (
+                      <span className="rounded-full border border-amber-300/20 bg-black/15 px-2 py-1">
+                        SKU: {selectedAutomationProduct.sku}
+                      </span>
+                    )}
+                    {formatChatCurrency(selectedAutomationProduct?.price) && (
+                      <span className="rounded-full border border-emerald-300/20 bg-emerald-500/10 px-2 py-1 text-emerald-200">
+                        {formatChatCurrency(selectedAutomationProduct?.price)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div
               ref={messagesContainerRef}
