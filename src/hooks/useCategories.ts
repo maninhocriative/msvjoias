@@ -6,6 +6,9 @@ export interface Category {
   slug: string;
   label: string;
   active: boolean;
+  agent_line?: 'aline' | 'keila' | 'kate' | 'malu' | 'human' | null;
+  search_aliases?: string[] | null;
+  ai_notes?: string | null;
 }
 
 export function useCategories() {
@@ -16,7 +19,7 @@ export function useCategories() {
     setLoading(true);
     const { data, error } = await supabase
       .from('categories')
-      .select('id, slug, label, active')
+      .select('id, slug, label, active, agent_line, search_aliases, ai_notes')
       .eq('active', true)
       .order('label', { ascending: true });
     if (!error && data) setCategories(data as Category[]);
@@ -31,7 +34,14 @@ export function useCategories() {
    * Cria uma nova categoria (gera slug normalizado a partir do label).
    * Retorna o slug criado ou existente em caso de duplicata.
    */
-  const createCategory = useCallback(async (label: string): Promise<string | null> => {
+  const createCategory = useCallback(async (
+    label: string,
+    options?: {
+      agent_line?: Category['agent_line'];
+      search_aliases?: string[];
+      ai_notes?: string | null;
+    },
+  ): Promise<string | null> => {
     const trimmed = label.trim();
     if (!trimmed) return null;
     const slug = trimmed
@@ -44,7 +54,13 @@ export function useCategories() {
 
     const { data, error } = await supabase
       .from('categories')
-      .insert({ slug, label: trimmed })
+      .insert({
+        slug,
+        label: trimmed,
+        agent_line: options?.agent_line || null,
+        search_aliases: options?.search_aliases || [],
+        ai_notes: options?.ai_notes || null,
+      })
       .select('slug')
       .single();
 

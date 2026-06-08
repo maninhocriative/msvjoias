@@ -36,6 +36,19 @@ serve(async (req) => {
       throw error;
     }
 
+    const { data: categoryRows, error: categoryError } = await supabase
+      .from('categories')
+      .select('slug, label, agent_line, search_aliases, ai_notes')
+      .eq('active', true);
+
+    if (categoryError) {
+      console.warn('Error fetching category intelligence:', categoryError);
+    }
+
+    const categoryIntelligence = new Map(
+      (categoryRows || []).map((category: any) => [category.slug, category]),
+    );
+
     // Processar para obter categorias únicas com contagem de produtos com estoque
     const categoryMap = new Map<string, { total: number; with_stock: number }>();
 
@@ -62,6 +75,10 @@ serve(async (req) => {
     const categories = Array.from(categoryMap.entries())
       .map(([name, counts]) => ({
         name,
+        label: categoryIntelligence.get(name)?.label || name,
+        agent_line: categoryIntelligence.get(name)?.agent_line || null,
+        search_aliases: categoryIntelligence.get(name)?.search_aliases || [],
+        ai_notes: categoryIntelligence.get(name)?.ai_notes || null,
         name_lowercase: name.toLowerCase(),
         total_products: counts.total,
         products_with_stock: counts.with_stock

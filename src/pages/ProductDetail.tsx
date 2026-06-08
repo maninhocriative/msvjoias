@@ -12,6 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import ProductVariantsDialog from '@/components/products/ProductVariantsDialog';
+import CategorySelect from '@/components/products/CategorySelect';
 import {
   Select,
   SelectContent,
@@ -19,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { formatCategory, formatColor, allowedCategories, allowedColors } from '@/lib/formatters';
+import { allowedColors } from '@/lib/formatters';
 import { 
   ArrowLeft, 
   Save, 
@@ -53,10 +54,34 @@ interface ProductData {
   images: string[] | null;
   video_url: string | null;
   tags: string[] | null;
+  agent_line: string | null;
+  ai_description: string | null;
+  ai_tags: string[] | null;
+  search_aliases: string[] | null;
+  commercial_notes: string | null;
+  included_items: string | null;
+  restrictions: string | null;
+  recommended_when: string | null;
+  avoid_when: string | null;
   active: boolean | null;
   min_stock_alert: number | null;
   created_at: string;
 }
+
+const splitList = (value: string) =>
+  value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const joinList = (value?: string[] | null) => (Array.isArray(value) ? value.join(', ') : '');
+
+const inferAgentLineFromCategory = (category?: string | null) => {
+  if (category === 'pingente') return 'kate';
+  if (category === 'oculos') return 'malu';
+  if (category === 'aliancas' || category === 'aneis') return 'keila';
+  return '';
+};
 
 interface AutomationMetrics {
   sales_count: number;
@@ -92,6 +117,15 @@ const ProductDetail = () => {
     tags: '',
     min_stock_alert: '',
     active: true,
+    agent_line: '',
+    ai_description: '',
+    ai_tags: '',
+    search_aliases: '',
+    commercial_notes: '',
+    included_items: '',
+    restrictions: '',
+    recommended_when: '',
+    avoid_when: '',
   });
   
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -133,6 +167,15 @@ const ProductDetail = () => {
         tags: data.tags?.join(', ') || '',
         min_stock_alert: data.min_stock_alert?.toString() || '5',
         active: data.active ?? true,
+        agent_line: data.agent_line || inferAgentLineFromCategory(data.category),
+        ai_description: data.ai_description || '',
+        ai_tags: joinList(data.ai_tags),
+        search_aliases: joinList(data.search_aliases),
+        commercial_notes: data.commercial_notes || '',
+        included_items: data.included_items || '',
+        restrictions: data.restrictions || '',
+        recommended_when: data.recommended_when || '',
+        avoid_when: data.avoid_when || '',
       });
     } catch (error) {
       console.error('Error fetching product:', error);
@@ -263,6 +306,15 @@ const ProductDetail = () => {
           active: formData.active,
           image_url: imageUrl,
           images: imagesArray,
+          agent_line: formData.agent_line || inferAgentLineFromCategory(formData.category) || null,
+          ai_description: formData.ai_description || null,
+          ai_tags: splitList(formData.ai_tags),
+          search_aliases: splitList(formData.search_aliases),
+          commercial_notes: formData.commercial_notes || null,
+          included_items: formData.included_items || null,
+          restrictions: formData.restrictions || null,
+          recommended_when: formData.recommended_when || null,
+          avoid_when: formData.avoid_when || null,
         })
         .eq('id', product.id);
 
@@ -416,19 +468,15 @@ const ProductDetail = () => {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="category">Categoria</Label>
-                  <Select 
-                    value={formData.category} 
-                    onValueChange={(value) => setFormData({ ...formData, category: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione uma categoria" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {allowedCategories.map(cat => (
-                        <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <CategorySelect
+                    value={formData.category}
+                    onValueChange={(value) => setFormData({
+                      ...formData,
+                      category: value,
+                      agent_line: formData.agent_line || inferAgentLineFromCategory(value),
+                    })}
+                    placeholder="Selecione uma categoria"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="color">Cor</Label>
@@ -476,6 +524,117 @@ const ProductDetail = () => {
                   onCheckedChange={(checked) => setFormData({ ...formData, active: checked })}
                 />
                 <Label htmlFor="active">Produto ativo</Label>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Package className="w-5 h-5" />
+                Inteligência do agente
+              </CardTitle>
+              <CardDescription>Contexto usado por Keila, Kate e Malu para buscar, explicar e evitar erros comerciais.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Linha/agente</Label>
+                  <Select
+                    value={formData.agent_line || 'auto'}
+                    onValueChange={(value) => setFormData({
+                      ...formData,
+                      agent_line: value === 'auto' ? '' : value,
+                    })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Automático pela categoria" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">Automático pela categoria</SelectItem>
+                      <SelectItem value="keila">Keila · alianças/anéis</SelectItem>
+                      <SelectItem value="kate">Kate · pingentes</SelectItem>
+                      <SelectItem value="malu">Malu · óculos</SelectItem>
+                      <SelectItem value="aline">Aline · geral</SelectItem>
+                      <SelectItem value="human">Humano</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Tags de IA</Label>
+                  <Input
+                    value={formData.ai_tags}
+                    onChange={(e) => setFormData({ ...formData, ai_tags: e.target.value })}
+                    placeholder="presente, premium, fotogravavel"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Aliases de busca</Label>
+                <Input
+                  value={formData.search_aliases}
+                  onChange={(e) => setFormData({ ...formData, search_aliases: e.target.value })}
+                  placeholder="medalha, foto no pingente, armação feminina"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Descrição para IA</Label>
+                <Textarea
+                  value={formData.ai_description}
+                  onChange={(e) => setFormData({ ...formData, ai_description: e.target.value })}
+                  rows={3}
+                  placeholder="Como o agente deve entender e vender este produto."
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Quando recomendar</Label>
+                  <Textarea
+                    value={formData.recommended_when}
+                    onChange={(e) => setFormData({ ...formData, recommended_when: e.target.value })}
+                    rows={3}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Quando evitar</Label>
+                  <Textarea
+                    value={formData.avoid_when}
+                    onChange={(e) => setFormData({ ...formData, avoid_when: e.target.value })}
+                    rows={3}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Itens inclusos</Label>
+                  <Input
+                    value={formData.included_items}
+                    onChange={(e) => setFormData({ ...formData, included_items: e.target.value })}
+                    placeholder="Somente pingente; não acompanha corrente"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Restrições</Label>
+                  <Input
+                    value={formData.restrictions}
+                    onChange={(e) => setFormData({ ...formData, restrictions: e.target.value })}
+                    placeholder="Não chamar aço de ouro"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Notas comerciais</Label>
+                <Textarea
+                  value={formData.commercial_notes}
+                  onChange={(e) => setFormData({ ...formData, commercial_notes: e.target.value })}
+                  rows={3}
+                  placeholder="Observações úteis para atendimento, objeções e fechamento."
+                />
               </div>
             </CardContent>
           </Card>

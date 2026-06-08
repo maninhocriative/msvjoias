@@ -363,25 +363,34 @@ export type Database = {
       categories: {
         Row: {
           active: boolean
+          agent_line: string | null
+          ai_notes: string | null
           created_at: string
           id: string
           label: string
+          search_aliases: string[] | null
           slug: string
           updated_at: string
         }
         Insert: {
           active?: boolean
+          agent_line?: string | null
+          ai_notes?: string | null
           created_at?: string
           id?: string
           label: string
+          search_aliases?: string[] | null
           slug: string
           updated_at?: string
         }
         Update: {
           active?: boolean
+          agent_line?: string | null
+          ai_notes?: string | null
           created_at?: string
           id?: string
           label?: string
+          search_aliases?: string[] | null
           slug?: string
           updated_at?: string
         }
@@ -928,48 +937,75 @@ export type Database = {
       products: {
         Row: {
           active: boolean | null
+          agent_line: string | null
+          ai_description: string | null
+          ai_tags: string[] | null
           category: string | null
           color: string | null
+          commercial_notes: string | null
           created_at: string
           description: string | null
+          avoid_when: string | null
           id: string
           image_url: string | null
           images: string[] | null
+          included_items: string | null
           min_stock_alert: number | null
           name: string
           price: number | null
+          recommended_when: string | null
+          restrictions: string | null
+          search_aliases: string[] | null
           sku: string | null
           tags: string[] | null
           video_url: string | null
         }
         Insert: {
           active?: boolean | null
+          agent_line?: string | null
+          ai_description?: string | null
+          ai_tags?: string[] | null
           category?: string | null
           color?: string | null
+          commercial_notes?: string | null
           created_at?: string
           description?: string | null
+          avoid_when?: string | null
           id?: string
           image_url?: string | null
           images?: string[] | null
+          included_items?: string | null
           min_stock_alert?: number | null
           name: string
           price?: number | null
+          recommended_when?: string | null
+          restrictions?: string | null
+          search_aliases?: string[] | null
           sku?: string | null
           tags?: string[] | null
           video_url?: string | null
         }
         Update: {
           active?: boolean | null
+          agent_line?: string | null
+          ai_description?: string | null
+          ai_tags?: string[] | null
           category?: string | null
           color?: string | null
+          commercial_notes?: string | null
           created_at?: string
           description?: string | null
+          avoid_when?: string | null
           id?: string
           image_url?: string | null
           images?: string[] | null
+          included_items?: string | null
           min_stock_alert?: number | null
           name?: string
           price?: number | null
+          recommended_when?: string | null
+          restrictions?: string | null
+          search_aliases?: string[] | null
           sku?: string | null
           tags?: string[] | null
           video_url?: string | null

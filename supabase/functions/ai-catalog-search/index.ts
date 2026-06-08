@@ -154,7 +154,7 @@ serve(async (req) => {
 
     if (search) {
       // Search in name, description, and also try normalized terms
-      query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%`);
+      query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%,sku.ilike.%${search}%,ai_description.ilike.%${search}%,commercial_notes.ilike.%${search}%,included_items.ilike.%${search}%,restrictions.ilike.%${search}%,recommended_when.ilike.%${search}%`);
     }
 
     if (tags) {
@@ -236,6 +236,17 @@ serve(async (req) => {
           color: product.color || null,
           category: product.category || null,
           tags: product.tags || [],
+          agent_line: product.agent_line || null,
+          ai_tags: product.ai_tags || [],
+          search_aliases: product.search_aliases || [],
+        },
+        agent_context: {
+          description: product.ai_description || null,
+          commercial_notes: product.commercial_notes || null,
+          included_items: product.included_items || null,
+          restrictions: product.restrictions || null,
+          recommended_when: product.recommended_when || null,
+          avoid_when: product.avoid_when || null,
         },
         media,
         low_stock_warning: product.min_stock_alert && totalStock <= product.min_stock_alert,

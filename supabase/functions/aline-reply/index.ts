@@ -81,6 +81,15 @@ interface CatalogProduct {
   buttons?: Array<{ id: string; label: string }>;
   force_separate_buttons?: boolean;
   tags?: unknown;
+  agent_line?: string | null;
+  ai_description?: string | null;
+  ai_tags?: unknown;
+  search_aliases?: unknown;
+  commercial_notes?: string | null;
+  included_items?: string | null;
+  restrictions?: string | null;
+  recommended_when?: string | null;
+  avoid_when?: string | null;
 }
 
 interface KatePendantTemplate {
@@ -1269,6 +1278,12 @@ function normalizeProductText(product: Partial<CatalogProduct> | AnyRecord): str
   const metadataText = product.metadata && typeof product.metadata === "object"
     ? JSON.stringify(product.metadata)
     : String(product.metadata || "");
+  const aiTagsText = Array.isArray(product.ai_tags)
+    ? product.ai_tags.map((tag: unknown) => String(tag || "")).join(" ")
+    : String(product.ai_tags || "");
+  const aliasesText = Array.isArray(product.search_aliases)
+    ? product.search_aliases.map((alias: unknown) => String(alias || "")).join(" ")
+    : String(product.search_aliases || "");
 
   return normalizeText([
     product.name,
@@ -1277,6 +1292,15 @@ function normalizeProductText(product: Partial<CatalogProduct> | AnyRecord): str
     product.category,
     product.color,
     product.description,
+    product.agent_line,
+    product.ai_description,
+    aiTagsText,
+    aliasesText,
+    product.commercial_notes,
+    product.included_items,
+    product.restrictions,
+    product.recommended_when,
+    product.avoid_when,
     tagsText,
     metadataText,
   ].filter(Boolean).join(" "));
@@ -2096,6 +2120,15 @@ async function searchCatalog(
       color,
       description,
       tags,
+      agent_line,
+      ai_description,
+      ai_tags,
+      search_aliases,
+      commercial_notes,
+      included_items,
+      restrictions,
+      recommended_when,
+      avoid_when,
       product_variants(size, stock)
     `)
     .eq("active", true)
@@ -2135,7 +2168,23 @@ async function searchCatalog(
     const tagsText = Array.isArray(product.tags)
       ? product.tags.map((tag: unknown) => normalizeText(String(tag || ""))).join(" ")
       : normalizeText(String(product.tags || ""));
-    const colorSearchText = `${productColor} ${name} ${description} ${category} ${tagsText}`;
+    const aiTagsText = Array.isArray(product.ai_tags)
+      ? product.ai_tags.map((tag: unknown) => normalizeText(String(tag || ""))).join(" ")
+      : normalizeText(String(product.ai_tags || ""));
+    const aliasesText = Array.isArray(product.search_aliases)
+      ? product.search_aliases.map((alias: unknown) => normalizeText(String(alias || ""))).join(" ")
+      : normalizeText(String(product.search_aliases || ""));
+    const aiDescription = normalizeText(product.ai_description || "");
+    const commercialText = normalizeText([
+      product.commercial_notes,
+      product.included_items,
+      product.restrictions,
+      product.recommended_when,
+      product.avoid_when,
+    ].filter(Boolean).join(" "));
+    const agentLine = normalizeText(product.agent_line || "");
+    const productSearchText = `${productColor} ${name} ${description} ${category} ${tagsText} ${aiTagsText} ${aliasesText} ${aiDescription} ${commercialText} ${agentLine}`;
+    const colorSearchText = productSearchText;
     const isTungsten =
       category.includes("tungstenio") ||
       category.includes("tungsten") ||
@@ -2147,8 +2196,11 @@ async function searchCatalog(
       description.includes("casamento") ||
       tagsText.includes("tungstenio") ||
       tagsText.includes("tungsten") ||
-      tagsText.includes("casamento") ||
-      /^e0(?:6|7)120\d+/i.test(productSku);
+        tagsText.includes("casamento") ||
+        aiTagsText.includes("casamento") ||
+        aliasesText.includes("casamento") ||
+        aiDescription.includes("casamento") ||
+        /^e0(?:6|7)120\d+/i.test(productSku);
 
     if (excludedSkus.length > 0 && ((productSku && excludedSkus.includes(productSku)) || (productId && excludedSkus.includes(productId)))) {
       return false;
@@ -2164,7 +2216,12 @@ async function searchCatalog(
         description.includes("aliancas") ||
         tagsText.includes("alianca") ||
         tagsText.includes("aliancas") ||
-        tagsText.includes("casamento");
+        tagsText.includes("casamento") ||
+        aiTagsText.includes("alianca") ||
+        aiTagsText.includes("aliancas") ||
+        aliasesText.includes("alianca") ||
+        aliasesText.includes("casamento") ||
+        agentLine === "keila";
 
       if (!isAlliance) return false;
 
@@ -2188,7 +2245,11 @@ async function searchCatalog(
         description.includes("oculos") ||
         description.includes("armacao") ||
         tagsText.includes("oculos") ||
-        tagsText.includes("armacao");
+        tagsText.includes("armacao") ||
+        aiTagsText.includes("oculos") ||
+        aliasesText.includes("armacao") ||
+        aliasesText.includes("grau") ||
+        agentLine === "malu";
       if (!isEyewear) return false;
     }
 
@@ -2272,6 +2333,15 @@ async function searchCatalog(
       caption: "",
       index: index + 1,
       tags: product.tags || null,
+      agent_line: product.agent_line || null,
+      ai_description: product.ai_description || null,
+      ai_tags: product.ai_tags || null,
+      search_aliases: product.search_aliases || null,
+      commercial_notes: product.commercial_notes || null,
+      included_items: product.included_items || null,
+      restrictions: product.restrictions || null,
+      recommended_when: product.recommended_when || null,
+      avoid_when: product.avoid_when || null,
     };
 
     mapped.caption = formatProductCaption(mapped);
@@ -2492,7 +2562,7 @@ async function lookupCatalogProductBySkuOrId(supabase: any, token: string | null
   async function byField(field: "sku" | "id") {
     const { data, error } = await supabase
       .from("products")
-      .select("id, name, sku, price, image_url, video_url, category, color, description, tags")
+      .select("id, name, sku, price, image_url, video_url, category, color, description, tags, agent_line, ai_description, ai_tags, search_aliases, commercial_notes, included_items, restrictions, recommended_when, avoid_when")
       .eq(field, value)
       .eq("active", true)
       .limit(1)

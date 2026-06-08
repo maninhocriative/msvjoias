@@ -25,6 +25,18 @@ export type Product = {
   video_url?: string | null;
   images?: string[];
   active: boolean;
+  color?: string | null;
+  tags?: string[] | null;
+  min_stock_alert?: number | null;
+  agent_line?: 'aline' | 'keila' | 'kate' | 'malu' | 'human' | null;
+  ai_description?: string | null;
+  ai_tags?: string[] | null;
+  search_aliases?: string[] | null;
+  commercial_notes?: string | null;
+  included_items?: string | null;
+  restrictions?: string | null;
+  recommended_when?: string | null;
+  avoid_when?: string | null;
   created_at?: string;
   updated_at?: string;
 };

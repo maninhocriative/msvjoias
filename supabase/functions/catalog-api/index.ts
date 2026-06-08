@@ -107,6 +107,15 @@ serve(async (req) => {
         price,
         category,
         color,
+        agent_line,
+        ai_description,
+        ai_tags,
+        search_aliases,
+        commercial_notes,
+        included_items,
+        restrictions,
+        recommended_when,
+        avoid_when,
         image_url,
         video_url,
         images,
@@ -135,7 +144,7 @@ serve(async (req) => {
     }
 
     if (search) {
-      query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%,sku.ilike.%${search}%`);
+      query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%,sku.ilike.%${search}%,ai_description.ilike.%${search}%,commercial_notes.ilike.%${search}%,included_items.ilike.%${search}%,restrictions.ilike.%${search}%,recommended_when.ilike.%${search}%`);
     }
 
     // Filtro de cor (normalizado)
@@ -169,6 +178,15 @@ serve(async (req) => {
         price: product.price,
         price_formatted: product.price ? `R$ ${Number(product.price).toFixed(2).replace('.', ',')}` : null,
         category: product.category,
+        agent_line: product.agent_line || null,
+        ai_description: product.ai_description || null,
+        ai_tags: product.ai_tags || [],
+        search_aliases: product.search_aliases || [],
+        commercial_notes: product.commercial_notes || null,
+        included_items: product.included_items || null,
+        restrictions: product.restrictions || null,
+        recommended_when: product.recommended_when || null,
+        avoid_when: product.avoid_when || null,
         image_url: product.image_url,
         video_url: product.video_url,
         images: product.images || [],
