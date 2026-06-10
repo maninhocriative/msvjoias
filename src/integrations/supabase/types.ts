@@ -503,8 +503,12 @@ export type Database = {
           attending_by: string | null
           attending_name: string | null
           attending_since: string | null
+          contact_is_online: boolean
+          contact_last_seen_at: string | null
           contact_name: string | null
           contact_number: string
+          contact_presence: string | null
+          contact_presence_updated_at: string | null
           created_at: string
           id: string
           last_message: string | null
@@ -517,8 +521,12 @@ export type Database = {
           attending_by?: string | null
           attending_name?: string | null
           attending_since?: string | null
+          contact_is_online?: boolean
+          contact_last_seen_at?: string | null
           contact_name?: string | null
           contact_number: string
+          contact_presence?: string | null
+          contact_presence_updated_at?: string | null
           created_at?: string
           id?: string
           last_message?: string | null
@@ -531,8 +539,12 @@ export type Database = {
           attending_by?: string | null
           attending_name?: string | null
           attending_since?: string | null
+          contact_is_online?: boolean
+          contact_last_seen_at?: string | null
           contact_name?: string | null
           contact_number?: string
+          contact_presence?: string | null
+          contact_presence_updated_at?: string | null
           created_at?: string
           id?: string
           last_message?: string | null
@@ -542,6 +554,59 @@ export type Database = {
           unread_count?: number | null
         }
         Relationships: []
+      }
+      crm_alerts: {
+        Row: {
+          acknowledged_at: string | null
+          active: boolean
+          alert_type: string
+          conversation_id: string | null
+          created_at: string
+          created_by: string | null
+          expires_at: string | null
+          id: string
+          message: string
+          phone: string | null
+          target_role: string
+          title: string
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          active?: boolean
+          alert_type?: string
+          conversation_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          message: string
+          phone?: string | null
+          target_role?: string
+          title?: string
+        }
+        Update: {
+          acknowledged_at?: string | null
+          active?: boolean
+          alert_type?: string
+          conversation_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          message?: string
+          phone?: string | null
+          target_role?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_alerts_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       customer_agent_memory: {
         Row: {
@@ -624,6 +689,93 @@ export type Database = {
           updated_at?: string
           wallet_balance?: number
           whatsapp?: string
+        }
+        Relationships: []
+      }
+      influencer_leads: {
+        Row: {
+          contact_name: string | null
+          contact_phone: string
+          conversation_id: string | null
+          first_message: string | null
+          first_seen_at: string
+          id: string
+          influencer_id: string
+          last_seen_at: string
+          metadata: Json
+        }
+        Insert: {
+          contact_name?: string | null
+          contact_phone: string
+          conversation_id?: string | null
+          first_message?: string | null
+          first_seen_at?: string
+          id?: string
+          influencer_id: string
+          last_seen_at?: string
+          metadata?: Json
+        }
+        Update: {
+          contact_name?: string | null
+          contact_phone?: string
+          conversation_id?: string | null
+          first_message?: string | null
+          first_seen_at?: string
+          id?: string
+          influencer_id?: string
+          last_seen_at?: string
+          metadata?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "influencer_leads_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "influencer_leads_influencer_id_fkey"
+            columns: ["influencer_id"]
+            isOneToOne: false
+            referencedRelation: "influencers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      influencers: {
+        Row: {
+          active: boolean
+          code: string
+          created_at: string
+          handle: string | null
+          id: string
+          name: string
+          notes: string | null
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          code: string
+          created_at?: string
+          handle?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          code?: string
+          created_at?: string
+          handle?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
@@ -940,12 +1092,12 @@ export type Database = {
           agent_line: string | null
           ai_description: string | null
           ai_tags: string[] | null
+          avoid_when: string | null
           category: string | null
           color: string | null
           commercial_notes: string | null
           created_at: string
           description: string | null
-          avoid_when: string | null
           id: string
           image_url: string | null
           images: string[] | null
@@ -965,12 +1117,12 @@ export type Database = {
           agent_line?: string | null
           ai_description?: string | null
           ai_tags?: string[] | null
+          avoid_when?: string | null
           category?: string | null
           color?: string | null
           commercial_notes?: string | null
           created_at?: string
           description?: string | null
-          avoid_when?: string | null
           id?: string
           image_url?: string | null
           images?: string[] | null
@@ -990,12 +1142,12 @@ export type Database = {
           agent_line?: string | null
           ai_description?: string | null
           ai_tags?: string[] | null
+          avoid_when?: string | null
           category?: string | null
           color?: string | null
           commercial_notes?: string | null
           created_at?: string
           description?: string | null
-          avoid_when?: string | null
           id?: string
           image_url?: string | null
           images?: string[] | null
@@ -1095,11 +1247,14 @@ export type Database = {
           chat_started_at: string | null
           created_at: string | null
           current_chat_phone: string | null
+          current_page: string | null
+          current_path: string | null
           full_name: string | null
           id: string
           is_chatting: boolean | null
           is_online: boolean | null
           last_seen_at: string | null
+          page_updated_at: string | null
           updated_at: string | null
           user_id: string
         }
@@ -1107,11 +1262,14 @@ export type Database = {
           chat_started_at?: string | null
           created_at?: string | null
           current_chat_phone?: string | null
+          current_page?: string | null
+          current_path?: string | null
           full_name?: string | null
           id?: string
           is_chatting?: boolean | null
           is_online?: boolean | null
           last_seen_at?: string | null
+          page_updated_at?: string | null
           updated_at?: string | null
           user_id: string
         }
@@ -1119,11 +1277,14 @@ export type Database = {
           chat_started_at?: string | null
           created_at?: string | null
           current_chat_phone?: string | null
+          current_page?: string | null
+          current_path?: string | null
           full_name?: string | null
           id?: string
           is_chatting?: boolean | null
           is_online?: boolean | null
           last_seen_at?: string | null
+          page_updated_at?: string | null
           updated_at?: string | null
           user_id?: string
         }
