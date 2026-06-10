@@ -2351,6 +2351,89 @@ async function searchCatalog(
   });
 }
 
+interface CatalogVerification {
+  category: string;
+  available: number;
+  products: CatalogProduct[];
+  colors: Array<{ color: string; count: number }>;
+  priceMin: number | null;
+  priceMax: number | null;
+  hasRequestedColors: boolean;
+  availableColorsLabel: string;
+  summary: string;
+}
+
+// Verificacao real do catalogo: consulta os produtos ativos e disponiveis
+// (com estoque, imagem e preco validos) de uma categoria e devolve um resumo
+// preciso para o agente repassar ao cliente sem inventar disponibilidade.
+async function getCatalogVerification(
+  supabase: any,
+  category: string,
+  requestedColors: string[] = [],
+): Promise<CatalogVerification> {
+  const cleanColors = Array.from(
+    new Set((requestedColors || []).map((c) => normalizeCatalogColor(c)).filter(Boolean) as string[]),
+  );
+
+  // Tenta com o filtro de cor pedido; se nao houver, devolve o catalogo geral
+  // da categoria para o agente oferecer alternativas reais.
+  let products = await searchCatalog(
+    supabase,
+    { category, only_available: true, limit: 200, ...(cleanColors.length > 0 ? { colors: cleanColors } : {}) },
+    {},
+  );
+  const hasRequestedColors = cleanColors.length > 0 && products.length > 0;
+  if (cleanColors.length > 0 && products.length === 0) {
+    products = await searchCatalog(supabase, { category, only_available: true, limit: 200 }, {});
+  }
+
+  const colorMap = new Map<string, number>();
+  let priceMin: number | null = null;
+  let priceMax: number | null = null;
+  for (const product of products) {
+    const color = normalizeCatalogColor(product.color) || normalizeText(String(product.color || ""));
+    if (color) colorMap.set(color, (colorMap.get(color) || 0) + 1);
+    const price = Number(product.price || 0);
+    if (price > 0) {
+      priceMin = priceMin === null ? price : Math.min(priceMin, price);
+      priceMax = priceMax === null ? price : Math.max(priceMax, price);
+    }
+  }
+
+  const colors = Array.from(colorMap.entries())
+    .map(([color, count]) => ({ color, count }))
+    .sort((a, b) => b.count - a.count);
+  const availableColorsLabel = colors.map((c) => c.color).join(", ");
+
+  const priceLabel =
+    priceMin !== null && priceMax !== null
+      ? priceMin === priceMax
+        ? `${formatCurrency(priceMin)}`
+        : `de ${formatCurrency(priceMin)} a ${formatCurrency(priceMax)}`
+      : "";
+
+  let summary = "";
+  if (products.length === 0) {
+    summary = "No momento nao tenho modelos prontos dessa linha no catalogo. Vou chamar um vendedor para confirmar disponibilidade com voce.";
+  } else if (cleanColors.length > 0 && !hasRequestedColors) {
+    summary = `Nao tenho no acabamento ${cleanColors.join(", ")} agora, mas tenho ${products.length} modelo(s) disponivel(is)${availableColorsLabel ? ` em ${availableColorsLabel}` : ""}${priceLabel ? `, ${priceLabel}` : ""}.`;
+  } else {
+    summary = `Tenho ${products.length} modelo(s) disponivel(is)${availableColorsLabel ? ` em ${availableColorsLabel}` : ""}${priceLabel ? `, ${priceLabel}` : ""}.`;
+  }
+
+  return {
+    category,
+    available: products.length,
+    products,
+    colors,
+    priceMin,
+    priceMax,
+    hasRequestedColors,
+    availableColorsLabel,
+    summary,
+  };
+}
+
 function buildKeilaCards(products: CatalogProduct[]): CatalogProduct[] {
   return products.map((product) => {
     const captionLines = [
@@ -3648,7 +3731,7 @@ async function handleKateFlow(args: {
       colorFilters,
       styleFilter,
       excludeSkus,
-      limit: 8,
+      limit: 30,
       requestType: styleFilter
         ? "style_cravejado"
         : excludeSkus.length > 0
@@ -4207,7 +4290,14 @@ Os pingentes são de aço, com acabamento dourado ou prata. Qual acabamento voc�
     const cards = await fetchKateCatalogCards();
 
     if (cards.length === 0) {
-      const reply = `Não encontrei pingentes fotograváveis prontos na cor ${data.cor} agora. Se quiser, eu posso te mostrar a outra cor disponível 😊`;
+      const verification = await getCatalogVerification(
+        supabase,
+        "pingente",
+        getRequestedColors(data, ["prata", "dourada"]),
+      ).catch(() => null);
+      const reply = verification && verification.available > 0
+        ? `${verification.summary} Quer que eu te mostre esses modelos? 😊`
+        : `Não encontrei pingentes fotograváveis prontos na cor ${data.cor} agora. Se quiser, eu posso te mostrar a outra cor disponível 😊`;
 
       await persistConversation(
         supabase,
@@ -5123,7 +5213,7 @@ async function handleMaluFlow(args: {
       {
         category: "oculos",
         only_available: true,
-        limit: 30,
+        limit: 60,
         exclude_skus: excludeSkus,
       },
       data,
@@ -5229,7 +5319,10 @@ Quer ficar com esse, testar outro modelo ou falar com atendente?`;
     const cards = await fetchMaluCatalogCards(wantsMoreOptions ? shownSkus : []);
 
     if (cards.length === 0) {
-      const reply = "Oi, eu sou a Malu. No momento não encontrei modelos de óculos disponíveis no catálogo, mas posso chamar um atendente para te ajudar.";
+      const verification = await getCatalogVerification(supabase, "oculos", []).catch(() => null);
+      const reply = verification && verification.available > 0
+        ? `Oi, eu sou a Malu. ${verification.summary} Quer que eu te mostre os modelos? 🕶️`
+        : "Oi, eu sou a Malu. No momento não encontrei modelos de óculos disponíveis no catálogo, mas posso chamar um atendente para te ajudar.";
 
       const finalReply = withMaluIntro(reply);
       await persistConversation(supabase, conversation.id, "malu", "malu_sem_catalogo", conversation.current_node || null, data);
@@ -5804,7 +5897,10 @@ async function handleKeilaFlow(args: {
     const { cards, usedBudgetFallback, usedPurposeFallback } = await fetchKeilaCatalogCards();
 
     if (cards.length === 0) {
-      const reply = `Não encontrei modelos prontos ${colorPhrase} dentro dessa faixa agora. Se quiser, eu posso te mostrar outra faixa de valor ou outra cor.`;
+      const verification = await getCatalogVerification(supabase, "aliancas", requestedColors).catch(() => null);
+      const reply = verification && verification.available > 0
+        ? `${verification.summary} Quer que eu te mostre esses modelos? 💍`
+        : `Não encontrei modelos prontos ${colorPhrase} dentro dessa faixa agora. Se quiser, eu posso te mostrar outra faixa de valor ou outra cor.`;
       const finalReply = withKeilaIntro(reply);
 
       await persistConversation(
