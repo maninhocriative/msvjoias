@@ -36,13 +36,23 @@ serve(async (req) => {
       throw error;
     }
 
-    const { data: categoryRows, error: categoryError } = await supabase
+    // agent_line/search_aliases/ai_notes vem da migration 20260607162000. Se ela
+    // ainda nao foi aplicada, caimos para slug/label para nao perder os rotulos.
+    let { data: categoryRows, error: categoryError } = await supabase
       .from('categories')
       .select('slug, label, agent_line, search_aliases, ai_notes')
       .eq('active', true);
 
     if (categoryError) {
-      console.warn('Error fetching category intelligence:', categoryError);
+      console.warn('Category intelligence select failed, falling back to slug/label:', categoryError.message || categoryError);
+      ({ data: categoryRows, error: categoryError } = await supabase
+        .from('categories')
+        .select('slug, label')
+        .eq('active', true));
+    }
+
+    if (categoryError) {
+      console.warn('Error fetching categories:', categoryError);
     }
 
     const categoryIntelligence = new Map(

@@ -116,55 +116,43 @@ serve(async (req) => {
     console.log("AI Catalog Search params:", params);
     console.log("Normalized filters:", { normalizedCategory, normalizedColor, normalizedSearch });
 
-    // Build query
-    let query = supabase
-      .from("products")
-      .select(`
-        *,
-        product_variants (id, size, stock)
-      `)
-      .eq("active", true);
+    // O .or de busca abaixo referencia colunas de "agent intelligence"
+    // (migration 20260607162000). Caso ela ainda nao tenha sido aplicada em
+    // producao, caimos para uma busca basica para nao quebrar a consulta.
+    const EXTENDED_SEARCH = (s: string) =>
+      `name.ilike.%${s}%,description.ilike.%${s}%,sku.ilike.%${s}%,ai_description.ilike.%${s}%,commercial_notes.ilike.%${s}%,included_items.ilike.%${s}%,restrictions.ilike.%${s}%,recommended_when.ilike.%${s}%`;
+    const CORE_SEARCH = (s: string) =>
+      `name.ilike.%${s}%,description.ilike.%${s}%,sku.ilike.%${s}%`;
 
-    // Apply filters with normalized values
-    if (product_id) {
-      query = query.eq("id", product_id);
+    const buildQuery = (searchClause: (s: string) => string) => {
+      let query = supabase
+        .from("products")
+        .select(`
+          *,
+          product_variants (id, size, stock)
+        `)
+        .eq("active", true);
+
+      if (product_id) query = query.eq("id", product_id);
+      if (sku) query = query.ilike("sku", `%${sku}%`);
+      if (normalizedCategory) query = query.eq("category", normalizedCategory);
+      if (normalizedColor) query = query.eq("color", normalizedColor);
+      if (min_price) query = query.gte("price", parseFloat(min_price));
+      if (max_price) query = query.lte("price", parseFloat(max_price));
+      if (search) query = query.or(searchClause(search));
+      if (tags) {
+        const tagArray = tags.split(",").map((t: string) => t.trim());
+        query = query.overlaps("tags", tagArray);
+      }
+      return query.limit(parseInt(limit));
+    };
+
+    let { data: products, error: productsError } = await buildQuery(EXTENDED_SEARCH);
+
+    if (productsError && search) {
+      console.warn("ai-catalog-search extended search failed, falling back to core search:", productsError.message || productsError);
+      ({ data: products, error: productsError } = await buildQuery(CORE_SEARCH));
     }
-
-    if (sku) {
-      query = query.ilike("sku", `%${sku}%`);
-    }
-
-    if (normalizedCategory) {
-      // Use exact match since DB is now normalized
-      query = query.eq("category", normalizedCategory);
-    }
-
-    if (normalizedColor) {
-      // Use exact match since DB is now normalized
-      query = query.eq("color", normalizedColor);
-    }
-
-    if (min_price) {
-      query = query.gte("price", parseFloat(min_price));
-    }
-
-    if (max_price) {
-      query = query.lte("price", parseFloat(max_price));
-    }
-
-    if (search) {
-      // Search in name, description, and also try normalized terms
-      query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%,sku.ilike.%${search}%,ai_description.ilike.%${search}%,commercial_notes.ilike.%${search}%,included_items.ilike.%${search}%,restrictions.ilike.%${search}%,recommended_when.ilike.%${search}%`);
-    }
-
-    if (tags) {
-      const tagArray = tags.split(",").map(t => t.trim());
-      query = query.overlaps("tags", tagArray);
-    }
-
-    query = query.limit(parseInt(limit));
-
-    const { data: products, error: productsError } = await query;
 
     if (productsError) {
       console.error("Error fetching products:", productsError);

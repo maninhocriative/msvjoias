@@ -96,63 +96,41 @@ serve(async (req) => {
     console.log('Catalog API request:', { category, sku, productId, onlyAvailable, search, cor, exactCategory });
     console.log('Normalized filters:', { normalizedCategory, normalizedColor });
 
-    // Build query
-    let query = supabase
-      .from('products')
-      .select(`
-        id,
-        name,
-        sku,
-        description,
-        price,
-        category,
-        color,
-        agent_line,
-        ai_description,
-        ai_tags,
-        search_aliases,
-        commercial_notes,
-        included_items,
-        restrictions,
-        recommended_when,
-        avoid_when,
-        image_url,
-        video_url,
-        images,
-        active,
-        created_at,
-        product_variants (
-          id,
-          size,
-          stock
-        )
-      `)
-      .eq('active', true);
+    // Colunas "agent intelligence" (migration 20260607162000). Caso a migration
+    // ainda nao tenha sido aplicada em producao, caimos para o conjunto basico.
+    const EXTENDED_COLUMNS = `
+        id, name, sku, description, price, category, color,
+        agent_line, ai_description, ai_tags, search_aliases, commercial_notes,
+        included_items, restrictions, recommended_when, avoid_when,
+        image_url, video_url, images, active, created_at,
+        product_variants ( id, size, stock )
+      `;
+    const CORE_COLUMNS = `
+        id, name, sku, description, price, category, color,
+        image_url, video_url, images, active, created_at,
+        product_variants ( id, size, stock )
+      `;
+    const EXTENDED_SEARCH = (s: string) =>
+      `name.ilike.%${s}%,description.ilike.%${s}%,sku.ilike.%${s}%,ai_description.ilike.%${s}%,commercial_notes.ilike.%${s}%,included_items.ilike.%${s}%,restrictions.ilike.%${s}%,recommended_when.ilike.%${s}%`;
+    const CORE_SEARCH = (s: string) =>
+      `name.ilike.%${s}%,description.ilike.%${s}%,sku.ilike.%${s}%`;
 
-    // Apply filters with normalized values
-    if (normalizedCategory) {
-      // Use exact match since DB is now normalized
-      query = query.eq('category', normalizedCategory);
+    const buildQuery = (columns: string, searchClause: (s: string) => string) => {
+      let q = supabase.from('products').select(columns).eq('active', true);
+      if (normalizedCategory) q = q.eq('category', normalizedCategory);
+      if (sku) q = q.eq('sku', sku);
+      if (productId) q = q.eq('id', productId);
+      if (search) q = q.or(searchClause(search));
+      if (normalizedColor) q = q.eq('color', normalizedColor);
+      return q.order('name', { ascending: true });
+    };
+
+    let { data: products, error } = await buildQuery(EXTENDED_COLUMNS, EXTENDED_SEARCH);
+
+    if (error) {
+      console.warn('catalog-api extended query failed, falling back to core columns:', error.message || error);
+      ({ data: products, error } = await buildQuery(CORE_COLUMNS, CORE_SEARCH));
     }
-
-    if (sku) {
-      query = query.eq('sku', sku);
-    }
-
-    if (productId) {
-      query = query.eq('id', productId);
-    }
-
-    if (search) {
-      query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%,sku.ilike.%${search}%,ai_description.ilike.%${search}%,commercial_notes.ilike.%${search}%,included_items.ilike.%${search}%,restrictions.ilike.%${search}%,recommended_when.ilike.%${search}%`);
-    }
-
-    // Filtro de cor (normalizado)
-    if (normalizedColor) {
-      query = query.eq('color', normalizedColor);
-    }
-
-    const { data: products, error } = await query.order('name', { ascending: true });
 
     if (error) {
       console.error('Error fetching products:', error);

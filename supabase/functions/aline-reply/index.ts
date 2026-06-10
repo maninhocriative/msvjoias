@@ -2102,37 +2102,39 @@ ${colorInstruction}
 Resultado final: mockup premium, realista e vendável para WhatsApp, com aparência de joia ACIUM personalizada por fotogravação.`;
 }
 
+// Colunas sempre presentes na tabela products.
+const CATALOG_SELECT_CORE =
+  "id, name, sku, price, image_url, video_url, category, color, description, tags, product_variants(size, stock)";
+// Colunas core + "agent intelligence" (migration 20260607162000). Caso a migration
+// ainda nao tenha sido aplicada em producao, o select cai para CATALOG_SELECT_CORE.
+const CATALOG_SELECT_EXTENDED =
+  "id, name, sku, price, image_url, video_url, category, color, description, tags, agent_line, ai_description, ai_tags, search_aliases, commercial_notes, included_items, restrictions, recommended_when, avoid_when, product_variants(size, stock)";
+
 async function searchCatalog(
   supabase: any,
   params: Record<string, any>,
   data: AnyRecord,
 ): Promise<CatalogProduct[]> {
-  const { data: products, error } = await supabase
+  let { data: products, error } = await supabase
     .from("products")
-    .select(`
-      id,
-      name,
-      sku,
-      price,
-      image_url,
-      video_url,
-      category,
-      color,
-      description,
-      tags,
-      agent_line,
-      ai_description,
-      ai_tags,
-      search_aliases,
-      commercial_notes,
-      included_items,
-      restrictions,
-      recommended_when,
-      avoid_when,
-      product_variants(size, stock)
-    `)
+    .select(CATALOG_SELECT_EXTENDED)
     .eq("active", true)
     .order("created_at", { ascending: false });
+
+  if (error) {
+    // As colunas de "agent intelligence" podem ainda nao existir em producao
+    // (migration nao aplicada por drift). Cair para o select basico evita
+    // retornar catalogo vazio e travar o envio dos agentes.
+    console.warn(
+      "[ALINE-REPLY] searchCatalog extended select failed, falling back to core columns:",
+      error.message || error,
+    );
+    ({ data: products, error } = await supabase
+      .from("products")
+      .select(CATALOG_SELECT_CORE)
+      .eq("active", true)
+      .order("created_at", { ascending: false }));
+  }
 
   if (error) {
     console.error("[ALINE-REPLY] searchCatalog error:", error);
@@ -2560,13 +2562,32 @@ async function lookupCatalogProductBySkuOrId(supabase: any, token: string | null
   if (!value) return null;
 
   async function byField(field: "sku" | "id") {
-    const { data, error } = await supabase
+    // O select de produtos nao usa product_variants aqui; reaproveitamos as listas
+    // de colunas removendo a relacao para manter o fallback consistente.
+    const extendedCols = CATALOG_SELECT_EXTENDED.replace(", product_variants(size, stock)", "");
+    const coreCols = CATALOG_SELECT_CORE.replace(", product_variants(size, stock)", "");
+
+    let { data, error } = await supabase
       .from("products")
-      .select("id, name, sku, price, image_url, video_url, category, color, description, tags, agent_line, ai_description, ai_tags, search_aliases, commercial_notes, included_items, restrictions, recommended_when, avoid_when")
+      .select(extendedCols)
       .eq(field, value)
       .eq("active", true)
       .limit(1)
       .maybeSingle();
+
+    if (error) {
+      console.warn(
+        "[ALINE-REPLY] lookupCatalogProductBySkuOrId extended select failed, falling back:",
+        error.message || error,
+      );
+      ({ data, error } = await supabase
+        .from("products")
+        .select(coreCols)
+        .eq(field, value)
+        .eq("active", true)
+        .limit(1)
+        .maybeSingle());
+    }
 
     if (error) {
       console.warn("[ALINE-REPLY] lookupCatalogProductBySkuOrId failed:", error.message || error);
