@@ -819,11 +819,10 @@ serve(async (req) => {
     try {
     if (products && Array.isArray(products) && products.length > 0) {
       // Cap defensivo: evita IDLE_TIMEOUT (150s) quando o chamador envia o catálogo inteiro.
-      // Com ~1s por item + gap, mais de ~12 produtos sequenciais arrisca estourar o limite.
       const MAX_PRODUCTS_PER_REQUEST = Number(Deno.env.get("AUTOMATION_MAX_PRODUCTS") || "10");
-      if (products.length > MAX_PRODUCTS_PER_REQUEST) {
+      if ((products as Product[]).length > MAX_PRODUCTS_PER_REQUEST) {
         console.warn(
-          `[AUTOMATION-SEND] products length=${products.length} excede ${MAX_PRODUCTS_PER_REQUEST}; truncando para evitar timeout.`,
+          `[AUTOMATION-SEND] products length=${(products as Product[]).length} excede ${MAX_PRODUCTS_PER_REQUEST}; truncando para evitar timeout.`,
         );
         products = (products as Product[]).slice(0, MAX_PRODUCTS_PER_REQUEST);
       }
