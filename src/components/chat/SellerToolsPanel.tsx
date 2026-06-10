@@ -608,15 +608,23 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
     });
   };
 
-  const sendSelectedCatalog = async () => {
+  const sendSelectedCatalog = () => {
     const selected = catalogProducts.filter((p) => selectedCatalogIds.has(p.id));
     if (selected.length === 0) {
       toast({ title: 'Nenhum produto selecionado', description: 'Marque ao menos um produto para enviar.', variant: 'destructive' });
       return;
     }
-    setSendingSelection(true);
-    try {
-      const { error } = await supabase.functions.invoke('automation-send', {
+
+    // Instantaneo: fecha o modal na hora e dispara o envio em segundo plano.
+    // O envio no WhatsApp leva tempo (limite de vazao seguro da Z-API), mas a UI
+    // nao deve travar esperando. Avisamos por toast quando concluir/falhar.
+    const count = selected.length;
+    setCatalogModalOpen(false);
+    setSelectedCatalogIds(new Set());
+    toast({ title: 'Enviando catalogo', description: `${count} produto(s) sendo enviados ao cliente em segundo plano...` });
+
+    void supabase.functions
+      .invoke('automation-send', {
         body: {
           conversation_id: conversationId,
           phone,
@@ -625,21 +633,24 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
           message: 'Separei essas opcoes para voce conferir:',
           products: selected,
         },
+      })
+      .then(({ error }) => {
+        if (error) {
+          console.error('Error sending selected catalog:', error);
+          toast({ title: 'Erro ao enviar catalogo', description: error.message || 'Tente novamente.', variant: 'destructive' });
+          return;
+        }
+        toast({ title: 'Catalogo enviado', description: `${count} item(ns) enviados ao cliente.` });
+        void fetchData(true);
+      })
+      .catch((error) => {
+        console.error('Error sending selected catalog:', error);
+        toast({
+          title: 'Erro ao enviar catalogo',
+          description: error instanceof Error ? error.message : 'Tente novamente.',
+          variant: 'destructive',
+        });
       });
-      if (error) throw error;
-      toast({ title: 'Catalogo enviado', description: `${selected.length} item(ns) enviados ao cliente.` });
-      setCatalogModalOpen(false);
-      void fetchData(true);
-    } catch (error) {
-      console.error('Error sending selected catalog:', error);
-      toast({
-        title: 'Erro ao enviar catalogo',
-        description: error instanceof Error ? error.message : 'Tente novamente.',
-        variant: 'destructive',
-      });
-    } finally {
-      setSendingSelection(false);
-    }
   };
 
   const createOrder = async () => {
