@@ -9,6 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import { 
   ShoppingCart, 
   Package, 
@@ -251,6 +253,13 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
   const [loading, setLoading] = useState(true);
   const [creatingOrder, setCreatingOrder] = useState(false);
   const [sendingCatalog, setSendingCatalog] = useState<string | null>(null);
+  const [catalogModalOpen, setCatalogModalOpen] = useState(false);
+  const [catalogProducts, setCatalogProducts] = useState<Product[]>([]);
+  const [loadingCatalogProducts, setLoadingCatalogProducts] = useState(false);
+  const [catalogModalSearch, setCatalogModalSearch] = useState('');
+  const [catalogModalCategory, setCatalogModalCategory] = useState<string>('todas');
+  const [selectedCatalogIds, setSelectedCatalogIds] = useState<Set<string>>(new Set());
+  const [sendingSelection, setSendingSelection] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [activePanel, setActivePanel] = useState<'info' | 'order' | 'catalog' | 'quick' | null>(null);
   
@@ -534,6 +543,102 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
       });
     } finally {
       setSendingCatalog(null);
+    }
+  };
+
+  const openCatalogModal = async () => {
+    setCatalogModalOpen(true);
+    setSelectedCatalogIds(new Set());
+    setCatalogModalSearch('');
+    setCatalogModalCategory('todas');
+    setLoadingCatalogProducts(true);
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('id, name, sku, price, image_url, video_url, category')
+        .eq('active', true)
+        .order('category', { ascending: true })
+        .order('name', { ascending: true });
+      if (error) throw error;
+      setCatalogProducts((data || []) as Product[]);
+    } catch (error) {
+      console.error('Error loading products for catalog:', error);
+      toast({
+        title: 'Erro ao carregar produtos',
+        description: error instanceof Error ? error.message : 'Tente novamente.',
+        variant: 'destructive',
+      });
+      setCatalogProducts([]);
+    } finally {
+      setLoadingCatalogProducts(false);
+    }
+  };
+
+  const toggleCatalogProduct = (id: string) => {
+    setSelectedCatalogIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const filteredCatalogProducts = catalogProducts.filter((product) => {
+    const matchesCategory =
+      catalogModalCategory === 'todas' ||
+      (product.category || '').toLowerCase().includes(catalogModalCategory);
+    const term = catalogModalSearch.trim().toLowerCase();
+    const matchesSearch =
+      !term ||
+      (product.name || '').toLowerCase().includes(term) ||
+      (product.sku || '').toLowerCase().includes(term);
+    return matchesCategory && matchesSearch;
+  });
+
+  const toggleSelectAllFiltered = () => {
+    setSelectedCatalogIds((prev) => {
+      const next = new Set(prev);
+      const allSelected = filteredCatalogProducts.every((p) => next.has(p.id));
+      if (allSelected) {
+        filteredCatalogProducts.forEach((p) => next.delete(p.id));
+      } else {
+        filteredCatalogProducts.forEach((p) => next.add(p.id));
+      }
+      return next;
+    });
+  };
+
+  const sendSelectedCatalog = async () => {
+    const selected = catalogProducts.filter((p) => selectedCatalogIds.has(p.id));
+    if (selected.length === 0) {
+      toast({ title: 'Nenhum produto selecionado', description: 'Marque ao menos um produto para enviar.', variant: 'destructive' });
+      return;
+    }
+    setSendingSelection(true);
+    try {
+      const { error } = await supabase.functions.invoke('automation-send', {
+        body: {
+          conversation_id: conversationId,
+          phone,
+          platform: 'whatsapp',
+          prefer_zapi: true,
+          message: 'Separei essas opcoes para voce conferir:',
+          products: selected,
+        },
+      });
+      if (error) throw error;
+      toast({ title: 'Catalogo enviado', description: `${selected.length} item(ns) enviados ao cliente.` });
+      setCatalogModalOpen(false);
+      void fetchData(true);
+    } catch (error) {
+      console.error('Error sending selected catalog:', error);
+      toast({
+        title: 'Erro ao enviar catalogo',
+        description: error instanceof Error ? error.message : 'Tente novamente.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSendingSelection(false);
     }
   };
 
@@ -972,37 +1077,166 @@ const SellerToolsPanel = ({ phone, contactName, conversationId, onSendMessage }:
                       Enviar catalogo
                     </CardTitle>
                     <CardDescription className="text-xs text-slate-400">
-                      Envia ate 6 itens ativos pelo WhatsApp do cliente.
+                      Escolha exatamente quais produtos enviar pelo WhatsApp do cliente.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="px-4 pb-4 space-y-2">
-                    {[
-                      { key: 'aliancas', label: 'Aliancas' },
-                      { key: 'oculos', label: 'Oculos' },
-                      { key: 'pingente', label: 'Pingentes' },
-                    ].map((item) => (
-                      <Button
-                        key={item.key}
-                        type="button"
-                        disabled={Boolean(sendingCatalog)}
-                        onClick={() => void sendManualCatalog(item.key as 'aliancas' | 'oculos' | 'pingente')}
-                        className="w-full justify-between bg-emerald-600 hover:bg-emerald-700"
-                      >
-                        <span className="flex items-center gap-2">
-                          <Package className="w-4 h-4" />
-                          {item.label}
-                        </span>
-                        {sendingCatalog === item.key ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Send className="w-4 h-4" />
-                        )}
-                      </Button>
-                    ))}
+                    <Button
+                      type="button"
+                      onClick={() => void openCatalogModal()}
+                      className="w-full justify-between bg-emerald-600 hover:bg-emerald-700"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Package className="w-4 h-4" />
+                        Selecionar produtos
+                      </span>
+                      <Send className="w-4 h-4" />
+                    </Button>
+
+                    <div className="pt-2">
+                      <p className="text-[11px] text-slate-500 mb-1">Envio rapido por linha (ate 6 itens):</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { key: 'aliancas', label: 'Aliancas' },
+                          { key: 'oculos', label: 'Oculos' },
+                          { key: 'pingente', label: 'Pingentes' },
+                        ].map((item) => (
+                          <Button
+                            key={item.key}
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={Boolean(sendingCatalog)}
+                            onClick={() => void sendManualCatalog(item.key as 'aliancas' | 'oculos' | 'pingente')}
+                            className="justify-center border-white/10 bg-slate-800/60 text-xs"
+                          >
+                            {sendingCatalog === item.key ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              item.label
+                            )}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
               </div>
             )}
+
+            <Dialog open={catalogModalOpen} onOpenChange={setCatalogModalOpen}>
+              <DialogContent className="max-w-lg bg-slate-900 border-white/10 text-white">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Package className="w-4 h-4 text-emerald-400" />
+                    Selecionar produtos para enviar
+                  </DialogTitle>
+                  <DialogDescription className="text-slate-400">
+                    Marque os produtos que deseja mandar para {contactName || 'o cliente'} no WhatsApp.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                    <Input
+                      value={catalogModalSearch}
+                      onChange={(e) => setCatalogModalSearch(e.target.value)}
+                      placeholder="Buscar por nome ou SKU"
+                      className="pl-8 bg-slate-800 border-white/10 text-sm"
+                    />
+                  </div>
+                  <Select value={catalogModalCategory} onValueChange={setCatalogModalCategory}>
+                    <SelectTrigger className="w-32 bg-slate-800 border-white/10 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todas">Todas</SelectItem>
+                      <SelectItem value="alianca">Aliancas</SelectItem>
+                      <SelectItem value="oculos">Oculos</SelectItem>
+                      <SelectItem value="pingente">Pingentes</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center justify-between text-xs text-slate-400">
+                  <button type="button" onClick={toggleSelectAllFiltered} className="hover:text-emerald-400">
+                    {filteredCatalogProducts.length > 0 && filteredCatalogProducts.every((p) => selectedCatalogIds.has(p.id))
+                      ? 'Desmarcar todos'
+                      : 'Selecionar todos'}
+                  </button>
+                  <span>{selectedCatalogIds.size} selecionado(s)</span>
+                </div>
+
+                <ScrollArea className="h-72 rounded-md border border-white/10">
+                  {loadingCatalogProducts ? (
+                    <div className="flex items-center justify-center h-72 text-slate-400">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    </div>
+                  ) : filteredCatalogProducts.length === 0 ? (
+                    <div className="flex items-center justify-center h-72 text-sm text-slate-500">
+                      Nenhum produto encontrado.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-white/5">
+                      {filteredCatalogProducts.map((product) => {
+                        const checked = selectedCatalogIds.has(product.id);
+                        return (
+                          <label
+                            key={product.id}
+                            className={cn(
+                              'flex items-center gap-3 p-2.5 cursor-pointer hover:bg-slate-800/60',
+                              checked && 'bg-emerald-600/10',
+                            )}
+                          >
+                            <Checkbox checked={checked} onCheckedChange={() => toggleCatalogProduct(product.id)} />
+                            {product.image_url ? (
+                              <img src={product.image_url} alt={product.name} className="w-10 h-10 rounded object-cover bg-slate-800" />
+                            ) : (
+                              <div className="w-10 h-10 rounded bg-slate-800 flex items-center justify-center">
+                                <Package className="w-4 h-4 text-slate-600" />
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-white truncate">{product.name}</p>
+                              <p className="text-xs text-slate-500 truncate">
+                                {product.sku ? `${product.sku} · ` : ''}{product.category || 'sem categoria'}
+                              </p>
+                            </div>
+                            <span className="text-xs text-emerald-400 whitespace-nowrap">
+                              {product.price ? `R$ ${Number(product.price).toFixed(2).replace('.', ',')}` : '-'}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </ScrollArea>
+
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setCatalogModalOpen(false)}
+                    className="border-white/10 bg-transparent"
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => void sendSelectedCatalog()}
+                    disabled={sendingSelection || selectedCatalogIds.size === 0}
+                    className="bg-emerald-600 hover:bg-emerald-700"
+                  >
+                    {sendingSelection ? (
+                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Enviando...</>
+                    ) : (
+                      <><Send className="w-4 h-4 mr-2" /> Enviar {selectedCatalogIds.size > 0 ? `(${selectedCatalogIds.size})` : ''}</>
+                    )}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
             {/* Panel: Criar Pedido */}
             {activePanel === 'order' && (
