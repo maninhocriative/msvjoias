@@ -397,8 +397,19 @@ function resolveFollowupMessage(args: {
   }
 
   if (isPendantConversation(args.conversation)) {
+    const normalIndex = args.config.normalIndex ?? args.followupIndex;
+    // Sem oferta ativa, o texto base (indice 0) e identico ao rescue inicial de
+    // pingente ("Como voce nao falou nada, vou te mandar a oferta...") e ainda
+    // dispara o reenvio do catalogo via promisesPendantCatalog(). No estagio
+    // normal, escalar para lembretes distintos (indice 1+) que nao prometem
+    // catalogo, evitando reenviar verbatim o card e a pergunta de abertura.
+    if (!args.pendantOffer) {
+      return KATE_VALENTINES_DAY_FALLBACK_MESSAGES[
+        Math.min(normalIndex + 1, KATE_VALENTINES_DAY_FALLBACK_MESSAGES.length - 1)
+      ];
+    }
     return buildKateValentinesDayFollowupMessage(
-      args.config.normalIndex ?? args.followupIndex,
+      normalIndex,
       args.pendantOffer,
       args.conversation,
     );
