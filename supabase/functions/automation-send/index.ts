@@ -871,8 +871,8 @@ serve(async (req) => {
         await new Promise((resolve) => setTimeout(resolve, SEQUENCE_INTRO_GAP_MS));
       }
 
-      for (let index = 0; index < products.length; index += 1) {
-        const product = products[index] as Product;
+      for (let index = 0; index < productsToSend.length; index += 1) {
+        const product = productsToSend[index];
         const caption = formatProductCaption(product, index + 1);
 
         let mediaType: "image" | "video" | "text" = "text";
@@ -929,14 +929,14 @@ serve(async (req) => {
           results.messages.push(storedMessageId);
         }
 
-        if (index < products.length - 1) {
+        if (index < productsToSend.length - 1) {
           await new Promise((resolve) => setTimeout(resolve, SEQUENCE_ITEM_GAP_MS));
         }
       }
 
       await supabase
         .from("conversations")
-        .update({ last_message: `[Catalogo: ${products.length} produtos]` })
+        .update({ last_message: `[Catalogo: ${productsToSend.length} produtos]` })
         .eq("id", conversationId);
 
       if (results.forwarded === 0 && results.errors.length > 0) {
@@ -955,7 +955,7 @@ serve(async (req) => {
         JSON.stringify({
           success: true,
           mode: "catalog",
-          products_count: products.length,
+          products_count: productsToSend.length,
           messages_sent: results.messages.length,
           message_ids: results.messages,
           forwarded: results.forwarded,
