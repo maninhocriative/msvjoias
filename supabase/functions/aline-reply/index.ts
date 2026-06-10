@@ -6487,6 +6487,55 @@ serve(async (req) => {
       );
     }
 
+    // Imagem de referencia de produto que o bot nao atende no fluxo automatico
+    // (ex.: chaveiro, ou qualquer categoria fora de pingente/oculos/aliancas/aneis).
+    // Em vez de tratar como selfie do cliente ou ficar em silencio, reconhecemos a
+    // imagem e encaminhamos para humano com mensagem-ponte, sem deixar o cliente no vacuo.
+    const imageProductCategory = imageUnderstanding?.kind === "product_reference"
+      ? imageUnderstanding.product_category
+      : null;
+    const imageReferenceUnsupported =
+      imageProductCategory === "chaveiro" ||
+      (!!imageProductCategory && !["pingente", "oculos", "aliancas", "aneis"].includes(imageProductCategory));
+
+    if (imageReferenceUnsupported) {
+      baseData.categoria = imageProductCategory;
+      baseData.agente_atual = "human";
+      baseData.handoff_reason = "imagem_produto_referencia_sem_fluxo";
+      const reply = imageProductCategory === "chaveiro"
+        ? "Recebi a foto do chaveiro que voce enviou 📷. Esse tipo de peca a gente faz sob personalizacao, entao ja vou chamar um vendedor para te mostrar opcoes parecidas e seguir com voce."
+        : "Recebi a foto que voce enviou 📷. Para nao te passar informacao errada sobre essa peca, ja vou chamar um vendedor para identificar o modelo, confirmar disponibilidade e seguir com voce.";
+
+      await supabase
+        .from("aline_conversations")
+        .update({
+          status: "human_takeover",
+          active_agent: "human",
+          assignment_reason: "Cliente enviou foto de produto fora do fluxo automatico (ex.: chaveiro)",
+          collected_data: baseData,
+          current_node: "human_imagem_produto",
+          last_message_at: new Date().toISOString(),
+          agent_handoff_at: new Date().toISOString(),
+        })
+        .eq("id", conversation.id);
+      await saveAssistantMessage(supabase, conversation.id, "human", reply, "human_imagem_produto");
+      await saveAgentMemory(supabase, phone, "aline", contactName, baseData);
+      await updateCrmLeadStatus(supabase, phone, "humano");
+
+      return new Response(
+        JSON.stringify(
+          buildResponsePayload({
+            phone,
+            message: reply,
+            node: "human_imagem_produto",
+            collectedData: baseData,
+            agent: "human",
+          }),
+        ),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const unsupportedAccessoryFromMessage =
       detectUnsupportedAccessoryIntent(inboundText) ||
       (imageUnderstanding?.kind === "product_reference" && detectUnsupportedAccessoryIntent(recentCrmContext || ""));
