@@ -6387,21 +6387,38 @@ serve(async (req) => {
       ? detectCategory(recentCrmContext || "", {})
       : null;
     baseData.categoria = explicitCategory || recentContextCategory || detectCategory(inboundText, baseData) || baseData.categoria || null;
+    // IMPORTANTE: nao marcar catalogo_X_enviado=true aqui. Isto roda na triagem
+    // por contexto do texto (nao por envio real). Marcar como enviado sem ter
+    // mandado cards fazia o bloco de envio do catalogo ser pulado e o cliente
+    // nunca recebia os modelos (ficava so no fallback). A flag de "enviado" so
+    // deve ser setada quando o catalogo e realmente enviado (com last_catalog),
+    // o que o bloco seguinte (catalogHasAgentProduct) ja trata corretamente.
     if (!explicitCategory && (recentContextCategory === "pingente" || recentHasKatePendantPrompt)) {
       baseData.agente_atual = "kate";
       baseData.categoria = "pingente";
-      baseData.catalogo_kate_enviado = baseData.catalogo_kate_enviado ?? true;
     }
     if (!explicitCategory && (recentContextCategory === "oculos" || recentHasMaluEyewearPrompt)) {
       baseData.agente_atual = "malu";
       baseData.categoria = "oculos";
-      baseData.catalogo_malu_enviado = baseData.catalogo_malu_enviado ?? true;
     }
     if (!explicitCategory && (recentContextCategory === "aliancas" || recentContextCategory === "aneis" || recentHasKeilaAlliancePrompt)) {
       baseData.agente_atual = "keila";
       baseData.categoria = recentContextCategory === "aneis" ? "aneis" : "aliancas";
-      baseData.catalogo_keila_enviado = baseData.catalogo_keila_enviado ?? true;
     }
+    // Self-heal: se a flag de "catalogo enviado" esta true mas nao existe
+    // catalogo real para o agente (last_catalog vazio/sem produtos do agente),
+    // resetar para false para que o catalogo seja efetivamente enviado. Corrige
+    // conversas que ficaram com a flag marcada sem cards (bug anterior).
+    if (baseData.catalogo_kate_enviado && !catalogHasAgentProduct(baseData, "kate")) {
+      baseData.catalogo_kate_enviado = false;
+    }
+    if (baseData.catalogo_malu_enviado && !catalogHasAgentProduct(baseData, "malu")) {
+      baseData.catalogo_malu_enviado = false;
+    }
+    if (baseData.catalogo_keila_enviado && !catalogHasAgentProduct(baseData, "keila")) {
+      baseData.catalogo_keila_enviado = false;
+    }
+
     if (!explicitCategory && !baseData.catalogo_geral_enviado && catalogHasAgentProduct(baseData, "kate")) {
       baseData.agente_atual = "kate";
       baseData.categoria = "pingente";
