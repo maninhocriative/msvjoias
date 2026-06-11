@@ -73,8 +73,8 @@ function buildProductInterestNote(args: {
   }
 
   const lines = [
-    "Cliente demonstrou interesse em um produto, mas o modelo exato nao foi identificado automaticamente.",
-    "Verifique o ultimo card/catalogo enviado acima antes de finalizar.",
+    "Cliente tocou/respondeu interesse em um produto, mas o botao nao trouxe o SKU/modelo exato.",
+    "Antes de finalizar, confirme pelo ultimo card/catalogo visivel no chat ou peca um print da peca.",
   ];
   const customerMessage = normalizeString(args.customerMessage).slice(0, 180);
   if (customerMessage) lines.push(`Mensagem do cliente: ${customerMessage}`);

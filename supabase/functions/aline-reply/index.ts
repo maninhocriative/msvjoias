@@ -549,7 +549,7 @@ function detectPriceIntent(text: string): boolean {
 
 function detectChoiceIntent(text: string, buttonResponseId?: string | null, catalogSelectionHint?: string | null): boolean {
   const combined = normalizeText(`${text || ""} ${buttonResponseId || ""} ${catalogSelectionHint || ""}`);
-  return /quero este|quero esse|escolher|escolhi|ficar com esse|gostei desse|esse modelo|este modelo|vou querer|quero comprar|pode ser esse|esse mesmo|este mesmo/.test(combined);
+  return /quero este|quero esta|quero esse|quero essa|escolher|escolhi|ficar com esse|ficar com essa|gostei desse|gostei dessa|esse modelo|essa modelo|este modelo|esta modelo|vou querer|quero comprar|pode ser esse|pode ser essa|esse mesmo|essa mesma|este mesmo|esta mesma/.test(combined);
 }
 
 function detectPreviewIntent(text: string, mediaType?: string | null): boolean {
@@ -7003,9 +7003,13 @@ serve(async (req) => {
       !selectedFromCatalogContext &&
       detectChoiceIntent(inboundText, buttonResponseId, catalogSelectionHint)
     ) {
-      selectedFromCatalogContext = await findRecentCrmCatalogSelection(supabase, phone, baseData);
-      if (selectedFromCatalogContext) {
-        baseData.selected_product_source = "recent_crm_catalog_card";
+      const singleCatalogOption = findSingleCatalogSelection(baseData);
+      if (singleCatalogOption) {
+        selectedFromCatalogContext = singleCatalogOption;
+        baseData.selected_product_source = "single_catalog_option";
+      } else {
+        baseData.pending_product_selection = true;
+        baseData.pending_product_selection_reason = "cliente_escolheu_card_sem_identificador";
       }
     }
     const selectedContextAgent = inferAgentFromProduct(selectedFromCatalogContext);

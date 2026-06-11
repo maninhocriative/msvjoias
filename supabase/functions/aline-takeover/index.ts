@@ -35,27 +35,10 @@ async function getOnlineSeller(supabase: any): Promise<SellerPresence | null> {
 async function getCustomerInterests(supabase: any, phone: string): Promise<string[]> {
   const normalizedPhone = phone.replace(/\D/g, '');
   
-  // Buscar últimos itens enviados do catálogo
-  const { data: catalogItems } = await supabase
-    .from('catalog_items_sent')
-    .select('name, sku')
-    .eq('session_id', (
-      await supabase
-        .from('catalog_sessions')
-        .select('id')
-        .eq('phone', normalizedPhone)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single()
-    )?.data?.id)
-    .order('created_at', { ascending: false })
-    .limit(5);
+  // Nao usar os ultimos cards enviados como produto escolhido.
+  // Eles sao apenas opcoes exibidas, nao uma selecao confirmada.
 
-  if (catalogItems && catalogItems.length > 0) {
-    return catalogItems.map((item: any) => item.name);
-  }
-
-  // Fallback: buscar da conversa Aline collected_data
+  // Buscar produto selecionado na conversa Aline.
   const { data: alineConv } = await supabase
     .from('aline_conversations')
     .select('collected_data')
@@ -65,14 +48,14 @@ async function getCustomerInterests(supabase: any, phone: string): Promise<strin
     .single();
 
   if (alineConv?.collected_data) {
-    const interests: string[] = [];
     const data = alineConv.collected_data;
+    const selectedProduct = data.selected_product || {};
+    const selectedName = selectedProduct.name || selectedProduct.nome || data.selected_name || null;
+    const selectedSku = selectedProduct.sku || selectedProduct.id || data.selected_sku || null;
     
-    if (data.categoria) interests.push(data.categoria);
-    if (data.finalidade) interests.push(`para ${data.finalidade}`);
-    if (data.cor_preferida) interests.push(`na cor ${data.cor_preferida}`);
-    
-    return interests;
+    if (selectedName) {
+      return selectedSku ? [`${selectedName} (SKU ${selectedSku})`] : [selectedName];
+    }
   }
 
   return [];
