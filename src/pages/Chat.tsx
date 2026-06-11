@@ -95,7 +95,6 @@ type OutgoingAttachmentPayload = {
   message: string;
   message_type: string;
   media_url: string;
-  client_temp_id?: string;
 };
 
 
@@ -1758,7 +1757,6 @@ const Chat = () => {
           message_type: messageType,
           media_url: mediaUrl,
           is_from_me: true,
-          client_temp_id: tempId,
           status: 'sending',
           created_at: new Date().toISOString(),
         },
@@ -1796,7 +1794,6 @@ const Chat = () => {
             ? {
                 ...message,
                 id: resolvedId,
-                client_temp_id: tempId,
                 status: result?.forwarded === false ? 'pending' : 'sent',
                 zapi_message_id: result?.zapi_message_id || message.zapi_message_id,
               }
@@ -2009,7 +2006,7 @@ const Chat = () => {
             );
 
             const result = await invokeAutomationSend({
-              attachments: [{ ...attachment, client_temp_id: entry.tempId }],
+              attachments: [attachment],
             }, conversation);
 
             if (reconcileOptimisticMessage(entry.tempId, result)) {
@@ -2068,7 +2065,6 @@ const Chat = () => {
       const result = await invokeAutomationSend({
         message: trimmedMessage,
         message_type: 'text',
-        client_temp_id: tempId,
       }, conversation);
 
       if (!reconcileOptimisticMessage(tempId, result)) {

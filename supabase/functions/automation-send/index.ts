@@ -29,7 +29,6 @@ interface OutgoingAttachment {
   message?: string | null;
   message_type?: string | null;
   media_url?: string | null;
-  client_temp_id?: string | null;
   product_interest?: string | null;
 }
 
@@ -691,7 +690,6 @@ serve(async (req) => {
       send_video_priority = true,
       skip_crm_save = false,
       prefer_zapi = false,
-      client_temp_id = null,
       replace_message_id = null,
       replace_zapi_message_id = null,
       delete_message_id = null,

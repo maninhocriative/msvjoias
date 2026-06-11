@@ -117,10 +117,6 @@ export const areDuplicateMessageRecords = (a: Partial<Message>, b: Partial<Messa
   const bZapiId = String(b.zapi_message_id || '').trim();
   if (aZapiId && bZapiId && aZapiId === bZapiId) return true;
 
-  const aClientTempId = String(a.client_temp_id || '').trim();
-  const bClientTempId = String(b.client_temp_id || '').trim();
-  if (aClientTempId && bClientTempId && aClientTempId === bClientTempId) return true;
-
   const aType = a.message_type || 'text';
   const bType = b.message_type || 'text';
   const aContent = normalizeMessageText(a.content);
@@ -240,7 +236,6 @@ export const areMessagesEqual = (a: Message[], b: Message[]) => {
       message.status === next.status &&
       message.media_url === next.media_url &&
       message.message_type === next.message_type &&
-      message.client_temp_id === next.client_temp_id &&
       message.zapi_message_id === next.zapi_message_id &&
       message.deleted_at === next.deleted_at &&
       message.edited_at === next.edited_at
