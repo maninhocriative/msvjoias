@@ -400,43 +400,12 @@ async function createStoredMessage(
     messageType: string;
     mediaUrl: string | null;
     fromMe: boolean;
-    clientTempId?: string | null;
     productInterest?: string | null;
     editedAt?: string | null;
     deletedAt?: string | null;
     replacedMessageId?: string | null;
   },
 ) {
-  const clientTempId = item.clientTempId ? String(item.clientTempId) : null;
-
-  if (clientTempId) {
-    const { data: existingMessage } = await supabase
-      .from("messages")
-      .select("id")
-      .eq("conversation_id", conversationId)
-      .eq("client_temp_id", clientTempId)
-      .maybeSingle();
-
-    if (existingMessage?.id) {
-      await supabase
-        .from("messages")
-        .update({
-          content: item.message || "",
-          message_type: item.messageType,
-          media_url: item.mediaUrl,
-          is_from_me: item.fromMe,
-          product_interest: item.productInterest || null,
-          status: "pending",
-          edited_at: item.editedAt || null,
-          deleted_at: item.deletedAt || null,
-          replaced_message_id: item.replacedMessageId || null,
-        })
-        .eq("id", existingMessage.id);
-
-      return String(existingMessage.id);
-    }
-  }
-
   const { data, error } = await supabase
     .from("messages")
     .insert({
@@ -445,7 +414,6 @@ async function createStoredMessage(
       message_type: item.messageType,
       media_url: item.mediaUrl,
       is_from_me: item.fromMe,
-      client_temp_id: clientTempId,
       product_interest: item.productInterest || null,
       status: "pending",
       edited_at: item.editedAt || null,
@@ -1017,7 +985,6 @@ serve(async (req) => {
               messageType: attachmentType,
               mediaUrl: attachmentMediaUrl,
               fromMe: fromMe !== false,
-              clientTempId: item.client_temp_id ? String(item.client_temp_id) : null,
               productInterest: item.product_interest || null,
               editedAt: replace_message_id ? new Date().toISOString() : null,
               replacedMessageId: replace_message_id ? String(replace_message_id) : null,
@@ -1109,7 +1076,6 @@ serve(async (req) => {
           messageType: outgoingMessageType,
           mediaUrl: outgoingMediaUrl,
           fromMe: fromMe !== false,
-          clientTempId: client_temp_id ? String(client_temp_id) : null,
           editedAt: replace_message_id ? new Date().toISOString() : null,
           replacedMessageId: replace_message_id ? String(replace_message_id) : null,
         });
