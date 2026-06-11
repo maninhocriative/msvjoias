@@ -457,6 +457,7 @@ const Chat = () => {
             phone: targetConversation.contact_number,
             action: 'takeover',
             reason: 'Status alterado para humano no painel',
+            send_intro: false,
           },
         });
 
@@ -793,6 +794,7 @@ const Chat = () => {
         body: {
           phone: selectedConversation.contact_number,
           action,
+          send_intro: false,
         },
       });
 

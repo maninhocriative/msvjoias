@@ -2825,6 +2825,14 @@ function detectPostCatalogPositiveIntent(text: string): boolean {
     /gostei|quero|pode ser|vou querer|esse mesmo|este mesmo|fechar|finalizar|comprar/.test(normalized);
 }
 
+function detectPartnerConsultPause(text: string): boolean {
+  const normalized = normalizeText(text);
+  const mentionsPartner = /noiva|noivo|esposa|esposo|mulher|marido|namorada|namorado|parceira|parceiro/.test(normalized);
+  const willConsult = /vou consultar|vou falar|vou ver|vou mostrar|vou conversar|consultar|falar com|mostrar para|mostrar pra|ver com/.test(normalized);
+  const willReturn = /retorno|retornar|volto|ja volto|chamo|te aviso|aviso|depois|mais tarde|amanha|ok\b|ta bom/.test(normalized);
+  return mentionsPartner && (willConsult || willReturn);
+}
+
 function buildResponsePayload(args: {
   phone: string;
   message: string;
@@ -5768,6 +5776,7 @@ async function handleKeilaFlow(args: {
     /qualidade|durabilidade|resistente|material|escurece|desbota|arranha|enferruja|garantia|essa joia|esta joia|me fale dela|me fala dela|fale dela|dura\b/.test(
       normalizeText(message),
     );
+  const willConsultPartner = detectPartnerConsultPause(message);
 
   const fetchKeilaCatalogCards = async (excludeSkus: string[] = []) => {
     const searchParams: AnyRecord = {
@@ -5817,6 +5826,34 @@ async function handleKeilaFlow(args: {
       usedPurposeFallback,
     };
   };
+
+  if (willConsultPartner) {
+    data.keila_customer_will_consult_partner = true;
+    data.customer_stage = "aguardando_retorno_cliente";
+    data.next_best_action = "aguardar_cliente_retornar";
+    const reply = "Perfeito, fica a vontade para mostrar para ela. Vou deixar os modelos anotados aqui; quando voce retornar, eu continuo exatamente deste ponto e confirmo cor, numeracao, entrega e pagamento sem recomecar o atendimento.";
+    const finalReply = withKeilaIntro(reply);
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "keila",
+      "keila_aguardando_retorno_noiva",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "keila", finalReply, "keila_aguardando_retorno_noiva");
+    await saveAgentMemory(supabase, phone, "keila", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: finalReply,
+      node: "keila_aguardando_retorno_noiva",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "keila",
+    });
+  }
 
   if (asksJewelryQuality) {
     const singleOption = findSingleCatalogSelection(data);

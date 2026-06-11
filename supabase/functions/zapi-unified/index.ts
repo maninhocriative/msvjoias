@@ -680,6 +680,19 @@ function buildSafeAlineFallback(contactName: string, context?: any, message = ""
   };
 }
 
+function isHumanControlledConversation(crmConversation: any, agentContext: any): boolean {
+  const leadStatus = normalizeString(crmConversation?.lead_status);
+  return (
+    leadStatus === "humano" ||
+    leadStatus === "venda_iniciada" ||
+    leadStatus === "vendido" ||
+    Boolean(crmConversation?.attending_by || crmConversation?.attending_name) ||
+    agentContext?.status === "human_takeover" ||
+    agentContext?.active_agent === "human" ||
+    Boolean(agentContext?.assigned_seller_id || agentContext?.assigned_seller_name)
+  );
+}
+
 async function sendText(
   phone: string,
   message: string,
@@ -1142,7 +1155,7 @@ serve(async (req) => {
     let existingConversationUnread = 0;
     const { data: existingConversation } = await supabase
       .from("conversations")
-      .select("id, unread_count, contact_number, last_message_at, created_at")
+      .select("id, unread_count, contact_number, last_message_at, created_at, lead_status, attending_by, attending_name")
       .in("contact_number", phoneVariants)
       .order("last_message_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
@@ -1314,6 +1327,20 @@ serve(async (req) => {
         console.error("[ZAPI-UNIFIED] Erro ao transcrever áudio:", error);
         messageForAline = "[audio recebido]";
       }
+    }
+
+    const agentContextAfterStore = await loadAgentFallbackContext(supabase, phone);
+    if (isHumanControlledConversation(existingConversation, agentContextAfterStore)) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          skipped: true,
+          reason: "human_takeover_active",
+          message_saved: true,
+          message_id: storedInboundMessage.id,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     const accumulatedInput = await prepareAccumulatedAgentInput(supabase, {
