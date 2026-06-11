@@ -95,6 +95,7 @@ type OutgoingAttachmentPayload = {
   message: string;
   message_type: string;
   media_url: string;
+  client_temp_id?: string;
 };
 
 
@@ -1757,6 +1758,7 @@ const Chat = () => {
           message_type: messageType,
           media_url: mediaUrl,
           is_from_me: true,
+          client_temp_id: tempId,
           status: 'sending',
           created_at: new Date().toISOString(),
         },
@@ -1774,6 +1776,38 @@ const Chat = () => {
       prev.map((m) => (m.id === tempId ? { ...m, status: 'failed' } : m)),
     );
   }, []);
+
+  const reconcileOptimisticMessage = useCallback(
+    (
+      tempId: string,
+      result: {
+        message_id?: string | null;
+        message_ids?: string[] | null;
+        zapi_message_id?: string | null;
+        forwarded?: boolean;
+      } | null | undefined,
+    ) => {
+      const resolvedId = result?.message_id || result?.message_ids?.[0] || null;
+      if (!resolvedId) return false;
+
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === tempId
+            ? {
+                ...message,
+                id: resolvedId,
+                client_temp_id: tempId,
+                status: result?.forwarded === false ? 'pending' : 'sent',
+                zapi_message_id: result?.zapi_message_id || message.zapi_message_id,
+              }
+            : message,
+        ),
+      );
+
+      return true;
+    },
+    [],
+  );
 
   const removeOptimisticMessages = useCallback((tempIds: string[]) => {
     if (!tempIds.length) return;
@@ -1974,9 +2008,14 @@ const Chat = () => {
               conversation.id,
             );
 
-            await invokeAutomationSend({
-              attachments: [attachment],
+            const result = await invokeAutomationSend({
+              attachments: [{ ...attachment, client_temp_id: entry.tempId }],
             }, conversation);
+
+            if (reconcileOptimisticMessage(entry.tempId, result)) {
+              if (entry.localPreviewUrl) URL.revokeObjectURL(entry.localPreviewUrl);
+              return;
+            }
 
             setTimeout(() => {
               removeOptimisticMessages([entry.tempId]);
@@ -2008,6 +2047,7 @@ const Chat = () => {
       getAttachmentMessageType,
       invokeAutomationSend,
       markOptimisticFailed,
+      reconcileOptimisticMessage,
       removeOptimisticMessages,
       selectedConversation,
       toast,
@@ -2025,12 +2065,15 @@ const Chat = () => {
     const tempId = addOptimisticMessage(trimmedMessage, 'text', null, conversation.id);
 
     try {
-      await invokeAutomationSend({
+      const result = await invokeAutomationSend({
         message: trimmedMessage,
         message_type: 'text',
+        client_temp_id: tempId,
       }, conversation);
 
-      setTimeout(() => removeOptimisticMessages([tempId]), 300);
+      if (!reconcileOptimisticMessage(tempId, result)) {
+        setTimeout(() => removeOptimisticMessages([tempId]), 300);
+      }
     } catch (error) {
       markOptimisticFailed(tempId);
       toast({
@@ -2044,6 +2087,7 @@ const Chat = () => {
     addOptimisticMessage,
     invokeAutomationSend,
     markOptimisticFailed,
+    reconcileOptimisticMessage,
     removeOptimisticMessages,
     selectedConversation,
     toast,

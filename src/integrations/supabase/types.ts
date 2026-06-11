@@ -819,6 +819,7 @@ export type Database = {
       }
       messages: {
         Row: {
+          client_temp_id: string | null
           content: string | null
           conversation_id: string
           created_at: string
@@ -834,6 +835,7 @@ export type Database = {
           zapi_message_id: string | null
         }
         Insert: {
+          client_temp_id?: string | null
           content?: string | null
           conversation_id: string
           created_at?: string
@@ -849,6 +851,7 @@ export type Database = {
           zapi_message_id?: string | null
         }
         Update: {
+          client_temp_id?: string | null
           content?: string | null
           conversation_id?: string
           created_at?: string

@@ -80,7 +80,8 @@ export type Message = {
   message_type: string;
   media_url: string | null;
   is_from_me: boolean;
-  zapi_message_id?: string;
+  client_temp_id?: string | null;
+  zapi_message_id?: string | null;
   status?: string;
   edited_at?: string | null;
   deleted_at?: string | null;
