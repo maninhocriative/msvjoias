@@ -320,6 +320,16 @@ function detectThanksOnly(text: string): boolean {
     new RegExp(`^${closingPattern}(\\s+${closingPattern})*$`).test(normalized)
   );
 }
+
+function detectPoliteRefusal(text: string): boolean {
+  const normalized = normalizeText(text).replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+  if (!normalized) return false;
+
+  return /^(nao|n|nao quero|nao obrigado|nao obrigada|obrigado mas nao|obrigada mas nao|valeu mas nao|por enquanto nao|agora nao|deixa pra depois|deixa para depois|sem interesse|nao gostei|nenhum|nenhuma)$/.test(
+    normalized,
+  );
+}
+
 function detectAllianceType(text: string, data: AnyRecord): string | null {
   const normalized = normalizeText(text);
 
@@ -5764,6 +5774,33 @@ async function handleKeilaFlow(args: {
     delete data.keila_store_handoff_done;
   }
 
+  if (detectPoliteRefusal(message)) {
+    data.customer_stage = "recusou_catalogo_keila";
+    data.followup_paused = true;
+
+    const reply = "Tudo bem, fico à disposição se quiser ver outros modelos depois. 😊";
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "keila",
+      "keila_recusa_educada",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "keila", reply, "keila_recusa_educada");
+    await saveAgentMemory(supabase, phone, "keila", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: reply,
+      node: "keila_recusa_educada",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "keila",
+    });
+  }
+
   const hasDelivery = !!data.delivery_method;
   const hasPayment = !!data.payment_method;
   const wantsCatalogResend = detectCatalogResendIntent(message) || wantsKeilaCatalogNow;
@@ -6068,7 +6105,14 @@ async function handleKeilaFlow(args: {
           : `Separei opções ${colorPhrase}. 💍`
     }
 O valor do card é da unidade. O par sai pelo dobro.`;
-    const finalReply = withKeilaIntro(reply);
+    const safeReply = usedBudgetFallback
+      ? `${intro}Separei opcoes ${colorPhrase} para voce comparar. Algumas podem ficar fora da faixa exata, mas sao modelos disponiveis da mesma categoria. 💍
+O valor do card e da unidade. O par sai pelo dobro.`
+      : usedPurposeFallback
+        ? `${intro}Separei opcoes compativeis ${colorPhrase} para te mostrar. 💍
+O valor do card e da unidade. O par sai pelo dobro.`
+        : reply;
+    const finalReply = withKeilaIntro(safeReply);
 
     await persistConversation(
       supabase,
@@ -6089,8 +6133,7 @@ O valor do card é da unidade. O par sai pelo dobro.`;
       collectedData: data,
       agent: "keila",
       useProductButtons: true,
-      postCatalogMessage:
-        "Lembrando que o valor do card é da unidade e o par sai pelo dobro. Gostou de algum modelo? 😊",
+      postCatalogMessage: null,
     });
   }
 
@@ -6173,8 +6216,7 @@ O valor do card é da unidade. O par sai pelo dobro.`;
         collectedData: data,
         agent: "keila",
         useProductButtons: true,
-        postCatalogMessage:
-          "Lembrando que o valor do card é da unidade e o par sai pelo dobro. Gostou de algum modelo? 😊",
+        postCatalogMessage: null,
       });
     }
   }
