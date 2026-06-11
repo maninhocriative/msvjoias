@@ -472,6 +472,20 @@ async function mirrorInboundMediaToStorage(
   }
 }
 
+function runBackgroundTask(label: string, task: Promise<unknown>) {
+  const wrappedTask = task.catch((error) => {
+    console.error(`[ZAPI-UNIFIED] Falha em tarefa de fundo (${label}):`, error);
+  });
+  const edgeRuntime = (globalThis as any).EdgeRuntime;
+
+  if (edgeRuntime?.waitUntil) {
+    edgeRuntime.waitUntil(wrappedTask);
+    return;
+  }
+
+  void wrappedTask;
+}
+
 function collectNestedStrings(
   value: unknown,
   maxDepth = 5,
@@ -1187,14 +1201,6 @@ serve(async (req) => {
     }
 
     const zapiMessageId = payload.messageId || payload.zaapId || null;
-    const storedMediaUrl = await mirrorInboundMediaToStorage(supabase, mediaUrl, {
-      phone,
-      messageType,
-      messageId: zapiMessageId,
-    });
-    if (storedMediaUrl) {
-      mediaUrl = storedMediaUrl;
-    }
 
     const nearDuplicate = await shouldSkipNearDuplicateMessage(supabase, conversationId, {
       content: messageContent,
@@ -1278,6 +1284,40 @@ serve(async (req) => {
       throw storeInboundMessageError;
     }
 
+    if (mediaUrl && ["audio", "image", "video", "document"].includes(messageType)) {
+      runBackgroundTask(
+        "mirror_inbound_media",
+        (async () => {
+          const storedMediaUrl = await mirrorInboundMediaToStorage(supabase, mediaUrl, {
+            phone,
+            messageType,
+            messageId: zapiMessageId,
+          });
+
+          if (storedMediaUrl && storedMediaUrl !== mediaUrl) {
+            await supabase
+              .from("messages")
+              .update({ media_url: storedMediaUrl })
+              .eq("id", storedInboundMessage.id);
+          }
+        })(),
+      );
+    }
+
+    const agentContextAfterStore = await loadAgentFallbackContext(supabase, phone);
+    if (isHumanControlledConversation(existingConversation, agentContextAfterStore)) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          skipped: true,
+          reason: "human_takeover_active",
+          message_saved: true,
+          message_id: storedInboundMessage.id,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     let messageForAline = messageContent;
     if (!messageForAline && messageType === "image" && mediaUrl) {
       messageForAline = "[imagem recebida]";
@@ -1327,20 +1367,6 @@ serve(async (req) => {
         console.error("[ZAPI-UNIFIED] Erro ao transcrever áudio:", error);
         messageForAline = "[audio recebido]";
       }
-    }
-
-    const agentContextAfterStore = await loadAgentFallbackContext(supabase, phone);
-    if (isHumanControlledConversation(existingConversation, agentContextAfterStore)) {
-      return new Response(
-        JSON.stringify({
-          success: true,
-          skipped: true,
-          reason: "human_takeover_active",
-          message_saved: true,
-          message_id: storedInboundMessage.id,
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
     }
 
     const accumulatedInput = await prepareAccumulatedAgentInput(supabase, {
