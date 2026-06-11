@@ -5738,15 +5738,19 @@ async function handleKeilaFlow(args: {
   const hasKeilaCatalogContext =
     /catalogo|selecao|sem_mais_opcoes|sem_catalogo|cor/.test(keilaNode) ||
     getRequestedColors(data, ["dourada", "prata", "preta", "azul"]).length > 0;
+  const detectedColorsInMessage = detectColors(message).filter((color) => ["dourada", "prata", "preta", "azul"].includes(color));
+  const answeredKeilaColorPrompt =
+    detectedColorsInMessage.length > 0 &&
+    (/keila_cor|cor/.test(keilaNode) || hasKeilaCatalogContext);
   const confirmsKeilaCatalogContext =
     hasKeilaCatalogContext && /^(sim|s|ok|pode|claro|beleza|ta bom)$/.test(normalizeText(message));
   const wantsBroadKeilaCatalog = detectFullCatalogRequest(message) || data.keila_force_catalogo === true;
   const wantsKeilaCatalogNow =
     wantsBroadKeilaCatalog ||
+    answeredKeilaColorPrompt ||
     confirmsKeilaCatalogContext ||
     detectKeilaCatalogNowIntent(message) ||
     detectCatalogIntent(message);
-  const detectedColorsInMessage = detectColors(message).filter((color) => ["dourada", "prata", "preta", "azul"].includes(color));
   const requestedColors = wantsBroadKeilaCatalog && detectedColorsInMessage.length === 0
     ? []
     : getRequestedColors(data, ["dourada", "prata", "preta", "azul"]);
