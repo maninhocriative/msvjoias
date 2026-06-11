@@ -61,6 +61,31 @@ function buildSelectedProductNote(selectedSku: string | null, selectedName: stri
   if (priceLabel) lines.push(`Valor: ${priceLabel}`);
   return lines.join("\n");
 }
+
+function buildProductInterestNote(args: {
+  selectedSku: string | null;
+  selectedName: string | null;
+  selectedPrice: unknown;
+  customerMessage: string;
+}) {
+  if (args.selectedSku || args.selectedName) {
+    return buildSelectedProductNote(args.selectedSku, args.selectedName, args.selectedPrice);
+  }
+
+  const lines = [
+    "Cliente demonstrou interesse em um produto, mas o modelo exato nao foi identificado automaticamente.",
+    "Verifique o ultimo card/catalogo enviado acima antes de finalizar.",
+  ];
+  const customerMessage = normalizeString(args.customerMessage).slice(0, 180);
+  if (customerMessage) lines.push(`Mensagem do cliente: ${customerMessage}`);
+  return lines.join("\n");
+}
+
+function hasProductInterestSignal(message: string, buttonResponseId: string | null, catalogSelectionHint: string | null) {
+  const combined = normalizeString([buttonResponseId, catalogSelectionHint, message].filter(Boolean).join(" "));
+  if (/^(select|choose|details)[_-]/i.test(combined)) return true;
+  return /\b(quero este|quero esse|quero esta|quero essa|essa joia|esse modelo|este modelo|essa alianca|essa aliança|gostei dessa|gostei desse|vou querer|pode ser essa|pode ser esse)\b/i.test(combined);
+}
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -1402,6 +1427,9 @@ serve(async (req) => {
     const selectedProductShouldBeLogged = Boolean(
       selectedSku || selectedName,
     ) && !/^catalogo_/i.test(selectedNode) && !/sem_catalogo|catalogo_sem_produtos/i.test(selectedNode);
+    const productInterestShouldBeLogged =
+      selectedProductShouldBeLogged ||
+      hasProductInterestSignal(messageContent, buttonResponseId || null, catalogSelectionHint || null);
 
     let textSent = false;
     let productsSent = 0;
@@ -1759,20 +1787,27 @@ serve(async (req) => {
       await releaseZapiGovernorLease(sequenceLeaseResult.lease);
     }
 
-    if (selectedProductShouldBeLogged) {
+    if (productInterestShouldBeLogged) {
       try {
-        await supabase.from("conversation_state").upsert(
-          {
-            phone,
-            selected_sku: selectedSku,
-            selected_name: selectedName,
-            selected_price: coerceSelectedPrice(selectedPrice),
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "phone" },
-        );
+        if (selectedProductShouldBeLogged) {
+          await supabase.from("conversation_state").upsert(
+            {
+              phone,
+              selected_sku: selectedSku,
+              selected_name: selectedName,
+              selected_price: coerceSelectedPrice(selectedPrice),
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "phone" },
+          );
+        }
 
-        const note = buildSelectedProductNote(selectedSku, selectedName, selectedPrice);
+        const note = buildProductInterestNote({
+          selectedSku,
+          selectedName,
+          selectedPrice,
+          customerMessage: messageContent || buttonResponseLabel || buttonResponseId || catalogSelectionHint || "",
+        });
         const { data: lastNote } = await supabase
           .from("messages")
           .select("id, content")

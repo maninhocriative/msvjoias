@@ -496,25 +496,14 @@ const ProductDetail = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="tags">Tags (separadas por vírgula)</Label>
-                  <Input
-                    id="tags"
-                    value={formData.tags}
-                    onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
-                    placeholder="casual, verão, promoção"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="min_stock_alert">Alerta de Estoque Mínimo</Label>
-                  <Input
-                    id="min_stock_alert"
-                    type="number"
-                    value={formData.min_stock_alert}
-                    onChange={(e) => setFormData({ ...formData, min_stock_alert: e.target.value })}
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="min_stock_alert">Alerta de Estoque Mínimo</Label>
+                <Input
+                  id="min_stock_alert"
+                  type="number"
+                  value={formData.min_stock_alert}
+                  onChange={(e) => setFormData({ ...formData, min_stock_alert: e.target.value })}
+                />
               </div>
 
               <div className="flex items-center gap-3 pt-2">
@@ -524,117 +513,6 @@ const ProductDetail = () => {
                   onCheckedChange={(checked) => setFormData({ ...formData, active: checked })}
                 />
                 <Label htmlFor="active">Produto ativo</Label>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Package className="w-5 h-5" />
-                Inteligência do agente
-              </CardTitle>
-              <CardDescription>Contexto usado por Keila, Kate e Malu para buscar, explicar e evitar erros comerciais.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Linha/agente</Label>
-                  <Select
-                    value={formData.agent_line || 'auto'}
-                    onValueChange={(value) => setFormData({
-                      ...formData,
-                      agent_line: value === 'auto' ? '' : value,
-                    })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Automático pela categoria" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="auto">Automático pela categoria</SelectItem>
-                      <SelectItem value="keila">Keila · alianças/anéis</SelectItem>
-                      <SelectItem value="kate">Kate · pingentes</SelectItem>
-                      <SelectItem value="malu">Malu · óculos</SelectItem>
-                      <SelectItem value="aline">Aline · geral</SelectItem>
-                      <SelectItem value="human">Humano</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Tags de IA</Label>
-                  <Input
-                    value={formData.ai_tags}
-                    onChange={(e) => setFormData({ ...formData, ai_tags: e.target.value })}
-                    placeholder="presente, premium, fotogravavel"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Aliases de busca</Label>
-                <Input
-                  value={formData.search_aliases}
-                  onChange={(e) => setFormData({ ...formData, search_aliases: e.target.value })}
-                  placeholder="medalha, foto no pingente, armação feminina"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Descrição para IA</Label>
-                <Textarea
-                  value={formData.ai_description}
-                  onChange={(e) => setFormData({ ...formData, ai_description: e.target.value })}
-                  rows={3}
-                  placeholder="Como o agente deve entender e vender este produto."
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Quando recomendar</Label>
-                  <Textarea
-                    value={formData.recommended_when}
-                    onChange={(e) => setFormData({ ...formData, recommended_when: e.target.value })}
-                    rows={3}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Quando evitar</Label>
-                  <Textarea
-                    value={formData.avoid_when}
-                    onChange={(e) => setFormData({ ...formData, avoid_when: e.target.value })}
-                    rows={3}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Itens inclusos</Label>
-                  <Input
-                    value={formData.included_items}
-                    onChange={(e) => setFormData({ ...formData, included_items: e.target.value })}
-                    placeholder="Somente pingente; não acompanha corrente"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Restrições</Label>
-                  <Input
-                    value={formData.restrictions}
-                    onChange={(e) => setFormData({ ...formData, restrictions: e.target.value })}
-                    placeholder="Não chamar aço de ouro"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Notas comerciais</Label>
-                <Textarea
-                  value={formData.commercial_notes}
-                  onChange={(e) => setFormData({ ...formData, commercial_notes: e.target.value })}
-                  rows={3}
-                  placeholder="Observações úteis para atendimento, objeções e fechamento."
-                />
               </div>
             </CardContent>
           </Card>

@@ -164,6 +164,32 @@ const inferVisualMediaType = (url?: string | null) => {
   return 'image';
 };
 
+const cleanProductCaptionLine = (value: string) =>
+  value
+    .replace(/\*/g, '')
+    .replace(/^[^\p{L}\p{N}]+/u, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const parseProductCaption = (content?: string | null) => {
+  const lines = String(content || '')
+    .split(/\n+/)
+    .map(cleanProductCaptionLine)
+    .filter(Boolean);
+
+  if (lines.length === 0) return null;
+
+  const hasCatalogSignal = lines.some((line) =>
+    /(^|\s)(sku|cod|codigo|valor|preco|preço|r\$)/i.test(line),
+  );
+  if (!hasCatalogSignal) return null;
+
+  const title = lines[0] || 'Produto';
+  const details = lines.slice(1);
+
+  return { title, details };
+};
+
 const MessageItem = memo(({
   message,
   showTail,
@@ -232,6 +258,10 @@ const MessageItem = memo(({
     message.content.trim().length > 0 &&
     !isRedundantMediaLinkText(message.content, message.media_url) &&
     !(isInstagram && isInstagramAttachmentPlaceholderContent(message.content));
+  const productCaption = hasMedia && (effectiveMessageType === 'image' || effectiveMessageType === 'video')
+    ? parseProductCaption(message.content)
+    : null;
+  const shouldRenderProductCard = !!productCaption;
 
   if (!isDeleted && !hasMedia && !showTextContent && isProfileMediaUrl) {
     return null;
@@ -246,7 +276,8 @@ const MessageItem = memo(({
     >
       <div
         className={cn(
-          'group/message relative w-fit min-w-0 max-w-[90%] sm:max-w-[82%] lg:max-w-[72%] xl:max-w-[66%] px-3.5 py-2 border shadow-[0_10px_24px_-22px_rgba(0,0,0,0.9)] clear-both',
+          'group/message relative w-fit min-w-0 max-w-[90%] sm:max-w-[82%] lg:max-w-[72%] xl:max-w-[66%] border shadow-[0_10px_24px_-22px_rgba(0,0,0,0.9)] clear-both',
+          shouldRenderProductCard ? 'px-2 py-2' : 'px-3.5 py-2',
           isMe
             ? 'bg-[#005c4b] text-white border-emerald-300/10'
             : 'bg-[#202c33] text-slate-100 border-white/6',
@@ -336,19 +367,37 @@ const MessageItem = memo(({
             )}
 
             {effectiveMessageType === 'image' && hasMedia && (
-              <img
-                src={message.media_url}
-                alt="Imagem"
-                loading="lazy"
-                decoding="async"
-                className="block w-auto max-w-[240px] sm:max-w-[320px] lg:max-w-[360px] rounded-xl cursor-pointer bg-slate-700/50 transition-opacity hover:opacity-90"
-                style={{
-                  aspectRatio: 'auto',
-                  objectFit: 'contain',
-                  maxHeight: '360px',
-                }}
-                onClick={() => window.open(message.media_url!, '_blank')}
-              />
+              shouldRenderProductCard ? (
+                <div className="w-[min(360px,74vw)] overflow-hidden rounded-xl bg-emerald-950/20">
+                  <button
+                    type="button"
+                    className="block w-full overflow-hidden rounded-xl bg-white/95"
+                    onClick={() => window.open(message.media_url!, '_blank')}
+                  >
+                    <img
+                      src={message.media_url}
+                      alt={productCaption?.title || 'Produto'}
+                      loading="lazy"
+                      decoding="async"
+                      className="block h-auto max-h-[340px] min-h-[220px] w-full object-contain"
+                    />
+                  </button>
+                </div>
+              ) : (
+                <img
+                  src={message.media_url}
+                  alt="Imagem"
+                  loading="lazy"
+                  decoding="async"
+                  className="block w-auto max-w-[240px] sm:max-w-[320px] lg:max-w-[360px] rounded-xl cursor-pointer bg-slate-700/50 transition-opacity hover:opacity-90"
+                  style={{
+                    aspectRatio: 'auto',
+                    objectFit: 'contain',
+                    maxHeight: '360px',
+                  }}
+                  onClick={() => window.open(message.media_url!, '_blank')}
+                />
+              )
             )}
 
             {effectiveMessageType === 'image' && !message.media_url && !showTextContent && !isDeleted && (
@@ -359,12 +408,12 @@ const MessageItem = memo(({
             )}
 
             {effectiveMessageType === 'audio' && hasMedia && (
-              <div className="flex w-[280px] max-w-[70vw] flex-col gap-2 rounded-2xl border border-white/8 bg-black/18 p-3 sm:w-[340px]">
-                <div className="flex items-center gap-2.5">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-200">
+              <div className="flex w-[min(340px,72vw)] flex-col gap-2 rounded-2xl border border-white/8 bg-slate-950/20 p-2.5">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-400/15 text-emerald-100 ring-1 ring-emerald-300/10">
                     <Volume2 className="w-4 h-4" />
                   </div>
-                  <audio controls className="h-9 w-full min-w-0 accent-emerald-400" preload="metadata">
+                  <audio controls className="h-10 w-full min-w-0 rounded-full accent-emerald-400" preload="metadata">
                     {message.media_url && (
                       <source src={message.media_url} type={inferAudioMimeType(message.media_url)} />
                     )}
@@ -373,8 +422,10 @@ const MessageItem = memo(({
                     )}
                   </audio>
                 </div>
-                <div className="flex items-center justify-between gap-2 pl-11 text-[11px] leading-4">
-                  <span className="truncate text-slate-400">Audio recebido</span>
+                <div className="flex items-center justify-between gap-2 pl-12 text-[11px] leading-4">
+                  <span className={cn('truncate', isMe ? 'text-emerald-100/65' : 'text-slate-400')}>
+                    Audio
+                  </span>
                   <a
                     href={message.media_url || playableAudioUrl || undefined}
                     target="_blank"
@@ -437,15 +488,32 @@ const MessageItem = memo(({
             )}
 
             {showTextContent && (
-              <p
-                className={cn(
-                  'text-[14.5px] leading-6 whitespace-pre-wrap',
-                  hasMedia && 'mt-1',
-                )}
-                style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
-              >
-                {message.content}
-              </p>
+              shouldRenderProductCard && productCaption ? (
+                <div className="mt-2 w-[min(360px,74vw)] px-1 pb-0.5">
+                  <p className="text-[14px] font-semibold leading-5 text-white">
+                    {productCaption.title}
+                  </p>
+                  {productCaption.details.length > 0 && (
+                    <div className="mt-1 space-y-0.5 text-[13px] font-medium leading-5 text-emerald-50/90">
+                      {productCaption.details.map((line, index) => (
+                        <p key={`${line}-${index}`} className="whitespace-pre-wrap">
+                          {line}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p
+                  className={cn(
+                    'text-[14.5px] leading-6 whitespace-pre-wrap',
+                    hasMedia && 'mt-1',
+                  )}
+                  style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
+                >
+                  {message.content}
+                </p>
+              )
             )}
 
             <div className="flex items-center gap-1.5 justify-end mt-1 -mb-0.5 ml-auto w-fit">

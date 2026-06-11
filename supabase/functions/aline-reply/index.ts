@@ -2377,14 +2377,21 @@ async function getCatalogVerification(
 
   // Tenta com o filtro de cor pedido; se nao houver, devolve o catalogo geral
   // da categoria para o agente oferecer alternativas reais.
-  let products = await searchCatalog(
+  const keepSendableProducts = (items: CatalogProduct[]) =>
+    items.filter((product) =>
+      !!(product.media_url || product.image_url || product.video_url) && Number(product.price || 0) > 0
+    );
+
+  let products = keepSendableProducts(await searchCatalog(
     supabase,
     { category, only_available: true, limit: 200, ...(cleanColors.length > 0 ? { colors: cleanColors } : {}) },
     {},
-  );
+  ));
   const hasRequestedColors = cleanColors.length > 0 && products.length > 0;
   if (cleanColors.length > 0 && products.length === 0) {
-    products = await searchCatalog(supabase, { category, only_available: true, limit: 200 }, {});
+    products = keepSendableProducts(
+      await searchCatalog(supabase, { category, only_available: true, limit: 200 }, {}),
+    );
   }
 
   const colorMap = new Map<string, number>();
@@ -2413,12 +2420,14 @@ async function getCatalogVerification(
       : "";
 
   let summary = "";
+  const modelLabel = products.length === 1 ? "modelo disponivel" : "modelos disponiveis";
+
   if (products.length === 0) {
     summary = "No momento nao tenho modelos prontos dessa linha no catalogo. Vou chamar um vendedor para confirmar disponibilidade com voce.";
   } else if (cleanColors.length > 0 && !hasRequestedColors) {
-    summary = `Nao tenho no acabamento ${cleanColors.join(", ")} agora, mas tenho ${products.length} modelo(s) disponivel(is)${availableColorsLabel ? ` em ${availableColorsLabel}` : ""}${priceLabel ? `, ${priceLabel}` : ""}.`;
+    summary = `Nao tenho no acabamento ${cleanColors.join(", ")} agora, mas tenho ${products.length} ${modelLabel}${availableColorsLabel ? ` em ${availableColorsLabel}` : ""}${priceLabel ? `, ${priceLabel}` : ""}.`;
   } else {
-    summary = `Tenho ${products.length} modelo(s) disponivel(is)${availableColorsLabel ? ` em ${availableColorsLabel}` : ""}${priceLabel ? `, ${priceLabel}` : ""}.`;
+    summary = `Tenho ${products.length} ${modelLabel}${availableColorsLabel ? ` em ${availableColorsLabel}` : ""}${priceLabel ? `, ${priceLabel}` : ""}.`;
   }
 
   return {
@@ -2436,11 +2445,14 @@ async function getCatalogVerification(
 
 function buildKeilaCards(products: CatalogProduct[]): CatalogProduct[] {
   return products.map((product) => {
+    const material = inferKeilaMaterial(product);
     const captionLines = [
       `*${product.name}*`,
       product.color ? `🎨 Cor: ${product.color}` : null,
+      material ? `Material: ${material}` : null,
       product.sku ? `📦 Cód: ${product.sku}` : null,
       product.price_formatted ? `💰 Valor da unidade: ${product.price_formatted}` : null,
+      "Joia resistente para uso diario, com acabamento pensado para manter brilho e conforto.",
       `💍 O valor do card é da unidade. O par sai pelo dobro.`,
     ].filter(Boolean);
 
@@ -2451,6 +2463,37 @@ function buildKeilaCards(products: CatalogProduct[]): CatalogProduct[] {
       button_label: "Quero esta",
     };
   });
+}
+
+function inferKeilaMaterial(product: AnyRecord | null | undefined): string | null {
+  const text = normalizeText([
+    product?.name,
+    product?.description,
+    product?.category,
+    product?.tags,
+    product?.ai_description,
+    product?.commercial_notes,
+  ].filter(Boolean).join(" "));
+
+  if (/tungsten|tungstenio/.test(text)) return "tungstenio";
+  if (/\baco\b|aco inox|aco cirurgico/.test(text)) return "aco";
+  if (/prata 925|prata925/.test(text)) return "prata 925";
+  return null;
+}
+
+function buildKeilaQualityReply(product: AnyRecord | null, hasSelectedProduct: boolean): string {
+  const material = inferKeilaMaterial(product);
+  const productName = product?.name ? cleanCustomerProductName(String(product.name)) : "essa alianca";
+  const price = product?.price_formatted || formatCurrency(product?.price);
+  const color = product?.color ? `\nCor/acabamento: ${product.color}.` : "";
+  const sku = product?.sku ? `\nSKU: ${product.sku}.` : "";
+  const priceLine = price ? `\nValor da unidade: ${price}. O par sai pelo dobro.` : "";
+
+  if (hasSelectedProduct && product) {
+    return `Claro. ${productName} e uma joia selecionada pela ACIUM para uso diario.${material ? ` O material principal cadastrado e ${material}.` : ""} Ela tem boa resistencia, acabamento confortavel e precisa dos cuidados normais de joia: evitar produto quimico forte, atrito pesado e guardar separada quando nao estiver usando.${color}${sku}${priceLine}`;
+  }
+
+  return "As aliancas da ACIUM sao escolhidas pensando em resistencia, conforto e acabamento para uso diario. Nos modelos de tungstenio, a proposta e alta durabilidade e brilho firme; nos modelos em aco, a vantagem e resistencia com bom custo-beneficio. Eu sempre confirmo pelo modelo do catalogo para nao inventar material nem garantia. Me diga qual card voce gostou ou toque em Quero esta que eu te explico aquela peca certinho.";
 }
 
 function buildKateCards(products: CatalogProduct[]): CatalogProduct[] {
@@ -5721,6 +5764,10 @@ async function handleKeilaFlow(args: {
   const mentionsExternalReference = /foto|imagem|print|anuncio|anúncio|publicacao|publicação|post|stories|story|reels|video|vídeo/.test(
     normalizeText(message),
   );
+  const asksJewelryQuality =
+    /qualidade|durabilidade|resistente|material|escurece|desbota|arranha|enferruja|garantia|essa joia|esta joia|me fale dela|me fala dela|fale dela|dura\b/.test(
+      normalizeText(message),
+    );
 
   const fetchKeilaCatalogCards = async (excludeSkus: string[] = []) => {
     const searchParams: AnyRecord = {
@@ -5770,6 +5817,41 @@ async function handleKeilaFlow(args: {
       usedPurposeFallback,
     };
   };
+
+  if (asksJewelryQuality) {
+    const singleOption = findSingleCatalogSelection(data);
+    const selectedForQuality = data.selected_product || singleOption || null;
+
+    if (!hasSelectedProduct && singleOption) {
+      data.selected_product = singleOption;
+      data.selected_sku = singleOption.sku || singleOption.id;
+      data.selected_name = singleOption.name;
+      data.selected_price = singleOption.price;
+    }
+
+    const reply = buildKeilaQualityReply(selectedForQuality, !!selectedForQuality);
+    const finalReply = withKeilaIntro(reply);
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "keila",
+      "keila_qualidade_joia",
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "keila", finalReply, "keila_qualidade_joia");
+    await saveAgentMemory(supabase, phone, "keila", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: finalReply,
+      node: "keila_qualidade_joia",
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "keila",
+    });
+  }
 
   if (!hasTimeline) {
     const reply = "Oi! Sou a Keila. Para quando você quer fechar essas alianças?";
