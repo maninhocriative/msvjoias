@@ -2831,8 +2831,8 @@ async function resolveMaluSelectedProductForPreview(
 
 function detectPostCatalogPositiveIntent(text: string): boolean {
   const normalized = normalizeText(text);
-  return /^(sim|s|quero|gostei|gostei sim|pode ser|ok|ta bom|beleza|perfeito|esse|este|isso)$/.test(normalized) ||
-    /gostei|quero|pode ser|vou querer|esse mesmo|este mesmo|fechar|finalizar|comprar/.test(normalized);
+  return /^(sim|s|quero|gostei|gostei sim|pode ser|ok|ta bom|beleza|perfeito|esse|este|isso)( por favor)?$/.test(normalized) ||
+    /sim.*por favor|pode mandar|pode enviar|manda|mande|me manda|me envia|quero ver|gostei|quero|pode ser|vou querer|esse mesmo|este mesmo|fechar|finalizar|comprar/.test(normalized);
 }
 
 function detectPartnerConsultPause(text: string): boolean {
@@ -5742,12 +5742,17 @@ async function handleKeilaFlow(args: {
   const answeredKeilaColorPrompt =
     detectedColorsInMessage.length > 0 &&
     (/keila_cor|cor/.test(keilaNode) || hasKeilaCatalogContext);
+  const lastFollowupMessage = normalizeText(String(data.last_followup_message || ""));
+  const acceptedKeilaCatalogFollowup =
+    detectPostCatalogPositiveIntent(message) &&
+    /aliancas|alianca|modelos|opcoes|catalogo|te mando|melhores opcoes/.test(lastFollowupMessage);
   const confirmsKeilaCatalogContext =
     hasKeilaCatalogContext && /^(sim|s|ok|pode|claro|beleza|ta bom)$/.test(normalizeText(message));
   const wantsBroadKeilaCatalog = detectFullCatalogRequest(message) || data.keila_force_catalogo === true;
   const wantsKeilaCatalogNow =
     wantsBroadKeilaCatalog ||
     answeredKeilaColorPrompt ||
+    acceptedKeilaCatalogFollowup ||
     confirmsKeilaCatalogContext ||
     detectKeilaCatalogNowIntent(message) ||
     detectCatalogIntent(message);
