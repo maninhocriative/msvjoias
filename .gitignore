@@ -11,6 +11,9 @@ node_modules
 dist
 dist-ssr
 *.local
+.npm-cache
+node_modules_broken_*
+supabase/.temp
 
 # Editor directories and files
 .vscode/*

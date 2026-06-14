@@ -655,6 +655,7 @@ export type Database = {
       }
       customers: {
         Row: {
+          asaas_customer_id: string | null
           cpf: string | null
           created_at: string
           id: string
@@ -667,6 +668,7 @@ export type Database = {
           whatsapp: string
         }
         Insert: {
+          asaas_customer_id?: string | null
           cpf?: string | null
           created_at?: string
           id?: string
@@ -679,6 +681,7 @@ export type Database = {
           whatsapp: string
         }
         Update: {
+          asaas_customer_id?: string | null
           cpf?: string | null
           created_at?: string
           id?: string
@@ -934,6 +937,11 @@ export type Database = {
       orders: {
         Row: {
           assigned_to: string | null
+          asaas_bank_slip_url: string | null
+          asaas_invoice_url: string | null
+          asaas_payment_id: string | null
+          asaas_pix_payload: string | null
+          asaas_pix_qr_code_base64: string | null
           created_at: string
           customer_name: string | null
           customer_phone: string
@@ -943,6 +951,7 @@ export type Database = {
           id: string
           notes: string | null
           payment_method: string | null
+          paid_at: string | null
           product_id: string | null
           quantity: number
           selected_name: string | null
@@ -960,6 +969,11 @@ export type Database = {
         }
         Insert: {
           assigned_to?: string | null
+          asaas_bank_slip_url?: string | null
+          asaas_invoice_url?: string | null
+          asaas_payment_id?: string | null
+          asaas_pix_payload?: string | null
+          asaas_pix_qr_code_base64?: string | null
           created_at?: string
           customer_name?: string | null
           customer_phone: string
@@ -969,6 +983,7 @@ export type Database = {
           id?: string
           notes?: string | null
           payment_method?: string | null
+          paid_at?: string | null
           product_id?: string | null
           quantity?: number
           selected_name?: string | null
@@ -986,6 +1001,11 @@ export type Database = {
         }
         Update: {
           assigned_to?: string | null
+          asaas_bank_slip_url?: string | null
+          asaas_invoice_url?: string | null
+          asaas_payment_id?: string | null
+          asaas_pix_payload?: string | null
+          asaas_pix_qr_code_base64?: string | null
           created_at?: string
           customer_name?: string | null
           customer_phone?: string
@@ -995,6 +1015,7 @@ export type Database = {
           id?: string
           notes?: string | null
           payment_method?: string | null
+          paid_at?: string | null
           product_id?: string | null
           quantity?: number
           selected_name?: string | null
@@ -1026,6 +1047,111 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      payment_charges: {
+        Row: {
+          amount: number
+          bank_slip_url: string | null
+          billing_type: string
+          created_at: string
+          customer_id: string | null
+          due_date: string | null
+          id: string
+          invoice_url: string | null
+          order_id: string | null
+          pix_payload: string | null
+          pix_qr_code_base64: string | null
+          provider: string
+          provider_customer_id: string | null
+          provider_payment_id: string | null
+          raw_response: Json | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          amount?: number
+          bank_slip_url?: string | null
+          billing_type?: string
+          created_at?: string
+          customer_id?: string | null
+          due_date?: string | null
+          id?: string
+          invoice_url?: string | null
+          order_id?: string | null
+          pix_payload?: string | null
+          pix_qr_code_base64?: string | null
+          provider?: string
+          provider_customer_id?: string | null
+          provider_payment_id?: string | null
+          raw_response?: Json | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          bank_slip_url?: string | null
+          billing_type?: string
+          created_at?: string
+          customer_id?: string | null
+          due_date?: string | null
+          id?: string
+          invoice_url?: string | null
+          order_id?: string | null
+          pix_payload?: string | null
+          pix_qr_code_base64?: string | null
+          provider?: string
+          provider_customer_id?: string | null
+          provider_payment_id?: string | null
+          raw_response?: Json | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_charges_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_charges_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payment_webhook_events: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          payload: Json
+          processed_at: string | null
+          provider: string
+          provider_payment_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          payload: Json
+          processed_at?: string | null
+          provider?: string
+          provider_payment_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          payload?: Json
+          processed_at?: string | null
+          provider?: string
+          provider_payment_id?: string | null
+        }
+        Relationships: []
       }
       processed_messages: {
         Row: {

@@ -12,7 +12,7 @@ e quando o cliente decide comprar, cria um pedido pendente para um
 atendente humano finalizar no CRM.
 
 PLATAFORMAS DE AUTOMAÇÃO COMPATÍVEIS:
-- FiqOn
+- Z-API
 - n8n
 - Make (Integromat)
 - Zapier

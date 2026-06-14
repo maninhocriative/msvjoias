@@ -24,6 +24,17 @@ import {
   findNestedString,
   normalizeInboundPayload,
 } from "../_shared/inbound.ts";
+import { normalizeInboundV2 } from "../_shared/inbound-normalizer-v2.ts";
+import { decideAgentV2, type AgentSlugV2 } from "../_shared/agent-orchestrator-v2.ts";
+import {
+  buildBatchMessageV2,
+  decideAccumulatorV2,
+  type InboundBatchMessageV2,
+  type InboundBatchV2,
+} from "../_shared/agent-accumulator-v2.ts";
+import { runAgentFlowV2 } from "../_shared/agent-flow-runner-v2.ts";
+import { planResponseV2 } from "../_shared/response-planner-v2.ts";
+import { decidePilotV2 } from "../_shared/agent-pilot-v2.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -694,6 +705,413 @@ function buildSafeAlineFallback(contactName: string, context?: any, message = ""
   };
 }
 
+async function recordAgentV2ShadowDecision(args: {
+  supabase: any;
+  rawPayload: Record<string, unknown>;
+  phone: string;
+  conversationId: string | null;
+  inboundBatchId?: string | null;
+  humanActive: boolean;
+  activeAgent?: string | null;
+}) {
+  const shadowEnabled = String(Deno.env.get("AGENT_V2_SHADOW_ENABLED") || "true").toLowerCase() !== "false";
+  if (!shadowEnabled) return;
+
+  try {
+    const normalized = normalizeInboundV2(args.rawPayload);
+    const activeAgent = ["aline", "keila", "kate", "malu", "human"].includes(String(args.activeAgent || ""))
+      ? (args.activeAgent as AgentSlugV2)
+      : "aline";
+    const decision = decideAgentV2(normalized, {
+      phone: args.phone || normalized.phone,
+      humanActive: args.humanActive,
+      activeAgent,
+    });
+    const flow = runAgentFlowV2(normalized, decision, {
+      phone: args.phone || normalized.phone,
+      humanActive: args.humanActive,
+      activeAgent,
+    });
+    const responsePlan = planResponseV2(normalized, decision, flow);
+    const pilot = decidePilotV2({
+      phone: args.phone || normalized.phone,
+      agent: decision.agent,
+      humanActive: args.humanActive,
+    });
+
+    const inputSummary = {
+      source_platform: normalized.sourcePlatform,
+      media_type: normalized.media.type,
+      external_reference_type: normalized.externalReferenceType,
+      text_preview: normalized.normalizedTextForAgent.slice(0, 500),
+      product_signals: normalized.productSignals,
+      operational_questions: normalized.operationalQuestions,
+      commerce_signals: normalized.commerceSignals,
+      safety_signals: normalized.safetySignals,
+      handoff_signals: normalized.handoffSignals,
+      can_auto_reply: normalized.canAutoReply,
+      should_accumulate: normalized.shouldAccumulate,
+    };
+
+    const outputPlan = {
+      agent: decision.agent,
+      should_reply: decision.shouldReply,
+      should_handoff: decision.shouldHandoff,
+      should_query_catalog: decision.shouldQueryCatalog,
+      should_ask_clarification: decision.shouldAskClarification,
+      reply_hint: decision.replyHint,
+      next_step: decision.nextStep,
+      flow,
+      response_plan: responsePlan,
+      pilot,
+      log: decision.log,
+    };
+
+    const { error } = await args.supabase.from("agent_decision_logs").insert({
+      phone: args.phone || normalized.phone,
+      conversation_id: args.conversationId,
+      inbound_batch_id: args.inboundBatchId || null,
+      agent_slug: decision.agent,
+      decision_type: decision.decisionType,
+      decision_reason: decision.reason,
+      input_summary: inputSummary,
+      output_plan: outputPlan,
+      shadow_mode: true,
+    });
+
+    if (error) {
+      console.warn("[ZAPI-UNIFIED] agent_v2_shadow_log_failed:", error.message || error);
+    }
+  } catch (error) {
+    console.warn("[ZAPI-UNIFIED] agent_v2_shadow_exception:", error);
+  }
+}
+
+function mapDbBatchToV2(row: any): InboundBatchV2 | null {
+  if (!row) return null;
+  const messages = Array.isArray(row.messages) ? row.messages as InboundBatchMessageV2[] : [];
+
+  return {
+    id: row.id,
+    phone: row.phone,
+    conversationId: row.conversation_id || null,
+    status: row.status || "open",
+    messageCount: messages.length || (Array.isArray(row.message_ids) ? row.message_ids.length : 0),
+    messages,
+    combinedText: row.normalized_text || "",
+    firstMessageAt: row.opened_at || row.created_at || new Date().toISOString(),
+    lastMessageAt: row.updated_at || row.created_at || row.opened_at || new Date().toISOString(),
+    closesAt: row.closes_at || new Date().toISOString(),
+  };
+}
+
+function getPayloadTextObject(payload: ZAPIMessage): { phone?: string; message?: string; senderName?: string } {
+  return payload.text && typeof payload.text === "object" ? payload.text : {};
+}
+
+function getPayloadTextMessage(payload: ZAPIMessage): string {
+  if (typeof payload.text === "string") return payload.text;
+  return payload.text?.message || "";
+}
+
+function formatPilotProductCaption(product: any): string {
+  const lines: string[] = [];
+  const name = product.name || product.nome || "Produto";
+  const price = product.price_current ?? product.price ?? product.preco ?? null;
+  const color = product.specs?.color || product.color || product.cor || null;
+  const sku = product.sku || null;
+
+  lines.push(`*${name}*`);
+  if (product.description) lines.push(String(product.description));
+  if (color) lines.push(`Cor: ${color}`);
+  if (price !== null && price !== undefined && price !== "") {
+    lines.push(`Valor: R$ ${Number(price).toFixed(2).replace(".", ",")}`);
+  }
+  if (sku) lines.push(`Cod: ${sku}`);
+
+  return lines.join("\n");
+}
+
+function mapCatalogProductForCards(product: any) {
+  const imageUrl = product.media?.image_url || product.image_url || null;
+  const videoUrl = product.media?.video_url || product.video_url || null;
+  const price = product.price_current ?? product.price ?? product.price_original ?? null;
+
+  return {
+    id: product.id || null,
+    sku: product.sku || null,
+    name: product.name || "Produto",
+    description: product.description || "",
+    price,
+    image_url: imageUrl,
+    video_url: videoUrl,
+    color: product.specs?.color || product.color || null,
+    category: product.specs?.category || product.category || null,
+    caption: formatPilotProductCaption({ ...product, image_url: imageUrl, video_url: videoUrl, price }),
+  };
+}
+
+async function buildAgentV2PilotResponse(args: {
+  supabaseUrl: string;
+  supabaseKey: string;
+  rawPayload: Record<string, unknown>;
+  phone: string;
+  contactName: string;
+  messageForAgent: string;
+  activeAgent?: string | null;
+  humanActive: boolean;
+}): Promise<any | null> {
+  const rawPayload = {
+    ...args.rawPayload,
+    phone: args.phone,
+    message: args.messageForAgent,
+  };
+  const normalized = normalizeInboundV2(rawPayload);
+  const activeAgent = ["aline", "keila", "kate", "malu", "human"].includes(String(args.activeAgent || ""))
+    ? (args.activeAgent as AgentSlugV2)
+    : "aline";
+  const decision = decideAgentV2(normalized, {
+    phone: args.phone || normalized.phone,
+    humanActive: args.humanActive,
+    activeAgent,
+  });
+  const flow = runAgentFlowV2(normalized, decision, {
+    phone: args.phone || normalized.phone,
+    humanActive: args.humanActive,
+    activeAgent,
+  });
+  const responsePlan = planResponseV2(normalized, decision, flow);
+  const pilot = decidePilotV2({
+    phone: args.phone || normalized.phone,
+    agent: decision.agent,
+    humanActive: args.humanActive,
+  });
+
+  if (!pilot.eligible) return null;
+
+  if (responsePlan.action === "none") {
+    return {
+      success: true,
+      skipped: true,
+      reason: "agent_v2_no_reply",
+      v2_pilot: true,
+    };
+  }
+
+  if (responsePlan.action === "handoff") {
+    return {
+      success: true,
+      response: responsePlan.agentMessage,
+      mensagem_whatsapp: responsePlan.agentMessage,
+      produtos: [],
+      media_items: [],
+      tem_produtos: false,
+      agent: "human",
+      status: "human_takeover",
+      node_tecnico: "agent_v2_handoff",
+      fallback_reason: responsePlan.handoffReason || "agent_v2_handoff",
+      memoria: responsePlan.memoryPatch,
+      v2_pilot: true,
+    };
+  }
+
+  if (responsePlan.action === "send_catalog" && responsePlan.catalogQuery) {
+    const searchParams = new URLSearchParams();
+    Object.entries(responsePlan.catalogQuery).forEach(([key, value]) => {
+      if (value !== null && value !== undefined && value !== "") searchParams.set(key, String(value));
+    });
+    searchParams.set("only_available", "true");
+    searchParams.set("use_facts", "true");
+    searchParams.set("limit", "6");
+
+    const catalogResponse = await fetch(`${args.supabaseUrl}/functions/v1/ai-catalog-search?${searchParams.toString()}`, {
+      headers: {
+        Authorization: `Bearer ${args.supabaseKey}`,
+      },
+    });
+    const catalogData = await catalogResponse.json().catch(() => null);
+    const products = Array.isArray(catalogData?.products)
+      ? catalogData.products.map(mapCatalogProductForCards).filter((product: any) => product.image_url || product.video_url)
+      : [];
+
+    if (catalogResponse.ok && products.length > 0) {
+      return {
+        success: true,
+        response: responsePlan.agentMessage || "Separei algumas opcoes para voce.",
+        mensagem_whatsapp: responsePlan.agentMessage || "Separei algumas opcoes para voce.",
+        produtos: products,
+        media_items: [],
+        tem_produtos: true,
+        use_product_buttons: true,
+        mensagem_pos_catalogo: "Gostou de algum modelo? Me diga qual chamou mais sua atencao.",
+        agent: decision.agent,
+        node_tecnico: "agent_v2_catalog",
+        memoria: responsePlan.memoryPatch,
+        categoria_crm: responsePlan.catalogQuery.category || null,
+        cor_crm: responsePlan.catalogQuery.color || null,
+        v2_pilot: true,
+      };
+    }
+
+    return {
+      success: true,
+      response: "Nao encontrei uma opcao segura no catalogo com esses filtros. Vou te pedir mais um detalhe para buscar melhor.",
+      mensagem_whatsapp: "Nao encontrei uma opcao segura no catalogo com esses filtros. Voce prefere dourada, prata, preta, azul ou rose?",
+      produtos: [],
+      media_items: [],
+      tem_produtos: false,
+      agent: decision.agent,
+      node_tecnico: "agent_v2_catalog_empty",
+      memoria: responsePlan.memoryPatch,
+      v2_pilot: true,
+    };
+  }
+
+  return {
+    success: true,
+    response: responsePlan.agentMessage || "Me conta mais para eu te ajudar melhor.",
+    mensagem_whatsapp: responsePlan.agentMessage || "Me conta mais para eu te ajudar melhor.",
+    produtos: [],
+    media_items: [],
+    tem_produtos: false,
+    agent: decision.agent,
+    node_tecnico: `agent_v2_${flow.step.key}`,
+    memoria: responsePlan.memoryPatch,
+    categoria_crm: responsePlan.memoryPatch.categoria || null,
+    cor_crm: responsePlan.memoryPatch.cor || null,
+    v2_pilot: true,
+  };
+}
+
+async function recordAgentV2ShadowBatch(args: {
+  supabase: any;
+  rawPayload: Record<string, unknown>;
+  phone: string;
+  conversationId: string | null;
+}): Promise<string | null> {
+  const shadowEnabled = String(Deno.env.get("AGENT_V2_SHADOW_ENABLED") || "true").toLowerCase() !== "false";
+  if (!shadowEnabled) return null;
+
+  try {
+    const normalized = normalizeInboundV2(args.rawPayload);
+    const now = new Date();
+    const { data: openBatch, error: openError } = await args.supabase
+      .from("inbound_batches")
+      .select("*")
+      .eq("phone", args.phone || normalized.phone)
+      .eq("status", "open")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (openError) {
+      console.warn("[ZAPI-UNIFIED] agent_v2_batch_lookup_failed:", openError.message || openError);
+      return null;
+    }
+
+    const mappedBatch = mapDbBatchToV2(openBatch);
+    const accumulatorDecision = decideAccumulatorV2({
+      input: normalized,
+      openBatch: mappedBatch,
+      now,
+    });
+    const message = buildBatchMessageV2(normalized, now);
+    const messageIds = message.messageId ? [message.messageId] : [];
+    const signalSummary = {
+      accumulator_action: accumulatorDecision.action,
+      accumulator_reason: accumulatorDecision.reason,
+      product_signals: normalized.productSignals,
+      operational_questions: normalized.operationalQuestions,
+      commerce_signals: normalized.commerceSignals,
+      safety_signals: normalized.safetySignals,
+      handoff_signals: normalized.handoffSignals,
+      external_reference_type: normalized.externalReferenceType,
+      media_type: normalized.media.type,
+    };
+
+    if (accumulatorDecision.action === "skip") {
+      return openBatch?.id || null;
+    }
+
+    if (accumulatorDecision.action === "append" && openBatch?.id) {
+      const previousMessages = Array.isArray(openBatch.messages) ? openBatch.messages : [];
+      const previousMessageIds = Array.isArray(openBatch.message_ids) ? openBatch.message_ids : [];
+      const nextMessages = [...previousMessages, message];
+      const nextMessageIds = Array.from(new Set([...previousMessageIds, ...messageIds]));
+      const nextMediaItems = nextMessages
+        .filter((item: InboundBatchMessageV2) => item.mediaType !== "text" || item.externalReferenceType)
+        .map((item: InboundBatchMessageV2) => ({
+          message_id: item.messageId,
+          media_type: item.mediaType,
+          media_url: item.mediaUrl,
+          external_reference_type: item.externalReferenceType,
+          received_at: item.receivedAt,
+        }));
+
+      const { error } = await args.supabase
+        .from("inbound_batches")
+        .update({
+          normalized_text: accumulatorDecision.combinedText,
+          message_ids: nextMessageIds,
+          messages: nextMessages,
+          media_items: nextMediaItems,
+          signal_summary: signalSummary,
+          closes_at: accumulatorDecision.closesAt || openBatch.closes_at,
+          updated_at: now.toISOString(),
+        })
+        .eq("id", openBatch.id);
+
+      if (error) console.warn("[ZAPI-UNIFIED] agent_v2_batch_append_failed:", error.message || error);
+      return openBatch.id;
+    }
+
+    if (accumulatorDecision.action === "close_and_create" && openBatch?.id) {
+      await args.supabase
+        .from("inbound_batches")
+        .update({ status: "processed", processed_at: now.toISOString(), updated_at: now.toISOString() })
+        .eq("id", openBatch.id);
+    }
+
+    const mediaItems = message.mediaType !== "text" || message.externalReferenceType
+      ? [{
+        message_id: message.messageId,
+        media_type: message.mediaType,
+        media_url: message.mediaUrl,
+        external_reference_type: message.externalReferenceType,
+        received_at: message.receivedAt,
+      }]
+      : [];
+
+    const { data: inserted, error } = await args.supabase
+      .from("inbound_batches")
+      .insert({
+        phone: args.phone || normalized.phone,
+        conversation_id: args.conversationId,
+        platform: normalized.sourcePlatform,
+        status: accumulatorDecision.action === "process_now" ? "processing" : "open",
+        normalized_text: accumulatorDecision.combinedText,
+        message_ids: messageIds,
+        messages: [message],
+        media_items: mediaItems,
+        signal_summary: signalSummary,
+        opened_at: now.toISOString(),
+        closes_at: accumulatorDecision.closesAt || now.toISOString(),
+      })
+      .select("id")
+      .single();
+
+    if (error) {
+      console.warn("[ZAPI-UNIFIED] agent_v2_batch_insert_failed:", error.message || error);
+      return null;
+    }
+
+    return inserted?.id || null;
+  } catch (error) {
+    console.warn("[ZAPI-UNIFIED] agent_v2_batch_unexpected_error:", error);
+    return null;
+  }
+}
+
 function isHumanControlledConversation(crmConversation: any, agentContext: any): boolean {
   const leadStatus = normalizeString(crmConversation?.lead_status);
   return (
@@ -1007,11 +1425,13 @@ serve(async (req) => {
       );
     }
 
-    const rawPhone = payload.phone || payload.text?.phone || "";
+    const textPayload = getPayloadTextObject(payload);
+    const inboundTextMessage = getPayloadTextMessage(payload);
+    const rawPhone = payload.phone || textPayload.phone || "";
     const phone = normalizeWhatsappPhone(rawPhone);
     const phoneVariants = buildPhoneVariants(rawPhone);
     const isFromMe = payload.isFromMe === true || payload.fromMe === true;
-    const contactName = payload.senderName || payload.pushName || payload.text?.senderName || phone;
+    const contactName = payload.senderName || payload.pushName || textPayload.senderName || phone;
 
     const buttonResponseId =
       payload.buttonResponseId ||
@@ -1043,7 +1463,7 @@ serve(async (req) => {
     if (payload.image) {
       messageType = "image";
       mediaUrl = payload.image.imageUrl || payload.image.url || payload.image.mediaUrl || null;
-      messageContent = payload.image.caption || payload.text?.message || "";
+      messageContent = payload.image.caption || inboundTextMessage || "";
     } else if (payload.audio) {
       messageType = "audio";
       mediaUrl = payload.audio.audioUrl || payload.audio.url || payload.audio.mediaUrl || null;
@@ -1051,13 +1471,13 @@ serve(async (req) => {
     } else if (payload.video) {
       messageType = "video";
       mediaUrl = payload.video.videoUrl || payload.video.url || payload.video.mediaUrl || null;
-      messageContent = payload.video.caption || payload.text?.message || "";
+      messageContent = payload.video.caption || inboundTextMessage || "";
     } else if (payload.document) {
       messageType = "document";
       mediaUrl = payload.document.documentUrl || payload.document.url || payload.document.mediaUrl || null;
-      messageContent = payload.document.fileName || payload.text?.message || "";
-    } else if (payload.text?.message) {
-      messageContent = payload.text.message;
+      messageContent = payload.document.fileName || inboundTextMessage || "";
+    } else if (inboundTextMessage) {
+      messageContent = inboundTextMessage;
     } else if (typeof payload.message === "string" && payload.message) {
       messageContent = payload.message;
     }
@@ -1305,7 +1725,26 @@ serve(async (req) => {
     }
 
     const agentContextAfterStore = await loadAgentFallbackContext(supabase, phone);
-    if (isHumanControlledConversation(existingConversation, agentContextAfterStore)) {
+    const humanControlled = isHumanControlledConversation(existingConversation, agentContextAfterStore);
+    const agentV2ShadowBatchId = humanControlled
+      ? null
+      : await recordAgentV2ShadowBatch({
+        supabase,
+        rawPayload: payload as unknown as Record<string, unknown>,
+        phone,
+        conversationId,
+      });
+    await recordAgentV2ShadowDecision({
+      supabase,
+      rawPayload: payload as unknown as Record<string, unknown>,
+      phone,
+      conversationId,
+      inboundBatchId: agentV2ShadowBatchId,
+      humanActive: humanControlled,
+      activeAgent: agentContextAfterStore?.active_agent || agentContextAfterStore?.collected_data?.agente_atual || null,
+    });
+
+    if (humanControlled) {
       return new Response(
         JSON.stringify({
           success: true,
@@ -1394,35 +1833,49 @@ serve(async (req) => {
     mediaUrl = accumulatedInput.mediaUrl || null;
 
     let alineResponse: any;
+    const agentV2PilotResponse = await buildAgentV2PilotResponse({
+      supabaseUrl,
+      supabaseKey,
+      rawPayload: payload as unknown as Record<string, unknown>,
+      phone,
+      contactName,
+      messageForAgent: messageForAline,
+      activeAgent: agentContextAfterStore?.active_agent || agentContextAfterStore?.collected_data?.agente_atual || null,
+      humanActive: false,
+    });
 
-    try {
-      const alineResponseRequest = await fetch(`${supabaseUrl}/functions/v1/aline-reply`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${supabaseKey}`,
-        },
-        body: JSON.stringify({
-          phone,
-          message: messageForAline,
-          contact_name: contactName,
-          media_type: messageType,
-          media_url: mediaUrl,
-          button_response_id: buttonResponseId || null,
-          catalog_selection_hint: catalogSelectionHint || null,
-        }),
-      });
+    if (agentV2PilotResponse) {
+      alineResponse = agentV2PilotResponse;
+    } else {
+      try {
+        const alineResponseRequest = await fetch(`${supabaseUrl}/functions/v1/aline-reply`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${supabaseKey}`,
+          },
+          body: JSON.stringify({
+            phone,
+            message: messageForAline,
+            contact_name: contactName,
+            media_type: messageType,
+            media_url: mediaUrl,
+            button_response_id: buttonResponseId || null,
+            catalog_selection_hint: catalogSelectionHint || null,
+          }),
+        });
 
-      if (!alineResponseRequest.ok) {
-        const errorText = await alineResponseRequest.text();
-        throw new Error(`aline-reply failed: ${alineResponseRequest.status} - ${errorText}`);
+        if (!alineResponseRequest.ok) {
+          const errorText = await alineResponseRequest.text();
+          throw new Error(`aline-reply failed: ${alineResponseRequest.status} - ${errorText}`);
+        }
+
+        alineResponse = await alineResponseRequest.json();
+      } catch (error) {
+        console.error("[ZAPI-UNIFIED] Falha no aline-reply, usando resposta segura:", error);
+        const fallbackContext = await loadAgentFallbackContext(supabase, phone);
+        alineResponse = buildSafeAlineFallback(contactName, fallbackContext, messageForAline);
       }
-
-      alineResponse = await alineResponseRequest.json();
-    } catch (error) {
-      console.error("[ZAPI-UNIFIED] Falha no aline-reply, usando resposta segura:", error);
-      const fallbackContext = await loadAgentFallbackContext(supabase, phone);
-      alineResponse = buildSafeAlineFallback(contactName, fallbackContext, messageForAline);
     }
 
     if (alineResponse.skipped) {

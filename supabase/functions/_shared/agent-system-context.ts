@@ -546,9 +546,9 @@ export async function buildAgentSystemContext(params: {
   const recentMessages = await loadRecentMessages(params.supabase, crmConversation?.id || null, { humanContextActive });
   const humanSummary = buildHumanChatSummary(recentMessages);
   const humanRecentMessages = recentMessages
-    .filter((message) => message.role === "human")
+    .filter((message: AgentSystemContext["recentMessages"][number]) => message.role === "human")
     .slice(-8)
-    .map((message) => ({
+    .map((message: AgentSystemContext["recentMessages"][number]) => ({
       content: message.content,
       createdAt: message.createdAt,
       mediaType: message.mediaType,
@@ -707,7 +707,7 @@ export async function updateCollectedDataPatch(context: AgentSystemContext, patc
 }
 
 export async function saveSelectedProduct(context: AgentSystemContext, product: any, source = "agent") {
-  const normalized = normalizeProduct(product) || {};
+  const normalized = (normalizeProduct(product) || {}) as AnyRecord;
   const patch = {
     selected_product: product || null,
     selected_product_source: source,

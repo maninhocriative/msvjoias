@@ -137,7 +137,7 @@ const ApiDocs = () => {
             <div>
               <h1 className="text-2xl font-bold text-foreground">API Interna</h1>
               <p className="text-muted-foreground text-sm">
-                Documentação para integração com automações (Fiqon, n8n, Make, Zapier)
+                Documentação para integração com Z-API, Instagram oficial Meta e APIs internas
               </p>
             </div>
           </div>
@@ -531,7 +531,7 @@ const ApiDocs = () => {
             <EndpointCard
               method="POST"
               endpoint="/zapi-webhook"
-              description="Recebe mensagens de clientes da sua automação (Fiqon/ZAPI)"
+              description="Recebe mensagens de clientes da Z-API"
             >
               <Section title="URL para configurar na automação">
                 <CodeBlock code={`${BASE_URL}/zapi-webhook`} id="webhook-url" language="url" />

@@ -50,7 +50,7 @@ E esse endpoint deve apenas encaminhar para:
 Nenhuma automação externa deve apontar para:
 
 - `ai-chat`
-- `ai-chat-auto-reply`
+- proxy automatico legado (removido)
 - `automation-webhook`
 - `aline-reply`
 
@@ -174,7 +174,7 @@ Objetivo: parar de abrir novos caminhos.
 Ações:
 
 - definir `zapi-webhook` como endpoint oficial;
-- parar de divulgar `ai-chat`, `ai-chat-auto-reply` e `automation-webhook` externamente;
+- parar de divulgar `ai-chat` e `automation-webhook` externamente; o proxy automatico legado foi removido;
 - manter endpoints antigos vivos, mas apenas como proxy;
 - atualizar documentação, painel e textos de integração.
 
@@ -190,7 +190,7 @@ Ações:
 
 - `zapi-webhook` -> proxy puro para `zapi-unified`;
 - `automation-webhook` -> proxy puro para `zapi-unified`;
-- `ai-chat-auto-reply` -> proxy puro para `zapi-unified`;
+- proxy automatico legado -> removido; usar `zapi-webhook`/`zapi-unified`;
 - `ai-chat`:
   - se chamado externamente sem flag interna, redireciona para `zapi-unified`;
   - só segue fluxo bruto quando `skip_aline_reply_proxy` ou `force_raw_ai_chat` forem usados internamente.
@@ -294,7 +294,7 @@ Critério de saída:
 - consolidar `zapi-unified` como gateway único;
 - deixar `ai-chat` estritamente interno;
 - endurecer `resolveConversation`;
-- revisar `fiqon-catalog-send` para não criar estado paralelo fora da conversa principal;
+- envio de catalogo legado removido; catalogo deve sair pelo fluxo unificado;
 - remover qualquer reentrada indevida por `conversation_state`.
 
 ### Banco
@@ -313,7 +313,7 @@ Critério de saída:
 ### Operação
 
 - atualizar URL configurada no provedor/automação;
-- validar que não existe webhook externo apontando para `ai-chat` ou `ai-chat-auto-reply`;
+- validar que não existe webhook externo apontando para `ai-chat`;
 - usar janela de observação antes de desligar rotas antigas.
 
 ---
@@ -374,4 +374,3 @@ Quando essa migração terminar:
 - consolidar Keila;
 - consolidar Kate;
 - validar catálogo, escolha e handoff.
-

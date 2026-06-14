@@ -1119,7 +1119,7 @@ const AIConfig = () => {
                         </Button>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Esse Assistant ID pertence apenas Ã  {selectedConfig.name}.
+                        Esse Assistant ID pertence apenas a {selectedConfig.name}.
                       </p>
                     </div>
 

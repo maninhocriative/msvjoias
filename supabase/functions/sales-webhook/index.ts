@@ -20,7 +20,7 @@ serve(async (req) => {
     const body = await req.json();
     console.log("Sales webhook received:", JSON.stringify(body));
 
-    // Support multiple payload formats from Fiqon
+    // Support canonical CRM payloads and older Portuguese field aliases.
     const {
       // Direct format
       product_id,
@@ -32,7 +32,7 @@ serve(async (req) => {
       total_price,
       status = "completed",
       external_reference,
-      // Alternative format (from Fiqon)
+      // Alternative Portuguese format.
       produto_id,
       produto_sku,
       cliente_telefone,
@@ -102,7 +102,7 @@ serve(async (req) => {
         unit_price: finalUnitPrice,
         total_price: finalTotalPrice,
         status: normalizedData.status,
-        source: "fiqon",
+        source: "zapi_whatsapp",
         external_reference: normalizedData.external_reference,
       })
       .select()

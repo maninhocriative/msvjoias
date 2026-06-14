@@ -12,6 +12,12 @@ verify_jwt = false
 [functions.catalog-categories]
 verify_jwt = false
 
+[functions.catalog-facts-sync]
+verify_jwt = true
+
+[functions.catalog-facts-report]
+verify_jwt = true
+
 [functions.zapi-webhook]
 verify_jwt = false
 
@@ -37,9 +43,6 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.ai-chat]
-verify_jwt = false
-
-[functions.ai-chat-auto-reply]
 verify_jwt = false
 
 [functions.sales-webhook]
@@ -106,4 +109,10 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.aline-scheduled-callback]
+verify_jwt = false
+
+[functions.asaas-payment]
+verify_jwt = true
+
+[functions.asaas-webhook]
 verify_jwt = false

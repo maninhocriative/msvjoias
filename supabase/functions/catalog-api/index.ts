@@ -71,10 +71,10 @@ serve(async (req) => {
 
     const url = new URL(req.url);
     
-    // Helper to clean nil values from FiqOn/external integrations
+    // Helper to clean nil/null values from external integrations
     const cleanParam = (value: string | null): string | null => {
       if (!value) return null;
-      // FiqOn sends "<nil>" or "null" as string when value is empty
+      // Some integrations send "<nil>" or "null" as string when value is empty
       if (value === '<nil>' || value === 'null' || value === 'undefined' || value.trim() === '') {
         return null;
       }

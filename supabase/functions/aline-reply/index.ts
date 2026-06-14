@@ -1282,35 +1282,36 @@ function inferKatePendantColor(product: Partial<CatalogProduct> | AnyRecord): "p
 }
 
 function normalizeProductText(product: Partial<CatalogProduct> | AnyRecord): string {
-  const tagsText = Array.isArray(product.tags)
-    ? product.tags.map((tag: unknown) => String(tag || "")).join(" ")
-    : String(product.tags || "");
-  const metadataText = product.metadata && typeof product.metadata === "object"
-    ? JSON.stringify(product.metadata)
-    : String(product.metadata || "");
-  const aiTagsText = Array.isArray(product.ai_tags)
-    ? product.ai_tags.map((tag: unknown) => String(tag || "")).join(" ")
-    : String(product.ai_tags || "");
-  const aliasesText = Array.isArray(product.search_aliases)
-    ? product.search_aliases.map((alias: unknown) => String(alias || "")).join(" ")
-    : String(product.search_aliases || "");
+  const productRecord = product as AnyRecord;
+  const tagsText = Array.isArray(productRecord.tags)
+    ? productRecord.tags.map((tag: unknown) => String(tag || "")).join(" ")
+    : String(productRecord.tags || "");
+  const metadataText = productRecord.metadata && typeof productRecord.metadata === "object"
+    ? JSON.stringify(productRecord.metadata)
+    : String(productRecord.metadata || "");
+  const aiTagsText = Array.isArray(productRecord.ai_tags)
+    ? productRecord.ai_tags.map((tag: unknown) => String(tag || "")).join(" ")
+    : String(productRecord.ai_tags || "");
+  const aliasesText = Array.isArray(productRecord.search_aliases)
+    ? productRecord.search_aliases.map((alias: unknown) => String(alias || "")).join(" ")
+    : String(productRecord.search_aliases || "");
 
   return normalizeText([
-    product.name,
-    product.title,
-    product.sku,
-    product.category,
-    product.color,
-    product.description,
-    product.agent_line,
-    product.ai_description,
+    productRecord.name,
+    productRecord.title,
+    productRecord.sku,
+    productRecord.category,
+    productRecord.color,
+    productRecord.description,
+    productRecord.agent_line,
+    productRecord.ai_description,
     aiTagsText,
     aliasesText,
-    product.commercial_notes,
-    product.included_items,
-    product.restrictions,
-    product.recommended_when,
-    product.avoid_when,
+    productRecord.commercial_notes,
+    productRecord.included_items,
+    productRecord.restrictions,
+    productRecord.recommended_when,
+    productRecord.avoid_when,
     tagsText,
     metadataText,
   ].filter(Boolean).join(" "));
@@ -1534,13 +1535,26 @@ function extractDeliveryMethod(text: string): "retirada" | "entrega" | null {
   return null;
 }
 
-function extractPaymentMethod(text: string): "pix" | "cartao" | "crediario_bemol" | null {
+function extractPaymentMethod(text: string): "pix" | "cartao" | null {
   const normalized = normalizeText(text);
 
   if (/\bpix\b/.test(normalized)) return "pix";
-  if (/crediario|crediario bemol|crediario da bemol|bemol/.test(normalized)) return "crediario_bemol";
   if (/cartao|cartão|credito|crédito|debito|débito/.test(normalized)) return "cartao";
 
+  return null;
+}
+
+function detectUnsupportedPaymentMethod(text: string): boolean {
+  const normalized = normalizeText(text);
+  return /crediario|crediario bemol|crediario da bemol|bemol|boleto|dinheiro|transferencia|transferência/.test(normalized);
+}
+
+function extractCpfCnpj(text: string): string | null {
+  const matches = String(text || "").match(/\d[\d.\-/\s]{9,20}\d/g) || [];
+  for (const match of matches) {
+    const digits = match.replace(/\D/g, "");
+    if (digits.length === 11 || digits.length === 14) return digits;
+  }
   return null;
 }
 
@@ -3143,6 +3157,173 @@ async function saveAssistantMessage(
     .eq("id", crmConversation.id);
 }
 
+async function findCustomerCpfCnpj(supabase: any, phone: string): Promise<string | null> {
+  const variants = buildPhoneVariants(phone);
+  if (variants.length === 0) return null;
+
+  const { data } = await supabase
+    .from("customers")
+    .select("cpf")
+    .in("whatsapp", variants)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const digits = String(data?.cpf || "").replace(/\D/g, "");
+  return digits.length === 11 || digits.length === 14 ? digits : null;
+}
+
+function getPaymentAmount(data: AnyRecord, agent: "kate" | "keila" | "malu") {
+  const unitPrice = Number(data.selected_price || data.selected_product?.price || 0);
+  if (!Number.isFinite(unitPrice) || unitPrice <= 0) return { unitPrice: 0, quantity: 1, total: 0 };
+
+  const quantity = agent === "keila" && data.quantidade_tipo === "par" ? 2 : 1;
+  return {
+    unitPrice,
+    quantity,
+    total: Math.round(unitPrice * quantity * 100) / 100,
+  };
+}
+
+function paymentLabel(method: string | null | undefined) {
+  return method === "pix" ? "Pix" : method === "cartao" ? "cartao de credito" : "pagamento";
+}
+
+async function createPaymentReply(args: {
+  supabase: any;
+  supabaseUrl: string;
+  supabaseServiceKey: string;
+  conversation: any;
+  phone: string;
+  contactName: string;
+  data: AnyRecord;
+  agent: "kate" | "keila" | "malu";
+}) {
+  const { supabase, supabaseUrl, supabaseServiceKey, conversation, phone, contactName, data, agent } = args;
+  const automaticPaymentEnabled = String(Deno.env.get("ASAAS_AUTOMATIC_PAYMENT_ENABLED") || "false").toLowerCase() === "true";
+  if (!automaticPaymentEnabled) {
+    return {
+      ok: false,
+      node: `${agent}_pagamento_desligado`,
+      message: "Pagamentos automaticos ainda nao estao ativos. Vou chamar um vendedor para finalizar com voce com seguranca.",
+      handoff: true,
+    };
+  }
+
+  const method = data.payment_method === "pix" || data.payment_method === "cartao" ? data.payment_method : null;
+
+  if (!method) {
+    return {
+      ok: false,
+      node: `${agent}_pagamento_metodo`,
+      message: "Para gerar o pagamento automatico, posso seguir com Pix ou cartao de credito. Qual voce prefere?",
+    };
+  }
+
+  const cpfCnpj = data.customer_cpf_cnpj || await findCustomerCpfCnpj(supabase, phone);
+  if (!cpfCnpj) {
+    return {
+      ok: false,
+      node: `${agent}_pagamento_cpf`,
+      message: `Perfeito, vou gerar o pagamento via ${paymentLabel(method)}. Me envia o CPF ou CNPJ para eu emitir o link com seguranca?`,
+    };
+  }
+  data.customer_cpf_cnpj = cpfCnpj;
+
+  const amount = getPaymentAmount(data, agent);
+  if (amount.total <= 0) {
+    return {
+      ok: false,
+      node: `${agent}_pagamento_sem_valor`,
+      message: "Para gerar o pagamento automatico eu preciso confirmar o valor do produto. Vou chamar um vendedor para fechar isso com seguranca.",
+      handoff: true,
+    };
+  }
+
+  if (data.asaas_payment_id && data.asaas_invoice_url) {
+    return {
+      ok: true,
+      node: `${agent}_pagamento_ja_gerado`,
+      message: `Seu link de pagamento ja esta pronto: ${data.asaas_invoice_url}`,
+    };
+  }
+
+  const { data: order, error: orderError } = await supabase
+    .from("orders")
+    .insert({
+      customer_phone: phone,
+      customer_name: contactName || null,
+      product_id: data.selected_product?.id || null,
+      quantity: amount.quantity,
+      unit_price: amount.unitPrice,
+      total_price: amount.total,
+      status: "payment_pending",
+      source: agent,
+      external_reference: conversation.id,
+      selected_sku: data.selected_sku || null,
+      selected_name: data.selected_name || null,
+      selected_size_1: data.tamanho_1 || null,
+      selected_size_2: data.tamanho_2 || null,
+      unit_or_pair: data.quantidade_tipo || null,
+      payment_method: method,
+      delivery_method: data.delivery_method || null,
+      delivery_address: data.delivery_address || null,
+      summary_text: `${agent.toUpperCase()}: pagamento automatico via ${paymentLabel(method)} para ${data.selected_name || data.selected_sku || "produto selecionado"}.`,
+    })
+    .select("id")
+    .single();
+
+  if (orderError || !order?.id) {
+    console.error("[ALINE-REPLY] Erro ao criar pedido para pagamento:", orderError);
+    return {
+      ok: false,
+      node: `${agent}_pagamento_pedido_falhou`,
+      message: "Tive uma instabilidade para preparar o pedido. Vou chamar um vendedor para finalizar com voce.",
+      handoff: true,
+    };
+  }
+
+  const response = await fetch(`${supabaseUrl}/functions/v1/asaas-payment`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${supabaseServiceKey}`,
+    },
+    body: JSON.stringify({
+      order_id: order.id,
+      phone,
+      customer_name: contactName || null,
+      cpf_cnpj: cpfCnpj,
+      payment_method: method,
+      billing_type: method,
+      send_whatsapp: false,
+    }),
+  });
+
+  const result = await response.json().catch(() => null);
+  if (!response.ok || !result?.success) {
+    console.error("[ALINE-REPLY] Erro ao gerar cobranca Asaas:", result);
+    return {
+      ok: false,
+      node: `${agent}_pagamento_falhou`,
+      message: "Tive uma instabilidade para gerar o pagamento agora. Vou chamar um vendedor para finalizar com voce com seguranca.",
+      handoff: true,
+    };
+  }
+
+  data.asaas_order_id = order.id;
+  data.asaas_payment_id = result.asaas_payment_id || null;
+  data.asaas_invoice_url = result.invoice_url || null;
+  data.asaas_pix_payload = result.pix_payload || null;
+  data.sales_stage = "pagamento_enviado";
+
+  return {
+    ok: true,
+    node: `${agent}_pagamento_enviado`,
+    message: result.whatsapp_message || `Pronto, gerei seu pagamento via ${paymentLabel(method)}.`,
+  };
+}
+
 async function updateCrmLeadStatus(supabase: any, phone: string, leadStatus: string) {
   const cleanPhone = String(phone || "").trim();
   if (!cleanPhone) return;
@@ -3231,11 +3412,9 @@ async function handoffKeilaToHuman(args: {
   const paymentLabel =
     data.payment_method === "pix"
       ? "Pix"
-      : data.payment_method === "crediario_bemol"
-        ? "Crediario Bemol"
-        : data.payment_method === "cartao"
-          ? "cartao de credito"
-          : "forma de pagamento";
+      : data.payment_method === "cartao"
+        ? "cartao de credito"
+        : "forma de pagamento";
   const selectedLabel = data.selected_name || data.selected_sku || "alianca casamento";
   const assignmentReason = `Keila finalizou pedido: ${selectedLabel} | ${deliveryLabel} | ${paymentLabel}`;
 
@@ -3374,7 +3553,7 @@ async function generateMaluPreview(args: {
   supabase: any;
   phone: string;
   selectedProduct: AnyRecord;
-  customerPhotoUrl: string;
+  customerPhotoUrl: string | null;
 }) {
   const { supabase, phone, selectedProduct, customerPhotoUrl } = args;
   const openAIApiKey = Deno.env.get("OPENAI_API_KEY");
@@ -3489,11 +3668,9 @@ async function handoffKateToHuman(args: {
   const paymentLabel =
     data.payment_method === "pix"
       ? "Pix"
-      : data.payment_method === "crediario_bemol"
-        ? "Crediario Bemol"
-        : data.payment_method === "cartao"
-          ? "cartão de crédito"
-          : "forma de pagamento";
+      : data.payment_method === "cartao"
+        ? "cartao de credito"
+        : "forma de pagamento";
   const selectedLabel = data.selected_name || data.selected_sku || "pingente fotogravado";
   const assignmentReason = `Kate finalizou pedido: ${selectedLabel} | ${deliveryLabel} | ${paymentLabel}`;
 
@@ -3642,6 +3819,10 @@ async function handleKateFlow(args: {
   const paymentMethod = extractPaymentMethod(message);
   if (paymentMethod) {
     data.payment_method = paymentMethod;
+  }
+  const cpfCnpj = extractCpfCnpj(message);
+  if (cpfCnpj) {
+    data.customer_cpf_cnpj = cpfCnpj;
   }
 
   const requestedPendantStyle = detectRequestedPingenteStyle(message);
@@ -4152,7 +4333,7 @@ async function handleKateFlow(args: {
   }
 
   if (hasSelectedProduct && hasDelivery && !hasPayment && isOnlyLaughter) {
-    const reply = "Tranquilo. Quando quiser finalizar, me diga se prefere Pix, Crediario Bemol ou cartao de credito que eu encaminho para o vendedor concluir com voce.";
+    const reply = "Tranquilo. Quando quiser finalizar, me diga se prefere Pix ou cartao de credito que eu sigo com o pagamento.";
 
     await persistConversation(
       supabase,
@@ -4178,7 +4359,7 @@ async function handleKateFlow(args: {
   if (asksStoreAddress) {
     if (hasSelectedProduct) data.delivery_method = "retirada";
     const nextLine = hasSelectedProduct && !hasPayment
-      ? "\n\nSe você for retirar na loja, me confirma também a forma de pagamento: Pix, Crediario Bemol ou cartão de crédito?"
+      ? "\n\nSe voce for retirar na loja, me confirma tambem a forma de pagamento: Pix ou cartao de credito?"
       : "";
     const reply = detectStoreNameQuestion(message)
       ? `O nome da loja e ACIUM Manaus. Ficamos no Shopping Sumauma, Av. Noel Nutels, 1762 - Cidade Nova, Manaus - AM.${nextLine}`
@@ -4675,7 +4856,7 @@ Você vai retirar na loja ou prefere delivery? Depois do fechamento, o vendedor 
       }
 
       if (!hasPayment) {
-        const reply = "Perfeito. E a forma de pagamento vai ser Pix, Crediario Bemol ou cartao de credito?";
+        const reply = "Perfeito. E a forma de pagamento vai ser Pix ou cartao de credito?";
 
         await persistConversation(
           supabase,
@@ -4963,7 +5144,7 @@ Se preferir seguir sem simulação, posso avançar com entrega e pagamento agora
   if (hasSelectedProduct && (data.kate_preview_approved === true) && !hasDelivery) {
     const reply = `Perfeito! Simulacao aprovada para *${cleanCustomerProductName(data.selected_name)}*.
 
-Voce vai retirar na loja ou prefere delivery? Depois eu confirmo a forma de pagamento: Pix, Crediario Bemol ou cartao de credito.`;
+Voce vai retirar na loja ou prefere delivery? Depois eu confirmo a forma de pagamento: Pix ou cartao de credito.`;
 
     await persistConversation(
       supabase,
@@ -4987,7 +5168,7 @@ Voce vai retirar na loja ou prefere delivery? Depois eu confirmo a forma de paga
   }
 
   if (hasSelectedProduct && hasDelivery && !hasPayment) {
-    const reply = "Perfeito! E a forma de pagamento vai ser no Pix, Crediario Bemol ou cartão de crédito? 💳";
+    const reply = "Perfeito! E a forma de pagamento vai ser no Pix ou cartao de credito?";
 
     await persistConversation(
       supabase,
@@ -5011,7 +5192,7 @@ Voce vai retirar na loja ou prefere delivery? Depois eu confirmo a forma de paga
   }
 
   if (hasSelectedProduct && hasDelivery && hasPayment && !data.kate_store_handoff_done) {
-    return await handoffKateToHuman({
+    const paymentReply = await createPaymentReply({
       supabase,
       supabaseUrl,
       supabaseServiceKey,
@@ -5019,6 +5200,39 @@ Voce vai retirar na loja ou prefere delivery? Depois eu confirmo a forma de paga
       phone,
       contactName,
       data,
+      agent: "kate",
+    });
+
+    if (paymentReply.handoff) {
+      return await handoffKateToHuman({
+        supabase,
+        supabaseUrl,
+        supabaseServiceKey,
+        conversation,
+        phone,
+        contactName,
+        data,
+      });
+    }
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "kate",
+      paymentReply.node,
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "kate", paymentReply.message, paymentReply.node);
+    await saveAgentMemory(supabase, phone, "kate", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: paymentReply.message,
+      node: paymentReply.node,
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "kate",
     });
   }
 
@@ -5248,7 +5462,7 @@ async function handleMaluFlow(args: {
   if (detectStoreAddressQuestion(message)) {
     if (hasSelectedProduct) data.delivery_method = "retirada";
     const nextLine = hasSelectedProduct
-      ? "\n\nSe voce for retirar na loja, me confirma tambem a forma de pagamento: Pix, Crediario Bemol ou cartao de credito?"
+      ? "\n\nSe voce for retirar na loja, me confirma tambem a forma de pagamento: Pix ou cartao de credito?"
       : "";
     const reply = detectStoreNameQuestion(message)
       ? `O nome da loja e ACIUM Manaus. Ficamos no Shopping Sumauma, Av. Noel Nutels, 1762 - Cidade Nova, Manaus - AM.${nextLine}`
@@ -5711,8 +5925,9 @@ async function handleKeilaFlow(args: {
   if (paymentMethod) {
     data.payment_method = paymentMethod;
   }
-  if (!data.payment_method && /crediario|crediario bemol|crediario da bemol|bemol/.test(normalizeText(message))) {
-    data.payment_method = "crediario_bemol";
+  const keilaCpfCnpj = extractCpfCnpj(message);
+  if (keilaCpfCnpj) {
+    data.customer_cpf_cnpj = keilaCpfCnpj;
   }
 
   if (customerDoesNotKnowSize(message)) {
@@ -6289,7 +6504,7 @@ O valor do card e da unidade. O par sai pelo dobro.`
   if (hasSelectedProduct && !hasDelivery) {
     const reply = `Perfeito! Você escolheu *${data.selected_name}*. 💍
 
-Você vai retirar na loja ou prefere delivery? Depois eu confirmo a forma de pagamento: Pix, Crediario Bemol ou cartão de crédito.`;
+Voce vai retirar na loja ou prefere delivery? Depois eu confirmo a forma de pagamento: Pix ou cartao de credito.`;
 
     await persistConversation(
       supabase,
@@ -6313,7 +6528,7 @@ Você vai retirar na loja ou prefere delivery? Depois eu confirmo a forma de pag
   }
 
   if (hasSelectedProduct && hasDelivery && !hasPayment) {
-    const reply = "Perfeito! E a forma de pagamento vai ser no Pix, Crediario Bemol ou cartão de crédito? 💳";
+    const reply = "Perfeito! E a forma de pagamento vai ser no Pix ou cartao de credito?";
 
     await persistConversation(
       supabase,
@@ -6337,7 +6552,7 @@ Você vai retirar na loja ou prefere delivery? Depois eu confirmo a forma de pag
   }
 
   if (hasSelectedProduct && hasDelivery && hasPayment && !data.keila_store_handoff_done) {
-    return await handoffKeilaToHuman({
+    const paymentReply = await createPaymentReply({
       supabase,
       supabaseUrl,
       supabaseServiceKey,
@@ -6345,6 +6560,39 @@ Você vai retirar na loja ou prefere delivery? Depois eu confirmo a forma de pag
       phone,
       contactName,
       data,
+      agent: "keila",
+    });
+
+    if (paymentReply.handoff) {
+      return await handoffKeilaToHuman({
+        supabase,
+        supabaseUrl,
+        supabaseServiceKey,
+        conversation,
+        phone,
+        contactName,
+        data,
+      });
+    }
+
+    await persistConversation(
+      supabase,
+      conversation.id,
+      "keila",
+      paymentReply.node,
+      conversation.current_node || null,
+      data,
+    );
+    await saveAssistantMessage(supabase, conversation.id, "keila", paymentReply.message, paymentReply.node);
+    await saveAgentMemory(supabase, phone, "keila", contactName, data);
+
+    return buildResponsePayload({
+      phone,
+      message: paymentReply.message,
+      node: paymentReply.node,
+      selectedProduct: data.selected_product || null,
+      collectedData: data,
+      agent: "keila",
     });
   }
 
@@ -6530,16 +6778,18 @@ serve(async (req) => {
         .eq("id", conversation.id);
 
       await saveAssistantMessage(supabase, conversation.id, activeAgent, reply, "human_takeover_audio");
-      await saveAgentMemory(supabase, phone, activeAgent, contactName, baseData);
+      await saveAgentMemory(supabase, phone, activeAgent === "human" ? "aline" : activeAgent, contactName, baseData);
       await updateCrmLeadStatus(supabase, phone, "humano");
 
-      return buildResponsePayload({
+      return new Response(JSON.stringify(buildResponsePayload({
         phone,
         message: reply,
         node: "human_takeover_audio",
         selectedProduct: baseData.selected_product || null,
         collectedData: baseData,
         agent: "human",
+      })), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -7560,6 +7810,10 @@ serve(async (req) => {
         cor_crm: alineData.cor || null,
         fallback_reason: "ai-chat-unavailable",
       };
+    }
+
+    if (!aiPayload) {
+      throw new Error("ai-chat returned empty payload");
     }
 
     const aiMessageText = String(aiPayload?.mensagem_whatsapp || aiPayload?.response || "");

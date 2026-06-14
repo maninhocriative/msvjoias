@@ -16,6 +16,8 @@ const corsHeaders = {
 const SEQUENCE_INTRO_GAP_MS = Number(Deno.env.get("ZAPI_SEQUENCE_INTRO_GAP_MS") || "500");
 const SEQUENCE_ITEM_GAP_MS = Number(Deno.env.get("ZAPI_SEQUENCE_ITEM_GAP_MS") || "450");
 
+type SupabaseEdgeClient = any;
+
 interface Product {
   sku: string;
   name: string;
@@ -346,7 +348,7 @@ function buildConversationPreview(message: string | null, messageType: string) {
 }
 
 async function resolveConversationId(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseEdgeClient,
   rawConversationId: unknown,
   phone: string,
   platform: string,
@@ -392,7 +394,7 @@ async function resolveConversationId(
 }
 
 async function createStoredMessage(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseEdgeClient,
   conversationId: string,
   item: {
     message: string | null;
@@ -430,7 +432,7 @@ async function createStoredMessage(
 }
 
 async function updateStoredMessage(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseEdgeClient,
   messageId: string,
   values: Record<string, unknown>,
 ) {
@@ -438,7 +440,7 @@ async function updateStoredMessage(
 }
 
 async function refreshConversationPreview(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseEdgeClient,
   conversationId: string,
 ) {
   const { data: latestMessage } = await supabase
@@ -464,7 +466,7 @@ async function refreshConversationPreview(
 }
 
 async function sendOutgoingItem(args: {
-  supabase: ReturnType<typeof createClient>;
+  supabase: SupabaseEdgeClient;
   lease?: ZapiGovernorLease | null;
   normalizedPhone: string;
   message: string | null;
@@ -667,10 +669,10 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const automationWebhook = Deno.env.get("AUTOMATION_OUTGOING_WEBHOOK");
-    const zapiInstanceId = Deno.env.get("ZAPI_INSTANCE_ID");
-    const zapiToken = Deno.env.get("ZAPI_TOKEN");
-    const zapiClientToken = Deno.env.get("ZAPI_CLIENT_TOKEN");
+    const automationWebhook = Deno.env.get("AUTOMATION_OUTGOING_WEBHOOK") || null;
+    const zapiInstanceId = Deno.env.get("ZAPI_INSTANCE_ID") || null;
+    const zapiToken = Deno.env.get("ZAPI_TOKEN") || null;
+    const zapiClientToken = Deno.env.get("ZAPI_CLIENT_TOKEN") || null;
 
     const supabase = createClient(supabaseUrl, supabaseKey);
     const payload = await req.json();

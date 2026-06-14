@@ -104,6 +104,7 @@ serve(async (req) => {
       sku,
       product_id,
       only_available,
+      use_facts,
       tags,
       limit = "50",
     } = params;
@@ -115,6 +116,31 @@ serve(async (req) => {
 
     console.log("AI Catalog Search params:", params);
     console.log("Normalized filters:", { normalizedCategory, normalizedColor, normalizedSearch });
+
+    let factProductIds: string[] | null = null;
+    if (use_facts === "true") {
+      try {
+        let factsQuery = supabase
+          .from("catalog_product_facts")
+          .select("product_id")
+          .eq("auto_catalog_enabled", true)
+          .eq("needs_review", false);
+
+        if (normalizedCategory) factsQuery = factsQuery.eq("normalized_category", normalizedCategory);
+        if (normalizedColor) factsQuery = factsQuery.eq("normalized_color", normalizedColor);
+
+        const { data: factRows, error: factsError } = await factsQuery.limit(parseInt(limit));
+        if (factsError) {
+          console.warn("catalog_product_facts unavailable, falling back to products:", factsError.message || factsError);
+        } else {
+          factProductIds = (factRows || [])
+            .map((row: any) => row.product_id)
+            .filter(Boolean);
+        }
+      } catch (factsException) {
+        console.warn("catalog_product_facts exception, falling back to products:", factsException);
+      }
+    }
 
     // O .or de busca abaixo referencia colunas de "agent intelligence"
     // (migration 20260607162000). Caso ela ainda nao tenha sido aplicada em
@@ -134,6 +160,13 @@ serve(async (req) => {
         .eq("active", true);
 
       if (product_id) query = query.eq("id", product_id);
+      if (factProductIds) {
+        if (factProductIds.length === 0) {
+          query = query.in("id", ["00000000-0000-0000-0000-000000000000"]);
+        } else {
+          query = query.in("id", factProductIds);
+        }
+      }
       if (sku) query = query.ilike("sku", `%${sku}%`);
       if (normalizedCategory) query = query.eq("category", normalizedCategory);
       if (normalizedColor) query = query.eq("color", normalizedColor);
@@ -277,6 +310,7 @@ serve(async (req) => {
           price_range: min_price || max_price ? { min: min_price || null, max: max_price || null } : null,
           tags: tags || null,
           only_available: only_available === "true",
+          use_facts: use_facts === "true",
         },
         products: filteredProducts,
       }),

@@ -38,10 +38,13 @@ serve(async (req) => {
 
     // agent_line/search_aliases/ai_notes vem da migration 20260607162000. Se ela
     // ainda nao foi aplicada, caimos para slug/label para nao perder os rotulos.
-    let { data: categoryRows, error: categoryError } = await supabase
+    let categoryRows: any[] | null = null;
+    let categoryError: any = null;
+
+    ({ data: categoryRows, error: categoryError } = await supabase
       .from('categories')
       .select('slug, label, agent_line, search_aliases, ai_notes')
-      .eq('active', true);
+      .eq('active', true));
 
     if (categoryError) {
       console.warn('Category intelligence select failed, falling back to slug/label:', categoryError.message || categoryError);

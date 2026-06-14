@@ -145,7 +145,7 @@ const PublicApiDocs = () => {
           <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 rounded-2xl p-8 text-white shadow-xl shadow-amber-500/20">
             <h2 className="text-3xl font-bold mb-3">API Documentation</h2>
             <p className="text-amber-100 mb-6 max-w-2xl">
-              Integre seu catálogo com automações externas (FiqOn, n8n, Make, Zapier). 
+              Integre seu catálogo com Z-API, Instagram oficial Meta e APIs internas.
               Todas as APIs estão prontas para uso imediato.
             </p>
             <div className="flex flex-wrap gap-3">
@@ -165,7 +165,7 @@ const PublicApiDocs = () => {
             { icon: Layers, label: 'Sessões', color: 'from-blue-500 to-indigo-600', tab: 'sessions' },
             { icon: ShoppingCart, label: 'Pedidos', color: 'from-purple-500 to-pink-600', tab: 'orders' },
             { icon: MessageSquare, label: 'Mensagens', color: 'from-orange-500 to-red-600', tab: 'messages' },
-            { icon: Workflow, label: 'FiqOn', color: 'from-cyan-500 to-blue-600', tab: 'fiqon' },
+            { icon: Workflow, label: 'Canais', color: 'from-cyan-500 to-blue-600', tab: 'channels' },
           ].map((item) => (
             <a
               key={item.tab}
@@ -203,9 +203,9 @@ const PublicApiDocs = () => {
               <Package className="w-4 h-4" />
               Fluxo
             </TabsTrigger>
-            <TabsTrigger value="fiqon" className="gap-2 data-[state=active]:bg-cyan-500 data-[state=active]:text-white rounded-lg">
+            <TabsTrigger value="channels" className="gap-2 data-[state=active]:bg-cyan-500 data-[state=active]:text-white rounded-lg">
               <Workflow className="w-4 h-4" />
-              FiqOn
+              Canais
             </TabsTrigger>
           </TabsList>
 
@@ -608,16 +608,16 @@ const PublicApiDocs = () => {
             </Card>
           </TabsContent>
 
-          {/* FIQON TAB */}
-          <TabsContent value="fiqon" id="fiqon" className="space-y-6">
+          {/* CHANNELS TAB */}
+          <TabsContent value="channels" id="channels" className="space-y-6">
             <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
                   <Workflow className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Integração FiqOn + Aline</h2>
-                  <p className="text-slate-600 dark:text-slate-400">Configure seu fluxo passo a passo</p>
+                  <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Canais Oficiais</h2>
+                  <p className="text-slate-600 dark:text-slate-400">Z-API para WhatsApp e API oficial Meta para Instagram</p>
                 </div>
               </div>
               <div className="flex gap-2">
@@ -626,7 +626,7 @@ const PublicApiDocs = () => {
                   size="sm" 
                   className="gap-2"
                   onClick={() => {
-                    const fiqonConfig = {
+                    const channelConfig = {
                       httpRequest: {
                         method: "POST",
                         url: "https://ahbjwpkpxqqrpvpzmqwa.supabase.co/functions/v1/zapi-webhook",
@@ -646,7 +646,7 @@ const PublicApiDocs = () => {
                         transferirHumano: "{{$json.filtros.transferir_humano}} == true"
                       }
                     };
-                    navigator.clipboard.writeText(JSON.stringify(fiqonConfig, null, 2));
+                    navigator.clipboard.writeText(JSON.stringify(channelConfig, null, 2));
                     toast({ title: "Configuração copiada!", description: "JSON completo copiado para a área de transferência" });
                   }}
                 >
@@ -657,10 +657,13 @@ const PublicApiDocs = () => {
                   variant="default" 
                   size="sm" 
                   className="gap-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white shadow-lg"
-                  onClick={() => navigate('/fiqon-integration')}
+                  onClick={() => {
+                    navigator.clipboard.writeText("https://ahbjwpkpxqqrpvpzmqwa.supabase.co/functions/v1/zapi-webhook");
+                    toast({ title: "Webhook copiado!" });
+                  }}
                 >
                   <Bot className="w-4 h-4" />
-                  Texto para IA
+                  Copiar Webhook
                 </Button>
               </div>
             </div>
@@ -674,7 +677,7 @@ const PublicApiDocs = () => {
                   </div>
                   <div>
                     <CardTitle className="text-lg text-purple-800 dark:text-purple-200">⚡ Gerador de Configuração HTTP Request</CardTitle>
-                    <CardDescription className="text-purple-600 dark:text-purple-400">Copie e cole direto no nó HTTP Request da FiqOn</CardDescription>
+                    <CardDescription className="text-purple-600 dark:text-purple-400">Use este endpoint como entrada canônica da Z-API</CardDescription>
                   </div>
                 </div>
               </CardHeader>
@@ -777,7 +780,7 @@ const PublicApiDocs = () => {
                   </div>
                   <div>
                     <CardTitle className="text-lg text-amber-800 dark:text-amber-200">📋 Códigos JS Prontos para Copiar</CardTitle>
-                    <CardDescription className="text-amber-600 dark:text-amber-400">Cole diretamente nos nós JavaScript da FiqOn</CardDescription>
+                    <CardDescription className="text-amber-600 dark:text-amber-400">Exemplos para normalizar payloads antes do webhook unificado</CardDescription>
                   </div>
                 </div>
               </CardHeader>
@@ -1040,7 +1043,7 @@ return {
             {/* Campos de Resposta */}
             <Card className="border-slate-200 dark:border-slate-700">
               <CardHeader>
-                <CardTitle className="text-lg">📋 Campos de Resposta para FiqOn</CardTitle>
+                <CardTitle className="text-lg">📋 Campos de Resposta dos Agentes</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div>

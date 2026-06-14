@@ -124,7 +124,7 @@ const isAudioPlaceholderContent = (content?: string | null) => {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
-    .replace(/[\[\]()]/g, '')
+    .replace(/[()[\]]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 
@@ -136,7 +136,7 @@ const normalizePlaceholderContent = (content?: string | null) =>
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
-    .replace(/[\[\]()]/g, '')
+    .replace(/[()[\]]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 

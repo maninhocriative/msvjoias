@@ -16,7 +16,7 @@ const Settings = () => {
   const handleWhatsAppConnect = () => {
     toast({
       title: 'WhatsApp Business',
-      description: 'O WhatsApp já está conectado via Fiqon/automação. As mensagens são recebidas pelo webhook.',
+      description: 'O WhatsApp já está conectado via Z-API. As mensagens são recebidas pelo webhook unificado.',
     });
     setWhatsappConnected(true);
   };
@@ -39,7 +39,7 @@ const Settings = () => {
         <Card className="border-border">
           <CardHeader>
             <CardTitle>Webhook de Automação</CardTitle>
-            <CardDescription>URL para receber mensagens da sua automação (Fiqon, n8n, Make, etc.)</CardDescription>
+            <CardDescription>URL canônica para receber mensagens da Z-API</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -61,7 +61,7 @@ const Settings = () => {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Configure sua automação para enviar mensagens via POST para esta URL
+                Configure a Z-API para enviar mensagens via POST para esta URL
               </p>
             </div>
           </CardContent>
@@ -113,7 +113,7 @@ const Settings = () => {
                 <div>
                   <p className="font-medium text-foreground">WhatsApp Business</p>
                   <p className="text-sm text-muted-foreground">
-                    {whatsappConnected ? 'Conectado via Fiqon' : 'Conecte via automação (Fiqon, n8n, Make)'}
+                    {whatsappConnected ? 'Conectado via Z-API' : 'Conecte via Z-API'}
                   </p>
                 </div>
               </div>
