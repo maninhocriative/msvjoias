@@ -72,6 +72,7 @@ WITH CHECK (
   OR has_role(auth.uid(), 'gerente'::app_role)
 );
 
+DROP TRIGGER IF EXISTS update_payment_charges_updated_at ON public.payment_charges;
 CREATE TRIGGER update_payment_charges_updated_at
 BEFORE UPDATE ON public.payment_charges
 FOR EACH ROW

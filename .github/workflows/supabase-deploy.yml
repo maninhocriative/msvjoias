@@ -62,11 +62,21 @@ jobs:
         continue-on-error: true
         run: npx supabase db push --linked --password "$SUPABASE_DB_PASSWORD" --yes
 
+      - name: Apply new migrations fallback
+        id: fallback_migrations
+        if: ${{ steps.db_migrations.outcome == 'failure' }}
+        run: |
+          echo "::warning::db push falhou por historico remoto desalinhado. Aplicando somente migrations novas e idempotentes."
+          npx supabase db query --linked --file supabase/migrations/20260612162000_agent_platform_v2_foundation.sql
+          npx supabase db query --linked --file supabase/migrations/20260612173000_remove_legacy_fiqon_sources.sql
+          npx supabase db query --linked --file supabase/migrations/20260614110000_asaas_payment_foundation.sql
+
       - name: Deploy Edge Functions
-        if: ${{ always() && steps.db_migrations.outcome != 'skipped' }}
+        if: ${{ always() && (steps.db_migrations.outcome == 'success' || steps.fallback_migrations.outcome == 'success') }}
         run: npx supabase functions deploy --project-ref "$SUPABASE_PROJECT_REF" --use-api --jobs 4
 
       - name: Report migration failure
-        if: ${{ steps.db_migrations.outcome == 'failure' }}
+        if: ${{ steps.db_migrations.outcome == 'failure' && steps.fallback_migrations.outcome != 'success' }}
         run: |
-          echo "::warning::As Edge Functions foram publicadas, mas o db push falhou. Alinhe o historico remoto de migrations do Supabase para automatizar migrations."
+          echo "::error::db push e fallback de migrations falharam. Edge Functions nao foram publicadas nesta execucao."
+          exit 1
