@@ -1000,7 +1000,7 @@ const Chat = () => {
       const initialCrmMessages = crmRows.slice(0, INITIAL_MESSAGE_LIMIT).reverse().filter(
         (message) => message.content?.trim() || message.media_url || message.deleted_at,
       );
-      let mergedMessages = [...initialCrmMessages];
+      let mergedMessages: Message[] = [...initialCrmMessages] as Message[];
 
       const alineConversationId = alineConversationResult?.data?.id;
       let hasOlderAlineLogs = false;
