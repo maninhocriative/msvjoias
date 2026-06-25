@@ -18,6 +18,9 @@ const leadStatusConfig: Record<LeadStatus, { label: string; icon: React.ReactNod
   sem_interesse: { label: 'Sem Interesse', icon: <ThumbsDown className="w-4 h-4" />, color: 'bg-red-500' },
   humano: { label: 'Humano', icon: <UserCheck className="w-4 h-4" />, color: 'bg-amber-500' },
   venda_iniciada: { label: 'Venda Iniciada', icon: <Sparkles className="w-4 h-4" />, color: 'bg-teal-500' },
+  qualificado: { label: 'Qualificado', icon: <UserCheck className="w-4 h-4" />, color: 'bg-indigo-500' },
+  vendido: { label: 'Vendido', icon: <ShoppingBag className="w-4 h-4" />, color: 'bg-emerald-600' },
+  perdido: { label: 'Perdido', icon: <ThumbsDown className="w-4 h-4" />, color: 'bg-rose-700' },
 };
 
 interface LeadStatusSelectProps {

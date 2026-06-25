@@ -1142,8 +1142,24 @@ serve(async (req) => {
   } catch (error) {
     console.error("[AUTOMATION-SEND] Error:", error);
 
+    let errorMessage = "Unknown error";
+    let errorDetails: Record<string, unknown> | undefined;
+    if (error instanceof Error) {
+      errorMessage = error.message;
+    } else if (error && typeof error === "object") {
+      const err = error as Record<string, unknown>;
+      errorMessage = String(err.message || err.error || err.code || JSON.stringify(err));
+      errorDetails = {
+        code: err.code,
+        details: err.details,
+        hint: err.hint,
+      };
+    } else if (error !== undefined && error !== null) {
+      errorMessage = String(error);
+    }
+
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      JSON.stringify({ error: errorMessage, details: errorDetails }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
