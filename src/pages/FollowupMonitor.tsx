@@ -644,7 +644,7 @@ export default function FollowupMonitor() {
     const payload: Record<string, any> = { key, value };
     if (description) payload.description = description;
 
-    const { error } = await supabase.from('store_settings').insert(payload);
+    const { error } = await supabase.from('store_settings').insert(payload as any);
     if (error) throw error;
   };
 
