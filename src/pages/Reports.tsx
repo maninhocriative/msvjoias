@@ -3,6 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/lib/supabase';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   BarChart,
   Bar,
@@ -20,7 +23,7 @@ import {
   Area,
   AreaChart,
 } from 'recharts';
-import { Package, MessageSquare, TrendingUp, Search, Eye } from 'lucide-react';
+import { Download, Eye, Package, MessageSquare, Search, TrendingUp } from 'lucide-react';
 
 interface ProductStock {
   name: string;
@@ -52,7 +55,58 @@ interface ProductSearch {
   category: string | null;
 }
 
+interface PendantInterestRow {
+  date: string;
+  name: string;
+  phone: string;
+  item: string;
+  sku: string;
+  category: string;
+}
+
 const COLORS = ['hsl(0, 0%, 0%)', 'hsl(0, 0%, 30%)', 'hsl(0, 0%, 50%)', 'hsl(0, 0%, 70%)'];
+
+const getCurrentMonthValue = () => {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+};
+
+const formatMonthLabel = (monthValue: string) => {
+  const [year, month] = monthValue.split('-').map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString('pt-BR', {
+    month: 'long',
+    year: 'numeric',
+  });
+};
+
+const escapeCsvValue = (value: string | number | null | undefined) => {
+  const stringValue = String(value ?? '');
+  return `"${stringValue.replace(/"/g, '""')}"`;
+};
+
+const downloadCsv = (rows: PendantInterestRow[], monthValue: string) => {
+  const header = ['Data', 'Nome', 'Telefone', 'Item de interesse', 'SKU', 'Categoria'];
+  const body = rows.map((row) => [
+    row.date,
+    row.name,
+    row.phone,
+    row.item,
+    row.sku,
+    row.category,
+  ]);
+  const csv = [header, ...body]
+    .map((line) => line.map(escapeCsvValue).join(';'))
+    .join('\n');
+  const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `interesse-pingentes-${monthValue}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+};
 
 const Reports = () => {
   const [loading, setLoading] = useState(true);
@@ -65,10 +119,18 @@ const Reports = () => {
   const [totalMessages, setTotalMessages] = useState(0);
   const [totalConversations, setTotalConversations] = useState(0);
   const [totalSearches, setTotalSearches] = useState(0);
+  const [pendantExportMonth, setPendantExportMonth] = useState(getCurrentMonthValue());
+  const [pendantInterestRows, setPendantInterestRows] = useState<PendantInterestRow[]>([]);
+  const [pendantExportLoading, setPendantExportLoading] = useState(false);
+  const [pendantExportError, setPendantExportError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchReportData();
   }, []);
+
+  useEffect(() => {
+    fetchPendantInterestRows(pendantExportMonth);
+  }, [pendantExportMonth]);
 
   const fetchReportData = async () => {
     try {
@@ -221,6 +283,107 @@ const Reports = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchPendantInterestRows = async (monthValue: string) => {
+    setPendantExportLoading(true);
+    setPendantExportError(null);
+
+    try {
+      const [year, month] = monthValue.split('-').map(Number);
+      const startDate = new Date(year, month - 1, 1);
+      const endDate = new Date(year, month, 1);
+
+      const { data: pendantProducts, error: productsError } = await supabase
+        .from('products')
+        .select('id, name, sku, category')
+        .or('category.ilike.%pingente%,name.ilike.%pingente%,description.ilike.%pingente%,ai_description.ilike.%pingente%');
+
+      if (productsError) throw productsError;
+
+      const productMap = new Map(
+        (pendantProducts || []).map((product) => [product.id, product]),
+      );
+      const productIds = Array.from(productMap.keys());
+
+      if (productIds.length === 0) {
+        setPendantInterestRows([]);
+        return;
+      }
+
+      const { data: interestMessages, error: messagesError } = await supabase
+        .from('messages')
+        .select(`
+          id,
+          created_at,
+          conversation_id,
+          product_interest,
+          conversations (
+            contact_name,
+            contact_number
+          )
+        `)
+        .gte('created_at', startDate.toISOString())
+        .lt('created_at', endDate.toISOString())
+        .in('product_interest', productIds)
+        .order('created_at', { ascending: true });
+
+      if (messagesError) throw messagesError;
+
+      const phoneNumbers = Array.from(
+        new Set(
+          (interestMessages || [])
+            .map((message: any) => message.conversations?.contact_number)
+            .filter(Boolean),
+        ),
+      );
+
+      const customerMap = new Map<string, string>();
+      if (phoneNumbers.length > 0) {
+        const { data: customers } = await supabase
+          .from('customers')
+          .select('name, whatsapp')
+          .in('whatsapp', phoneNumbers);
+
+        (customers || []).forEach((customer) => {
+          customerMap.set(customer.whatsapp, customer.name);
+        });
+      }
+
+      const rowsByContactAndItem = new Map<string, PendantInterestRow>();
+
+      (interestMessages || []).forEach((message: any) => {
+        const product = productMap.get(message.product_interest);
+        const conversation = message.conversations;
+        const phone = conversation?.contact_number || '';
+        const name = customerMap.get(phone) || conversation?.contact_name || 'Sem nome';
+        const key = `${phone}-${product?.id || message.product_interest}`;
+
+        if (rowsByContactAndItem.has(key)) return;
+
+        rowsByContactAndItem.set(key, {
+          date: new Date(message.created_at).toLocaleDateString('pt-BR'),
+          name,
+          phone,
+          item: product?.name || 'Pingente',
+          sku: product?.sku || '',
+          category: product?.category || 'pingente',
+        });
+      });
+
+      setPendantInterestRows(Array.from(rowsByContactAndItem.values()));
+    } catch (error) {
+      console.error('Error fetching pendant interests:', error);
+      setPendantInterestRows([]);
+      setPendantExportError('Nao foi possivel gerar a lista de interesses em pingentes.');
+    } finally {
+      setPendantExportLoading(false);
+    }
+  };
+
+  const handleDownloadPendantInterests = () => {
+    if (pendantInterestRows.length === 0) return;
+    downloadCsv(pendantInterestRows, pendantExportMonth);
   };
 
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -573,6 +736,93 @@ const Reports = () => {
         </TabsContent>
 
         <TabsContent value="procuras" className="space-y-6">
+          <Card className="border-border">
+            <CardHeader>
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <CardTitle className="text-lg font-semibold">Planilha de Interesse em Pingentes</CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Contatos com interesse registrado em pingentes em {formatMonthLabel(pendantExportMonth)}.
+                  </p>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
+                  <div className="space-y-2">
+                    <Label htmlFor="pendant-export-month">Mes</Label>
+                    <Input
+                      id="pendant-export-month"
+                      type="month"
+                      value={pendantExportMonth}
+                      onChange={(event) => {
+                        if (event.target.value) setPendantExportMonth(event.target.value);
+                      }}
+                      className="w-full sm:w-[180px]"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={handleDownloadPendantInterests}
+                    disabled={pendantExportLoading || pendantInterestRows.length === 0}
+                    className="gap-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    Baixar planilha
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {pendantExportLoading ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <Skeleton key={i} className="h-12 w-full" />
+                  ))}
+                </div>
+              ) : pendantExportError ? (
+                <p className="text-sm text-destructive py-4">{pendantExportError}</p>
+              ) : pendantInterestRows.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">
+                  Nenhum contato com interesse em pingentes neste mes.
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
+                    <span>{pendantInterestRows.length} registros encontrados</span>
+                    <span>Arquivo CSV formatado para Excel</span>
+                  </div>
+                  <div className="overflow-x-auto rounded-lg border border-border">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/70 text-muted-foreground">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-medium">Data</th>
+                          <th className="px-4 py-3 text-left font-medium">Nome</th>
+                          <th className="px-4 py-3 text-left font-medium">Telefone</th>
+                          <th className="px-4 py-3 text-left font-medium">Item de interesse</th>
+                          <th className="px-4 py-3 text-left font-medium">SKU</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pendantInterestRows.slice(0, 8).map((row) => (
+                          <tr key={`${row.phone}-${row.item}`} className="border-t border-border">
+                            <td className="px-4 py-3 whitespace-nowrap">{row.date}</td>
+                            <td className="px-4 py-3 min-w-[180px]">{row.name}</td>
+                            <td className="px-4 py-3 whitespace-nowrap">{row.phone}</td>
+                            <td className="px-4 py-3 min-w-[220px]">{row.item}</td>
+                            <td className="px-4 py-3 whitespace-nowrap">{row.sku || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {pendantInterestRows.length > 8 && (
+                    <p className="text-xs text-muted-foreground">
+                      A previa mostra 8 linhas. A planilha baixada inclui todos os registros.
+                    </p>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Most Searched Products Chart */}
           <Card className="border-border">
             <CardHeader>
