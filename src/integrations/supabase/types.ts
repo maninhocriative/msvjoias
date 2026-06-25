@@ -14,6 +14,297 @@ export type Database = {
   }
   public: {
     Tables: {
+      agent_decision_logs: {
+        Row: {
+          agent_slug: string | null
+          conversation_id: string | null
+          created_at: string
+          decision_reason: string | null
+          decision_type: string
+          id: string
+          inbound_batch_id: string | null
+          input_summary: Json
+          output_plan: Json
+          phone: string
+          shadow_mode: boolean
+        }
+        Insert: {
+          agent_slug?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          decision_reason?: string | null
+          decision_type: string
+          id?: string
+          inbound_batch_id?: string | null
+          input_summary?: Json
+          output_plan?: Json
+          phone: string
+          shadow_mode?: boolean
+        }
+        Update: {
+          agent_slug?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          decision_reason?: string | null
+          decision_type?: string
+          id?: string
+          inbound_batch_id?: string | null
+          input_summary?: Json
+          output_plan?: Json
+          phone?: string
+          shadow_mode?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_decision_logs_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_decision_logs_inbound_batch_id_fkey"
+            columns: ["inbound_batch_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_batches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_flow_definitions: {
+        Row: {
+          agent_slug: string
+          config: Json
+          created_at: string
+          description: string | null
+          enabled: boolean
+          flow_key: string
+          id: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          agent_slug: string
+          config?: Json
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          flow_key: string
+          id?: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          agent_slug?: string
+          config?: Json
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          flow_key?: string
+          id?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: []
+      }
+      agent_flow_steps: {
+        Row: {
+          actions: Json
+          created_at: string
+          flow_id: string
+          id: string
+          priority: number
+          prompt_template: string | null
+          required_facts: string[]
+          step_key: string
+          transitions: Json
+          updated_at: string
+        }
+        Insert: {
+          actions?: Json
+          created_at?: string
+          flow_id: string
+          id?: string
+          priority?: number
+          prompt_template?: string | null
+          required_facts?: string[]
+          step_key: string
+          transitions?: Json
+          updated_at?: string
+        }
+        Update: {
+          actions?: Json
+          created_at?: string
+          flow_id?: string
+          id?: string
+          priority?: number
+          prompt_template?: string | null
+          required_facts?: string[]
+          step_key?: string
+          transitions?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_flow_steps_flow_id_fkey"
+            columns: ["flow_id"]
+            isOneToOne: false
+            referencedRelation: "agent_flow_definitions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_global_rules: {
+        Row: {
+          action: Json
+          created_at: string
+          description: string | null
+          enabled: boolean
+          id: string
+          matcher: Json
+          priority: number
+          rule_key: string
+          updated_at: string
+        }
+        Insert: {
+          action?: Json
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          id?: string
+          matcher?: Json
+          priority?: number
+          rule_key: string
+          updated_at?: string
+        }
+        Update: {
+          action?: Json
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          id?: string
+          matcher?: Json
+          priority?: number
+          rule_key?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      agent_memory_snapshots: {
+        Row: {
+          agent_slug: string
+          conversation_id: string | null
+          created_at: string
+          embedding_model: string | null
+          facts: Json
+          id: string
+          last_catalog: Json
+          pending_questions: Json
+          phone: string
+          preferences: Json
+          qdrant_collection: string | null
+          qdrant_point_id: string | null
+          summary: string | null
+          updated_at: string
+        }
+        Insert: {
+          agent_slug: string
+          conversation_id?: string | null
+          created_at?: string
+          embedding_model?: string | null
+          facts?: Json
+          id?: string
+          last_catalog?: Json
+          pending_questions?: Json
+          phone: string
+          preferences?: Json
+          qdrant_collection?: string | null
+          qdrant_point_id?: string | null
+          summary?: string | null
+          updated_at?: string
+        }
+        Update: {
+          agent_slug?: string
+          conversation_id?: string | null
+          created_at?: string
+          embedding_model?: string | null
+          facts?: Json
+          id?: string
+          last_catalog?: Json
+          pending_questions?: Json
+          phone?: string
+          preferences?: Json
+          qdrant_collection?: string | null
+          qdrant_point_id?: string | null
+          summary?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_memory_snapshots_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_sessions: {
+        Row: {
+          active_agent: string
+          conversation_id: string | null
+          created_at: string
+          current_flow: string | null
+          current_step: string | null
+          facts: Json
+          id: string
+          last_decision_id: string | null
+          last_seen_at: string
+          pending_questions: Json
+          phone: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          active_agent?: string
+          conversation_id?: string | null
+          created_at?: string
+          current_flow?: string | null
+          current_step?: string | null
+          facts?: Json
+          id?: string
+          last_decision_id?: string | null
+          last_seen_at?: string
+          pending_questions?: Json
+          phone: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          active_agent?: string
+          conversation_id?: string | null
+          created_at?: string
+          current_flow?: string | null
+          current_step?: string | null
+          facts?: Json
+          id?: string
+          last_decision_id?: string | null
+          last_seen_at?: string
+          pending_questions?: Json
+          phone?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_sessions_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_agent_config: {
         Row: {
           active_template: string | null
@@ -312,6 +603,127 @@ export type Database = {
           },
         ]
       }
+      catalog_product_embeddings: {
+        Row: {
+          collection: string | null
+          content_hash: string | null
+          created_at: string
+          embedding_model: string | null
+          id: string
+          point_id: string | null
+          product_id: string
+          provider: string
+          updated_at: string
+        }
+        Insert: {
+          collection?: string | null
+          content_hash?: string | null
+          created_at?: string
+          embedding_model?: string | null
+          id?: string
+          point_id?: string | null
+          product_id: string
+          provider?: string
+          updated_at?: string
+        }
+        Update: {
+          collection?: string | null
+          content_hash?: string | null
+          created_at?: string
+          embedding_model?: string | null
+          id?: string
+          point_id?: string | null
+          product_id?: string
+          provider?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catalog_product_embeddings_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      catalog_product_facts: {
+        Row: {
+          agent_line: string | null
+          aliases: string[]
+          auto_catalog_enabled: boolean
+          created_at: string
+          finish: string | null
+          id: string
+          material: string | null
+          needs_review: boolean
+          normalized_category: string | null
+          normalized_color: string | null
+          normalized_subcategory: string | null
+          product_id: string
+          qdrant_collection: string | null
+          qdrant_point_id: string | null
+          review_reason: string | null
+          searchable_text: string | null
+          sizes: string[]
+          stock_total: number
+          tags: string[]
+          updated_at: string
+        }
+        Insert: {
+          agent_line?: string | null
+          aliases?: string[]
+          auto_catalog_enabled?: boolean
+          created_at?: string
+          finish?: string | null
+          id?: string
+          material?: string | null
+          needs_review?: boolean
+          normalized_category?: string | null
+          normalized_color?: string | null
+          normalized_subcategory?: string | null
+          product_id: string
+          qdrant_collection?: string | null
+          qdrant_point_id?: string | null
+          review_reason?: string | null
+          searchable_text?: string | null
+          sizes?: string[]
+          stock_total?: number
+          tags?: string[]
+          updated_at?: string
+        }
+        Update: {
+          agent_line?: string | null
+          aliases?: string[]
+          auto_catalog_enabled?: boolean
+          created_at?: string
+          finish?: string | null
+          id?: string
+          material?: string | null
+          needs_review?: boolean
+          normalized_category?: string | null
+          normalized_color?: string | null
+          normalized_subcategory?: string | null
+          product_id?: string
+          qdrant_collection?: string | null
+          qdrant_point_id?: string | null
+          review_reason?: string | null
+          searchable_text?: string | null
+          sizes?: string[]
+          stock_total?: number
+          tags?: string[]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catalog_product_facts_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: true
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       catalog_sessions: {
         Row: {
           budget_max: number | null
@@ -425,6 +837,100 @@ export type Database = {
           type?: string
         }
         Relationships: []
+      }
+      conversation_facts: {
+        Row: {
+          confidence: number
+          conversation_id: string | null
+          created_at: string
+          expires_at: string | null
+          fact_key: string
+          fact_value: Json
+          id: string
+          phone: string
+          source: string
+          updated_at: string
+        }
+        Insert: {
+          confidence?: number
+          conversation_id?: string | null
+          created_at?: string
+          expires_at?: string | null
+          fact_key: string
+          fact_value: Json
+          id?: string
+          phone: string
+          source?: string
+          updated_at?: string
+        }
+        Update: {
+          confidence?: number
+          conversation_id?: string | null
+          created_at?: string
+          expires_at?: string | null
+          fact_key?: string
+          fact_value?: Json
+          id?: string
+          phone?: string
+          source?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_facts_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conversation_pending_questions: {
+        Row: {
+          agent_slug: string
+          answer_text: string | null
+          answered_at: string | null
+          conversation_id: string | null
+          created_at: string
+          id: string
+          phone: string
+          question_key: string
+          question_text: string
+          status: string
+        }
+        Insert: {
+          agent_slug?: string
+          answer_text?: string | null
+          answered_at?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          id?: string
+          phone: string
+          question_key: string
+          question_text: string
+          status?: string
+        }
+        Update: {
+          agent_slug?: string
+          answer_text?: string | null
+          answered_at?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          id?: string
+          phone?: string
+          question_key?: string
+          question_text?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_pending_questions_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       conversation_state: {
         Row: {
@@ -695,6 +1201,65 @@ export type Database = {
         }
         Relationships: []
       }
+      inbound_batches: {
+        Row: {
+          closes_at: string
+          conversation_id: string | null
+          created_at: string
+          id: string
+          media_items: Json
+          message_ids: string[]
+          normalized_text: string | null
+          opened_at: string
+          phone: string
+          platform: string
+          processed_at: string | null
+          signal_summary: Json
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          closes_at: string
+          conversation_id?: string | null
+          created_at?: string
+          id?: string
+          media_items?: Json
+          message_ids?: string[]
+          normalized_text?: string | null
+          opened_at?: string
+          phone: string
+          platform?: string
+          processed_at?: string | null
+          signal_summary?: Json
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          closes_at?: string
+          conversation_id?: string | null
+          created_at?: string
+          id?: string
+          media_items?: Json
+          message_ids?: string[]
+          normalized_text?: string | null
+          opened_at?: string
+          phone?: string
+          platform?: string
+          processed_at?: string | null
+          signal_summary?: Json
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inbound_batches_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       influencer_leads: {
         Row: {
           contact_name: string | null
@@ -936,12 +1501,12 @@ export type Database = {
       }
       orders: {
         Row: {
-          assigned_to: string | null
           asaas_bank_slip_url: string | null
           asaas_invoice_url: string | null
           asaas_payment_id: string | null
           asaas_pix_payload: string | null
           asaas_pix_qr_code_base64: string | null
+          assigned_to: string | null
           created_at: string
           customer_name: string | null
           customer_phone: string
@@ -950,8 +1515,8 @@ export type Database = {
           external_reference: string | null
           id: string
           notes: string | null
-          payment_method: string | null
           paid_at: string | null
+          payment_method: string | null
           product_id: string | null
           quantity: number
           selected_name: string | null
@@ -968,12 +1533,12 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          assigned_to?: string | null
           asaas_bank_slip_url?: string | null
           asaas_invoice_url?: string | null
           asaas_payment_id?: string | null
           asaas_pix_payload?: string | null
           asaas_pix_qr_code_base64?: string | null
+          assigned_to?: string | null
           created_at?: string
           customer_name?: string | null
           customer_phone: string
@@ -982,8 +1547,8 @@ export type Database = {
           external_reference?: string | null
           id?: string
           notes?: string | null
-          payment_method?: string | null
           paid_at?: string | null
+          payment_method?: string | null
           product_id?: string | null
           quantity?: number
           selected_name?: string | null
@@ -1000,12 +1565,12 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          assigned_to?: string | null
           asaas_bank_slip_url?: string | null
           asaas_invoice_url?: string | null
           asaas_payment_id?: string | null
           asaas_pix_payload?: string | null
           asaas_pix_qr_code_base64?: string | null
+          assigned_to?: string | null
           created_at?: string
           customer_name?: string | null
           customer_phone?: string
@@ -1014,8 +1579,8 @@ export type Database = {
           external_reference?: string | null
           id?: string
           notes?: string | null
-          payment_method?: string | null
           paid_at?: string | null
+          payment_method?: string | null
           product_id?: string | null
           quantity?: number
           selected_name?: string | null
@@ -1490,16 +2055,28 @@ export type Database = {
         Returns: number
       }
       cleanup_bot_data: { Args: never; Returns: undefined }
-      create_catalog_session: {
-        Args: {
-          p_categoria?: string
-          p_cor_preferida?: string
-          p_phone: string
-          p_thread_id?: string
-          p_tipo_alianca?: string
-        }
-        Returns: string
-      }
+      create_catalog_session:
+        | {
+            Args: {
+              p_categoria?: string
+              p_cor_preferida?: string
+              p_phone: string
+              p_thread_id?: string
+              p_tipo_alianca?: string
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              p_categoria?: string
+              p_cor_preferida?: string
+              p_phone: string
+              p_source?: string
+              p_thread_id?: string
+              p_tipo_alianca?: string
+            }
+            Returns: string
+          }
       get_recent_catalog_context: {
         Args: { p_limit?: number; p_phone: string }
         Returns: string
