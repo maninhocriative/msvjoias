@@ -293,6 +293,8 @@ const Reports = () => {
       const [year, month] = monthValue.split('-').map(Number);
       const startDate = new Date(year, month - 1, 1);
       const endDate = new Date(year, month, 1);
+      const startIso = startDate.toISOString();
+      const endIso = endDate.toISOString();
 
       const { data: pendantProducts, error: productsError } = await supabase
         .from('products')
@@ -306,37 +308,66 @@ const Reports = () => {
       );
       const productIds = Array.from(productMap.keys());
 
-      if (productIds.length === 0) {
-        setPendantInterestRows([]);
-        return;
-      }
+      const interestMessages = productIds.length > 0
+        ? (await supabase
+            .from('messages')
+            .select(`
+              id,
+              created_at,
+              conversation_id,
+              product_interest,
+              conversations (
+                contact_name,
+                contact_number
+              )
+            `)
+            .gte('created_at', startIso)
+            .lt('created_at', endIso)
+            .in('product_interest', productIds)
+            .order('created_at', { ascending: true })).data || []
+        : [];
 
-      const { data: interestMessages, error: messagesError } = await supabase
-        .from('messages')
-        .select(`
-          id,
-          created_at,
-          conversation_id,
-          product_interest,
-          conversations (
-            contact_name,
-            contact_number
-          )
-        `)
-        .gte('created_at', startDate.toISOString())
-        .lt('created_at', endDate.toISOString())
-        .in('product_interest', productIds)
+      const { data: catalogSessions, error: catalogSessionsError } = await supabase
+        .from('catalog_sessions')
+        .select('id, created_at, phone, categoria, line, intent')
+        .gte('created_at', startIso)
+        .lt('created_at', endIso)
+        .or('categoria.ilike.%pingente%,line.eq.kate,intent.ilike.%pingente%')
         .order('created_at', { ascending: true });
 
-      if (messagesError) throw messagesError;
+      if (catalogSessionsError) throw catalogSessionsError;
 
-      const phoneNumbers = Array.from(
-        new Set(
-          (interestMessages || [])
-            .map((message: any) => message.conversations?.contact_number)
-            .filter(Boolean),
-        ),
-      );
+      const catalogSessionIds = (catalogSessions || []).map((session) => session.id);
+      const { data: catalogItems } = catalogSessionIds.length > 0
+        ? await supabase
+            .from('catalog_items_sent')
+            .select('session_id, created_at, name, sku')
+            .in('session_id', catalogSessionIds)
+            .order('position', { ascending: true })
+        : { data: [] };
+
+      const catalogItemsBySession = new Map<string, any[]>();
+      (catalogItems || []).forEach((item) => {
+        const current = catalogItemsBySession.get(item.session_id) || [];
+        current.push(item);
+        catalogItemsBySession.set(item.session_id, current);
+      });
+
+      const { data: agentMemories, error: memoriesError } = await supabase
+        .from('customer_agent_memory')
+        .select('phone, customer_name, last_interest, last_product_name, last_product_sku, last_seen_at, updated_at, agent_slug, summary')
+        .gte('last_seen_at', startIso)
+        .lt('last_seen_at', endIso)
+        .or('agent_slug.eq.kate,last_interest.ilike.%pingente%,last_product_name.ilike.%pingente%,summary.ilike.%pingente%')
+        .order('last_seen_at', { ascending: true });
+
+      if (memoriesError) throw memoriesError;
+
+      const phoneNumbers = Array.from(new Set([
+        ...(interestMessages || []).map((message: any) => message.conversations?.contact_number),
+        ...(catalogSessions || []).map((session) => session.phone),
+        ...(agentMemories || []).map((memory) => memory.phone),
+      ].filter(Boolean)));
 
       const customerMap = new Map<string, string>();
       if (phoneNumbers.length > 0) {
@@ -350,24 +381,79 @@ const Reports = () => {
         });
       }
 
+      const conversationNameMap = new Map<string, string>();
+      if (phoneNumbers.length > 0) {
+        const { data: conversations } = await supabase
+          .from('conversations')
+          .select('contact_number, contact_name')
+          .in('contact_number', phoneNumbers);
+
+        (conversations || []).forEach((conversation) => {
+          if (conversation.contact_name) {
+            conversationNameMap.set(conversation.contact_number, conversation.contact_name);
+          }
+        });
+      }
+
       const rowsByContactAndItem = new Map<string, PendantInterestRow>();
+      const addRow = (row: PendantInterestRow) => {
+        const key = `${row.phone}-${row.item}-${row.sku}`;
+        if (!row.phone || rowsByContactAndItem.has(key)) return;
+        rowsByContactAndItem.set(key, row);
+      };
+      const getName = (phone: string, fallback?: string | null) => (
+        customerMap.get(phone) || fallback || conversationNameMap.get(phone) || 'Sem nome'
+      );
 
       (interestMessages || []).forEach((message: any) => {
         const product = productMap.get(message.product_interest);
         const conversation = message.conversations;
         const phone = conversation?.contact_number || '';
-        const name = customerMap.get(phone) || conversation?.contact_name || 'Sem nome';
-        const key = `${phone}-${product?.id || message.product_interest}`;
 
-        if (rowsByContactAndItem.has(key)) return;
-
-        rowsByContactAndItem.set(key, {
+        addRow({
           date: new Date(message.created_at).toLocaleDateString('pt-BR'),
-          name,
+          name: getName(phone, conversation?.contact_name),
           phone,
           item: product?.name || 'Pingente',
           sku: product?.sku || '',
           category: product?.category || 'pingente',
+        });
+      });
+
+      (catalogSessions || []).forEach((session) => {
+        const items = catalogItemsBySession.get(session.id) || [];
+        if (items.length === 0) {
+          addRow({
+            date: new Date(session.created_at).toLocaleDateString('pt-BR'),
+            name: getName(session.phone),
+            phone: session.phone,
+            item: 'Pingentes',
+            sku: '',
+            category: 'pingente',
+          });
+          return;
+        }
+
+        items.forEach((item) => {
+          addRow({
+            date: new Date(item.created_at || session.created_at).toLocaleDateString('pt-BR'),
+            name: getName(session.phone),
+            phone: session.phone,
+            item: item.name || 'Pingente',
+            sku: item.sku || '',
+            category: 'pingente',
+          });
+        });
+      });
+
+      (agentMemories || []).forEach((memory) => {
+        addRow({
+          date: new Date(memory.last_seen_at || memory.updated_at).toLocaleDateString('pt-BR'),
+          name: getName(memory.phone, memory.customer_name),
+          phone: memory.phone,
+          item: memory.last_product_name || memory.last_interest || 'Pingentes',
+          sku: memory.last_product_sku || '',
+          category: 'pingente',
         });
       });
 
@@ -476,7 +562,7 @@ const Reports = () => {
         </Card>
       </div>
 
-      <Tabs defaultValue="stock" className="space-y-6">
+      <Tabs defaultValue="procuras" className="space-y-6">
         <TabsList className="bg-muted">
           <TabsTrigger value="stock" className="gap-2">
             <Package className="w-4 h-4" />
