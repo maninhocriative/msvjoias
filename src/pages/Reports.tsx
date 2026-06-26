@@ -79,29 +79,90 @@ const formatMonthLabel = (monthValue: string) => {
   });
 };
 
-const escapeCsvValue = (value: string | number | null | undefined) => {
-  const stringValue = String(value ?? '');
-  return `"${stringValue.replace(/"/g, '""')}"`;
+const escapeHtmlValue = (value: string | number | null | undefined) => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;');
+
+const escapeHtmlWithBreaks = (value: string | number | null | undefined) => (
+  escapeHtmlValue(value).replace(/\n/g, '<br />')
+);
+
+const normalizePhone = (phone: string) => {
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  return digits;
 };
 
-const downloadCsv = (rows: PendantInterestRow[], monthValue: string) => {
-  const header = ['Data', 'Nome', 'Telefone', 'Item de interesse', 'SKU', 'Categoria'];
-  const body = rows.map((row) => [
-    row.date,
-    row.name,
-    row.phone,
-    row.item,
-    row.sku,
-    row.category,
-  ]);
-  const csv = [header, ...body]
-    .map((line) => line.map(escapeCsvValue).join(';'))
-    .join('\n');
-  const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
+const formatPhone = (phone: string) => {
+  const digits = normalizePhone(phone);
+  const local = digits.startsWith('55') ? digits.slice(2) : digits;
+  if (local.length === 11) {
+    return `+55 (${local.slice(0, 2)}) ${local.slice(2, 7)}-${local.slice(7)}`;
+  }
+  if (local.length === 10) {
+    return `+55 (${local.slice(0, 2)}) ${local.slice(2, 6)}-${local.slice(6)}`;
+  }
+  return digits ? `+${digits}` : '';
+};
+
+const downloadExcel = (rows: PendantInterestRow[], monthValue: string) => {
+  const title = `Relatorio de interesse em pingentes - ${formatMonthLabel(monthValue)}`;
+  const generatedAt = new Date().toLocaleString('pt-BR');
+  const tableRows = rows.map((row, index) => `
+    <tr>
+      <td class="center">${index + 1}</td>
+      <td>${escapeHtmlValue(row.date)}</td>
+      <td>${escapeHtmlValue(row.name)}</td>
+      <td class="phone">${escapeHtmlValue(formatPhone(row.phone))}</td>
+      <td>${escapeHtmlWithBreaks(row.item)}</td>
+      <td class="sku">${escapeHtmlWithBreaks(row.sku || '-')}</td>
+      <td>${escapeHtmlValue(row.category)}</td>
+    </tr>
+  `).join('');
+  const html = `
+    <html>
+      <head>
+        <meta charset="UTF-8" />
+        <style>
+          body { font-family: Arial, sans-serif; color: #111827; }
+          h1 { font-size: 20px; margin: 0 0 4px; }
+          .meta { color: #6b7280; font-size: 12px; margin-bottom: 16px; }
+          table { border-collapse: collapse; width: 100%; }
+          th { background: #111827; color: #ffffff; font-weight: 700; text-align: left; }
+          th, td { border: 1px solid #d1d5db; padding: 8px 10px; vertical-align: top; }
+          tbody tr:nth-child(even) { background: #f9fafb; }
+          .center { text-align: center; }
+          .phone, .sku { mso-number-format: "\\@"; white-space: nowrap; }
+          .wide { width: 280px; }
+        </style>
+      </head>
+      <body>
+        <h1>${escapeHtmlValue(title)}</h1>
+        <div class="meta">Gerado em ${escapeHtmlValue(generatedAt)} - ${rows.length} contato(s)</div>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Data</th>
+              <th class="wide">Nome</th>
+              <th>Telefone</th>
+              <th class="wide">Itens de interesse</th>
+              <th>SKU</th>
+              <th>Categoria</th>
+            </tr>
+          </thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </body>
+    </html>
+  `;
+  const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `interesse-pingentes-${monthValue}.csv`;
+  link.download = `interesse-pingentes-${monthValue}.xls`;
   document.body.appendChild(link);
   link.click();
   link.remove();
@@ -395,11 +456,29 @@ const Reports = () => {
         });
       }
 
-      const rowsByContactAndItem = new Map<string, PendantInterestRow>();
+      const rowsByContact = new Map<string, PendantInterestRow>();
       const addRow = (row: PendantInterestRow) => {
-        const key = `${row.phone}-${row.item}-${row.sku}`;
-        if (!row.phone || rowsByContactAndItem.has(key)) return;
-        rowsByContactAndItem.set(key, row);
+        const key = normalizePhone(row.phone);
+        if (!key) return;
+
+        const existing = rowsByContact.get(key);
+        if (!existing) {
+          rowsByContact.set(key, {
+            ...row,
+            phone: key,
+          });
+          return;
+        }
+
+        const existingItems = new Set(existing.item.split('\n').filter(Boolean));
+        if (row.item && !existingItems.has(row.item)) {
+          existing.item = `${existing.item}\n${row.item}`;
+        }
+
+        const existingSkus = new Set(existing.sku.split('\n').filter(Boolean));
+        if (row.sku && !existingSkus.has(row.sku)) {
+          existing.sku = existing.sku ? `${existing.sku}\n${row.sku}` : row.sku;
+        }
       };
       const getName = (phone: string, fallback?: string | null) => (
         customerMap.get(phone) || fallback || conversationNameMap.get(phone) || 'Sem nome'
@@ -457,7 +536,7 @@ const Reports = () => {
         });
       });
 
-      setPendantInterestRows(Array.from(rowsByContactAndItem.values()));
+      setPendantInterestRows(Array.from(rowsByContact.values()));
     } catch (error) {
       console.error('Error fetching pendant interests:', error);
       setPendantInterestRows([]);
@@ -469,7 +548,7 @@ const Reports = () => {
 
   const handleDownloadPendantInterests = () => {
     if (pendantInterestRows.length === 0) return;
-    downloadCsv(pendantInterestRows, pendantExportMonth);
+    downloadExcel(pendantInterestRows, pendantExportMonth);
   };
 
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -873,7 +952,7 @@ const Reports = () => {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between gap-3 text-sm text-muted-foreground">
                     <span>{pendantInterestRows.length} registros encontrados</span>
-                    <span>Arquivo CSV formatado para Excel</span>
+                    <span>Arquivo Excel formatado</span>
                   </div>
                   <div className="overflow-x-auto rounded-lg border border-border">
                     <table className="w-full text-sm">
@@ -892,8 +971,8 @@ const Reports = () => {
                             <td className="px-4 py-3 whitespace-nowrap">{row.date}</td>
                             <td className="px-4 py-3 min-w-[180px]">{row.name}</td>
                             <td className="px-4 py-3 whitespace-nowrap">{row.phone}</td>
-                            <td className="px-4 py-3 min-w-[220px]">{row.item}</td>
-                            <td className="px-4 py-3 whitespace-nowrap">{row.sku || '-'}</td>
+                            <td className="px-4 py-3 min-w-[220px] whitespace-pre-line">{row.item}</td>
+                            <td className="px-4 py-3 whitespace-pre-line">{row.sku || '-'}</td>
                           </tr>
                         ))}
                       </tbody>
