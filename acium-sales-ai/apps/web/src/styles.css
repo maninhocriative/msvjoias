@@ -10,9 +10,11 @@ button, input { font: inherit; }
 
 .app-shell {
   display: grid;
-  grid-template-columns: 224px minmax(0, 1fr);
+  grid-template-columns: 212px minmax(0, 1fr);
   min-height: 100vh;
-  background: #eae6df;
+  background:
+    linear-gradient(#00a884 0 128px, transparent 128px),
+    #eae6df;
 }
 
 .sidebar {
@@ -51,7 +53,7 @@ button, input { font: inherit; }
 
 .nav-item.active,
 .nav-item:hover { background: #23313a; }
-.workspace { min-width: 0; padding: 14px; }
+.workspace { min-width: 0; padding: 18px; }
 
 .dashboard {
   display: grid;
@@ -75,10 +77,11 @@ button, input { font: inherit; }
 .wa-shell {
   background: #ffffff;
   border: 1px solid #d1d7db;
+  box-shadow: 0 6px 20px rgb(11 20 26 / 18%);
   display: grid;
   grid-template-columns: 390px minmax(520px, 1fr) 320px;
-  height: calc(100vh - 158px);
-  min-height: 620px;
+  height: calc(100vh - 36px);
+  min-height: 720px;
   overflow: hidden;
 }
 

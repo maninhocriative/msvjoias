@@ -1,9 +1,7 @@
 import {
-  BarChart3,
   Bot,
   Boxes,
   ClipboardList,
-  Gauge,
   Inbox,
   Megaphone,
   Settings,
@@ -12,11 +10,9 @@ import {
   UserCog,
   WalletCards
 } from "lucide-react";
-import { Dashboard } from "./Dashboard";
 import { InboxView } from "./InboxView";
 
 const menu = [
-  { label: "Painel", icon: Gauge },
   { label: "Inbox", icon: Inbox },
   { label: "Clientes", icon: Users },
   { label: "Catalogo", icon: Boxes },
@@ -25,7 +21,6 @@ const menu = [
   { label: "Automacoes", icon: WalletCards },
   { label: "Agentes IA", icon: Bot },
   { label: "Campanhas", icon: Megaphone },
-  { label: "Relatorios", icon: BarChart3 },
   { label: "Configuracoes", icon: Settings },
   { label: "Usuarios", icon: UserCog }
 ];
@@ -45,7 +40,6 @@ export function App() {
         </nav>
       </aside>
       <section className="workspace">
-        <Dashboard />
         <InboxView />
       </section>
     </main>
