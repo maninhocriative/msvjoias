@@ -5,7 +5,7 @@ compatibility_date = "2026-07-04"
 [[d1_databases]]
 binding = "DB"
 database_name = "acium-sales-ai"
-database_id = "replace-with-d1-database-id"
+database_id = "27634333-183d-4da0-b964-b5b500e617b8"
 migrations_dir = "../../packages/db/d1/migrations"
 
 [[queues.producers]]
