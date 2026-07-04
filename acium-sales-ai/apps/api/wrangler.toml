@@ -1,0 +1,32 @@
+name = "acium-sales-ai-api"
+main = "src/index.ts"
+compatibility_date = "2026-07-04"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "acium-sales-ai"
+database_id = "replace-with-d1-database-id"
+migrations_dir = "../../packages/db/d1/migrations"
+
+[[queues.producers]]
+binding = "META_WEBHOOK_QUEUE"
+queue = "acium-meta-webhooks"
+
+[[queues.consumers]]
+queue = "acium-meta-webhooks"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "acium-meta-webhooks-dlq"
+
+[[r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "acium-media"
+
+[[durable_objects.bindings]]
+name = "CONVERSATION_ROOM"
+class_name = "ConversationRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ConversationRoom"]

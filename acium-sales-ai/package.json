@@ -1,0 +1,31 @@
+{
+  "name": "acium-sales-ai",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @acium/web --filter @acium/api dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "db:d1:migrate:local": "tsx scripts/db/migrate-d1.ts --local",
+    "db:d1:migrate:prod": "tsx scripts/db/migrate-d1.ts --production",
+    "db:supabase:migrate": "tsx scripts/db/migrate-supabase.ts",
+    "secrets:validate": "tsx scripts/secrets/validate-secrets.ts",
+    "secrets:apply:prod": "tsx scripts/secrets/apply-cloudflare-secrets.ts --production",
+    "deploy:preview": "tsx scripts/deploy/deploy-preview.ts",
+    "deploy:production": "tsx scripts/deploy/deploy-production.ts"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260701.1",
+    "@types/node": "^22.16.5",
+    "@vitejs/plugin-react-swc": "^3.11.0",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3",
+    "vite": "^5.4.19",
+    "vitest": "^3.2.4",
+    "wrangler": "^4.24.3"
+  }
+}

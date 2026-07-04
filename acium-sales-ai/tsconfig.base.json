@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@acium/shared/*": ["packages/shared/src/*"],
+      "@acium/messaging/*": ["packages/messaging/src/*"],
+      "@acium/agents/*": ["packages/agents/src/*"],
+      "@acium/followup/*": ["packages/followup/src/*"],
+      "@acium/realtime/*": ["packages/realtime/src/*"],
+      "@acium/db/*": ["packages/db/*"]
+    }
+  }
+}

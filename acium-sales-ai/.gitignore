@@ -1,0 +1,21 @@
+# Dependencies and builds
+node_modules
+dist
+.wrangler
+.turbo
+coverage
+*.log
+
+# Secrets locais
+.secrets/*
+!.secrets/.gitkeep
+!.secrets/README.md
+!.secrets/*.example
+
+# Env locais
+.env
+.env.*
+.dev.vars
+.dev.vars.*
+.local.env
+.production.env
