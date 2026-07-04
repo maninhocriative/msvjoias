@@ -5,4 +5,6 @@ export type Env = {
   CONVERSATION_ROOM: DurableObjectNamespace;
   META_VERIFY_TOKEN: string;
   META_WEBHOOK_SECRET?: string;
+  SUPABASE_URL: string;
+  SUPABASE_SERVICE_ROLE_KEY: string;
 };

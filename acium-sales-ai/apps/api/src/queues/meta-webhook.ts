@@ -1,5 +1,8 @@
 import { buildConversationId, buildMessageInsert, normalizeMetaPayload } from "@acium/messaging";
+import { routeAgent } from "@acium/agents";
 import type { Env } from "../types";
+import { storeInboundMedia } from "../services/media-storage";
+import { insertAgentDecisionLog } from "../services/supabase-rest";
 
 type QueueBody = {
   eventId: string;
@@ -25,6 +28,21 @@ async function processWebhookEvent(body: QueueBody, env: Env): Promise<void> {
 
   for (const inbound of inboundMessages) {
     const conversationId = buildConversationId(inbound);
+    const existing = await env.DB.prepare(
+      `SELECT current_agent, stage, human_takeover, automation_paused
+       FROM conversations
+       WHERE id = ?`
+    )
+      .bind(conversationId)
+      .first<{
+        current_agent: string | null;
+        stage: string | null;
+        human_takeover: number | null;
+        automation_paused: number | null;
+      }>();
+
+    const mediaStorageKey = await tryStoreMedia(env, conversationId, inbound);
+
     await env.DB.prepare(
       `INSERT INTO conversations
         (id, channel, channel_conversation_id, channel_customer_id, customer_name, customer_avatar_url,
@@ -54,7 +72,10 @@ async function processWebhookEvent(body: QueueBody, env: Env): Promise<void> {
       )
       .run();
 
-    const row = buildMessageInsert(inbound, conversationId);
+    const row = {
+      ...buildMessageInsert(inbound, conversationId),
+      media_storage_key: mediaStorageKey ?? inbound.media.storageKey
+    };
     await env.DB.prepare(
       `INSERT OR IGNORE INTO messages
         (id, conversation_id, channel, direction, sender_type, sender_id, agent_name, body, normalized_body,
@@ -85,6 +106,27 @@ async function processWebhookEvent(body: QueueBody, env: Env): Promise<void> {
       )
       .run();
 
+    const decision = routeAgent({
+      conversationId,
+      channel: inbound.source,
+      stage: existing?.stage ?? "new_lead",
+      currentAgent: existing?.current_agent === "auto_router" ? "auto_router" : null,
+      normalizedText: inbound.normalizedText,
+      humanTakeover: Boolean(existing?.human_takeover),
+      automationPaused: Boolean(existing?.automation_paused),
+      paymentPending: existing?.stage === "payment_pending",
+      orderPending: existing?.stage === "order_building" || existing?.stage === "order_created",
+      productSelected: existing?.stage === "product_selected"
+    });
+
+    await insertAgentDecisionLog(env, {
+      conversationId,
+      messageId: row.id,
+      decision,
+      previousAgent: existing?.current_agent ?? null,
+      stageBefore: existing?.stage ?? null
+    });
+
     await notifyConversationRoom(env, conversationId, {
       type: "message.created",
       conversationId,
@@ -93,6 +135,14 @@ async function processWebhookEvent(body: QueueBody, env: Env): Promise<void> {
   }
 
   await env.DB.prepare("UPDATE webhook_events SET processed = 1, processed_at = ? WHERE id = ?").bind(now, body.eventId).run();
+}
+
+async function tryStoreMedia(env: Env, conversationId: string, inbound: ReturnType<typeof normalizeMetaPayload>[number]) {
+  try {
+    return await storeInboundMedia(env, conversationId, inbound);
+  } catch (error) {
+    return null;
+  }
 }
 
 async function notifyConversationRoom(env: Env, conversationId: string, event: unknown) {
