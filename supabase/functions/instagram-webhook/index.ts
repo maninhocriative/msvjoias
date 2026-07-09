@@ -7,6 +7,7 @@ const corsHeaders = {
 };
 
 const DEFAULT_VERIFY_TOKEN = "msv_acium_instagram_2026";
+const ENABLE_INSTAGRAM_PUBLIC_COMMENT_REPLIES = false;
 
 function asString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -911,6 +912,17 @@ serve(async (req) => {
           agent: { skipped: true, reason: stored.automation_block_reason || "human_takeover" },
         });
       } else if (stored?.stored) {
+        if (!ENABLE_INSTAGRAM_PUBLIC_COMMENT_REPLIES) {
+          results.push({
+            ...stored,
+            agent: {
+              skipped: true,
+              reason: "instagram_public_comment_replies_disabled",
+            },
+          });
+          continue;
+        }
+
         try {
           const agent = await runAgentAndReplyToComment({
             supabase,
